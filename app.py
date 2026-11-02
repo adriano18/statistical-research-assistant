@@ -154,6 +154,16 @@ async def main(page: ft.Page):
     results = ft.Text("")
     guidance = ft.Text("")
     chart_area = ft.Column()
+    explore_variable = ft.Dropdown(
+        label="Quantitative variable", width=290, options=[]
+    )
+    explore_group = ft.Dropdown(
+        label="Group (optional)", width=290,
+        value="(none)",
+        options=[ft.DropdownOption(key="(none)", text="No grouping")],
+    )
+    explore_output = ft.Text("")
+    explore_chart = ft.Column()
     reliability_items = ft.Column(height=180, scroll=ft.ScrollMode.AUTO)
     reliability_confirm = ft.Checkbox(
         label="I checked that the items measure one construct and reversed items are recoded",
@@ -579,6 +589,26 @@ async def main(page: ft.Page):
             if pd.api.types.is_numeric_dtype(df[name])
             and not looks_like_identifier(name)
         ]
+        explore_variable.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in numeric_candidates
+        ]
+        explore_variable.value = (
+            "score" if "score" in numeric_candidates
+            else (numeric_candidates[0] if numeric_candidates else None)
+        )
+        explore_group.options = [ft.DropdownOption(
+            key="(none)", text="No grouping"
+        )] + [
+            ft.DropdownOption(key=str(name), text=str(name))
+            for name in df.columns
+            if not looks_like_identifier(name)
+            and str(name) != explore_variable.value
+            and 2 <= df[name].dropna().nunique() <= 8
+        ]
+        explore_group.value = "(none)"
+        explore_output.value = ""
+        explore_chart.controls.clear()
         corr_x.options = [
             ft.DropdownOption(key=name, text=name) for name in numeric_candidates
         ]
@@ -1232,6 +1262,39 @@ async def main(page: ft.Page):
     omnibus_export_png_button.on_click = export_omnibus_png
     omnibus_export_txt_button.on_click = export_omnibus_txt
 
+    async def run_explore(e):
+        explore_output.value = "Preparing boxplots and diagnostic checks..."
+        explore_chart.controls.clear()
+        page.update()
+        if dataframe is None or not explore_variable.value:
+            explore_output.value = "Load a dataset and choose an outcome."
+            page.update()
+            return
+        try:
+            grouping = (
+                explore_group.value if explore_group.value != "(none)"
+                else None
+            )
+            investigation = await asyncio.to_thread(
+                explore_quantitative,
+                dataframe, explore_variable.value, grouping,
+            )
+            png = await asyncio.to_thread(
+                make_explore_chart, investigation
+            )
+            report = format_explore_report(investigation)
+            explore_output.value = report
+            explore_chart.controls.append(
+                ft.Image(src=png, width=900, height=500)
+            )
+            remember_output(
+                "descriptive", f"Explore: {explore_variable.value}",
+                report, png
+            )
+        except Exception as error:
+            explore_output.value = f"Explore error: {error}"
+        page.update()
+
     # Visualization follows the same scale and identifier safeguards as the table.
     async def analyze_variable(e):
         chart_area.controls.clear()
@@ -1321,6 +1384,10 @@ async def main(page: ft.Page):
             "results": results,
             "guidance": guidance,
             "chart_area": chart_area,
+            "explore_variable": explore_variable,
+            "explore_group": explore_group,
+            "explore_output": explore_output,
+            "explore_chart": explore_chart,
             "reliability_items": reliability_items,
             "reliability_confirm": reliability_confirm,
             "reliability_output": reliability_output,
@@ -1405,6 +1472,7 @@ async def main(page: ft.Page):
             "load_sample": load_sample,
             "load_scale_example": load_scale_example,
             "analyze_variable": analyze_variable,
+            "run_explore": run_explore,
             "calculate_alpha": calculate_alpha,
             "calculate_correlation": calculate_correlation,
             "calculate_matrix": calculate_matrix,
