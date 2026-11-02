@@ -22,7 +22,7 @@ def format_correlation_report(result) -> str:
     direction = (
         "positive" if result.coefficient > 0
         else "negative" if result.coefficient < 0
-        else "no observed"
+        else "approximately zero"
     )
     ci_text = ""
     if result.ci_low is not None and result.ci_high is not None:
