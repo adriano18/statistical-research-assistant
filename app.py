@@ -15,6 +15,8 @@ from reliability_charts import make_reliability_chart
 from correlation import analyze_correlation, recommend_method
 from correlation_reporting import format_correlation_report
 from correlation_charts import make_correlation_chart
+from correlation_matrix import analyze_correlation_matrix
+from correlation_matrix_charts import make_correlation_matrix_chart
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -87,6 +89,26 @@ async def main(page: ft.Page):
     corr_output = ft.Text("")
     corr_warnings = ft.Text("")
     corr_chart = ft.Column()
+
+    # Exploratory correlation matrix (2–8 user-confirmed measurements).
+    matrix_items = ft.Column(height=170, scroll=ft.ScrollMode.AUTO)
+    matrix_method = ft.Dropdown(
+        label="Matrix method", width=250, value="spearman",
+        options=[
+            ft.DropdownOption(key="spearman", text="Spearman’s ρ"),
+            ft.DropdownOption(key="pearson", text="Pearson’s r"),
+        ],
+    )
+    matrix_confirm = ft.Checkbox(
+        label=(
+            "I confirmed the measurement scales and study assumptions "
+            "(Pearson: quantitative and linear; Spearman: ordinal or quantitative)"
+        ),
+        value=False,
+    )
+    matrix_output = ft.Text("")
+    matrix_warnings = ft.Text("")
+    matrix_chart = ft.Column()
 
     def update_corr_advice(e=None):
         corr_advice.value = recommend_method(
@@ -224,6 +246,16 @@ async def main(page: ft.Page):
         corr_warnings.value = ""
         corr_chart.controls.clear()
         corr_advice.value = recommend_method("unknown", "unknown")
+
+        matrix_items.controls = [
+            ft.Checkbox(label=name, value=False)
+            for name in numeric_candidates
+        ]
+        matrix_method.value = "spearman"
+        matrix_confirm.value = False
+        matrix_output.value = ""
+        matrix_warnings.value = ""
+        matrix_chart.controls.clear()
         page.update()
 
     async def choose_file(e):
@@ -327,6 +359,44 @@ async def main(page: ft.Page):
             corr_output.value = f"Correlation analysis error: {error}"
         page.update()
 
+    async def calculate_matrix(e):
+        matrix_chart.controls.clear()
+        matrix_warnings.value = ""
+
+        if dataframe is None:
+            matrix_output.value = "Load a dataset first."
+            page.update()
+            return
+
+        selected = [
+            check.label for check in matrix_items.controls if check.value
+        ]
+        matrix_output.value = "Calculating exploratory correlation matrix..."
+        page.update()
+
+        try:
+            analysis = await asyncio.to_thread(
+                analyze_correlation_matrix,
+                dataframe,
+                selected,
+                matrix_method.value,
+                bool(matrix_confirm.value),
+            )
+            label = "Pearson’s r" if analysis.method == "pearson" else "Spearman’s ρ"
+            matrix_output.value = (
+                f"Exploratory {label} matrix with {len(analysis.names)} variables.\n"
+                "Each cell shows a coefficient and its pairwise-complete N.\n"
+                "No significance tests or p-values are calculated for this matrix."
+            )
+            matrix_warnings.value = "\n".join(analysis.warnings)
+            png = await asyncio.to_thread(make_correlation_matrix_chart, analysis)
+            matrix_chart.controls.append(
+                ft.Image(src=png, width=850, height=760)
+            )
+        except Exception as error:
+            matrix_output.value = f"Correlation matrix error: {error}"
+        page.update()
+
     # Visualization follows the same scale and identifier safeguards as the table.
     async def analyze_variable(e):
         chart_area.controls.clear()
@@ -402,7 +472,7 @@ async def main(page: ft.Page):
 
     page.add(
         ft.Text("Statistical Research Assistant", size=28, weight="bold"),
-        ft.Text("Step 5 | Reliability and correlation analysis"),
+        ft.Text("Step 6 | Reliability, correlations and exploratory matrices"),
         ft.Row(
             controls=[
                 ft.Button("Open CSV / Excel", on_click=choose_file),
@@ -447,6 +517,18 @@ async def main(page: ft.Page):
         corr_output,
         corr_warnings,
         corr_chart,
+        ft.Text("CORRELATION MATRIX", size=18, weight="bold"),
+        ft.Text(
+            "Explore relationships among 2–8 numeric-coded variables. "
+            "Select only genuine ordinal or quantitative measurements."
+        ),
+        matrix_items,
+        matrix_method,
+        matrix_confirm,
+        ft.Button("Calculate correlation matrix", on_click=calculate_matrix),
+        matrix_output,
+        matrix_warnings,
+        matrix_chart,
     )
     page.update()
 
