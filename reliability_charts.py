@@ -58,7 +58,10 @@ def make_reliability_chart(analysis) -> bytes:
         ax.xaxis.set_major_formatter(
             FuncFormatter(lambda val, pos: apa_coefficient(val))
         )
-        ax.set_title("Internal consistency and item-deletion estimates", pad=15)
+        # APA 7-inspired figure heading: bold number, italic title.
+        fig.text(0.07, 0.975, "Figure 1", weight="bold", fontsize=11, va="top")
+        fig.text(0.07, 0.927, "Internal Consistency and Item-Deletion Estimates",
+                 style="italic", fontsize=11, va="top")
 
         for bar, value in zip(bars, values):
             ax.text(
@@ -76,7 +79,7 @@ def make_reliability_chart(analysis) -> bytes:
             "Dashed lines mark common .70 and .90 heuristics, not validity cutoffs.",
             fontsize=8.5,
         )
-        fig.tight_layout(rect=(0.03, 0.08, 0.99, 0.95))
+        fig.tight_layout(rect=(0.03, 0.09, 0.99, 0.85))
 
         buffer = BytesIO()
         fig.savefig(buffer, format="png", dpi=115)
