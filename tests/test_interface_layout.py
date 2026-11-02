@@ -15,11 +15,15 @@ CONTROL_NAMES = [
     "corr_output", "corr_warnings", "corr_chart", "matrix_items",
     "matrix_method", "matrix_confirm", "matrix_output", "matrix_warnings",
     "matrix_chart",
+    "group_variable", "group_outcome", "group_outcome_scale", "group_method",
+    "group_independent", "group_assumptions", "group_advice", "group_output",
+    "group_warnings", "group_chart",
 ]
 
 ACTION_NAMES = [
     "choose_file", "load_sample", "load_scale_example", "analyze_variable",
     "calculate_alpha", "calculate_correlation", "calculate_matrix",
+    "calculate_groups",
 ]
 
 
@@ -29,7 +33,7 @@ class DummyPage:
 
 
 class LayoutTests(unittest.TestCase):
-    def test_all_five_screens_exist_and_only_dataset_is_visible(self):
+    def test_all_six_screens_exist_and_only_dataset_is_visible(self):
         controls = {name: ft.Text(name) for name in CONTROL_NAMES}
         actions = {name: (lambda e: None) for name in ACTION_NAMES}
 
@@ -43,11 +47,11 @@ class LayoutTests(unittest.TestCase):
             item for item in sidebar.content.controls
             if isinstance(item, ft.Button)
         ]
-        self.assertEqual(len(nav_buttons), 5)
+        self.assertEqual(len(nav_buttons), 6)
 
         workspace = root.controls[1].content
         screens = workspace.controls[1:]
-        self.assertEqual(len(screens), 5)
+        self.assertEqual(len(screens), 6)
         self.assertTrue(screens[0].visible)
         self.assertTrue(all(not screen.visible for screen in screens[1:]))
 
