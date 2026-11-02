@@ -18,6 +18,9 @@ from correlation_charts import make_correlation_chart
 from correlation_matrix import analyze_correlation_matrix
 from correlation_matrix_charts import make_correlation_matrix_chart
 from interface_layout import build_interface
+from group_comparison import compare_independent_groups, recommend_group_test
+from group_comparison_reporting import format_group_comparison
+from group_comparison_charts import make_group_comparison_chart
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -112,6 +115,61 @@ async def main(page: ft.Page):
     matrix_output = ft.Text("")
     matrix_warnings = ft.Text("")
     matrix_chart = ft.Column()
+
+    # Two independent groups: nominal group coding + confirmed outcome scale.
+    group_variable = ft.Dropdown(
+        label="Grouping variable (two categories)", width=300, options=[]
+    )
+    group_outcome = ft.Dropdown(
+        label="Outcome variable", width=300, options=[]
+    )
+    group_outcome_scale = ft.Dropdown(
+        label="Outcome measurement scale", width=270, value="unknown",
+        options=[
+            ft.DropdownOption(key="unknown", text="Not confirmed"),
+            ft.DropdownOption(key="ordinal", text="Ordinal"),
+            ft.DropdownOption(key="scale", text="Quantitative"),
+            ft.DropdownOption(key="nominal", text="Nominal (not supported)"),
+        ],
+    )
+    group_method = ft.Dropdown(
+        label="Statistical method", width=270, value="mannwhitney",
+        options=[
+            ft.DropdownOption(key="mannwhitney", text="Mann–Whitney U"),
+            ft.DropdownOption(key="welch", text="Welch’s independent t"),
+        ],
+    )
+    group_independent = ft.Checkbox(
+        label="I confirm that the two groups contain independent observations",
+        value=False,
+    )
+    group_assumptions = ft.Checkbox(
+        label=(
+            "For Welch only: I reviewed outcome distributions, "
+            "outliers and suitability of mean comparisons"
+        ),
+        value=False,
+    )
+    group_advice = ft.Text("")
+    group_output = ft.Text("")
+    group_warnings = ft.Text("")
+    group_chart = ft.Column()
+
+    def update_group_advice(e=None):
+        group_advice.value = recommend_group_test(
+            group_outcome_scale.value, bool(group_independent.value)
+        )
+        group_assumptions.value = False
+        group_output.value = ""
+        group_warnings.value = ""
+        group_chart.controls.clear()
+        page.update()
+
+    group_variable.on_select = update_group_advice
+    group_outcome.on_select = update_group_advice
+    group_method.on_select = update_group_advice
+    group_outcome_scale.on_select = update_group_advice
+    group_independent.on_change = update_group_advice
 
     def update_corr_advice(e=None):
         corr_advice.value = recommend_method(
@@ -259,6 +317,38 @@ async def main(page: ft.Page):
         matrix_output.value = ""
         matrix_warnings.value = ""
         matrix_chart.controls.clear()
+
+        # A group can use text or numeric codes; outcome must be numeric.
+        grouping_candidates = [
+            str(name) for name in df.columns if not looks_like_identifier(name)
+        ]
+        two_level_candidates = [
+            name for name in grouping_candidates
+            if df[name].dropna().nunique() == 2
+        ]
+        group_variable.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in grouping_candidates
+        ]
+        group_outcome.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in numeric_candidates
+        ]
+        group_variable.value = (
+            two_level_candidates[0] if two_level_candidates else None
+        )
+        group_outcome.value = next(
+            (name for name in numeric_candidates if name != group_variable.value),
+            None,
+        )
+        group_outcome_scale.value = "unknown"
+        group_method.value = "mannwhitney"
+        group_independent.value = False
+        group_assumptions.value = False
+        group_advice.value = recommend_group_test("unknown", False)
+        group_output.value = ""
+        group_warnings.value = ""
+        group_chart.controls.clear()
         page.update()
 
     async def choose_file(e):
@@ -400,6 +490,44 @@ async def main(page: ft.Page):
             matrix_output.value = f"Correlation matrix error: {error}"
         page.update()
 
+    async def calculate_groups(e):
+        group_chart.controls.clear()
+        group_warnings.value = ""
+
+        if dataframe is None:
+            group_output.value = "Load a dataset first."
+            page.update()
+            return
+        if not group_variable.value or not group_outcome.value:
+            group_output.value = "Choose grouping and outcome variables."
+            page.update()
+            return
+
+        group_output.value = "Comparing groups and preparing chart..."
+        page.update()
+        try:
+            comparison = await asyncio.to_thread(
+                compare_independent_groups,
+                dataframe,
+                group_variable.value,
+                group_outcome.value,
+                group_method.value,
+                group_outcome_scale.value,
+                bool(group_independent.value),
+                bool(group_assumptions.value),
+            )
+            group_output.value = format_group_comparison(comparison)
+            group_warnings.value = "\n".join(comparison.warnings)
+            figure = await asyncio.to_thread(
+                make_group_comparison_chart, comparison
+            )
+            group_chart.controls.append(
+                ft.Image(src=figure, width=850, height=550)
+            )
+        except Exception as error:
+            group_output.value = f"Group comparison error: {error}"
+        page.update()
+
     # Visualization follows the same scale and identifier safeguards as the table.
     async def analyze_variable(e):
         chart_area.controls.clear()
@@ -506,6 +634,16 @@ async def main(page: ft.Page):
             "matrix_output": matrix_output,
             "matrix_warnings": matrix_warnings,
             "matrix_chart": matrix_chart,
+            "group_variable": group_variable,
+            "group_outcome": group_outcome,
+            "group_outcome_scale": group_outcome_scale,
+            "group_method": group_method,
+            "group_independent": group_independent,
+            "group_assumptions": group_assumptions,
+            "group_advice": group_advice,
+            "group_output": group_output,
+            "group_warnings": group_warnings,
+            "group_chart": group_chart,
         },
         actions={
             "choose_file": choose_file,
@@ -515,6 +653,7 @@ async def main(page: ft.Page):
             "calculate_alpha": calculate_alpha,
             "calculate_correlation": calculate_correlation,
             "calculate_matrix": calculate_matrix,
+            "calculate_groups": calculate_groups,
         },
     )
     page.add(ui)
