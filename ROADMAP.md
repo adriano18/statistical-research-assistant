@@ -1,71 +1,106 @@
-# Development roadmap
+# Roadmap — Statistical Research Assistant
 
-Statistical Research Assistant is a learning-oriented, local-first research tool for psychology, marketing and other fields. The goal is transparent statistical calculations, methodological safeguards, readable interpretation and reusable reports, not a full clone of SPSS.
+## Project goal
 
-## Phase 1 — Data and descriptive analysis
-- [x] Import CSV and Excel locally
-- [x] Inspect variables and missing values
-- [x] Confirm measurement scales rather than trusting numeric data types
-- [x] Descriptives and distribution charts
-- [ ] Variable metadata: labels, value labels, missing-value codes, reverse scoring, scale totals
-- [ ] Import SPSS .sav with privacy-safe handling
+A **local-first, reproducible statistical workbench** for psychology and marketing research, with correct calculations, practical guidance, APA-style output and later optional AI interpretation. This is a focused SPSS-like assistant, **not a promise to reproduce all IBM SPSS procedures**.
 
-## Phase 2 — Statistical methods (finish before AI)
-- [x] Cronbach's alpha with CI and item-deletion diagnostics
-- [x] Pearson and Spearman correlations
-- [x] Exploratory correlation matrix with pairwise N
-- [x] Independent-group Welch t-test and Mann–Whitney U
-- [x] Paired t-test and Wilcoxon signed-rank
-- [x] Pearson chi-square test of independence, Cramér's V, expected-count checks and Fisher exact result for sparse 2×2 tables
-- [ ] Chi-square goodness-of-fit when theoretically needed
-- [x] One-way ANOVA, Welch ANOVA and Kruskal–Wallis omnibus tests (3–8 groups), descriptive effect estimates and plots
-- [x] Method-matched post-hoc comparisons: Tukey / Tukey–Kramer, Games–Howell and tie-corrected Dunn with Holm adjustment
-- [ ] Additional post-hoc choices and robust effect-size confidence intervals
-- [ ] Repeated-measures ANOVA and Friedman with multiple-comparison control
-- [ ] Assumption diagnostics: Q–Q plots, Shapiro–Wilk, variance checks, outliers, paired-difference diagnostics
-- [ ] Regression (linear, multiple, logistic) and related diagnostics
-- [ ] Effect sizes, uncertainty intervals and multiplicity correction wherever appropriate
-- [ ] Further psychometrics: dimensionality, exploratory factor analysis, omega reliability
-- [ ] Cross-check critical computations against SciPy, jamovi/JASP and published reference cases
+**Current development sequence**: complete the essential statistical core and data preparation → validate against reference cases → make output and workflow usable → integrate a method advisor and optional AI → finish EN/LV/RU localization and UI polish. Usability problems that prevent testing, copying or saving are fixed immediately, not postponed.
 
-## Phase 3 — Explanations and research assistant
-- [ ] Rule-based method advisor based on research question, variable roles, measurement scale and independent/paired design
-- [ ] Assistant asks for missing design details rather than guessing
-- [ ] Clear interpretation with assumptions, effect size, CI and study limitations
-- [ ] Integrate AI for conversational explanations only after deterministic statistics and tests are stable
-- [ ] Do not let AI invent computed statistics, infer causality or treat p < .05 as practical importance
-- [ ] Send only user-approved, minimized or de-identified summaries to external AI services; local-only mode remains available
+## 1. Implemented statistical core
 
-## Phase 4 — Reporting, export and reproducibility
-- [x] Short/main results, descriptives and separate cautions for paired measurements
-- [x] Save paired APA-style report as local UTF-8 TXT
-- [x] Save paired figure as local PNG
-- [ ] Apply structured results and local export to all analysis modules
-- [ ] Export tables and reports to XLSX, DOCX and PDF with manuscript-specific APA 7 details
-- [ ] Save analysis settings and data-cleaning decisions for reproducibility
-- [ ] Allow user-selected report destination and safe filenames
-- [ ] Add sources and references for interpretation thresholds and test recommendations
+- [x] CSV/XLSX import and variable/missingness overview
+- [x] Descriptive summaries, categorical frequencies, histogram and bar chart
+- [x] **Explore**: overall or group boxplots, individual observations, normal Q–Q plot, Shapiro–Wilk and median-centered Levene/Brown–Forsythe (added)
+- [x] Cronbach's α, confidence interval and α-if-item-deleted
+- [x] Pearson r, Spearman ρ, scatterplot and exploratory correlation matrix
+- [x] Independent Welch t and Mann–Whitney U with effect size and graph
+- [x] Paired t and Wilcoxon signed-rank with within-person change plot
+- [x] Pearson χ² independence, Cramér's V, observed/expected cells and 2×2 Fisher exact option
+- [x] One-way ANOVA, Welch ANOVA and Kruskal–Wallis, with effect estimates
+- [x] Tukey / Tukey–Kramer, Games–Howell and Dunn with Holm-adjusted post-hoc p-values
+- [x] PNG generation for every statistical chart; configurable local folder saving and copyable text through shared toolbar (added)
+- [x] Automatic Python unit tests via GitHub Actions
 
-## Phase 5 — Languages and UI/UX
-- [ ] Internationalization system with message keys, no hard-coded UI strings
-- [ ] **English (EN)** as the current default language
-- [ ] **Latvian (LV)** localization for research and university use
-- [ ] **Russian (RU)** localization for convenient everyday use
-- [ ] Language selector in Settings; translations must cover help, limitations, errors and report explanations
-- [ ] Consistent terminology and APA symbols in every language
-- [ ] Refine responsive Flet layout, readable cards, navigation, plots and accessibility
-- [ ] User-friendly data preview, column search, help tips and research workflow guidance
+## 2. Statistics to complete before AI — in priority order
 
-## Phase 6 — Verification and release
-- [ ] Offline unit tests for every test, assumption guard and reporting formatter
-- [ ] Integration/UI smoke tests on Windows desktop
-- [ ] Compare results against trusted statistics software for representative datasets
-- [ ] Test missing, tied, constant, sparse, extreme and invalid observations
-- [ ] Packaging, instructions, versioned releases and backup/restore options
+### P0. Essential research methods
+- [ ] **Linear and multiple linear regression**, model summary, coefficients, 95% CI, R², residual plots, collinearity checks
+- [ ] **Friedman test** for 3+ repeated/related ordinal measurements, with corrected pairwise Wilcoxon follow-up
+- [ ] **Repeated-measures ANOVA** with correct within-subject assumptions and multiple-testing treatment
+- [ ] **ANCOVA / general linear model** where design and sample sizes justify it
+- [ ] **Binary logistic regression**, odds ratios, CI, interpretation and separation warnings
+- [ ] More complete diagnostics: residual vs fitted plots, outliers/influence, variance inflation factors, distribution checks of **paired differences**
+- [ ] Confidence intervals for important effect sizes; control of multiplicity
+- [ ] Independent reference checks against SciPy, statsmodels and jamovi/JASP
 
-## Current scope and limitations
+### P1. Data preparation and psychometrics
+- [ ] Variable labels, value labels, nominal/ordinal/quantitative metadata and manual designation of ID/group/scale
+- [ ] Explicit missing-value codes, recoding, reverse-coded items, total/mean scale scores
+- [ ] Import SPSS `.sav` (optional `pyreadstat`) without remote uploads
+- [ ] McNemar for paired binary classifications; chi-square goodness-of-fit for one categorical variable
+- [ ] Partial correlations
+- [ ] **McDonald's ω**, scale item diagnostics
+- [ ] EFA / PCA with loading matrices, scree plot, suitability checks and explained variance
+- [ ] Sensitivity/sample-size and power interpretation, confidence intervals and multiple-testing policy
 
-The application is not a validated clinical tool. The reported APA-style sentences are templates and need verification against the actual research context and manuscript requirements. Statistical tests must be chosen using study design, assumptions and construct meaning. The local `reports/` and `data/` folders are Git-ignored; identifiable participant records should not be published or sent to AI services.
+### P2. Advanced / only if research needs it
+- [ ] MANOVA, repeated-measures mixed models and generalized linear models
+- [ ] Mediation/moderation with appropriately interpreted uncertainty
+- [ ] Clustering, discriminant analysis and advanced dimensionality reduction
+- [ ] Time series, survival analysis, classification and other domain-specific methods
+- [ ] Structural equation modeling / confirmatory factor analysis (may be better delegated to dedicated packages)
 
-### Next concrete milestone
-Finish the remaining common statistical tests and diagnostic aids, then build the rule-based/AI research assistant. Complete multilingual UI/UX polish after the statistical core is tested, while keeping the current layout functional.
+**Scope checkpoint:** P0 + selected P1 establishes a credible master's-level analysis assistant for many designs. P2 is not a requirement for a useful first release.
+
+## 3. Graphs and output
+
+- [x] Histograms, bar charts, scatterplots, correlations heatmap, grouped boxplots, paired change, contingency figures, reliability figure
+- [x] Dedicated **Explore** boxplots and Q–Q plots with Shapiro/Levene results
+- [x] Copy APA report text; save report TXT and PNG through a native *Save as* dialog (desktop)
+- [x] Per-analysis output cache in memory; no upload; explicit output location
+- [ ] APA-style **editable** tables, suitable DOCX and PDF with headings, numbered tables/figures and sources
+- [ ] Export full analysis workbooks as Excel and CSV including metadata, decisions and reproducible method settings
+- [ ] Combined report containing several selected analyses, not only one active panel
+- [ ] High-resolution SVG/PDF vector chart option and configurable graphical style
+- [ ] Store reproducible analysis history, seeds, library versions and input file hashes
+- [ ] Audit/verify export on Windows and ensure report text can be selected/copied accessibly
+
+## 4. Research method advisor, then AI
+
+- [ ] Deterministic method advisor: research question, variables, measurement scales, independent/paired design, outcomes, N and missing data
+- [ ] Explain assumptions, alternatives, effect sizes and appropriate caution
+- [ ] **Optional AI** after calculation: interpret a strictly structured summary; never fabricate p-values, results or references
+- [ ] User approval before sharing any research data with external AI; local-only remains default
+- [ ] Track the exact analysis, assumptions and code version backing every explanation
+
+## 5. Languages and product interface
+
+- [x] Sidebar split into datasets, descriptives, reliability, associations and group comparisons
+- [x] Reusable copy/save buttons accessible above results; main outcome and figures prioritized; lengthy cautions collapsible
+- [ ] Separate **result table / data preview / variable dictionary** from the analysis setup
+- [ ] Sortable/exportable post-hoc and descriptive tables, improved compactness and keyboard navigation
+- [ ] EN / LV / RU localization using translation keys for menus, errors, notes, reports and accessibility strings
+- [ ] English default; Latvian and Russian selectable in Settings
+- [ ] Polish Flet desktop and responsive layout after core stability
+
+### GUI platform decision
+
+**Stay with Flet for now.** The statistical functions live in independent Python files and can be reused in a future PySide6 (Qt) desktop client. Rebuilding nine workspaces immediately would take time away from statistics, testing and reports. Review migration **after P0**, if scientific data editing, very large tables, menus, drag-and-drop or accessibility still cannot be implemented satisfactorily.
+
+Alternatives to evaluate later:
+- **PySide6 / Qt**: richer native desktop tables, dialogs and docking, more frontend code.
+- **NiceGUI / Streamlit**: fast web-style applications but local server/browser distribution and privacy/deployment trade-offs.
+- Flet: keep the current tested desktop workflow, improve its reusable UI components.
+
+## 6. Testing, privacy and release
+
+- [x] Offline core tests and GitHub Actions check on pushes
+- [ ] Validate exported copy/TXT/PNG and Windows save dialogs manually
+- [ ] Cross-check named datasets and extreme cases against trusted scientific tools
+- [ ] Confirm that repeated, nested and missing-data structures are not silently misclassified
+- [ ] Package an offline Windows executable
+- [ ] Clear privacy and limitation documentation; never put participant data in public GitHub
+
+## Limitations
+
+Boxplots and Shapiro/Levene diagnostics are exploratory, not an automatic decision tree. Shapiro p > .05 does not prove normality; for ANOVA, residuals rather than raw scores matter, and for paired t-tests it is the **differences** that matter. APA-style format is a reporting aid, not an APA 7 certification or a proof of valid study design. Figures are numbered as manuscript placeholders. Many advanced SPSS methods remain outside the first-release scope.
