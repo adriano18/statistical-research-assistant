@@ -17,6 +17,7 @@ from correlation_reporting import format_correlation_report
 from correlation_charts import make_correlation_chart
 from correlation_matrix import analyze_correlation_matrix
 from correlation_matrix_charts import make_correlation_matrix_chart
+from interface_layout import build_interface
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -25,10 +26,12 @@ SCALE_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_scale.csv"
 
 async def main(page: ft.Page):
     page.title = "Statistical Research Assistant"
-    page.window.width = 1000
-    page.window.height = 700
-    page.padding = 24
-    page.scroll = ft.ScrollMode.AUTO
+    page.window.width = 1350
+    page.window.height = 850
+    page.padding = 18
+    page.bgcolor = "#0E1622"
+    page.theme_mode = ft.ThemeMode.DARK
+    page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
 
     # The source file stays on the user's computer; no cloud upload.
     picker = ft.FilePicker()
@@ -470,66 +473,51 @@ async def main(page: ft.Page):
 
         page.update()
 
-    page.add(
-        ft.Text("Statistical Research Assistant", size=28, weight="bold"),
-        ft.Text("Step 6 | Reliability, correlations and exploratory matrices"),
-        ft.Row(
-            controls=[
-                ft.Button("Open CSV / Excel", on_click=choose_file),
-                ft.Button("Load example", on_click=load_sample),
-                ft.Button("Load scale example", on_click=load_scale_example),
-            ],
-            wrap=True,
-        ),
-        status,
-        ft.Text("VARIABLE OVERVIEW", size=18, weight="bold"),
-        ft.Text("Numeric data type does not automatically mean quantitative scale."),
-        overview_area,
-        ft.Text("DESCRIPTIVE ANALYSIS", size=18, weight="bold"),
-        ft.Row(controls=[variable, scale], wrap=True),
-        ft.Button("Analyze selected variable", on_click=analyze_variable),
-        results,
-        guidance,
-        chart_area,
-        ft.Text("SCALE RELIABILITY", size=18, weight="bold"),
-        ft.Text(
-            "Select at least three numeric items from ONE questionnaire scale. "
-            "Do not select demographics, IDs, or unrelated variables."
-        ),
-        reliability_items,
-        reliability_confirm,
-        ft.Button("Calculate Cronbach's alpha", on_click=calculate_alpha),
-        reliability_output,
-        reliability_guide,
-        reliability_warnings,
-        reliability_chart_area,
-        ft.Text("CORRELATION ANALYSIS", size=18, weight="bold"),
-        ft.Text(
-            "Select two measurements. Confirm their scales; review the "
-            "study design and scatterplot before interpreting significance."
-        ),
-        ft.Row(controls=[corr_x, corr_y], wrap=True),
-        ft.Row(controls=[corr_scale_x, corr_scale_y], wrap=True),
-        corr_advice,
-        corr_method,
-        corr_confirm,
-        ft.Button("Calculate correlation", on_click=calculate_correlation),
-        corr_output,
-        corr_warnings,
-        corr_chart,
-        ft.Text("CORRELATION MATRIX", size=18, weight="bold"),
-        ft.Text(
-            "Explore relationships among 2–8 numeric-coded variables. "
-            "Select only genuine ordinal or quantitative measurements."
-        ),
-        matrix_items,
-        matrix_method,
-        matrix_confirm,
-        ft.Button("Calculate correlation matrix", on_click=calculate_matrix),
-        matrix_output,
-        matrix_warnings,
-        matrix_chart,
+    # STEP 6: Present existing actions in separate, easier-to-navigate screens.
+    ui = build_interface(
+        page,
+        controls={
+            "status": status,
+            "overview_area": overview_area,
+            "variable": variable,
+            "scale": scale,
+            "results": results,
+            "guidance": guidance,
+            "chart_area": chart_area,
+            "reliability_items": reliability_items,
+            "reliability_confirm": reliability_confirm,
+            "reliability_output": reliability_output,
+            "reliability_guide": reliability_guide,
+            "reliability_warnings": reliability_warnings,
+            "reliability_chart_area": reliability_chart_area,
+            "corr_x": corr_x,
+            "corr_y": corr_y,
+            "corr_scale_x": corr_scale_x,
+            "corr_scale_y": corr_scale_y,
+            "corr_advice": corr_advice,
+            "corr_method": corr_method,
+            "corr_confirm": corr_confirm,
+            "corr_output": corr_output,
+            "corr_warnings": corr_warnings,
+            "corr_chart": corr_chart,
+            "matrix_items": matrix_items,
+            "matrix_method": matrix_method,
+            "matrix_confirm": matrix_confirm,
+            "matrix_output": matrix_output,
+            "matrix_warnings": matrix_warnings,
+            "matrix_chart": matrix_chart,
+        },
+        actions={
+            "choose_file": choose_file,
+            "load_sample": load_sample,
+            "load_scale_example": load_scale_example,
+            "analyze_variable": analyze_variable,
+            "calculate_alpha": calculate_alpha,
+            "calculate_correlation": calculate_correlation,
+            "calculate_matrix": calculate_matrix,
+        },
     )
+    page.add(ui)
     page.update()
 
 
