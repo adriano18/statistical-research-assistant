@@ -8,6 +8,7 @@ import pandas as pd
 
 from data_loader import load_dataset, variable_overview
 from variable_rules import looks_like_identifier
+from descriptive_charts import make_descriptive_chart
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -28,6 +29,8 @@ async def main(page: ft.Page):
     status = ft.Text("Open your CSV/Excel file or try the sample dataset.")
     overview_area = ft.Column()
     results = ft.Text("")
+    guidance = ft.Text("")
+    chart_area = ft.Column()
     variable = ft.Dropdown(label="Variable", width=270, options=[])
     scale = ft.Dropdown(
         label="Measurement scale (confirm manually)",
@@ -45,6 +48,8 @@ async def main(page: ft.Page):
     def reset_scale(e):
         scale.value = "id" if looks_like_identifier(variable.value) else "unknown"
         results.value = ""
+        guidance.value = ""
+        chart_area.controls.clear()
         page.update()
 
     variable.on_select = reset_scale
@@ -102,6 +107,8 @@ async def main(page: ft.Page):
         )
         scale.value = "id" if looks_like_identifier(variable.value) else "unknown"
         results.value = ""
+        guidance.value = ""
+        chart_area.controls.clear()
         page.update()
 
     async def choose_file(e):
@@ -124,49 +131,82 @@ async def main(page: ft.Page):
     async def load_sample(e):
         await show_file(SAMPLE)
 
-    def analyze_variable(e):
+    # Visualization follows the same scale and identifier safeguards as the table.
+    async def analyze_variable(e):
+        chart_area.controls.clear()
+        guidance.value = ""
+
         if dataframe is None or not variable.value:
             results.value = "Load data first."
-        elif looks_like_identifier(variable.value):
-            results.value = (
-                "This column looks like an identifier, not a research score. "
-                "Choose an actual measurement variable instead."
-            )
-        elif scale.value == "unknown":
+            page.update()
+            return
+
+        if looks_like_identifier(variable.value) or scale.value == "id":
+            results.value = "An identifier is not a research measurement."
+            page.update()
+            return
+
+        if scale.value not in ("scale", "nominal", "ordinal"):
             results.value = "Confirm the measurement scale before analysis."
-        elif scale.value == "id":
-            results.value = "An identifier should not be analyzed as a score."
-        else:
-            values = dataframe[variable.value]
-            missing = int(values.isna().sum())
+            page.update()
+            return
+
+        values = dataframe[variable.value]
+        missing = int(values.isna().sum())
+        results.value = "Preparing descriptive statistics and chart..."
+        page.update()
+
+        try:
+            png = await asyncio.to_thread(
+                make_descriptive_chart, values, scale.value
+            )
+
             if scale.value == "scale":
                 numeric = pd.to_numeric(values, errors="coerce").dropna()
-                if len(numeric) != int(values.notna().sum()):
-                    results.value = (
-                        "Some values are not numeric. Check the variable first."
-                    )
-                elif numeric.empty:
-                    results.value = "No valid numerical observations."
-                else:
-                    std = f"{numeric.std():.2f}" if len(numeric) > 1 else "N/A"
-                    results.value = (
-                        f"{variable.value} | N = {len(numeric)} | Missing = {missing}\n"
-                        f"Mean = {numeric.mean():.2f} | Median = {numeric.median():.2f}\n"
-                        f"SD = {std} | Min = {numeric.min():.2f} | "
-                        f"Max = {numeric.max():.2f}"
-                    )
+                std = f"{numeric.std():.2f}" if len(numeric) > 1 else "N/A"
+                results.value = (
+                    f"{variable.value} | N = {len(numeric)} | Missing = {missing}\\n"
+                    f"Mean = {numeric.mean():.2f} | Median = {numeric.median():.2f}\\n"
+                    f"SD = {std} | Min = {numeric.min():.2f} | "
+                    f"Max = {numeric.max():.2f}"
+                )
+                guidance.value = (
+                    "Interpretation: these numbers describe the loaded sample only. "
+                    "The histogram shows the observed distribution; it does not "
+                    "prove normality or population-level conclusions."
+                )
             else:
-                counts = values.astype("string").fillna("(missing)").value_counts().head(15)
-                lines = [f"{variable.value} | {scale.value} | Missing = {missing}"]
+                counts = (
+                    values.astype("string")
+                    .fillna("(missing)")
+                    .value_counts()
+                    .head(15)
+                )
+                lines = [
+                    f"{variable.value} | {scale.value} | Missing = {missing}"
+                ]
                 lines += [f"{label}: {count}" for label, count in counts.items()]
                 if values.nunique(dropna=False) > 15:
                     lines.append("Showing only 15 most common categories.")
-                results.value = "\n".join(lines)
+                results.value = "\\n".join(lines)
+                guidance.value = (
+                    "Interpretation: the bars show response frequencies, not "
+                    "evidence of differences between groups. For ordinal data, "
+                    "response order matters; for nominal data, categories have no "
+                    "natural numeric distance."
+                )
+
+            chart_area.controls.append(
+                ft.Image(src=png, width=720, height=420)
+            )
+        except (ValueError, TypeError) as error:
+            results.value = f"Cannot analyze this variable: {error}"
+
         page.update()
 
     page.add(
         ft.Text("Statistical Research Assistant", size=28, weight="bold"),
-        ft.Text("Step 2 | Local data inspection and basic descriptions"),
+        ft.Text("Step 3 | Descriptive statistics and visualizations"),
         ft.Row(
             controls=[
                 ft.Button("Open CSV / Excel", on_click=choose_file),
@@ -182,6 +222,8 @@ async def main(page: ft.Page):
         ft.Row(controls=[variable, scale], wrap=True),
         ft.Button("Analyze selected variable", on_click=analyze_variable),
         results,
+        guidance,
+        chart_area,
     )
     page.update()
 
