@@ -445,6 +445,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
     buttons = {}
 
     def switch_screen(key):
+        a["set_active_screen"](key)
         for name, screen in screens.items():
             screen.visible = name == key
             buttons[name].content.value = (
@@ -502,6 +503,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                     spacing=16,
                 ),
             ),
+            c["output_toolbar"],
             *screens.values(),
         ],
         spacing=20,
