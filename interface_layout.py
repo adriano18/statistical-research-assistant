@@ -327,6 +327,14 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             ]),
             panel("B. Observed and expected counts / APA text", [
                 c["chi_output"],
+                ft.Row(
+                    controls=[
+                        c["chi_export_png_button"],
+                        c["chi_export_txt_button"],
+                    ],
+                    wrap=True, spacing=12,
+                ),
+                c["chi_export_status"],
             ]),
             panel("C. Notes / assumptions", [
                 c["chi_warnings"],
