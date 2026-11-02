@@ -10,6 +10,8 @@ from data_loader import load_dataset, variable_overview
 from variable_rules import looks_like_identifier
 from descriptive_charts import make_descriptive_chart
 from reliability import analyze_cronbach
+from reliability_reporting import apa_reliability_report, ALPHA_GUIDE
+from reliability_charts import make_reliability_chart
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -40,6 +42,8 @@ async def main(page: ft.Page):
     )
     reliability_output = ft.Text("")
     reliability_warnings = ft.Text("")
+    reliability_guide = ft.Text("")
+    reliability_chart_area = ft.Column()
     variable = ft.Dropdown(label="Variable", width=270, options=[])
     scale = ft.Dropdown(
         label="Measurement scale (confirm manually)",
@@ -129,6 +133,8 @@ async def main(page: ft.Page):
         reliability_confirm.value = False
         reliability_output.value = ""
         reliability_warnings.value = ""
+        reliability_guide.value = ""
+        reliability_chart_area.controls.clear()
         page.update()
 
     async def choose_file(e):
@@ -155,6 +161,10 @@ async def main(page: ft.Page):
         await show_file(SCALE_SAMPLE)
 
     async def calculate_alpha(e):
+        reliability_chart_area.controls.clear()
+        reliability_guide.value = ""
+        reliability_warnings.value = ""
+
         if dataframe is None:
             reliability_output.value = "Load a dataset first."
             page.update()
@@ -170,27 +180,24 @@ async def main(page: ft.Page):
             page.update()
             return
 
-        reliability_output.value = "Calculating Cronbach's alpha..."
-        reliability_warnings.value = ""
+        reliability_output.value = "Calculating Cronbach’s α..."
         page.update()
+
         try:
             analysis = await asyncio.to_thread(
                 analyze_cronbach, dataframe, selected
             )
-            lines = [
-                f"Items: {', '.join(analysis.items)}",
-                f"Complete cases: {analysis.n_complete}/{analysis.n_total}",
-                f"Cronbach's alpha: {analysis.alpha:.3f}",
-                f"95% CI: [{analysis.ci_low:.3f}, {analysis.ci_high:.3f}]",
-            ]
-            if analysis.alpha_if_deleted:
-                lines.append("Alpha if item deleted:")
-                lines += [
-                    f"  {name}: {score:.3f}"
-                    for name, score in analysis.alpha_if_deleted.items()
-                ]
-            reliability_output.value = "\n".join(lines)
+            reliability_output.value = apa_reliability_report(analysis)
+            reliability_guide.value = ALPHA_GUIDE
             reliability_warnings.value = "\n".join(analysis.warnings)
+
+            png = await asyncio.to_thread(make_reliability_chart, analysis)
+            chart_height = min(
+                850, max(430, 280 + 58 * (len(analysis.alpha_if_deleted) + 1))
+            )
+            reliability_chart_area.controls.append(
+                ft.Image(src=png, width=850, height=chart_height)
+            )
         except Exception as error:
             reliability_output.value = f"Reliability analysis error: {error}"
         page.update()
@@ -270,7 +277,7 @@ async def main(page: ft.Page):
 
     page.add(
         ft.Text("Statistical Research Assistant", size=28, weight="bold"),
-        ft.Text("Step 3 | Descriptive statistics and visualizations"),
+        ft.Text("Step 4 | Descriptive statistics and scale reliability"),
         ft.Row(
             controls=[
                 ft.Button("Open CSV / Excel", on_click=choose_file),
@@ -298,7 +305,9 @@ async def main(page: ft.Page):
         reliability_confirm,
         ft.Button("Calculate Cronbach's alpha", on_click=calculate_alpha),
         reliability_output,
+        reliability_guide,
         reliability_warnings,
+        reliability_chart_area,
     )
     page.update()
 
