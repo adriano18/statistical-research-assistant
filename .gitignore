@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.flet/
+.vscode/
+.env
+# Actual study data should remain local.
+data/
+reports/
+*.sav
