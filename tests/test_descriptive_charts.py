@@ -5,8 +5,6 @@ import pandas as pd
 from descriptive_charts import make_descriptive_chart
 
 
-PNG_SIGNATURE = b"\\x89PNG\\r\\n\\x1a\\n"
-
 
 class DescriptiveChartTests(unittest.TestCase):
     def test_histogram_bytes(self):
