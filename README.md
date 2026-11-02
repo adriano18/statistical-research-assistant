@@ -4,7 +4,7 @@ A Python project for exploring research datasets and, later, selecting and inter
 
 **Goal:** a small, transparent alternative to common SPSS workflows for psychology, marketing and business research. The program will calculate statistics using established Python libraries. A future assistant may explain results, but it must not invent numbers or choose tests without checking their assumptions.
 
-**[Full development roadmap](ROADMAP.md)** — statistics first, AI advisor second, reporting and multilingual UI/UX next.
+**[Full development roadmap](ROADMAP.md)** — finish essential statistics, validate results, maintain usable copy/save workflows, then add optional AI and multilingual UI/UX.
 
 ## Development plan
 1. **v0.1 Data inspection** — import CSV/XLSX, review variables, missing values and their inferred data types.
@@ -28,6 +28,16 @@ The Flet application uses a left navigation menu instead of one long scrolling p
 - **ANOVA / Kruskal**: compare 3–8 independent groups, review effect estimates, group distributions and omnibus cautions.
 
 Use **Dataset** first. Switching between sections preserves analysis results until a new dataset is loaded. The calculation modules and the local-data privacy approach have not changed.
+
+## What changed in the current interface
+
+The desktop workspace now keeps **Copy report**, **Save TXT as...** and **Save PNG as...** above the scrolling analysis panel. After completing an analysis, use these buttons to copy its APA-style text or choose a destination in the Windows Save dialog. **Nothing is uploaded to a cloud service.** The toolbar applies to descriptive statistics, reliability, correlation, correlation matrix, independent/paired tests, chi-square and ANOVA/post-hoc.
+
+After loading a fresh dataset the previous output buttons are cleared. Switching sections preserves the last completed result for each analysis. For ANOVA, run **post-hoc comparisons** before exporting to include the updated pairwise table in the APA TXT file.
+
+**Explore boxplots:** Open **Descriptive → Explore**. Choose a quantitative outcome and optionally a grouping variable (for example `score` and `group` from **Load three-group example**). Click **Explore distributions** to display group boxplots, individual observations, a normal Q–Q plot and Shapiro–Wilk. With groups selected, it also computes a median-centered Levene/Brown–Forsythe variance check. Review the caveats; **a nonsignificant Shapiro test does not prove normality**.
+
+The menu is grouped by purpose, the export controls stay visible while scrolling, ANOVA figures are above long explanations, methodological notes can be collapsed, and the post-hoc comparisons display in a table. See [ROADMAP.md](ROADMAP.md) for remaining SPSS-style methods, planned localization (EN, LV, RU) and the Flet versus PySide6 decision.
 
 ## Quick start
 
