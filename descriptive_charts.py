@@ -9,6 +9,7 @@ from io import BytesIO
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 import pandas as pd
 
 from variable_rules import looks_like_identifier
@@ -54,6 +55,7 @@ def make_descriptive_chart(values: pd.Series, scale: str) -> bytes:
                 ax.set_title(f"Top 15 categories of {values.name}")
 
         ax.set_ylabel("Frequency")
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
         fig.tight_layout()
 
         buffer = BytesIO()
