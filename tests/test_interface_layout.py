@@ -34,7 +34,7 @@ CONTROL_NAMES = [
     "omnibus_main", "omnibus_brief", "omnibus_output", "omnibus_warnings",
     "omnibus_chart", "omnibus_export_png_button",
     "omnibus_export_txt_button", "omnibus_export_status",
-    "posthoc_button", "posthoc_output", "posthoc_warnings",
+    "posthoc_button", "posthoc_output", "posthoc_table", "posthoc_warnings",
 ]
 
 ACTION_NAMES = [
@@ -70,7 +70,8 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(len(nav_buttons), 9)
 
         workspace = root.controls[1].content
-        screens = workspace.controls[1:]
+        # The output toolbar is pinned above one independently scrolling column.
+        screens = workspace.controls[2].controls
         self.assertEqual(len(screens), 9)
         self.assertTrue(screens[0].visible)
         self.assertTrue(all(not screen.visible for screen in screens[1:]))
