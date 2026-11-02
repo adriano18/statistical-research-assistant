@@ -30,7 +30,9 @@ The Flet app has **Open CSV / Excel** and **Load example** buttons. Select a var
 
 In the desktop app, click **Load scale example**. Select `stress_q1`, `stress_q2`, `stress_q3` and `stress_q4`. Confirm that the selected items measure a single construct and any reverse-coded items have already been recoded, then click **Calculate Cronbach's alpha**.
 
-The separate `examples/sample_scale.csv` contains 32 invented respondents and two missing answers, so 30 complete cases are analyzed. The result includes alpha, a 95% confidence interval, alpha-if-item-deleted and warnings. This synthetic dataset is not evidence for the reliability of any real instrument.
+The separate `examples/sample_scale.csv` contains 32 invented respondents and two missing answers, so 30 complete cases are analyzed. The result includes Cronbach’s α, a 95% confidence interval, alpha-if-item-deleted and warnings. The UI now shows a copyable APA 7-style sentence with Greek α and decimal notation (e.g., `α = .94, 95% CI [.89, .97]`), plus a PNG figure with the full-scale confidence interval and individual item-deletion estimates.
+
+**Interpretive ranges are not APA 7 rules.** Approximate thresholds (< .60 low; .60–.69 questionable; .70–.79 often acceptable; .80–.89 good; .90–.95 very high; > .95 investigate redundancy) are contextual guidelines, not tests of scale validity. Compare scales with the relevant literature and study design. The figure number `Figure 1` is a placeholder to renumber if inserted into a manuscript. This synthetic dataset is not evidence for the reliability of any real instrument.
 
 Alpha is not a test of scale validity or unidimensionality. Numerical column types alone are not grounds to treat variables as questionnaire items. The prototype uses listwise deletion and does not perform reverse scoring for you.
 
