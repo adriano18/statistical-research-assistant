@@ -63,9 +63,11 @@ def make_reliability_chart(analysis) -> bytes:
         fig.text(0.07, 0.927, "Internal Consistency and Item-Deletion Estimates",
                  style="italic", fontsize=11, va="top")
 
-        for bar, value in zip(bars, values):
+        for index, (bar, value) in enumerate(zip(bars, values)):
+            # Place the full-scale label beyond the CI whisker.
+            label_x = max(value, analysis.ci_high) + 0.012 if index == 0 else value
             ax.text(
-                value,
+                label_x,
                 bar.get_y() + bar.get_height() / 2,
                 "  " + apa_coefficient(value),
                 va="center",
