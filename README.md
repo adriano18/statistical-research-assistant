@@ -11,7 +11,7 @@ A Python project for exploring research datasets and, later, selecting and inter
 4. **v0.4 Method advisor** — ask about the study design, propose tests and explain their assumptions.
 5. **v0.5 Flet interface and reports** — interactive analysis, plots, Excel/PDF export.
 
-## v0.1 Quick start
+## Quick start
 
 Requires Python 3.12 or newer. In PowerShell:
 
@@ -21,13 +21,16 @@ py -m venv .venv
 python -m pip install -r requirements.txt
 python inspect_data.py examples/sample_survey.csv
 python -m unittest discover -s tests -v
+flet run app.py
 ```
+
+The Flet app has **Open CSV / Excel** and **Load example** buttons. Select a variable and confirm its measurement scale before using **Analyze selected variable**. Quantitative variables show N, mean, median and SD; nominal and ordinal variables show frequency counts. Real data is processed locally, not uploaded.
 
 The sample dataset is fictional and is **not suitable for scientific conclusions**.
 
 ## Privacy and analysis notes
 - Keep actual participants' data in the ignored `data/` folder. Do not commit identifiable research data.
 - Numeric codes such as 1–5 can represent ordinal Likert responses or categorical groups. A numeric data type is not enough to determine the measurement scale or justify a statistical test.
-- The first version inspects datasets only. It does **not** perform inferential statistics or automatically interpret research findings.
+- The current version inspects datasets and provides descriptive statistics only. It does **not** perform inferential statistics or automatically interpret research findings.
 
 Developed as a learning project, with AI assistance for code explanations, documentation and debugging.
