@@ -187,6 +187,34 @@ async def main(page: ft.Page):
     reg_report = ft.Text("")
     reg_warnings = ft.Text("")
     reg_chart = ft.Column()
+
+    def refresh_regression_choices(e=None):
+        if dataframe is None:
+            return
+        previous = {
+            box.label for box in reg_predictors.controls if bool(box.value)
+        }
+        choices = [
+            str(name) for name in dataframe.columns
+            if pd.api.types.is_numeric_dtype(dataframe[name])
+            and not looks_like_identifier(name)
+            and str(name) != reg_outcome.value
+        ]
+        reg_predictors.controls = [
+            ft.Checkbox(label=name, value=name in previous)
+            for name in choices
+        ]
+        reg_main.value = ""
+        reg_brief.value = ""
+        reg_report.value = ""
+        reg_warnings.value = ""
+        reg_chart.controls.clear()
+        output_cache.pop("regression", None)
+        if active_section == "regression":
+            refresh_output_buttons()
+        page.update()
+
+    reg_outcome.on_select = refresh_regression_choices
     reliability_items = ft.Column(height=180, scroll=ft.ScrollMode.AUTO)
     reliability_confirm = ft.Checkbox(
         label="I checked that the items measure one construct and reversed items are recoded",
