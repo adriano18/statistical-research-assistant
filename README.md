@@ -102,7 +102,7 @@ In **Dataset**, choose **Load categorical example** (`examples/sample_categorica
 
 The report includes the uncorrected Pearson χ² statistic, degrees of freedom, two-sided asymptotic p-value, N, observed and expected frequencies, Cramér's V and a contingency-table figure. If any expected cell count is below 5, the app warns that the asymptotic p-value may be unreliable. For sparse **2×2** tables, it also displays a separate two-sided Fisher exact p-value. **These tests do not prove causation**, and sparse tables beyond 2×2 need other exact or resampling approaches.
 
-The example uses fabricated category counts and is not evidence of intervention effectiveness. Figure 6 is a placeholder manuscript figure number.
+Use **Save figure PNG** or **Save APA report TXT** to export the Chi-square chart and findings to the local ignored `reports/` folder. Files are overwritten on re-export with the same name. The example uses fabricated category counts and is not evidence of intervention effectiveness. Figure 6 is a placeholder manuscript figure number.
 
 ## Interface languages
 
