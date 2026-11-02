@@ -41,6 +41,8 @@ class CronbachTests(unittest.TestCase):
 
     def test_non_numeric_item_is_rejected(self):
         df = self.data.copy()
+        # An invalid response requires an object column under Pandas 3.x.
+        df["stress_q1"] = df["stress_q1"].astype(object)
         df.loc[0, "stress_q1"] = "missing_text"
         with self.assertRaisesRegex(ValueError, "non-numeric"):
             analyze_cronbach(df, ITEMS)
