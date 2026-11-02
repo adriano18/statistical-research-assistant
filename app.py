@@ -38,6 +38,10 @@ from omnibus_reporting import (
 from omnibus_charts import make_omnibus_chart
 from posthoc_analysis import analyze_posthoc
 from posthoc_reporting import format_posthoc_report
+from output_workspace import AnalysisOutput, save_selected_output
+from explore_analysis import (
+    explore_quantitative, format_explore_report, make_explore_chart
+)
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -59,7 +63,91 @@ async def main(page: ft.Page):
     # The source file stays on the user's computer; no cloud upload.
     picker = ft.FilePicker()
     page.services.append(picker)
+    export_picker = ft.FilePicker()
+    page.services.append(export_picker)
     dataframe = None
+
+    # Every section shares one consistent output toolbar. Results remain
+    # local and only the last successful analysis per section is retained.
+    output_cache = {}
+    active_section = "dataset"
+    output_status = ft.Text("", size=12)
+    copy_button = ft.Button(
+        "Copy report", disabled=True, action=ft.CopyToClipboard("")
+    )
+    save_text_button = ft.Button("Save TXT as...", disabled=True)
+    save_picture_button = ft.Button("Save PNG as...", disabled=True)
+    output_toolbar = ft.Row(
+        controls=[
+            ft.Text("OUTPUT", weight="bold", size=12),
+            copy_button, save_text_button, save_picture_button, output_status,
+        ],
+        wrap=True,
+        spacing=12,
+    )
+
+    def refresh_output_buttons():
+        item = output_cache.get(active_section)
+        enabled = item is not None and bool(item.report.strip())
+        copy_button.disabled = not enabled
+        save_text_button.disabled = not enabled
+        save_picture_button.disabled = item is None or not bool(item.png)
+        copy_button.action = ft.CopyToClipboard(item.report if enabled else "")
+        output_status.value = (
+            f"Last completed: {item.title}" if item is not None
+            else "Run an analysis to enable copy and save."
+        )
+
+    def set_active_screen(section):
+        nonlocal active_section
+        active_section = section
+        refresh_output_buttons()
+
+    def remember_output(section, title, report, image=None):
+        output_cache[section] = AnalysisOutput(
+            title=title, report=report, png=image
+        )
+        if active_section == section:
+            refresh_output_buttons()
+
+    async def save_active(kind):
+        item = output_cache.get(active_section)
+        if item is None:
+            output_status.value = "Run an analysis first."
+            page.update()
+            return
+        suffix = "txt" if kind == "text" else "png"
+        suggested = f"{active_section}_report.{suffix}" if kind == "text" else f"{active_section}_figure.{suffix}"
+        try:
+            selected = await export_picker.save_file(
+                dialog_title="Save local statistical output",
+                file_name=suggested,
+                file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=[suffix],
+            )
+            if selected:
+                destination = await asyncio.to_thread(
+                    save_selected_output, selected, item, kind
+                )
+                output_status.value = f"Saved: {destination}"
+        except Exception as error:
+            output_status.value = f"Save error: {error}"
+        page.update()
+
+    async def save_active_text(e):
+        await save_active("text")
+
+    async def save_active_png(e):
+        await save_active("image")
+
+    def output_copied(e):
+        output_status.value = "Report copied to clipboard."
+        page.update()
+
+    save_text_button.on_click = save_active_text
+    save_picture_button.on_click = save_active_png
+    copy_button.on_click = output_copied
+    refresh_output_buttons()
 
     status = ft.Text("Open your CSV/Excel file or try the sample dataset.")
     overview_area = ft.Column()
@@ -428,6 +516,8 @@ async def main(page: ft.Page):
             return
 
         dataframe = df
+        output_cache.clear()
+        refresh_output_buttons()
         status.value = (
             f"Loaded: {Path(path).name} | "
             f"Respondents/rows: {len(df)} | Variables: {len(df.columns)}"
@@ -1177,6 +1267,7 @@ async def main(page: ft.Page):
         page,
         controls={
             "status": status,
+            "output_toolbar": output_toolbar,
             "overview_area": overview_area,
             "variable": variable,
             "scale": scale,
@@ -1263,6 +1354,7 @@ async def main(page: ft.Page):
         },
         actions={
             "choose_file": choose_file,
+            "set_active_screen": set_active_screen,
             "load_sample": load_sample,
             "load_scale_example": load_scale_example,
             "analyze_variable": analyze_variable,
