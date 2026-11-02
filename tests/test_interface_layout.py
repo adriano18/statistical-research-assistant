@@ -27,6 +27,11 @@ CONTROL_NAMES = [
     "chi_a", "chi_b", "chi_confirm", "chi_main", "chi_brief",
     "chi_output", "chi_warnings", "chi_chart",
     "chi_export_png_button", "chi_export_txt_button", "chi_export_status",
+    "omnibus_group", "omnibus_outcome", "omnibus_scale", "omnibus_method",
+    "omnibus_independent", "omnibus_assumptions", "omnibus_advice",
+    "omnibus_main", "omnibus_brief", "omnibus_output", "omnibus_warnings",
+    "omnibus_chart", "omnibus_export_png_button",
+    "omnibus_export_txt_button", "omnibus_export_status",
 ]
 
 ACTION_NAMES = [
@@ -34,6 +39,7 @@ ACTION_NAMES = [
     "calculate_alpha", "calculate_correlation", "calculate_matrix",
     "calculate_groups", "calculate_paired", "load_paired_example",
     "calculate_chi_square", "load_categorical_example",
+    "calculate_omnibus", "load_three_groups_example",
 ]
 
 
@@ -43,7 +49,7 @@ class DummyPage:
 
 
 class LayoutTests(unittest.TestCase):
-    def test_all_eight_screens_exist_and_only_dataset_is_visible(self):
+    def test_all_nine_screens_exist_and_only_dataset_is_visible(self):
         controls = {name: ft.Text(name) for name in CONTROL_NAMES}
         actions = {name: (lambda e: None) for name in ACTION_NAMES}
 
@@ -57,11 +63,11 @@ class LayoutTests(unittest.TestCase):
             item for item in sidebar.content.controls
             if isinstance(item, ft.Button)
         ]
-        self.assertEqual(len(nav_buttons), 8)
+        self.assertEqual(len(nav_buttons), 9)
 
         workspace = root.controls[1].content
         screens = workspace.controls[1:]
-        self.assertEqual(len(screens), 8)
+        self.assertEqual(len(screens), 9)
         self.assertTrue(screens[0].visible)
         self.assertTrue(all(not screen.visible for screen in screens[1:]))
 
