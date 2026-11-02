@@ -3,6 +3,8 @@
 from pathlib import Path
 import pandas as pd
 
+from variable_rules import looks_like_identifier
+
 
 def load_dataset(path: str | Path) -> pd.DataFrame:
     """Return the first worksheet or a CSV table from a local file."""
@@ -35,13 +37,17 @@ def variable_overview(df: pd.DataFrame) -> pd.DataFrame:
     for name in df.columns:
         column = df[name]
         numeric = pd.api.types.is_numeric_dtype(column)
+        if looks_like_identifier(name):
+            hint = "identifier (do not analyze as a score)"
+        else:
+            hint = "numeric (verify scale)" if numeric else "text/category (verify scale)"
         rows.append({
             "variable": str(name),
             "dtype": str(column.dtype),
             "non_missing": int(column.notna().sum()),
             "missing": int(column.isna().sum()),
             "unique_values": int(column.nunique(dropna=True)),
-            "type_hint": "numeric (verify scale)" if numeric else "text/category (verify scale)",
+            "type_hint": hint,
         })
     return pd.DataFrame(rows, columns=[
         "variable", "dtype", "non_missing", "missing", "unique_values", "type_hint"
