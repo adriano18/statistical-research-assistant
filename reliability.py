@@ -84,6 +84,10 @@ def analyze_cronbach(df: pd.DataFrame, item_names: list[str]) -> ReliabilityResu
         warnings.append(
             "Negative alpha suggests contradictory item covariances or a coding problem."
         )
+    if alpha > 0.95:
+        warnings.append(
+            "A very high alpha can indicate redundant items; inspect item content."
+        )
 
     return ReliabilityResult(
         alpha=float(alpha),
