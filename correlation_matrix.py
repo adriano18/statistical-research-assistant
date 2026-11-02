@@ -45,7 +45,7 @@ def analyze_correlation_matrix(
     raw = df[names]
     numeric = raw.apply(pd.to_numeric, errors="coerce")
     if (raw.notna() & numeric.isna()).any().any():
-        raise ValueError("All selected variables must contain numeric responses.")
+        raise ValueError("One or more selected variables contain non-numeric responses.")
 
     values = numeric.to_numpy(dtype=float)
     if np.isinf(values).any():
