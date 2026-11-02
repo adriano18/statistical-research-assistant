@@ -24,7 +24,7 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 ## 2. Statistics to complete before AI — in priority order
 
 ### P0. Essential research methods
-- [ ] **Linear and multiple linear regression**, model summary, coefficients, 95% CI, R², residual plots, collinearity checks
+- [x] **Simple and multiple linear regression (OLS)**, model summary, B/SE/t/p, 95% CI, R², residual plots, VIF, Cook's distance, HC3 robust coefficient inference
 - [ ] **Friedman test** for 3+ repeated/related ordinal measurements, with corrected pairwise Wilcoxon follow-up
 - [ ] **Repeated-measures ANOVA** with correct within-subject assumptions and multiple-testing treatment
 - [ ] **ANCOVA / general linear model** where design and sample sizes justify it
