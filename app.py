@@ -21,10 +21,14 @@ from interface_layout import build_interface
 from group_comparison import compare_independent_groups, recommend_group_test
 from group_comparison_reporting import format_group_comparison
 from group_comparison_charts import make_group_comparison_chart
+from paired_analysis import analyze_paired, recommend_paired_test
+from paired_reporting import format_paired_report
+from paired_charts import make_paired_chart
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
 SCALE_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_scale.csv"
+PAIRED_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_paired.csv"
 
 
 async def main(page: ft.Page):
@@ -154,6 +158,56 @@ async def main(page: ft.Page):
     group_output = ft.Text("")
     group_warnings = ft.Text("")
     group_chart = ft.Column()
+
+    # Paired design: each row must contain BOTH measurements of one participant.
+    paired_before = ft.Dropdown(label="Before variable", width=280, options=[])
+    paired_after = ft.Dropdown(label="After variable", width=280, options=[])
+    paired_scale = ft.Dropdown(
+        label="Measurement scale", width=250, value="unknown",
+        options=[
+            ft.DropdownOption(key="unknown", text="Not confirmed"),
+            ft.DropdownOption(key="ordinal", text="Ordinal"),
+            ft.DropdownOption(key="scale", text="Quantitative"),
+        ],
+    )
+    paired_method = ft.Dropdown(
+        label="Paired test", width=260, value="wilcoxon",
+        options=[
+            ft.DropdownOption(key="wilcoxon", text="Wilcoxon signed-rank"),
+            ft.DropdownOption(key="paired_t", text="Paired-samples t-test"),
+        ],
+    )
+    paired_confirm = ft.Checkbox(
+        label="Each row contains two measurements from the SAME participant",
+        value=False,
+    )
+    paired_assumptions = ft.Checkbox(
+        label=(
+            "I reviewed difference scores, their symmetry/normality as "
+            "appropriate, outliers and independence between participants"
+        ),
+        value=False,
+    )
+    paired_advice = ft.Text("")
+    paired_output = ft.Text("")
+    paired_warnings = ft.Text("")
+    paired_chart = ft.Column()
+
+    def update_paired_advice(e=None):
+        paired_advice.value = recommend_paired_test(
+            paired_scale.value, bool(paired_confirm.value)
+        )
+        paired_assumptions.value = False
+        paired_output.value = ""
+        paired_warnings.value = ""
+        paired_chart.controls.clear()
+        page.update()
+
+    paired_scale.on_select = update_paired_advice
+    paired_method.on_select = update_paired_advice
+    paired_before.on_select = update_paired_advice
+    paired_after.on_select = update_paired_advice
+    paired_confirm.on_change = update_paired_advice
 
     def update_group_advice(e=None):
         group_advice.value = recommend_group_test(
@@ -349,6 +403,31 @@ async def main(page: ft.Page):
         group_output.value = ""
         group_warnings.value = ""
         group_chart.controls.clear()
+
+        paired_before.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in numeric_candidates
+        ]
+        paired_after.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in numeric_candidates
+        ]
+        paired_before.value = (
+            "before_score" if "before_score" in numeric_candidates
+            else (numeric_candidates[0] if numeric_candidates else None)
+        )
+        paired_after.value = (
+            "after_score" if "after_score" in numeric_candidates
+            else (numeric_candidates[1] if len(numeric_candidates) > 1 else None)
+        )
+        paired_scale.value = "unknown"
+        paired_method.value = "wilcoxon"
+        paired_confirm.value = False
+        paired_assumptions.value = False
+        paired_advice.value = recommend_paired_test("unknown", False)
+        paired_output.value = ""
+        paired_warnings.value = ""
+        paired_chart.controls.clear()
         page.update()
 
     async def choose_file(e):
@@ -373,6 +452,9 @@ async def main(page: ft.Page):
 
     async def load_scale_example(e):
         await show_file(SCALE_SAMPLE)
+
+    async def load_paired_example(e):
+        await show_file(PAIRED_SAMPLE)
 
     async def calculate_alpha(e):
         reliability_chart_area.controls.clear()
@@ -528,6 +610,36 @@ async def main(page: ft.Page):
             group_output.value = f"Group comparison error: {error}"
         page.update()
 
+    async def calculate_paired(e):
+        paired_chart.controls.clear()
+        paired_warnings.value = ""
+        if dataframe is None:
+            paired_output.value = "Load a dataset first."
+            page.update()
+            return
+        if not paired_before.value or not paired_after.value:
+            paired_output.value = "Choose before and after variables."
+            page.update()
+            return
+
+        paired_output.value = "Calculating paired test and drawing changes..."
+        page.update()
+        try:
+            analysis = await asyncio.to_thread(
+                analyze_paired, dataframe, paired_before.value, paired_after.value,
+                paired_method.value, paired_scale.value,
+                bool(paired_confirm.value), bool(paired_assumptions.value)
+            )
+            paired_output.value = format_paired_report(analysis)
+            paired_warnings.value = "\n".join(analysis.warnings)
+            png = await asyncio.to_thread(make_paired_chart, analysis)
+            paired_chart.controls.append(
+                ft.Image(src=png, width=850, height=530)
+            )
+        except Exception as error:
+            paired_output.value = f"Paired analysis error: {error}"
+        page.update()
+
     # Visualization follows the same scale and identifier safeguards as the table.
     async def analyze_variable(e):
         chart_area.controls.clear()
@@ -644,6 +756,16 @@ async def main(page: ft.Page):
             "group_output": group_output,
             "group_warnings": group_warnings,
             "group_chart": group_chart,
+            "paired_before": paired_before,
+            "paired_after": paired_after,
+            "paired_scale": paired_scale,
+            "paired_method": paired_method,
+            "paired_confirm": paired_confirm,
+            "paired_assumptions": paired_assumptions,
+            "paired_advice": paired_advice,
+            "paired_output": paired_output,
+            "paired_warnings": paired_warnings,
+            "paired_chart": paired_chart,
         },
         actions={
             "choose_file": choose_file,
@@ -654,6 +776,8 @@ async def main(page: ft.Page):
             "calculate_correlation": calculate_correlation,
             "calculate_matrix": calculate_matrix,
             "calculate_groups": calculate_groups,
+            "calculate_paired": calculate_paired,
+            "load_paired_example": load_paired_example,
         },
     )
     page.add(ui)
