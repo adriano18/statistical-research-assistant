@@ -32,6 +32,7 @@ CONTROL_NAMES = [
     "omnibus_main", "omnibus_brief", "omnibus_output", "omnibus_warnings",
     "omnibus_chart", "omnibus_export_png_button",
     "omnibus_export_txt_button", "omnibus_export_status",
+    "posthoc_button", "posthoc_output", "posthoc_warnings",
 ]
 
 ACTION_NAMES = [
