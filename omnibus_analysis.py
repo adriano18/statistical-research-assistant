@@ -161,7 +161,7 @@ def analyze_omnibus(
     warnings = [
         "These are omnibus tests; even a significant p-value does not identify which groups differ.",
         "Independence, outcome scale, sampling design and influential outliers need review.",
-        "No automatic post-hoc comparisons or multiple-testing correction are performed yet.",
+        "Post-hoc comparisons are separate; use the dedicated button to calculate adjusted pairwise p-values.",
         "Association or group differences do not establish causality.",
     ]
     if n < len(df):
