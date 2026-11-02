@@ -146,7 +146,7 @@ async def main(page: ft.Page):
                         f"Max = {numeric.max():.2f}"
                     )
             else:
-                counts = values.fillna("(missing)").value_counts().head(15)
+                counts = values.astype("string").fillna("(missing)").value_counts().head(15)
                 lines = [f"{variable.value} | {scale.value} | Missing = {missing}"]
                 lines += [f"{label}: {count}" for label, count in counts.items()]
                 if values.nunique(dropna=False) > 15:
