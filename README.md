@@ -11,6 +11,18 @@ A Python project for exploring research datasets and, later, selecting and inter
 4. **v0.4 Method advisor** — ask about the study design, propose tests and explain their assumptions.
 5. **v0.5 Flet interface and reports** — interactive analysis, plots, Excel/PDF export.
 
+## Desktop interface
+
+The Flet application now uses a left navigation menu instead of one long scrolling page:
+
+- **Dataset**: load a local CSV/Excel file or a sample, inspect variables and missing values.
+- **Descriptive**: choose a variable, confirm its scale, and view statistics and a graph.
+- **Scale reliability**: select questionnaire items, compute Cronbach’s α and view an APA-style report.
+- **Correlations**: analyze two variables with Pearson or Spearman and view the scatterplot.
+- **Correlation matrix**: compare up to eight variables in a heatmap with pairwise N.
+
+Use **Dataset** first. Switching between sections preserves analysis results until a new dataset is loaded. The calculation modules and the local-data privacy approach have not changed.
+
 ## Quick start
 
 Requires Python 3.12 or newer. In PowerShell:
@@ -54,7 +66,7 @@ Use **Load scale example**. Under **CORRELATION MATRIX**, tick `stress_q1`, `str
 
 The figure displays coefficients and the number of complete pairs (N) in each cell. Unlike the two-variable correlation analysis, this is deliberately **descriptive only**, with no p-values, confidence intervals or significance stars. Values can be N/A if there are fewer than five pairs or no variation. Selecting many correlations for significance testing requires a separate plan for multiple testing and appropriate assumptions.
 
-The earlier two-variable scatterplot now shows a small reproducible **display-only jitter** for overlapping ordinal points. Calculations still use the unmodified values. The figure notes wrap instead of being cut off. Figure numbers are manuscript placeholders, not final APA numbering.
+The earlier two-variable scatterplot now shows a small reproducible **display-only jitter** for overlapping ordinal points. Calculations still use the unmodified values. Figure notes wrap instead of being cut off. Figure numbers are manuscript placeholders, not final APA numbering.
 
 ## Privacy and analysis notes
 - Keep actual participants' data in the ignored `data/` folder. Do not commit identifiable research data.
