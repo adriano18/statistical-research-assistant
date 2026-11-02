@@ -9,7 +9,7 @@ A Python project for exploring research datasets and, later, selecting and inter
 ## Development plan
 1. **v0.1 Data inspection** — import CSV/XLSX, review variables, missing values and their inferred data types.
 2. **v0.2 Descriptive statistics** (in progress) — N, mean, median, SD, distributions and plots.
-3. **v0.3 Research methods** (in progress) — reliability, correlations, independent/paired tests, Pearson χ², one-way ANOVA, Welch ANOVA and Kruskal–Wallis; post-hoc comparisons, regression and diagnostics remain planned.
+3. **v0.3 Research methods** (in progress) — reliability, correlations, independent/paired tests, χ², three omnibus methods and their post-hoc comparisons; regression and diagnostics remain planned.
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
 5. **v0.5 Reports and localization** — local TXT/PNG export currently available for paired analyses; expand to APA tables, DOCX/PDF and English, Latvian and Russian.
 
@@ -113,7 +113,9 @@ For the default rank-based example, select `group` and `score`, confirm **Ordina
 
 The output contains the omnibus F or H statistic, degrees of freedom, two-sided asymptotic p-value, sample sizes and an appropriate effect estimate. Classical ANOVA and Welch ANOVA show a descriptive η² (the Welch value is **not a Welch-weighted effect size**). Kruskal–Wallis shows a nonnegative rank ε² estimate. The boxplot displays group distributions and individual observations. The **Save figure PNG** and **Save APA report TXT** buttons save to the local Git-ignored `reports/` directory.
 
-**Important:** omnibus significance does *not* identify which groups differ. No post-hoc or multiple-testing correction is carried out yet. Kruskal–Wallis is a rank/distribution test, not necessarily a test of median differences. For Welch ANOVA this project requires **SciPy 1.16 or newer** (the `equal_var=False` option was introduced in that release). The example is fictional and cannot support substantive research conclusions.
+**Post-hoc comparisons:** after calculating an omnibus test, use **Run post-hoc comparisons**. The selection follows the method automatically: Tukey HSD (or Tukey–Kramer with unequal group sizes) for ordinary ANOVA, Games–Howell for Welch, and tie-corrected Dunn with Holm-adjusted p-values for Kruskal–Wallis. The resulting table shows every group pair, its signed mean or rank difference, and multiplicity-adjusted p-values. Tukey and Games–Howell also show 95% simultaneous confidence intervals; Dunn does not currently provide them. Running post-hoc tests updates the APA TXT export; use **Save APA report TXT** afterward.
+
+**Important:** omnibus significance does *not* identify which groups differ without a suitable post-hoc procedure. Even with adjusted p-values, assumptions and substantive effect sizes must be reviewed. For nonsignificant omnibus tests, pairwise comparisons are labelled exploratory. Kruskal–Wallis is a rank/distribution test, not necessarily a test of median differences. For Welch ANOVA this project requires **SciPy 1.16 or newer** (the `equal_var=False` option was introduced in that release). The example is fictional and cannot support substantive research conclusions.
 
 ## Interface languages
 
