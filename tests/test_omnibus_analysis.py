@@ -55,7 +55,7 @@ class OmnibusTests(unittest.TestCase):
         self.assertIsNone(result.df2)
         self.assertGreater(result.effect_size, 0)
         self.assertIn("H(2)", format_omnibus_summary(result))
-        self.assertIn("post-hoc", interpret_omnibus(result))
+        self.assertIn("post-hoc", interpret_omnibus(result).lower())
 
     def test_requires_design_and_assumption_confirmation(self):
         with self.assertRaisesRegex(ValueError, "independent"):
@@ -119,7 +119,7 @@ class OmnibusTests(unittest.TestCase):
             flat, "group", "score", "kruskal", "ordinal", True, True
         )
         self.assertGreater(comparison.p_value, 0.05)
-        self.assertIn("not statistically significant", interpret_omnibus(comparison).lower())
+        self.assertIn("no statistically significant", interpret_omnibus(comparison).lower())
 
 
 if __name__ == "__main__":
