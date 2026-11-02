@@ -7,19 +7,20 @@ A Python project for exploring research datasets and, later, selecting and inter
 ## Development plan
 1. **v0.1 Data inspection** — import CSV/XLSX, review variables, missing values and their inferred data types.
 2. **v0.2 Descriptive statistics** (in progress) — N, mean, median, SD, distributions and plots.
-3. **v0.3 Research methods** (in progress) — Cronbach's alpha, Pearson and Spearman correlations with safeguards; next: group comparisons and effect sizes.
+3. **v0.3 Research methods** (in progress) — Cronbach's alpha, Pearson/Spearman correlations, independent-group Welch and Mann–Whitney tests with safeguards and effect sizes.
 4. **v0.4 Method advisor** — ask about the study design, propose tests and explain their assumptions.
 5. **v0.5 Flet interface and reports** — interactive analysis, plots, Excel/PDF export.
 
 ## Desktop interface
 
-The Flet application now uses a left navigation menu instead of one long scrolling page:
+The Flet application uses a left navigation menu instead of one long scrolling page:
 
 - **Dataset**: load a local CSV/Excel file or a sample, inspect variables and missing values.
 - **Descriptive**: choose a variable, confirm its scale, and view statistics and a graph.
 - **Scale reliability**: select questionnaire items, compute Cronbach’s α and view an APA-style report.
 - **Correlations**: analyze two variables with Pearson or Spearman and view the scatterplot.
 - **Correlation matrix**: compare up to eight variables in a heatmap with pairwise N.
+- **Compare groups**: compare two independent groups with Welch’s t or Mann–Whitney U, APA-style results and boxplots.
 
 Use **Dataset** first. Switching between sections preserves analysis results until a new dataset is loaded. The calculation modules and the local-data privacy approach have not changed.
 
@@ -67,6 +68,18 @@ Use **Load scale example**. Under **CORRELATION MATRIX**, tick `stress_q1`, `str
 The figure displays coefficients and the number of complete pairs (N) in each cell. Unlike the two-variable correlation analysis, this is deliberately **descriptive only**, with no p-values, confidence intervals or significance stars. Values can be N/A if there are fewer than five pairs or no variation. Selecting many correlations for significance testing requires a separate plan for multiple testing and appropriate assumptions.
 
 The earlier two-variable scatterplot now shows a small reproducible **display-only jitter** for overlapping ordinal points. Calculations still use the unmodified values. Figure notes wrap instead of being cut off. Figure numbers are manuscript placeholders, not final APA numbering.
+
+## Compare two independent groups (Step 7)
+
+1. Open the desktop app and choose **Dataset → Load scale example**.
+2. In the sidebar choose **Compare groups**.
+3. Choose **group** for the grouping variable and **stress_q1** for the outcome.
+4. Confirm **Ordinal** for the outcome, choose **Mann–Whitney U**, and check that the observations are independent. Click **Compare groups**.
+5. For a Welch example, load **survey example**, choose **group** and **age**, confirm **Quantitative**, select **Welch’s independent t**, and confirm both independent observations and assumption review.
+
+The report includes group means, SDs, medians, sample sizes, test statistic, two-sided p-value, effect estimate and an APA 7-style boxplot with individual points. Welch additionally reports fractional degrees of freedom, the 95% CI of the **mean difference (first group minus second)** and a pooled-SD Hedges g. Mann–Whitney reports U and rank-biserial r (positive means the first group tends to have higher ranks); no confidence interval for this rank effect is currently implemented. When there are ties, Mann–Whitney uses SciPy's tie-corrected asymptotic method.
+
+**Research caveats:** this module is only for two **independent** groups. Paired samples require another method. Mann–Whitney is not universally a median test, and unequal group shapes complicate interpretation. The checkbox does not test assumptions. The included examples are artificial and too small for substantive generalization. Figure numbering is a placeholder for a manuscript.
 
 ## Privacy and analysis notes
 - Keep actual participants' data in the ignored `data/` folder. Do not commit identifiable research data.
