@@ -8,7 +8,9 @@ from interface_layout import build_interface
 
 CONTROL_NAMES = [
     "status", "overview_area", "variable", "scale", "results", "guidance",
-    "chart_area", "reliability_items", "reliability_confirm",
+    "chart_area", "output_toolbar",
+    "explore_variable", "explore_group", "explore_output", "explore_chart",
+    "reliability_items", "reliability_confirm",
     "reliability_output", "reliability_guide", "reliability_warnings",
     "reliability_chart_area", "corr_x", "corr_y", "corr_scale_x",
     "corr_scale_y", "corr_advice", "corr_method", "corr_confirm",
@@ -41,6 +43,7 @@ ACTION_NAMES = [
     "calculate_groups", "calculate_paired", "load_paired_example",
     "calculate_chi_square", "load_categorical_example",
     "calculate_omnibus", "load_three_groups_example",
+    "run_explore", "set_active_screen",
 ]
 
 
