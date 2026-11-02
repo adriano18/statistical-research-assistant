@@ -1,6 +1,6 @@
 """Flet interface layout for the Statistical Research Assistant.
 
-The interface is divided into eight screens. Calculation logic stays in app.py;
+The interface is divided into nine screens. Calculation logic stays in app.py;
 existing controls are reused, so switching screens preserves user selections.
 """
 
@@ -50,6 +50,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         ft.Button("Load scale example", on_click=a["load_scale_example"]),
                         ft.Button("Load paired example", on_click=a["load_paired_example"]),
                         ft.Button("Load categorical example", on_click=a["load_categorical_example"]),
+                        ft.Button("Load three-group example", on_click=a["load_three_groups_example"]),
                     ],
                     wrap=True,
                     spacing=10,
@@ -347,6 +348,60 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         visible=False,
     )
 
+    # Screen 9: omnibus comparisons of three or more independent groups.
+    omnibus_screen = ft.Column(
+        controls=[
+            heading(
+                "ANOVA & Kruskal–Wallis",
+                "Compare 3–8 independent groups and review assumptions.",
+            ),
+            panel("Choose groups, outcome and method", [
+                ft.Text(
+                    "Omnibus tests only. They cannot tell which specific groups "
+                    "differ without post-hoc testing.",
+                    color="#A8B6C9",
+                ),
+                ft.Row(
+                    controls=[c["omnibus_group"], c["omnibus_outcome"]],
+                    wrap=True, spacing=12,
+                ),
+                ft.Row(
+                    controls=[c["omnibus_scale"], c["omnibus_method"]],
+                    wrap=True, spacing=12,
+                ),
+                c["omnibus_independent"],
+                c["omnibus_assumptions"],
+                c["omnibus_advice"],
+                ft.Button(
+                    "Run group comparison", on_click=a["calculate_omnibus"]
+                ),
+            ]),
+            panel("A. Main result and interpretation", [
+                c["omnibus_main"],
+                c["omnibus_brief"],
+            ]),
+            panel("B. Group descriptives and APA report", [
+                c["omnibus_output"],
+                ft.Row(
+                    controls=[
+                        c["omnibus_export_png_button"],
+                        c["omnibus_export_txt_button"],
+                    ],
+                    wrap=True, spacing=12,
+                ),
+                c["omnibus_export_status"],
+            ]),
+            panel("C. Notes and assumptions", [
+                c["omnibus_warnings"],
+            ]),
+            panel("Group distributions", [
+                c["omnibus_chart"],
+            ]),
+        ],
+        spacing=18,
+        visible=False,
+    )
+
     screens = {
         "dataset": dataset_screen,
         "descriptive": descriptive_screen,
@@ -356,6 +411,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "groups": groups_screen,
         "paired": paired_screen,
         "chi": chi_screen,
+        "omnibus": omnibus_screen,
     }
     labels = {
         "dataset": "Dataset",
@@ -366,6 +422,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "groups": "Compare groups",
         "paired": "Paired measures",
         "chi": "Chi-square",
+        "omnibus": "ANOVA / Kruskal",
     }
 
     # One visible workspace avoids a several-screen-long vertical application.
