@@ -221,8 +221,19 @@ async def main(page: ft.Page):
     chi_output = ft.Text("")
     chi_warnings = ft.Text("")
     chi_chart = ft.Column()
+    chi_export_status = ft.Text("")
+    chi_export_png_button = ft.Button("Save figure PNG", disabled=True)
+    chi_export_txt_button = ft.Button("Save APA report TXT", disabled=True)
+    chi_report_text = ""
+    chi_png_data = None
 
     def reset_chi_result(e=None):
+        nonlocal chi_report_text, chi_png_data
+        chi_report_text = ""
+        chi_png_data = None
+        chi_export_png_button.disabled = True
+        chi_export_txt_button.disabled = True
+        chi_export_status.value = ""
         chi_main.value = ""
         chi_brief.value = ""
         chi_output.value = ""
@@ -322,7 +333,7 @@ async def main(page: ft.Page):
 
     # The same data loader is shared by this GUI and inspect_data.py.
     async def show_file(path):
-        nonlocal dataframe, paired_report_text, paired_png_data
+        nonlocal dataframe, paired_report_text, paired_png_data, chi_report_text, chi_png_data
         try:
             df = await asyncio.to_thread(load_dataset, path)
             if df.columns.empty:
@@ -514,6 +525,11 @@ async def main(page: ft.Page):
         chi_output.value = ""
         chi_warnings.value = ""
         chi_chart.controls.clear()
+        chi_report_text = ""
+        chi_png_data = None
+        chi_export_png_button.disabled = True
+        chi_export_txt_button.disabled = True
+        chi_export_status.value = ""
         page.update()
 
     async def choose_file(e):
@@ -775,10 +791,16 @@ async def main(page: ft.Page):
     paired_export_txt_button.on_click = export_paired_txt
 
     async def calculate_chi_square(e):
+        nonlocal chi_report_text, chi_png_data
         chi_chart.controls.clear()
         chi_main.value = ""
         chi_brief.value = ""
         chi_warnings.value = ""
+        chi_export_status.value = ""
+        chi_export_png_button.disabled = True
+        chi_export_txt_button.disabled = True
+        chi_report_text = ""
+        chi_png_data = None
         if dataframe is None:
             chi_output.value = "Load a dataset first."
             page.update()
@@ -791,14 +813,48 @@ async def main(page: ft.Page):
                 chi_b.value, bool(chi_confirm.value)
             )
             png = await asyncio.to_thread(make_chi_square_chart, analysis)
+            text_report = format_chi_square_report(analysis)
+            chi_report_text = text_report
+            chi_png_data = png
             chi_main.value = summarize_chi_square(analysis)
             chi_brief.value = interpret_chi_square(analysis)
-            chi_output.value = format_chi_square_report(analysis)
+            chi_output.value = text_report
             chi_warnings.value = "\n".join(analysis.warnings)
             chi_chart.controls.append(ft.Image(src=png, width=850, height=550))
+            chi_export_png_button.disabled = False
+            chi_export_txt_button.disabled = False
         except Exception as error:
             chi_output.value = f"Chi-square analysis error: {error}"
         page.update()
+
+    async def export_chi_png(e):
+        if not chi_png_data:
+            chi_export_status.value = "Run Chi-square first."
+        else:
+            try:
+                path = await asyncio.to_thread(
+                    save_figure_png, chi_png_data, "chi_square_figure.png"
+                )
+                chi_export_status.value = f"Saved: {path}"
+            except Exception as error:
+                chi_export_status.value = f"Export error: {error}"
+        page.update()
+
+    async def export_chi_txt(e):
+        if not chi_report_text:
+            chi_export_status.value = "Run Chi-square first."
+        else:
+            try:
+                path = await asyncio.to_thread(
+                    save_apa_txt, chi_report_text, "chi_square_APA7.txt"
+                )
+                chi_export_status.value = f"Saved: {path}"
+            except Exception as error:
+                chi_export_status.value = f"Export error: {error}"
+        page.update()
+
+    chi_export_png_button.on_click = export_chi_png
+    chi_export_txt_button.on_click = export_chi_txt
 
     # Visualization follows the same scale and identifier safeguards as the table.
     async def analyze_variable(e):
@@ -940,6 +996,9 @@ async def main(page: ft.Page):
             "chi_output": chi_output,
             "chi_warnings": chi_warnings,
             "chi_chart": chi_chart,
+            "chi_export_png_button": chi_export_png_button,
+            "chi_export_txt_button": chi_export_txt_button,
+            "chi_export_status": chi_export_status,
         },
         actions={
             "choose_file": choose_file,
