@@ -1,6 +1,6 @@
 """Flet interface layout for the Statistical Research Assistant.
 
-The interface is divided into five screens. Calculation logic stays in app.py;
+The interface is divided into six screens. Calculation logic stays in app.py;
 existing controls are reused, so switching screens preserves user selections.
 """
 
@@ -198,12 +198,56 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         visible=False,
     )
 
+    # Screen 6: independent-group Welch t and Mann–Whitney U comparisons.
+    groups_screen = ft.Column(
+        controls=[
+            heading(
+                "Compare two groups",
+                "Choose two independent groups and a suitable outcome measurement.",
+            ),
+            panel("Study design and variables", [
+                ft.Text(
+                    "This module does not support paired or repeated-measure data. "
+                    "The group variable must have exactly two observed categories.",
+                    color="#A8B6C9",
+                ),
+                ft.Row(
+                    controls=[c["group_variable"], c["group_outcome"]],
+                    wrap=True,
+                    spacing=12,
+                ),
+                ft.Row(
+                    controls=[c["group_outcome_scale"], c["group_method"]],
+                    wrap=True,
+                    spacing=12,
+                ),
+                c["group_advice"],
+                c["group_independent"],
+                c["group_assumptions"],
+                ft.Button(
+                    "Compare groups",
+                    on_click=a["calculate_groups"],
+                ),
+            ]),
+            panel("APA 7-style statistical result", [
+                c["group_output"],
+                c["group_warnings"],
+            ]),
+            panel("Group distributions", [
+                c["group_chart"],
+            ]),
+        ],
+        spacing=18,
+        visible=False,
+    )
+
     screens = {
         "dataset": dataset_screen,
         "descriptive": descriptive_screen,
         "reliability": reliability_screen,
         "correlation": correlation_screen,
         "matrix": matrix_screen,
+        "groups": groups_screen,
     }
     labels = {
         "dataset": "Dataset",
@@ -211,6 +255,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "reliability": "Scale reliability",
         "correlation": "Correlations",
         "matrix": "Correlation matrix",
+        "groups": "Compare groups",
     }
 
     # One visible workspace avoids a several-screen-long vertical application.
