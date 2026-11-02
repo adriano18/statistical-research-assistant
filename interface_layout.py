@@ -394,6 +394,22 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             panel("C. Notes and assumptions", [
                 c["omnibus_warnings"],
             ]),
+            panel("D. Post-hoc pairwise comparisons", [
+                ft.Text(
+                    "Run the omnibus test first, then compare individual pairs "
+                    "with familywise error control. Tukey follows ordinary ANOVA, "
+                    "Games–Howell follows Welch and Dunn–Holm follows Kruskal–Wallis.",
+                    color="#A8B6C9",
+                ),
+                c["posthoc_button"],
+                c["posthoc_output"],
+                c["posthoc_warnings"],
+                ft.Text(
+                    "Save APA report TXT above to export the pairwise results "
+                    "after this step.",
+                    color="#A8B6C9", size=12,
+                ),
+            ]),
             panel("Group distributions", [
                 c["omnibus_chart"],
             ]),
