@@ -105,7 +105,7 @@ def compare_independent_groups(
     ].copy()
     complete[outcome_name] = numeric.loc[complete.index].astype(float)
     labels = sorted(str(v) for v in complete[group_name].unique())
-    if len(labels) != 2:
+    if len(labels) != 2 or len(set(labels)) != 2:
         raise ValueError(
             "Exactly two non-empty groups with complete outcome data are required."
         )
