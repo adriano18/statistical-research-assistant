@@ -31,12 +31,18 @@ from chi_square_reporting import (
     format_chi_square_report, summarize_chi_square, interpret_chi_square
 )
 from chi_square_charts import make_chi_square_chart
+from omnibus_analysis import analyze_omnibus, recommend_omnibus_test
+from omnibus_reporting import (
+    format_omnibus_report, format_omnibus_summary, interpret_omnibus
+)
+from omnibus_charts import make_omnibus_chart
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
 SCALE_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_scale.csv"
 PAIRED_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_paired.csv"
 CATEGORICAL_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_categorical.csv"
+THREE_GROUPS_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_three_groups.csv"
 
 
 async def main(page: ft.Page):
@@ -166,6 +172,73 @@ async def main(page: ft.Page):
     group_output = ft.Text("")
     group_warnings = ft.Text("")
     group_chart = ft.Column()
+
+    # Three or more independent groups (omnibus test, not post-hoc).
+    omnibus_group = ft.Dropdown(
+        label="Grouping variable (3–8 groups)", width=320, options=[]
+    )
+    omnibus_outcome = ft.Dropdown(
+        label="Outcome variable", width=290, options=[]
+    )
+    omnibus_scale = ft.Dropdown(
+        label="Outcome measurement scale", width=290, value="unknown",
+        options=[
+            ft.DropdownOption(key="unknown", text="Not confirmed"),
+            ft.DropdownOption(key="ordinal", text="Ordinal"),
+            ft.DropdownOption(key="scale", text="Quantitative"),
+        ],
+    )
+    omnibus_method = ft.Dropdown(
+        label="Omnibus method", width=290, value="kruskal",
+        options=[
+            ft.DropdownOption(key="kruskal", text="Kruskal–Wallis H"),
+            ft.DropdownOption(key="welch", text="Welch ANOVA"),
+            ft.DropdownOption(key="anova", text="One-way ANOVA"),
+        ],
+    )
+    omnibus_independent = ft.Checkbox(
+        label="I confirm the groups contain independent participants",
+        value=False,
+    )
+    omnibus_assumptions = ft.Checkbox(
+        label="I reviewed distributions, outliers and assumptions of the chosen test",
+        value=False,
+    )
+    omnibus_advice = ft.Text("")
+    omnibus_main = ft.Text("")
+    omnibus_brief = ft.Text("")
+    omnibus_output = ft.Text("")
+    omnibus_warnings = ft.Text("")
+    omnibus_chart = ft.Column()
+    omnibus_export_status = ft.Text("")
+    omnibus_export_png_button = ft.Button("Save figure PNG", disabled=True)
+    omnibus_export_txt_button = ft.Button("Save APA report TXT", disabled=True)
+    omnibus_report_text = ""
+    omnibus_png_data = None
+
+    def clear_omnibus(e=None):
+        nonlocal omnibus_report_text, omnibus_png_data
+        omnibus_report_text = ""
+        omnibus_png_data = None
+        omnibus_main.value = ""
+        omnibus_brief.value = ""
+        omnibus_output.value = ""
+        omnibus_warnings.value = ""
+        omnibus_chart.controls.clear()
+        omnibus_export_status.value = ""
+        omnibus_export_png_button.disabled = True
+        omnibus_export_txt_button.disabled = True
+        omnibus_advice.value = recommend_omnibus_test(
+            omnibus_scale.value, bool(omnibus_independent.value)
+        )
+        page.update()
+
+    omnibus_group.on_select = clear_omnibus
+    omnibus_outcome.on_select = clear_omnibus
+    omnibus_scale.on_select = clear_omnibus
+    omnibus_method.on_select = clear_omnibus
+    omnibus_independent.on_change = clear_omnibus
+    omnibus_assumptions.on_change = clear_omnibus
 
     # Paired design: each row must contain BOTH measurements of one participant.
     paired_before = ft.Dropdown(label="Before variable", width=280, options=[])
@@ -333,7 +406,7 @@ async def main(page: ft.Page):
 
     # The same data loader is shared by this GUI and inspect_data.py.
     async def show_file(path):
-        nonlocal dataframe, paired_report_text, paired_png_data, chi_report_text, chi_png_data
+        nonlocal dataframe, paired_report_text, paired_png_data, chi_report_text, chi_png_data, omnibus_report_text, omnibus_png_data
         try:
             df = await asyncio.to_thread(load_dataset, path)
             if df.columns.empty:
@@ -530,6 +603,48 @@ async def main(page: ft.Page):
         chi_export_png_button.disabled = True
         chi_export_txt_button.disabled = True
         chi_export_status.value = ""
+
+        # Offer appropriate candidates; the researcher still confirms scales.
+        multi_group_candidates = [
+            str(name) for name in df.columns
+            if not looks_like_identifier(name)
+            and 3 <= df[name].dropna().nunique() <= 8
+        ]
+        omnibus_group.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in multi_group_candidates
+        ]
+        omnibus_outcome.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in numeric_candidates
+        ]
+        omnibus_group.value = (
+            "group" if "group" in multi_group_candidates
+            else (multi_group_candidates[0] if multi_group_candidates else None)
+        )
+        omnibus_outcome.value = (
+            "score" if "score" in numeric_candidates
+            else next(
+                (name for name in numeric_candidates
+                 if name != omnibus_group.value),
+                None,
+            )
+        )
+        omnibus_scale.value = "unknown"
+        omnibus_method.value = "kruskal"
+        omnibus_independent.value = False
+        omnibus_assumptions.value = False
+        omnibus_report_text = ""
+        omnibus_png_data = None
+        omnibus_main.value = ""
+        omnibus_brief.value = ""
+        omnibus_output.value = ""
+        omnibus_warnings.value = ""
+        omnibus_advice.value = recommend_omnibus_test("unknown", False)
+        omnibus_chart.controls.clear()
+        omnibus_export_status.value = ""
+        omnibus_export_png_button.disabled = True
+        omnibus_export_txt_button.disabled = True
         page.update()
 
     async def choose_file(e):
@@ -560,6 +675,9 @@ async def main(page: ft.Page):
 
     async def load_categorical_example(e):
         await show_file(CATEGORICAL_SAMPLE)
+
+    async def load_three_groups_example(e):
+        await show_file(THREE_GROUPS_SAMPLE)
 
     async def calculate_alpha(e):
         reliability_chart_area.controls.clear()
@@ -856,6 +974,78 @@ async def main(page: ft.Page):
     chi_export_png_button.on_click = export_chi_png
     chi_export_txt_button.on_click = export_chi_txt
 
+    async def calculate_omnibus(e):
+        nonlocal omnibus_report_text, omnibus_png_data
+        omnibus_main.value = ""
+        omnibus_brief.value = ""
+        omnibus_output.value = "Calculating group comparison..."
+        omnibus_warnings.value = ""
+        omnibus_chart.controls.clear()
+        omnibus_export_status.value = ""
+        omnibus_export_png_button.disabled = True
+        omnibus_export_txt_button.disabled = True
+        omnibus_report_text = ""
+        omnibus_png_data = None
+        page.update()
+
+        if dataframe is None:
+            omnibus_output.value = "Load a dataset first."
+            page.update()
+            return
+        try:
+            analysis = await asyncio.to_thread(
+                analyze_omnibus, dataframe,
+                omnibus_group.value, omnibus_outcome.value,
+                omnibus_method.value, omnibus_scale.value,
+                bool(omnibus_independent.value),
+                bool(omnibus_assumptions.value),
+            )
+            png = await asyncio.to_thread(make_omnibus_chart, analysis)
+            report = format_omnibus_report(analysis)
+            omnibus_main.value = format_omnibus_summary(analysis)
+            omnibus_brief.value = interpret_omnibus(analysis)
+            omnibus_output.value = report
+            omnibus_warnings.value = "\n".join(analysis.warnings)
+            omnibus_chart.controls.append(
+                ft.Image(src=png, width=850, height=540)
+            )
+            omnibus_report_text = report
+            omnibus_png_data = png
+            omnibus_export_png_button.disabled = False
+            omnibus_export_txt_button.disabled = False
+        except Exception as error:
+            omnibus_output.value = f"Omnibus analysis error: {error}"
+        page.update()
+
+    async def export_omnibus_png(e):
+        if not omnibus_png_data:
+            omnibus_export_status.value = "Run an analysis first."
+        else:
+            try:
+                path = await asyncio.to_thread(
+                    save_figure_png, omnibus_png_data, "omnibus_figure.png"
+                )
+                omnibus_export_status.value = f"Saved: {path}"
+            except Exception as error:
+                omnibus_export_status.value = f"Export error: {error}"
+        page.update()
+
+    async def export_omnibus_txt(e):
+        if not omnibus_report_text:
+            omnibus_export_status.value = "Run an analysis first."
+        else:
+            try:
+                path = await asyncio.to_thread(
+                    save_apa_txt, omnibus_report_text, "omnibus_APA7.txt"
+                )
+                omnibus_export_status.value = f"Saved: {path}"
+            except Exception as error:
+                omnibus_export_status.value = f"Export error: {error}"
+        page.update()
+
+    omnibus_export_png_button.on_click = export_omnibus_png
+    omnibus_export_txt_button.on_click = export_omnibus_txt
+
     # Visualization follows the same scale and identifier safeguards as the table.
     async def analyze_variable(e):
         chart_area.controls.clear()
@@ -999,6 +1189,21 @@ async def main(page: ft.Page):
             "chi_export_png_button": chi_export_png_button,
             "chi_export_txt_button": chi_export_txt_button,
             "chi_export_status": chi_export_status,
+            "omnibus_group": omnibus_group,
+            "omnibus_outcome": omnibus_outcome,
+            "omnibus_scale": omnibus_scale,
+            "omnibus_method": omnibus_method,
+            "omnibus_independent": omnibus_independent,
+            "omnibus_assumptions": omnibus_assumptions,
+            "omnibus_advice": omnibus_advice,
+            "omnibus_main": omnibus_main,
+            "omnibus_brief": omnibus_brief,
+            "omnibus_output": omnibus_output,
+            "omnibus_warnings": omnibus_warnings,
+            "omnibus_chart": omnibus_chart,
+            "omnibus_export_png_button": omnibus_export_png_button,
+            "omnibus_export_txt_button": omnibus_export_txt_button,
+            "omnibus_export_status": omnibus_export_status,
         },
         actions={
             "choose_file": choose_file,
@@ -1013,6 +1218,8 @@ async def main(page: ft.Page):
             "load_paired_example": load_paired_example,
             "load_categorical_example": load_categorical_example,
             "calculate_chi_square": calculate_chi_square,
+            "calculate_omnibus": calculate_omnibus,
+            "load_three_groups_example": load_three_groups_example,
         },
     )
     page.add(ui)
