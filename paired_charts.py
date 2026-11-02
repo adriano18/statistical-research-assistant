@@ -27,8 +27,12 @@ def make_paired_chart(result) -> bytes:
         ax.scatter(rng.normal(0, 0.025, n), b, s=28, alpha=0.7, zorder=3)
         ax.scatter(rng.normal(1, 0.025, n), a, s=28, alpha=0.7, zorder=3)
         ax.set_xlim(-0.32, 1.32)
-        ax.set_xticks([0, 1], [result.before_name, result.after_name])
-        ax.set_ylabel("Measurement")
+        ax.set_xticks([0, 1], ["Before", "After"])
+        ax.set_ylabel("Score")
+        ax.set_title(
+            f"{result.before_name}  →  {result.after_name}",
+            fontsize=10, pad=11,
+        )
         ax.grid(axis="y", alpha=0.18)
 
         fig.text(0.08, 0.975, "Figure 5", weight="bold", fontsize=11, va="top")
