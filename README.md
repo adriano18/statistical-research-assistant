@@ -9,7 +9,7 @@ A Python project for exploring research datasets and, later, selecting and inter
 ## Development plan
 1. **v0.1 Data inspection** — import CSV/XLSX, review variables, missing values and their inferred data types.
 2. **v0.2 Descriptive statistics** (in progress) — N, mean, median, SD, distributions and plots.
-3. **v0.3 Research methods** (in progress) — reliability, correlations, independent/paired tests, χ², three omnibus methods and their post-hoc comparisons; regression and diagnostics remain planned.
+3. **v0.3 Research methods** (in progress) — reliability, correlations, independent/paired tests, χ², three omnibus methods and their post-hoc comparisons; linear/multiple regression now implemented; repeated-measure tests and more advanced models remain planned.
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
 5. **v0.5 Reports and localization** — local TXT/PNG export currently available for paired analyses; expand to APA tables, DOCX/PDF and English, Latvian and Russian.
 
@@ -26,6 +26,7 @@ The Flet application uses a left navigation menu instead of one long scrolling p
 - **Paired measures**: analyze repeated before/after observations with paired t or Wilcoxon, plus a participant-level change plot, compact results and local exports.
 - **Chi-square**: analyze two categorical variables, inspect observed/expected counts, Cramér’s V and sparse-table cautions.
 - **ANOVA / Kruskal**: compare 3–8 independent groups, review effect estimates, group distributions and omnibus cautions.
+- **Linear regression**: fit a model with one to five quantitative predictors, inspect coefficients, residuals, multicollinearity, influence and optional robust standard errors.
 
 Use **Dataset** first. Switching between sections preserves analysis results until a new dataset is loaded. The calculation modules and the local-data privacy approach have not changed.
 
@@ -126,6 +127,18 @@ The output contains the omnibus F or H statistic, degrees of freedom, two-sided 
 **Post-hoc comparisons:** after calculating an omnibus test, use **Run post-hoc comparisons**. The selection follows the method automatically: Tukey HSD (or Tukey–Kramer with unequal group sizes) for ordinary ANOVA, Games–Howell for Welch, and tie-corrected Dunn with Holm-adjusted p-values for Kruskal–Wallis. The resulting table shows every group pair, its signed mean or rank difference, and multiplicity-adjusted p-values. Tukey and Games–Howell also show 95% simultaneous confidence intervals; Dunn does not currently provide them. Running post-hoc tests updates the APA TXT export; use **Save APA report TXT** afterward.
 
 **Important:** omnibus significance does *not* identify which groups differ without a suitable post-hoc procedure. Even with adjusted p-values, assumptions and substantive effect sizes must be reviewed. For nonsignificant omnibus tests, pairwise comparisons are labelled exploratory. Kruskal–Wallis is a rank/distribution test, not necessarily a test of median differences. For Welch ANOVA this project requires **SciPy 1.16 or newer** (the `equal_var=False` option was introduced in that release). The example is fictional and cannot support substantive research conclusions.
+
+## Linear and multiple regression (Step 12)
+
+In **Dataset**, click **Load regression example** (`examples/sample_regression.csv`). Open the **Linear regression** sidebar section. The fictional study contains 48 rows with `stress_score` as the dependent variable and `study_hours`, `sleep_hours` as predictors. Leave one predictor selected for a simple linear regression, or select both for multiple regression.
+
+Confirm you reviewed the measurement scales, **independence between observations**, linear relationship, outliers and study design. Choose **Fit linear model**. The report provides model F, R², adjusted R², unstandardized coefficient B with SE, t and 95% CI, along with residual Shapiro–Wilk p, Breusch–Pagan p, Cook's D count and VIF for multiple predictors. The figure shows observed vs fitted, residuals vs fitted, and normal Q–Q plots.
+
+The **HC3** option changes *coefficient* standard errors, t statistics, p-values and 95% confidence intervals to heteroskedasticity-robust estimates; the displayed model F remains the **conventional OLS F** (not a robust Wald F). Use the top **Copy report**, **Save TXT as...** or **Save PNG as...** buttons to export the result.
+
+**Research cautions:** predictors must represent meaningful **quantitative** measurements, not arbitrary nominal codes; categorical factors require dummy coding, which is not automatic here. Missing cases are removed listwise. These associations do not establish causality. Shapiro and Breusch–Pagan results are diagnostics, not assumption guarantees. Do not interpret a significant coefficient before checking the study design and potential confounders.
+
+The implementation uses [statsmodels](https://www.statsmodels.org/) for OLS estimation. Repeated-measure comparisons (**Friedman** and **repeated-measures ANOVA**) are still a separate upcoming stage, because the subjects/rows and assumptions differ substantially.
 
 ## Interface languages
 
