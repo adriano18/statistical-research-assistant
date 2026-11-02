@@ -51,7 +51,7 @@ def format_omnibus_report(result) -> str:
         interpret_omnibus(result),
         "",
         "Note. Reported p-values are omnibus results only. "
-        "A post-hoc procedure and multiple-testing adjustment are not "
-        "implemented for this analysis yet.",
+        "Run the separate post-hoc comparisons for pairwise-adjusted p-values "
+        "when group assumptions support that analysis.",
     ]
     return "\n".join(lines)
