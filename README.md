@@ -7,7 +7,7 @@ A Python project for exploring research datasets and, later, selecting and inter
 ## Development plan
 1. **v0.1 Data inspection** — import CSV/XLSX, review variables, missing values and their inferred data types.
 2. **v0.2 Descriptive statistics** (in progress) — N, mean, median, SD, distributions and plots.
-3. **v0.3 Research methods** (in progress) — Cronbach's alpha with confidence interval and listwise missing-data handling; next: correlations, group comparisons and effect sizes.
+3. **v0.3 Research methods** (in progress) — Cronbach's alpha, Pearson and Spearman correlations with safeguards; next: group comparisons and effect sizes.
 4. **v0.4 Method advisor** — ask about the study design, propose tests and explain their assumptions.
 5. **v0.5 Flet interface and reports** — interactive analysis, plots, Excel/PDF export.
 
@@ -38,9 +38,19 @@ Alpha is not a test of scale validity or unidimensionality. Numerical column typ
 
 The sample dataset is fictional and is **not suitable for scientific conclusions**.
 
+## Correlation demo
+
+In the desktop app, click **Load scale example**. Under **CORRELATION ANALYSIS**, choose the two items \`stress_q1\` and \`stress_q2\`. Confirm **Ordinal** for both, keep **Spearman’s ρ**, then click **Calculate correlation**.
+
+For Pearson, choose two genuinely quantitative measurements, confirm their scales, inspect whether a linear association and the study assumptions are appropriate, then select **Pearson’s r** and check its separate assumptions box. Numeric column storage alone does not justify Pearson. Do not include IDs or nominal groups.
+
+Both methods report the correlation coefficient, a two-sided p-value, paired N, a scatterplot and a brief interpretation in APA 7-style notation. Pearson additionally reports a Fisher-transformation 95% CI. Spearman's CI is **not calculated** in this prototype; do not invent one. For datasets with up to 500 complete pairs, Spearman uses a seeded, 1,999-resample permutation p-value because SciPy warns its asymptotic p approximation is inaccurate for small datasets. This is a Monte Carlo estimate, not an exact test.
+
+Plots show associations, not causality. The Figure 2 number is a placeholder and should be renumbered in a manuscript. The app does not choose the method automatically from the column data type; it supplies conditional guidance. For scientific analysis, consider dependence, outliers, monotonicity/linearity, sample design, effect interpretation and multiple testing.
+
 ## Privacy and analysis notes
 - Keep actual participants' data in the ignored `data/` folder. Do not commit identifiable research data.
 - Numeric codes such as 1–5 can represent ordinal Likert responses or categorical groups. A numeric data type is not enough to determine the measurement scale or justify a statistical test.
-- The current version inspects datasets and provides descriptive statistics only. It does **not** perform inferential statistics or automatically interpret research findings.
+- The current version inspects datasets and calculates selected statistics and correlation tests. It does **not** automatically validate assumptions, establish causality or replace professional interpretation.
 
 Developed as a learning project, with AI assistance for code explanations, documentation and debugging.
