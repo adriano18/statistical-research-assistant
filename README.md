@@ -9,7 +9,7 @@ A Python project for exploring research datasets and, later, selecting and inter
 ## Development plan
 1. **v0.1 Data inspection** — import CSV/XLSX, review variables, missing values and their inferred data types.
 2. **v0.2 Descriptive statistics** (in progress) — N, mean, median, SD, distributions and plots.
-3. **v0.3 Research methods** (in progress) — reliability, correlations, independent and paired group tests, and Pearson χ² independence with safeguards; ANOVA, regression and diagnostics are planned.
+3. **v0.3 Research methods** (in progress) — reliability, correlations, independent/paired tests, Pearson χ², one-way ANOVA, Welch ANOVA and Kruskal–Wallis; post-hoc comparisons, regression and diagnostics remain planned.
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
 5. **v0.5 Reports and localization** — local TXT/PNG export currently available for paired analyses; expand to APA tables, DOCX/PDF and English, Latvian and Russian.
 
@@ -25,6 +25,7 @@ The Flet application uses a left navigation menu instead of one long scrolling p
 - **Compare groups**: compare two independent groups with Welch’s t or Mann–Whitney U, APA-style results and boxplots.
 - **Paired measures**: analyze repeated before/after observations with paired t or Wilcoxon, plus a participant-level change plot, compact results and local exports.
 - **Chi-square**: analyze two categorical variables, inspect observed/expected counts, Cramér’s V and sparse-table cautions.
+- **ANOVA / Kruskal**: compare 3–8 independent groups, review effect estimates, group distributions and omnibus cautions.
 
 Use **Dataset** first. Switching between sections preserves analysis results until a new dataset is loaded. The calculation modules and the local-data privacy approach have not changed.
 
@@ -103,6 +104,16 @@ In **Dataset**, choose **Load categorical example** (`examples/sample_categorica
 The report includes the uncorrected Pearson χ² statistic, degrees of freedom, two-sided asymptotic p-value, N, observed and expected frequencies, Cramér's V and a contingency-table figure. If any expected cell count is below 5, the app warns that the asymptotic p-value may be unreliable. For sparse **2×2** tables, it also displays a separate two-sided Fisher exact p-value. **These tests do not prove causation**, and sparse tables beyond 2×2 need other exact or resampling approaches.
 
 Use **Save figure PNG** or **Save APA report TXT** to export the Chi-square chart and findings to the local ignored `reports/` folder. Files are overwritten on re-export with the same name. The example uses fabricated category counts and is not evidence of intervention effectiveness. Figure 6 is a placeholder manuscript figure number.
+
+## ANOVA and Kruskal–Wallis (Step 10)
+
+In **Dataset**, click **Load three-group example** (`examples/sample_three_groups.csv`). Select **ANOVA / Kruskal** in the sidebar.
+
+For the default rank-based example, select `group` and `score`, confirm **Ordinal**, choose **Kruskal–Wallis H**, then confirm that observations are independent and you reviewed the assumptions. Click **Run group comparison**. To try classical one-way ANOVA or Welch ANOVA, select **Quantitative** before switching to the corresponding method. The synthetic example has three groups with 12 observations in each.
+
+The output contains the omnibus F or H statistic, degrees of freedom, two-sided asymptotic p-value, sample sizes and an appropriate effect estimate. Classical ANOVA and Welch ANOVA show a descriptive η² (the Welch value is **not a Welch-weighted effect size**). Kruskal–Wallis shows a nonnegative rank ε² estimate. The boxplot displays group distributions and individual observations. The **Save figure PNG** and **Save APA report TXT** buttons save to the local Git-ignored `reports/` directory.
+
+**Important:** omnibus significance does *not* identify which groups differ. No post-hoc or multiple-testing correction is carried out yet. Kruskal–Wallis is a rank/distribution test, not necessarily a test of median differences. For Welch ANOVA this project requires **SciPy 1.16 or newer** (the `equal_var=False` option was introduced in that release). The example is fictional and cannot support substantive research conclusions.
 
 ## Interface languages
 
