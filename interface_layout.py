@@ -362,7 +362,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         visible=False,
     )
 
-    # Screen 9: omnibus comparisons of three or more independent groups.
+    # Screen 9: summary and figure first; detailed text can be expanded.
     omnibus_screen = ft.Column(
         controls=[
             heading(
@@ -370,11 +370,6 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 "Compare 3–8 independent groups and review assumptions.",
             ),
             panel("Choose groups, outcome and method", [
-                ft.Text(
-                    "Omnibus tests only. They cannot tell which specific groups "
-                    "differ without post-hoc testing.",
-                    color="#A8B6C9",
-                ),
                 ft.Row(
                     controls=[c["omnibus_group"], c["omnibus_outcome"]],
                     wrap=True, spacing=12,
@@ -390,12 +385,29 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                     "Run group comparison", on_click=a["calculate_omnibus"]
                 ),
             ]),
-            panel("A. Main result and interpretation", [
+            panel("Main result and interpretation", [
                 c["omnibus_main"],
                 c["omnibus_brief"],
             ]),
-            panel("B. Group descriptives and APA report", [
-                c["omnibus_output"],
+            panel("Group distributions", [
+                c["omnibus_chart"],
+            ]),
+            panel("Post-hoc pairwise comparisons", [
+                c["posthoc_button"],
+                c["posthoc_table"],
+                c["posthoc_output"],
+                ft.ExpansionTile(
+                    title="Pairwise assumptions and cautions",
+                    expanded=False,
+                    controls=[c["posthoc_warnings"]],
+                ),
+            ]),
+            panel("Full APA report and exports", [
+                ft.ExpansionTile(
+                    title="Show full statistical report",
+                    expanded=False,
+                    controls=[c["omnibus_output"]],
+                ),
                 ft.Row(
                     controls=[
                         c["omnibus_export_png_button"],
@@ -405,27 +417,12 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ),
                 c["omnibus_export_status"],
             ]),
-            panel("C. Notes and assumptions", [
-                c["omnibus_warnings"],
-            ]),
-            panel("D. Post-hoc pairwise comparisons", [
-                ft.Text(
-                    "Run the omnibus test first, then compare individual pairs "
-                    "with familywise error control. Tukey follows ordinary ANOVA, "
-                    "Games–Howell follows Welch and Dunn–Holm follows Kruskal–Wallis.",
-                    color="#A8B6C9",
+            panel("Assumptions and cautions", [
+                ft.ExpansionTile(
+                    title="View methodological notes",
+                    expanded=False,
+                    controls=[c["omnibus_warnings"]],
                 ),
-                c["posthoc_button"],
-                c["posthoc_output"],
-                c["posthoc_warnings"],
-                ft.Text(
-                    "Save APA report TXT above to export the pairwise results "
-                    "after this step.",
-                    color="#A8B6C9", size=12,
-                ),
-            ]),
-            panel("Group distributions", [
-                c["omnibus_chart"],
             ]),
         ],
         spacing=18,
@@ -489,7 +486,18 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                     color="#A8B6C9",
                 ),
                 ft.Divider(),
-                *buttons.values(),
+                ft.Text("DATA & MEASUREMENT", size=10, color="#9CB7DA"),
+                buttons["dataset"],
+                buttons["descriptive"],
+                buttons["reliability"],
+                ft.Text("ASSOCIATIONS", size=10, color="#9CB7DA"),
+                buttons["correlation"],
+                buttons["matrix"],
+                buttons["chi"],
+                ft.Text("GROUP COMPARISONS", size=10, color="#9CB7DA"),
+                buttons["groups"],
+                buttons["paired"],
+                buttons["omnibus"],
                 ft.Divider(),
                 ft.Text(
                     "Tip: load data in Dataset, then choose any analysis "
@@ -502,12 +510,13 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         ),
     )
 
+    # Keep export controls visible while long results scroll independently.
     workspace = ft.Column(
         controls=[
             ft.Container(
                 bgcolor="#152030",
                 border_radius=12,
-                padding=15,
+                padding=12,
                 content=ft.Row(
                     controls=[
                         ft.Text("CURRENT DATASET", weight="bold", size=12),
@@ -518,11 +527,15 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ),
             ),
             c["output_toolbar"],
-            *screens.values(),
+            ft.Column(
+                controls=list(screens.values()),
+                spacing=18,
+                expand=True,
+                scroll=ft.ScrollMode.AUTO,
+            ),
         ],
-        spacing=20,
+        spacing=12,
         expand=True,
-        scroll=ft.ScrollMode.AUTO,
     )
 
     return ft.Row(
