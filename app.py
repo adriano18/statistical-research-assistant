@@ -42,6 +42,9 @@ from output_workspace import AnalysisOutput, save_selected_output
 from explore_analysis import (
     explore_quantitative, format_explore_report, make_explore_chart
 )
+from regression_analysis import analyze_regression
+from regression_reporting import format_regression_report, regression_brief
+from regression_charts import make_regression_chart
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -49,6 +52,7 @@ SCALE_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_scale.csv"
 PAIRED_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_paired.csv"
 CATEGORICAL_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_categorical.csv"
 THREE_GROUPS_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_three_groups.csv"
+REGRESSION_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_regression.csv"
 
 
 async def main(page: ft.Page):
@@ -164,6 +168,25 @@ async def main(page: ft.Page):
     )
     explore_output = ft.Text("")
     explore_chart = ft.Column()
+
+    # Ordinary least squares: all selected variables are quantitative.
+    reg_outcome = ft.Dropdown(
+        label="Quantitative outcome (Y)", width=340, options=[]
+    )
+    reg_predictors = ft.Column(height=195, scroll=ft.ScrollMode.AUTO)
+    reg_hc3 = ft.Checkbox(
+        label="Use HC3 heteroskedasticity-robust coefficient standard errors",
+        value=False,
+    )
+    reg_confirm = ft.Checkbox(
+        label="I reviewed linearity, independence, outliers and predictor scales",
+        value=False,
+    )
+    reg_main = ft.Text("")
+    reg_brief = ft.Text("")
+    reg_report = ft.Text("")
+    reg_warnings = ft.Text("")
+    reg_chart = ft.Column()
     reliability_items = ft.Column(height=180, scroll=ft.ScrollMode.AUTO)
     reliability_confirm = ft.Checkbox(
         label="I checked that the items measure one construct and reversed items are recoded",
@@ -611,6 +634,30 @@ async def main(page: ft.Page):
         explore_group.value = "(none)"
         explore_output.value = ""
         explore_chart.controls.clear()
+        # Regression candidates exclude identifiers; categories still need manual review.
+        reg_outcome.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in numeric_candidates
+        ]
+        reg_outcome.value = (
+            "stress_score" if "stress_score" in numeric_candidates
+            else (numeric_candidates[-1] if numeric_candidates else None)
+        )
+        reg_predictors.controls = [
+            ft.Checkbox(
+                label=name,
+                value=(name in {"study_hours", "sleep_hours"}),
+            )
+            for name in numeric_candidates if name != reg_outcome.value
+        ]
+        reg_hc3.value = False
+        reg_confirm.value = False
+        reg_main.value = ""
+        reg_brief.value = ""
+        reg_report.value = ""
+        reg_warnings.value = ""
+        reg_chart.controls.clear()
+
         corr_x.options = [
             ft.DropdownOption(key=name, text=name) for name in numeric_candidates
         ]
@@ -814,6 +861,9 @@ async def main(page: ft.Page):
 
     async def load_three_groups_example(e):
         await show_file(THREE_GROUPS_SAMPLE)
+
+    async def load_regression_example(e):
+        await show_file(REGRESSION_SAMPLE)
 
     async def calculate_alpha(e):
         reliability_chart_area.controls.clear()
@@ -1411,6 +1461,45 @@ async def main(page: ft.Page):
 
         page.update()
 
+    async def run_regression(e):
+        reg_main.value = ""
+        reg_brief.value = ""
+        reg_report.value = "Fitting the regression model..."
+        reg_warnings.value = ""
+        reg_chart.controls.clear()
+        page.update()
+        if dataframe is None or not reg_outcome.value:
+            reg_report.value = "Load a dataset and choose a quantitative outcome."
+            page.update()
+            return
+        chosen = [
+            box.label for box in reg_predictors.controls
+            if bool(box.value) and box.label != reg_outcome.value
+        ]
+        try:
+            result = await asyncio.to_thread(
+                analyze_regression, dataframe, reg_outcome.value,
+                chosen, bool(reg_confirm.value), bool(reg_hc3.value),
+            )
+            image = await asyncio.to_thread(make_regression_chart, result)
+            report = format_regression_report(result)
+            reg_main.value = (
+                f"N = {result.n_complete} | R² = {result.r_squared:.3f} | "
+                f"Adjusted R² = {result.adjusted_r_squared:.3f}\n"
+                f"F({result.model_df}, {result.residual_df}) = "
+                f"{result.f_value:.2f}, p = {result.f_p:.4f}"
+            )
+            reg_brief.value = regression_brief(result)
+            reg_report.value = report
+            reg_warnings.value = "\n".join(result.warnings)
+            reg_chart.controls.append(
+                ft.Image(src=image, width=1080, height=440)
+            )
+            remember_output("regression", "Linear regression", report, image)
+        except Exception as error:
+            reg_report.value = f"Regression error: {error}"
+        page.update()
+
     # STEP 6: Present existing actions in separate, easier-to-navigate screens.
     ui = build_interface(
         page,
@@ -1427,6 +1516,15 @@ async def main(page: ft.Page):
             "explore_group": explore_group,
             "explore_output": explore_output,
             "explore_chart": explore_chart,
+            "reg_outcome": reg_outcome,
+            "reg_predictors": reg_predictors,
+            "reg_hc3": reg_hc3,
+            "reg_confirm": reg_confirm,
+            "reg_main": reg_main,
+            "reg_brief": reg_brief,
+            "reg_report": reg_report,
+            "reg_warnings": reg_warnings,
+            "reg_chart": reg_chart,
             "reliability_items": reliability_items,
             "reliability_confirm": reliability_confirm,
             "reliability_output": reliability_output,
@@ -1513,6 +1611,8 @@ async def main(page: ft.Page):
             "load_scale_example": load_scale_example,
             "analyze_variable": analyze_variable,
             "run_explore": run_explore,
+            "run_regression": run_regression,
+            "load_regression_example": load_regression_example,
             "calculate_alpha": calculate_alpha,
             "calculate_correlation": calculate_correlation,
             "calculate_matrix": calculate_matrix,
