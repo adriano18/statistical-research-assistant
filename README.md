@@ -24,7 +24,7 @@ python -m unittest discover -s tests -v
 flet run app.py
 ```
 
-The Flet app has **Open CSV / Excel** and **Load example** buttons. Select a variable and confirm its measurement scale before using **Analyze selected variable**. Quantitative variables show N, mean, median and SD; nominal and ordinal variables show frequency counts. Real data is processed locally, not uploaded.
+The Flet app has **Open CSV / Excel** and **Load example** buttons. Select a variable and confirm its measurement scale before using **Analyze selected variable**. Columns named like `participant_id` are flagged as identifiers and excluded from score statistics. Quantitative variables show N, mean, median and SD; nominal and ordinal variables show frequency counts. Real data is processed locally, not uploaded.
 
 The sample dataset is fictional and is **not suitable for scientific conclusions**.
 
