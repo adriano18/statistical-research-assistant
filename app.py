@@ -317,6 +317,7 @@ async def main(page: ft.Page):
     omnibus_png_data = None
     omnibus_result_data = None
     posthoc_output = ft.Text("")
+    posthoc_table = ft.Column()
     posthoc_warnings = ft.Text("")
     posthoc_button = ft.Button("Run post-hoc comparisons", disabled=True)
 
@@ -326,6 +327,7 @@ async def main(page: ft.Page):
         omnibus_png_data = None
         omnibus_result_data = None
         posthoc_output.value = ""
+        posthoc_table.controls.clear()
         posthoc_warnings.value = ""
         posthoc_button.disabled = True
         omnibus_main.value = ""
@@ -1212,7 +1214,44 @@ async def main(page: ft.Page):
                 analyze_posthoc, omnibus_result_data
             )
             text_report = format_posthoc_report(comparisons)
-            posthoc_output.value = text_report
+            posthoc_table.controls.clear()
+            if comparisons.omnibus_method == "kruskal":
+                headers = ["Pair", "Rank diff.", "z", "p adj.", "Sig."]
+                data_rows = [
+                    [
+                        f"{p.first} - {p.second}",
+                        f"{p.estimate:+.2f}",
+                        f"{p.statistic:.2f}",
+                        f"{p.p_adjusted:.3f}" if p.p_adjusted >= 0.001 else "< .001",
+                        "Yes" if p.p_adjusted < 0.05 else "No",
+                    ] for p in comparisons.pairs
+                ]
+            else:
+                headers = ["Pair", "Mean diff.", "95% CI", "p adj.", "Sig."]
+                data_rows = [
+                    [
+                        f"{p.first} - {p.second}",
+                        f"{p.estimate:+.2f}",
+                        f"[{p.ci_low:.2f}, {p.ci_high:.2f}]",
+                        f"{p.p_adjusted:.3f}" if p.p_adjusted >= 0.001 else "< .001",
+                        "Yes" if p.p_adjusted < 0.05 else "No",
+                    ] for p in comparisons.pairs
+                ]
+            posthoc_table.controls.append(
+                ft.DataTable(
+                    columns=[ft.DataColumn(label=ft.Text(h)) for h in headers],
+                    rows=[
+                        ft.DataRow(cells=[
+                            ft.DataCell(ft.Text(value)) for value in row
+                        ]) for row in data_rows
+                    ],
+                )
+            )
+            posthoc_output.value = (
+                f"{comparisons.method}: "
+                f"{sum(p.p_adjusted < 0.05 for p in comparisons.pairs)} of "
+                f"{len(comparisons.pairs)} pairs have adjusted p < .05."
+            )
             posthoc_warnings.value = "\n".join(comparisons.warnings)
             # Keep export coherent with visible current results.
             omnibus_report_text = (
@@ -1464,6 +1503,7 @@ async def main(page: ft.Page):
             "omnibus_export_status": omnibus_export_status,
             "posthoc_button": posthoc_button,
             "posthoc_output": posthoc_output,
+            "posthoc_table": posthoc_table,
             "posthoc_warnings": posthoc_warnings,
         },
         actions={
