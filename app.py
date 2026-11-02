@@ -12,6 +12,9 @@ from descriptive_charts import make_descriptive_chart
 from reliability import analyze_cronbach
 from reliability_reporting import apa_reliability_report, ALPHA_GUIDE
 from reliability_charts import make_reliability_chart
+from correlation import analyze_correlation, recommend_method
+from correlation_reporting import format_correlation_report
+from correlation_charts import make_correlation_chart
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -44,6 +47,69 @@ async def main(page: ft.Page):
     reliability_warnings = ft.Text("")
     reliability_guide = ft.Text("")
     reliability_chart_area = ft.Column()
+
+    # Correlation requires two real measurements, not just two numeric columns.
+    corr_x = ft.Dropdown(label="Variable X", width=270, options=[])
+    corr_y = ft.Dropdown(label="Variable Y", width=270, options=[])
+    corr_scale_x = ft.Dropdown(
+        label="X measurement scale", width=250, value="unknown",
+        options=[
+            ft.DropdownOption(key="unknown", text="Not confirmed"),
+            ft.DropdownOption(key="nominal", text="Nominal (not supported)"),
+            ft.DropdownOption(key="ordinal", text="Ordinal"),
+            ft.DropdownOption(key="scale", text="Quantitative"),
+        ],
+    )
+    corr_scale_y = ft.Dropdown(
+        label="Y measurement scale", width=250, value="unknown",
+        options=[
+            ft.DropdownOption(key="unknown", text="Not confirmed"),
+            ft.DropdownOption(key="nominal", text="Nominal (not supported)"),
+            ft.DropdownOption(key="ordinal", text="Ordinal"),
+            ft.DropdownOption(key="scale", text="Quantitative"),
+        ],
+    )
+    corr_method = ft.Dropdown(
+        label="Correlation method", width=250, value="spearman",
+        options=[
+            ft.DropdownOption(key="spearman", text="Spearman’s ρ"),
+            ft.DropdownOption(key="pearson", text="Pearson’s r"),
+        ],
+    )
+    corr_confirm = ft.Checkbox(
+        label=(
+            "For Pearson only: I reviewed linearity, outliers, "
+            "independence and suitability of the variables"
+        ),
+        value=False,
+    )
+    corr_advice = ft.Text("")
+    corr_output = ft.Text("")
+    corr_warnings = ft.Text("")
+    corr_chart = ft.Column()
+
+    def update_corr_advice(e=None):
+        corr_advice.value = recommend_method(
+            corr_scale_x.value, corr_scale_y.value
+        )
+        corr_confirm.value = False
+        corr_output.value = ""
+        corr_warnings.value = ""
+        corr_chart.controls.clear()
+        page.update()
+
+    def reset_corr_selection(e):
+        if e.control == corr_x:
+            corr_scale_x.value = "unknown"
+        else:
+            corr_scale_y.value = "unknown"
+        update_corr_advice()
+
+    corr_x.on_select = reset_corr_selection
+    corr_y.on_select = reset_corr_selection
+    corr_scale_x.on_select = update_corr_advice
+    corr_scale_y.on_select = update_corr_advice
+    corr_method.on_select = update_corr_advice
     variable = ft.Dropdown(label="Variable", width=270, options=[])
     scale = ft.Dropdown(
         label="Measurement scale (confirm manually)",
@@ -135,6 +201,29 @@ async def main(page: ft.Page):
         reliability_warnings.value = ""
         reliability_guide.value = ""
         reliability_chart_area.controls.clear()
+
+        # Offer numeric variables but leave their measurement scales unconfirmed.
+        numeric_candidates = [
+            str(name) for name in df.columns
+            if pd.api.types.is_numeric_dtype(df[name])
+            and not looks_like_identifier(name)
+        ]
+        corr_x.options = [
+            ft.DropdownOption(key=name, text=name) for name in numeric_candidates
+        ]
+        corr_y.options = [
+            ft.DropdownOption(key=name, text=name) for name in numeric_candidates
+        ]
+        corr_x.value = numeric_candidates[0] if numeric_candidates else None
+        corr_y.value = numeric_candidates[1] if len(numeric_candidates) > 1 else None
+        corr_scale_x.value = "unknown"
+        corr_scale_y.value = "unknown"
+        corr_method.value = "spearman"
+        corr_confirm.value = False
+        corr_output.value = ""
+        corr_warnings.value = ""
+        corr_chart.controls.clear()
+        corr_advice.value = recommend_method("unknown", "unknown")
         page.update()
 
     async def choose_file(e):
@@ -200,6 +289,42 @@ async def main(page: ft.Page):
             )
         except Exception as error:
             reliability_output.value = f"Reliability analysis error: {error}"
+        page.update()
+
+    async def calculate_correlation(e):
+        corr_chart.controls.clear()
+        corr_warnings.value = ""
+
+        if dataframe is None:
+            corr_output.value = "Load a dataset first."
+            page.update()
+            return
+        if not corr_x.value or not corr_y.value:
+            corr_output.value = "Choose two numeric research variables."
+            page.update()
+            return
+
+        corr_output.value = "Calculating correlation and preparing figure..."
+        page.update()
+        try:
+            analysis = await asyncio.to_thread(
+                analyze_correlation,
+                dataframe,
+                corr_x.value,
+                corr_y.value,
+                corr_method.value,
+                corr_scale_x.value,
+                corr_scale_y.value,
+                bool(corr_confirm.value),
+            )
+            corr_output.value = format_correlation_report(analysis)
+            corr_warnings.value = "\n".join(analysis.warnings)
+            figure = await asyncio.to_thread(make_correlation_chart, analysis)
+            corr_chart.controls.append(
+                ft.Image(src=figure, width=820, height=520)
+            )
+        except Exception as error:
+            corr_output.value = f"Correlation analysis error: {error}"
         page.update()
 
     # Visualization follows the same scale and identifier safeguards as the table.
@@ -277,7 +402,7 @@ async def main(page: ft.Page):
 
     page.add(
         ft.Text("Statistical Research Assistant", size=28, weight="bold"),
-        ft.Text("Step 4 | Descriptive statistics and scale reliability"),
+        ft.Text("Step 5 | Reliability and correlation analysis"),
         ft.Row(
             controls=[
                 ft.Button("Open CSV / Excel", on_click=choose_file),
@@ -308,6 +433,20 @@ async def main(page: ft.Page):
         reliability_guide,
         reliability_warnings,
         reliability_chart_area,
+        ft.Text("CORRELATION ANALYSIS", size=18, weight="bold"),
+        ft.Text(
+            "Select two measurements. Confirm their scales; review the "
+            "study design and scatterplot before interpreting significance."
+        ),
+        ft.Row(controls=[corr_x, corr_y], wrap=True),
+        ft.Row(controls=[corr_scale_x, corr_scale_y], wrap=True),
+        corr_advice,
+        corr_method,
+        corr_confirm,
+        ft.Button("Calculate correlation", on_click=calculate_correlation),
+        corr_output,
+        corr_warnings,
+        corr_chart,
     )
     page.update()
 
