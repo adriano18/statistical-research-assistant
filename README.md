@@ -21,6 +21,7 @@ The Flet application uses a left navigation menu instead of one long scrolling p
 - **Correlations**: analyze two variables with Pearson or Spearman and view the scatterplot.
 - **Correlation matrix**: compare up to eight variables in a heatmap with pairwise N.
 - **Compare groups**: compare two independent groups with Welch’s t or Mann–Whitney U, APA-style results and boxplots.
+- **Paired measures**: analyze repeated before/after observations with paired t or Wilcoxon, plus a participant-level change plot.
 
 Use **Dataset** first. Switching between sections preserves analysis results until a new dataset is loaded. The calculation modules and the local-data privacy approach have not changed.
 
@@ -80,6 +81,17 @@ The earlier two-variable scatterplot now shows a small reproducible **display-on
 The report includes group means, SDs, medians, sample sizes, test statistic, two-sided p-value, effect estimate and an APA 7-style boxplot with individual points. Welch additionally reports fractional degrees of freedom, the 95% CI of the **mean difference (first group minus second)** and a pooled-SD Hedges g. Mann–Whitney reports U and rank-biserial r (positive means the first group tends to have higher ranks); no confidence interval for this rank effect is currently implemented. When there are ties, Mann–Whitney uses SciPy's tie-corrected asymptotic method.
 
 **Research caveats:** this module is only for two **independent** groups. Paired samples require another method. Mann–Whitney is not universally a median test, and unequal group shapes complicate interpretation. The checkbox does not test assumptions. The included examples are artificial and too small for substantive generalization. Figure numbering is a placeholder for a manuscript.
+
+## Paired measurements (Step 8)
+
+1. In **Dataset**, choose **Load paired example** (`examples/sample_paired.csv`).
+2. Open **Paired measures**. The example preselects `before_score` and `after_score`.
+3. For an ordinal example, choose **Ordinal** and **Wilcoxon signed-rank**. Check that every row contains both measurements from the same participant. Review the paired differences, their approximate symmetry, outliers and independence *between* participants, then click **Compare paired scores**.
+4. For a mean-change analysis, confirm **Quantitative** and select **Paired-samples t-test** after reviewing the distribution of differences.
+
+The example contains 24 fictional participants, 22 with both scores present. Both tests analyze only complete pairs. Results include sample sizes, descriptives, a two-sided p-value, appropriate effect estimates and a graph connecting paired observations. For the t-test, **mean change = after − before**, its 95% confidence interval, fractional-free df (N−1), and Cohen's *dz* are shown. Wilcoxon reports **W**, the matched-pairs rank-biserial correlation, and the number of zero differences; it does not report an invented CI.
+
+**Important:** a paired t-test examines mean differences, not whether the before and after distributions are individually normal. Wilcoxon uses ranks of nonzero differences and is not always a simple median-change test. Do not use either test for independent groups. The sample is synthetic and is not evidence of intervention effectiveness. Figure numbering is illustrative, not final manuscript numbering.
 
 ## Privacy and analysis notes
 - Keep actual participants' data in the ignored `data/` folder. Do not commit identifiable research data.
