@@ -97,6 +97,20 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 c["guidance"],
                 c["chart_area"],
             ]),
+            panel("Explore: boxplot and assumption checks", [
+                ft.Text(
+                    "Choose a quantitative outcome and optional grouping variable. "
+                    "The figure includes a boxplot and normal Q–Q plot.",
+                    color="#A8B6C9",
+                ),
+                ft.Row(
+                    controls=[c["explore_variable"], c["explore_group"]],
+                    wrap=True, spacing=12,
+                ),
+                ft.Button("Explore distributions", on_click=a["run_explore"]),
+                c["explore_output"],
+                c["explore_chart"],
+            ]),
         ],
         spacing=18,
         visible=False,
