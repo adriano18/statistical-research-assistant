@@ -18,7 +18,8 @@ Statistical Research Assistant is a learning-oriented, local-first research tool
 - [x] Paired t-test and Wilcoxon signed-rank
 - [x] Pearson chi-square test of independence, Cramér's V, expected-count checks and Fisher exact result for sparse 2×2 tables
 - [ ] Chi-square goodness-of-fit when theoretically needed
-- [ ] One-way ANOVA, Welch ANOVA, Kruskal–Wallis and appropriate post-hoc tests
+- [x] One-way ANOVA, Welch ANOVA and Kruskal–Wallis omnibus tests (3–8 groups), descriptive effect estimates and plots
+- [ ] Post-hoc comparisons (Tukey / Games–Howell / Dunn as appropriate) with multiplicity correction
 - [ ] Repeated-measures ANOVA and Friedman with multiple-comparison control
 - [ ] Assumption diagnostics: Q–Q plots, Shapiro–Wilk, variance checks, outliers, paired-difference diagnostics
 - [ ] Regression (linear, multiple, logistic) and related diagnostics
