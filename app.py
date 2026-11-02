@@ -9,9 +9,11 @@ import pandas as pd
 from data_loader import load_dataset, variable_overview
 from variable_rules import looks_like_identifier
 from descriptive_charts import make_descriptive_chart
+from reliability import analyze_cronbach
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
+SCALE_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_scale.csv"
 
 
 async def main(page: ft.Page):
@@ -31,6 +33,13 @@ async def main(page: ft.Page):
     results = ft.Text("")
     guidance = ft.Text("")
     chart_area = ft.Column()
+    reliability_items = ft.Column(height=180, scroll=ft.ScrollMode.AUTO)
+    reliability_confirm = ft.Checkbox(
+        label="I checked that the items measure one construct and reversed items are recoded",
+        value=False,
+    )
+    reliability_output = ft.Text("")
+    reliability_warnings = ft.Text("")
     variable = ft.Dropdown(label="Variable", width=270, options=[])
     scale = ft.Dropdown(
         label="Measurement scale (confirm manually)",
@@ -109,6 +118,17 @@ async def main(page: ft.Page):
         results.value = ""
         guidance.value = ""
         chart_area.controls.clear()
+
+        # Numeric columns are only candidates, not automatically valid scales.
+        reliability_items.controls = [
+            ft.Checkbox(label=str(name), value=False)
+            for name in df.columns
+            if pd.api.types.is_numeric_dtype(df[name])
+            and not looks_like_identifier(name)
+        ]
+        reliability_confirm.value = False
+        reliability_output.value = ""
+        reliability_warnings.value = ""
         page.update()
 
     async def choose_file(e):
@@ -130,6 +150,50 @@ async def main(page: ft.Page):
 
     async def load_sample(e):
         await show_file(SAMPLE)
+
+    async def load_scale_example(e):
+        await show_file(SCALE_SAMPLE)
+
+    async def calculate_alpha(e):
+        if dataframe is None:
+            reliability_output.value = "Load a dataset first."
+            page.update()
+            return
+
+        selected = [
+            box.label for box in reliability_items.controls if box.value
+        ]
+        if not reliability_confirm.value:
+            reliability_output.value = (
+                "Confirm common construct and consistent scoring direction first."
+            )
+            page.update()
+            return
+
+        reliability_output.value = "Calculating Cronbach's alpha..."
+        reliability_warnings.value = ""
+        page.update()
+        try:
+            analysis = await asyncio.to_thread(
+                analyze_cronbach, dataframe, selected
+            )
+            lines = [
+                f"Items: {', '.join(analysis.items)}",
+                f"Complete cases: {analysis.n_complete}/{analysis.n_total}",
+                f"Cronbach's alpha: {analysis.alpha:.3f}",
+                f"95% CI: [{analysis.ci_low:.3f}, {analysis.ci_high:.3f}]",
+            ]
+            if analysis.alpha_if_deleted:
+                lines.append("Alpha if item deleted:")
+                lines += [
+                    f"  {name}: {score:.3f}"
+                    for name, score in analysis.alpha_if_deleted.items()
+                ]
+            reliability_output.value = "\n".join(lines)
+            reliability_warnings.value = "\n".join(analysis.warnings)
+        except Exception as error:
+            reliability_output.value = f"Reliability analysis error: {error}"
+        page.update()
 
     # Visualization follows the same scale and identifier safeguards as the table.
     async def analyze_variable(e):
@@ -211,6 +275,7 @@ async def main(page: ft.Page):
             controls=[
                 ft.Button("Open CSV / Excel", on_click=choose_file),
                 ft.Button("Load example", on_click=load_sample),
+                ft.Button("Load scale example", on_click=load_scale_example),
             ],
             wrap=True,
         ),
@@ -224,6 +289,16 @@ async def main(page: ft.Page):
         results,
         guidance,
         chart_area,
+        ft.Text("SCALE RELIABILITY", size=18, weight="bold"),
+        ft.Text(
+            "Select at least three numeric items from ONE questionnaire scale. "
+            "Do not select demographics, IDs, or unrelated variables."
+        ),
+        reliability_items,
+        reliability_confirm,
+        ft.Button("Calculate Cronbach's alpha", on_click=calculate_alpha),
+        reliability_output,
+        reliability_warnings,
     )
     page.update()
 
