@@ -26,6 +26,7 @@ CONTROL_NAMES = [
     "paired_export_status",
     "chi_a", "chi_b", "chi_confirm", "chi_main", "chi_brief",
     "chi_output", "chi_warnings", "chi_chart",
+    "chi_export_png_button", "chi_export_txt_button", "chi_export_status",
 ]
 
 ACTION_NAMES = [
