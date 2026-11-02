@@ -7,6 +7,7 @@ import flet as ft
 import pandas as pd
 
 from data_loader import load_dataset, variable_overview
+from variable_rules import looks_like_identifier
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -42,7 +43,7 @@ async def main(page: ft.Page):
     )
 
     def reset_scale(e):
-        scale.value = "unknown"
+        scale.value = "id" if looks_like_identifier(variable.value) else "unknown"
         results.value = ""
         page.update()
 
@@ -94,8 +95,12 @@ async def main(page: ft.Page):
             ft.DropdownOption(key=str(name), text=str(name))
             for name in df.columns
         ]
-        variable.value = str(df.columns[0])
-        scale.value = "unknown"
+        # Start with the first non-identifier variable to avoid meaningless means.
+        variable.value = next(
+            (str(name) for name in df.columns if not looks_like_identifier(name)),
+            str(df.columns[0]),
+        )
+        scale.value = "id" if looks_like_identifier(variable.value) else "unknown"
         results.value = ""
         page.update()
 
@@ -122,6 +127,11 @@ async def main(page: ft.Page):
     def analyze_variable(e):
         if dataframe is None or not variable.value:
             results.value = "Load data first."
+        elif looks_like_identifier(variable.value):
+            results.value = (
+                "This column looks like an identifier, not a research score. "
+                "Choose an actual measurement variable instead."
+            )
         elif scale.value == "unknown":
             results.value = "Confirm the measurement scale before analysis."
         elif scale.value == "id":
