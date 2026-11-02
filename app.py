@@ -165,8 +165,8 @@ async def main(page: ft.Page):
                 numeric = pd.to_numeric(values, errors="coerce").dropna()
                 std = f"{numeric.std():.2f}" if len(numeric) > 1 else "N/A"
                 results.value = (
-                    f"{variable.value} | N = {len(numeric)} | Missing = {missing}\\n"
-                    f"Mean = {numeric.mean():.2f} | Median = {numeric.median():.2f}\\n"
+                    f"{variable.value} | N = {len(numeric)} | Missing = {missing}\n"
+                    f"Mean = {numeric.mean():.2f} | Median = {numeric.median():.2f}\n"
                     f"SD = {std} | Min = {numeric.min():.2f} | "
                     f"Max = {numeric.max():.2f}"
                 )
@@ -188,7 +188,7 @@ async def main(page: ft.Page):
                 lines += [f"{label}: {count}" for label, count in counts.items()]
                 if values.nunique(dropna=False) > 15:
                     lines.append("Showing only 15 most common categories.")
-                results.value = "\\n".join(lines)
+                results.value = "\n".join(lines)
                 guidance.value = (
                     "Interpretation: the bars show response frequencies, not "
                     "evidence of differences between groups. For ordinal data, "
