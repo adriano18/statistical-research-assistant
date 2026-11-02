@@ -1,6 +1,6 @@
 """Flet interface layout for the Statistical Research Assistant.
 
-The interface is divided into seven screens. Calculation logic stays in app.py;
+The interface is divided into eight screens. Calculation logic stays in app.py;
 existing controls are reused, so switching screens preserves user selections.
 """
 
@@ -49,6 +49,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         ft.Button("Load survey example", on_click=a["load_sample"]),
                         ft.Button("Load scale example", on_click=a["load_scale_example"]),
                         ft.Button("Load paired example", on_click=a["load_paired_example"]),
+                        ft.Button("Load categorical example", on_click=a["load_categorical_example"]),
                     ],
                     wrap=True,
                     spacing=10,
@@ -268,12 +269,70 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 c["paired_assumptions"],
                 ft.Button("Compare paired scores", on_click=a["calculate_paired"]),
             ]),
-            panel("APA 7-style result", [
-                c["paired_output"],
+            panel("A. Main result", [
+                c["paired_main"],
+                c["paired_brief"],
+            ]),
+            panel("B. Descriptives", [
+                c["paired_descriptive"],
+            ]),
+            panel("C. Notes / assumptions", [
                 c["paired_warnings"],
+            ]),
+            panel("APA 7 report and local export", [
+                c["paired_output"],
+                ft.Row(
+                    controls=[
+                        c["paired_export_png_button"],
+                        c["paired_export_txt_button"],
+                    ],
+                    wrap=True, spacing=12,
+                ),
+                c["paired_export_status"],
             ]),
             panel("Individual changes", [
                 c["paired_chart"],
+            ]),
+        ],
+        spacing=18,
+        visible=False,
+    )
+
+    # Screen 8: independence test for categorical variables.
+    chi_screen = ft.Column(
+        controls=[
+            heading(
+                "Chi-square association",
+                "Explore association between two categorical variables.",
+            ),
+            panel("Select categorical variables", [
+                ft.Text(
+                    "Choose two nominal or ordinal variables (including coded "
+                    "categories). This is a test of independence, not of means.",
+                    color="#A8B6C9",
+                ),
+                ft.Row(
+                    controls=[c["chi_a"], c["chi_b"]],
+                    wrap=True, spacing=12,
+                ),
+                c["chi_confirm"],
+                ft.Button(
+                    "Calculate χ²",
+                    on_click=a["calculate_chi_square"],
+                ),
+            ]),
+            panel("A. Main result and interpretation", [
+                c["chi_main"],
+                c["chi_brief"],
+            ]),
+            panel("B. Observed and expected counts / APA text", [
+                c["chi_output"],
+            ]),
+            panel("C. Notes / assumptions", [
+                c["chi_warnings"],
+            ]),
+            panel("Contingency table figure", [
+                c["chi_chart"],
             ]),
         ],
         spacing=18,
@@ -288,6 +347,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "matrix": matrix_screen,
         "groups": groups_screen,
         "paired": paired_screen,
+        "chi": chi_screen,
     }
     labels = {
         "dataset": "Dataset",
@@ -297,6 +357,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "matrix": "Correlation matrix",
         "groups": "Compare groups",
         "paired": "Paired measures",
+        "chi": "Chi-square",
     }
 
     # One visible workspace avoids a several-screen-long vertical application.
