@@ -4,12 +4,14 @@ A Python project for exploring research datasets and, later, selecting and inter
 
 **Goal:** a small, transparent alternative to common SPSS workflows for psychology, marketing and business research. The program will calculate statistics using established Python libraries. A future assistant may explain results, but it must not invent numbers or choose tests without checking their assumptions.
 
+**[Full development roadmap](ROADMAP.md)** — statistics first, AI advisor second, reporting and multilingual UI/UX next.
+
 ## Development plan
 1. **v0.1 Data inspection** — import CSV/XLSX, review variables, missing values and their inferred data types.
 2. **v0.2 Descriptive statistics** (in progress) — N, mean, median, SD, distributions and plots.
-3. **v0.3 Research methods** (in progress) — Cronbach's alpha, Pearson/Spearman correlations, independent-group Welch and Mann–Whitney tests with safeguards and effect sizes.
-4. **v0.4 Method advisor** — ask about the study design, propose tests and explain their assumptions.
-5. **v0.5 Flet interface and reports** — interactive analysis, plots, Excel/PDF export.
+3. **v0.3 Research methods** (in progress) — reliability, correlations, independent and paired group tests, and Pearson χ² independence with safeguards; ANOVA, regression and diagnostics are planned.
+4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
+5. **v0.5 Reports and localization** — local TXT/PNG export currently available for paired analyses; expand to APA tables, DOCX/PDF and English, Latvian and Russian.
 
 ## Desktop interface
 
@@ -21,7 +23,8 @@ The Flet application uses a left navigation menu instead of one long scrolling p
 - **Correlations**: analyze two variables with Pearson or Spearman and view the scatterplot.
 - **Correlation matrix**: compare up to eight variables in a heatmap with pairwise N.
 - **Compare groups**: compare two independent groups with Welch’s t or Mann–Whitney U, APA-style results and boxplots.
-- **Paired measures**: analyze repeated before/after observations with paired t or Wilcoxon, plus a participant-level change plot.
+- **Paired measures**: analyze repeated before/after observations with paired t or Wilcoxon, plus a participant-level change plot, compact results and local exports.
+- **Chi-square**: analyze two categorical variables, inspect observed/expected counts, Cramér’s V and sparse-table cautions.
 
 Use **Dataset** first. Switching between sections preserves analysis results until a new dataset is loaded. The calculation modules and the local-data privacy approach have not changed.
 
@@ -89,9 +92,21 @@ The report includes group means, SDs, medians, sample sizes, test statistic, two
 3. For an ordinal example, choose **Ordinal** and **Wilcoxon signed-rank**. Check that every row contains both measurements from the same participant. Review the paired differences, their approximate symmetry, outliers and independence *between* participants, then click **Compare paired scores**.
 4. For a mean-change analysis, confirm **Quantitative** and select **Paired-samples t-test** after reviewing the distribution of differences.
 
-The example contains 24 fictional participants, 22 with both scores present. Both tests analyze only complete pairs. Results include sample sizes, descriptives, a two-sided p-value, appropriate effect estimates and a graph connecting paired observations. For the t-test, **mean change = after − before**, its 95% confidence interval, fractional-free df (N−1), and Cohen's *dz* are shown. Wilcoxon reports **W**, the matched-pairs rank-biserial correlation, and the number of zero differences; it does not report an invented CI.
+The example contains 24 fictional participants, 22 with both scores present. The updated paired screen separates **A. Main result**, **B. Descriptives**, **C. Notes / assumptions**, followed by full APA 7-style text and a before/after plot. Use **Save figure PNG** or **Save APA report TXT** to write local files into the ignored `reports/` directory. These filenames are overwritten by the next export; there is no cloud upload. Both tests analyze only complete pairs. Results include sample sizes, descriptives, a two-sided p-value, appropriate effect estimates and a graph connecting paired observations. For the t-test, **mean change = after − before**, its 95% confidence interval, fractional-free df (N−1), and Cohen's *dz* are shown. Wilcoxon reports **W**, the matched-pairs rank-biserial correlation, and the number of zero differences; it does not report an invented CI.
 
 **Important:** a paired t-test examines mean differences, not whether the before and after distributions are individually normal. Wilcoxon uses ranks of nonzero differences and is not always a simple median-change test. Do not use either test for independent groups. The sample is synthetic and is not evidence of intervention effectiveness. Figure numbering is illustrative, not final manuscript numbering.
+
+## Chi-square independence (Step 9)
+
+In **Dataset**, choose **Load categorical example** (`examples/sample_categorical.csv`). Open **Chi-square** and select `group` and `outcome`. Confirm independent observations and categorical measurement scales, then click **Calculate χ²**.
+
+The report includes the uncorrected Pearson χ² statistic, degrees of freedom, two-sided asymptotic p-value, N, observed and expected frequencies, Cramér's V and a contingency-table figure. If any expected cell count is below 5, the app warns that the asymptotic p-value may be unreliable. For sparse **2×2** tables, it also displays a separate two-sided Fisher exact p-value. **These tests do not prove causation**, and sparse tables beyond 2×2 need other exact or resampling approaches.
+
+The example uses fabricated category counts and is not evidence of intervention effectiveness. Figure 6 is a placeholder manuscript figure number.
+
+## Interface languages
+
+The application currently uses **English (EN)**. **Latvian (LV)** and **Russian (RU)** are explicitly planned in [ROADMAP.md](ROADMAP.md). A future language selector should translate menus, messages, cautions and report narratives, not just button labels. APA 7 statistical symbols remain unchanged across languages.
 
 ## Privacy and analysis notes
 - Keep actual participants' data in the ignored `data/` folder. Do not commit identifiable research data.
