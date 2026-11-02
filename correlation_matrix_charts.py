@@ -17,8 +17,7 @@ def make_correlation_matrix_chart(result) -> bytes:
     fig, ax = plt.subplots(figsize=(fig_size, fig_size * 0.83))
     try:
         data = np.ma.masked_invalid(result.coefficients)
-        cmap = plt.get_cmap("coolwarm").copy()
-        cmap.set_bad("#e5e7eb")
+        cmap = plt.get_cmap("coolwarm").with_extremes(bad="#e5e7eb")
         plot = ax.imshow(data, cmap=cmap, vmin=-1, vmax=1)
 
         ax.set_xticks(range(k), labels=result.names, rotation=35, ha="right")
