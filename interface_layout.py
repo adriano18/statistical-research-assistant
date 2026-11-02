@@ -1,6 +1,6 @@
 """Flet interface layout for the Statistical Research Assistant.
 
-The interface is divided into nine screens. Calculation logic stays in app.py;
+The interface is divided into ten screens. Calculation logic stays in app.py;
 existing controls are reused, so switching screens preserves user selections.
 """
 
@@ -51,6 +51,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         ft.Button("Load paired example", on_click=a["load_paired_example"]),
                         ft.Button("Load categorical example", on_click=a["load_categorical_example"]),
                         ft.Button("Load three-group example", on_click=a["load_three_groups_example"]),
+                        ft.Button("Load regression example", on_click=a["load_regression_example"]),
                     ],
                     wrap=True,
                     spacing=10,
@@ -429,6 +430,52 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         visible=False,
     )
 
+    # Screen 10: one or several numerical predictors, independent observations.
+    regression_screen = ft.Column(
+        controls=[
+            heading(
+                "Linear regression",
+                "Simple and multiple OLS with transparent coefficients and residual checks.",
+            ),
+            panel("Study variables and design", [
+                ft.Text(
+                    "One quantitative outcome and 1–5 quantitative predictors. "
+                    "Numeric category codes are not automatically converted to dummies.",
+                    color="#A8B6C9",
+                ),
+                c["reg_outcome"],
+                ft.Text("Predictors", weight="bold"),
+                c["reg_predictors"],
+                c["reg_hc3"],
+                c["reg_confirm"],
+                ft.Button("Fit linear model", on_click=a["run_regression"]),
+            ]),
+            panel("Main model result", [
+                c["reg_main"],
+                c["reg_brief"],
+            ]),
+            panel("Model diagnostics", [
+                c["reg_chart"],
+            ]),
+            panel("Coefficients and APA-style report", [
+                ft.ExpansionTile(
+                    title="Show detailed regression report",
+                    expanded=False,
+                    controls=[c["reg_report"]],
+                ),
+            ]),
+            panel("Assumptions and cautions", [
+                ft.ExpansionTile(
+                    title="Review regression limitations",
+                    expanded=False,
+                    controls=[c["reg_warnings"]],
+                ),
+            ]),
+        ],
+        spacing=18,
+        visible=False,
+    )
+
     screens = {
         "dataset": dataset_screen,
         "descriptive": descriptive_screen,
@@ -439,6 +486,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "paired": paired_screen,
         "chi": chi_screen,
         "omnibus": omnibus_screen,
+        "regression": regression_screen,
     }
     labels = {
         "dataset": "Dataset",
@@ -450,6 +498,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "paired": "Paired measures",
         "chi": "Chi-square",
         "omnibus": "ANOVA / Kruskal",
+        "regression": "Linear regression",
     }
 
     # One visible workspace avoids a several-screen-long vertical application.
@@ -498,6 +547,8 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 buttons["groups"],
                 buttons["paired"],
                 buttons["omnibus"],
+                ft.Text("MODELING", size=10, color="#9CB7DA"),
+                buttons["regression"],
                 ft.Divider(),
                 ft.Text(
                     "Tip: load data in Dataset, then choose any analysis "
