@@ -40,7 +40,7 @@ The sample dataset is fictional and is **not suitable for scientific conclusions
 
 ## Correlation demo
 
-In the desktop app, click **Load scale example**. Under **CORRELATION ANALYSIS**, choose the two items \`stress_q1\` and \`stress_q2\`. Confirm **Ordinal** for both, keep **Spearman’s ρ**, then click **Calculate correlation**.
+In the desktop app, click **Load scale example**. Under **CORRELATION ANALYSIS**, choose the two items `stress_q1` and `stress_q2`. Confirm **Ordinal** for both, keep **Spearman’s ρ**, then click **Calculate correlation**.
 
 For Pearson, choose two genuinely quantitative measurements, confirm their scales, inspect whether a linear association and the study assumptions are appropriate, then select **Pearson’s r** and check its separate assumptions box. Numeric column storage alone does not justify Pearson. Do not include IDs or nominal groups.
 
