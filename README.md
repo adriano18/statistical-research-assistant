@@ -48,6 +48,14 @@ Both methods report the correlation coefficient, a two-sided p-value, paired N, 
 
 Plots show associations, not causality. The Figure 2 number is a placeholder and should be renumbered in a manuscript. The app does not choose the method automatically from the column data type; it supplies conditional guidance. For scientific analysis, consider dependence, outliers, monotonicity/linearity, sample design, effect interpretation and multiple testing.
 
+## Exploratory correlation matrix (Step 6)
+
+Use **Load scale example**. Under **CORRELATION MATRIX**, tick `stress_q1`, `stress_q2`, `stress_q3` and `stress_q4`. Select **Spearman’s ρ** for these numeric-coded ordinal items, confirm the measurement scales and choose **Calculate correlation matrix**.
+
+The figure displays coefficients and the number of complete pairs (N) in each cell. Unlike the two-variable correlation analysis, this is deliberately **descriptive only**, with no p-values, confidence intervals or significance stars. Values can be N/A if there are fewer than five pairs or no variation. Selecting many correlations for significance testing requires a separate plan for multiple testing and appropriate assumptions.
+
+The earlier two-variable scatterplot now shows a small reproducible **display-only jitter** for overlapping ordinal points. Calculations still use the unmodified values. The figure notes wrap instead of being cut off. Figure numbers are manuscript placeholders, not final APA numbering.
+
 ## Privacy and analysis notes
 - Keep actual participants' data in the ignored `data/` folder. Do not commit identifiable research data.
 - Numeric codes such as 1–5 can represent ordinal Likert responses or categorical groups. A numeric data type is not enough to determine the measurement scale or justify a statistical test.
