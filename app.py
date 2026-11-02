@@ -36,6 +36,8 @@ from omnibus_reporting import (
     format_omnibus_report, format_omnibus_summary, interpret_omnibus
 )
 from omnibus_charts import make_omnibus_chart
+from posthoc_analysis import analyze_posthoc
+from posthoc_reporting import format_posthoc_report
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -215,11 +217,19 @@ async def main(page: ft.Page):
     omnibus_export_txt_button = ft.Button("Save APA report TXT", disabled=True)
     omnibus_report_text = ""
     omnibus_png_data = None
+    omnibus_result_data = None
+    posthoc_output = ft.Text("")
+    posthoc_warnings = ft.Text("")
+    posthoc_button = ft.Button("Run post-hoc comparisons", disabled=True)
 
     def clear_omnibus(e=None):
-        nonlocal omnibus_report_text, omnibus_png_data
+        nonlocal omnibus_report_text, omnibus_png_data, omnibus_result_data
         omnibus_report_text = ""
         omnibus_png_data = None
+        omnibus_result_data = None
+        posthoc_output.value = ""
+        posthoc_warnings.value = ""
+        posthoc_button.disabled = True
         omnibus_main.value = ""
         omnibus_brief.value = ""
         omnibus_output.value = ""
@@ -406,7 +416,7 @@ async def main(page: ft.Page):
 
     # The same data loader is shared by this GUI and inspect_data.py.
     async def show_file(path):
-        nonlocal dataframe, paired_report_text, paired_png_data, chi_report_text, chi_png_data, omnibus_report_text, omnibus_png_data
+        nonlocal dataframe, paired_report_text, paired_png_data, chi_report_text, chi_png_data, omnibus_report_text, omnibus_png_data, omnibus_result_data
         try:
             df = await asyncio.to_thread(load_dataset, path)
             if df.columns.empty:
@@ -636,6 +646,10 @@ async def main(page: ft.Page):
         omnibus_assumptions.value = False
         omnibus_report_text = ""
         omnibus_png_data = None
+        omnibus_result_data = None
+        posthoc_output.value = ""
+        posthoc_warnings.value = ""
+        posthoc_button.disabled = True
         omnibus_main.value = ""
         omnibus_brief.value = ""
         omnibus_output.value = ""
@@ -975,9 +989,13 @@ async def main(page: ft.Page):
     chi_export_txt_button.on_click = export_chi_txt
 
     async def calculate_omnibus(e):
-        nonlocal omnibus_report_text, omnibus_png_data
+        nonlocal omnibus_report_text, omnibus_png_data, omnibus_result_data
         omnibus_main.value = ""
         omnibus_brief.value = ""
+        omnibus_result_data = None
+        posthoc_output.value = ""
+        posthoc_warnings.value = ""
+        posthoc_button.disabled = True
         omnibus_output.value = "Calculating group comparison..."
         omnibus_warnings.value = ""
         omnibus_chart.controls.clear()
@@ -1011,11 +1029,46 @@ async def main(page: ft.Page):
             )
             omnibus_report_text = report
             omnibus_png_data = png
+            omnibus_result_data = analysis
+            posthoc_button.disabled = False
             omnibus_export_png_button.disabled = False
             omnibus_export_txt_button.disabled = False
         except Exception as error:
             omnibus_output.value = f"Omnibus analysis error: {error}"
         page.update()
+
+    async def calculate_posthoc(e):
+        nonlocal omnibus_report_text
+        if omnibus_result_data is None:
+            posthoc_output.value = "Run the omnibus test first."
+            page.update()
+            return
+
+        posthoc_output.value = "Calculating pairwise comparisons..."
+        posthoc_warnings.value = ""
+        posthoc_button.disabled = True
+        page.update()
+        try:
+            comparisons = await asyncio.to_thread(
+                analyze_posthoc, omnibus_result_data
+            )
+            text_report = format_posthoc_report(comparisons)
+            posthoc_output.value = text_report
+            posthoc_warnings.value = "\n".join(comparisons.warnings)
+            # Keep export coherent with visible current results.
+            omnibus_report_text = (
+                format_omnibus_report(omnibus_result_data)
+                + "\n\n" + text_report
+                + "\n\nAssumptions and limitations:\n"
+                + "\n".join(comparisons.warnings)
+            )
+        except Exception as error:
+            posthoc_output.value = f"Post-hoc analysis error: {error}"
+        finally:
+            posthoc_button.disabled = False
+        page.update()
+
+    posthoc_button.on_click = calculate_posthoc
 
     async def export_omnibus_png(e):
         if not omnibus_png_data:
@@ -1204,6 +1257,9 @@ async def main(page: ft.Page):
             "omnibus_export_png_button": omnibus_export_png_button,
             "omnibus_export_txt_button": omnibus_export_txt_button,
             "omnibus_export_status": omnibus_export_status,
+            "posthoc_button": posthoc_button,
+            "posthoc_output": posthoc_output,
+            "posthoc_warnings": posthoc_warnings,
         },
         actions={
             "choose_file": choose_file,
