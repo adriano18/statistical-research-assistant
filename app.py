@@ -222,6 +222,18 @@ async def main(page: ft.Page):
     chi_warnings = ft.Text("")
     chi_chart = ft.Column()
 
+    def reset_chi_result(e=None):
+        chi_main.value = ""
+        chi_brief.value = ""
+        chi_output.value = ""
+        chi_warnings.value = ""
+        chi_chart.controls.clear()
+        page.update()
+
+    chi_a.on_select = reset_chi_result
+    chi_b.on_select = reset_chi_result
+    chi_confirm.on_change = reset_chi_result
+
     def update_paired_advice(e=None):
         nonlocal paired_report_text, paired_png_data
         paired_report_text = ""
