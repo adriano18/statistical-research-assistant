@@ -4,3 +4,4 @@ flet>=1.0,<2
 matplotlib>=3.9,<4
 pingouin>=0.6,<1
 scipy>=1.16,<2
+statsmodels>=0.14,<1
