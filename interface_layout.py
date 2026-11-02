@@ -1,6 +1,6 @@
 """Flet interface layout for the Statistical Research Assistant.
 
-The interface is divided into six screens. Calculation logic stays in app.py;
+The interface is divided into seven screens. Calculation logic stays in app.py;
 existing controls are reused, so switching screens preserves user selections.
 """
 
@@ -48,6 +48,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         ft.Button("Open CSV / Excel", on_click=a["choose_file"]),
                         ft.Button("Load survey example", on_click=a["load_sample"]),
                         ft.Button("Load scale example", on_click=a["load_scale_example"]),
+                        ft.Button("Load paired example", on_click=a["load_paired_example"]),
                     ],
                     wrap=True,
                     spacing=10,
@@ -241,6 +242,44 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         visible=False,
     )
 
+    # Screen 7: before/after measurements from the same respondents.
+    paired_screen = ft.Column(
+        controls=[
+            heading(
+                "Paired measurements",
+                "Compare before and after results from the same participants.",
+            ),
+            panel("Select repeated measurements", [
+                ft.Text(
+                    "Each spreadsheet row must represent one participant, "
+                    "with both values aligned. Independent groups are not paired.",
+                    color="#A8B6C9",
+                ),
+                ft.Row(
+                    controls=[c["paired_before"], c["paired_after"]],
+                    wrap=True, spacing=12,
+                ),
+                ft.Row(
+                    controls=[c["paired_scale"], c["paired_method"]],
+                    wrap=True, spacing=12,
+                ),
+                c["paired_confirm"],
+                c["paired_advice"],
+                c["paired_assumptions"],
+                ft.Button("Compare paired scores", on_click=a["calculate_paired"]),
+            ]),
+            panel("APA 7-style result", [
+                c["paired_output"],
+                c["paired_warnings"],
+            ]),
+            panel("Individual changes", [
+                c["paired_chart"],
+            ]),
+        ],
+        spacing=18,
+        visible=False,
+    )
+
     screens = {
         "dataset": dataset_screen,
         "descriptive": descriptive_screen,
@@ -248,6 +287,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "correlation": correlation_screen,
         "matrix": matrix_screen,
         "groups": groups_screen,
+        "paired": paired_screen,
     }
     labels = {
         "dataset": "Dataset",
@@ -256,6 +296,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "correlation": "Correlations",
         "matrix": "Correlation matrix",
         "groups": "Compare groups",
+        "paired": "Paired measures",
     }
 
     # One visible workspace avoids a several-screen-long vertical application.
