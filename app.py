@@ -24,11 +24,19 @@ from group_comparison_charts import make_group_comparison_chart
 from paired_analysis import analyze_paired, recommend_paired_test
 from paired_reporting import format_paired_report
 from paired_charts import make_paired_chart
+from paired_presentation import paired_main_result, paired_descriptives, paired_interpretation
+from report_export import save_apa_txt, save_figure_png
+from chi_square import analyze_chi_square
+from chi_square_reporting import (
+    format_chi_square_report, summarize_chi_square, interpret_chi_square
+)
+from chi_square_charts import make_chi_square_chart
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
 SCALE_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_scale.csv"
 PAIRED_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_paired.csv"
+CATEGORICAL_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_categorical.csv"
 
 
 async def main(page: ft.Page):
@@ -192,8 +200,38 @@ async def main(page: ft.Page):
     paired_output = ft.Text("")
     paired_warnings = ft.Text("")
     paired_chart = ft.Column()
+    paired_main = ft.Text("")
+    paired_descriptive = ft.Text("")
+    paired_brief = ft.Text("")
+    paired_export_status = ft.Text("")
+    paired_export_png_button = ft.Button("Save figure PNG", disabled=True)
+    paired_export_txt_button = ft.Button("Save APA report TXT", disabled=True)
+    paired_report_text = ""
+    paired_png_data = None
+
+    # Chi-square independence uses two categorical variables (not scores).
+    chi_a = ft.Dropdown(label="Categorical variable A", width=300, options=[])
+    chi_b = ft.Dropdown(label="Categorical variable B", width=300, options=[])
+    chi_confirm = ft.Checkbox(
+        label="I confirmed two categorical scales and independent observations",
+        value=False,
+    )
+    chi_main = ft.Text("")
+    chi_brief = ft.Text("")
+    chi_output = ft.Text("")
+    chi_warnings = ft.Text("")
+    chi_chart = ft.Column()
 
     def update_paired_advice(e=None):
+        nonlocal paired_report_text, paired_png_data
+        paired_report_text = ""
+        paired_png_data = None
+        paired_export_png_button.disabled = True
+        paired_export_txt_button.disabled = True
+        paired_main.value = ""
+        paired_descriptive.value = ""
+        paired_brief.value = ""
+        paired_export_status.value = ""
         paired_advice.value = recommend_paired_test(
             paired_scale.value, bool(paired_confirm.value)
         )
@@ -272,7 +310,7 @@ async def main(page: ft.Page):
 
     # The same data loader is shared by this GUI and inspect_data.py.
     async def show_file(path):
-        nonlocal dataframe
+        nonlocal dataframe, paired_report_text, paired_png_data
         try:
             df = await asyncio.to_thread(load_dataset, path)
             if df.columns.empty:
@@ -428,6 +466,42 @@ async def main(page: ft.Page):
         paired_output.value = ""
         paired_warnings.value = ""
         paired_chart.controls.clear()
+        paired_report_text = ""
+        paired_png_data = None
+        paired_export_png_button.disabled = True
+        paired_export_txt_button.disabled = True
+        paired_main.value = ""
+        paired_descriptive.value = ""
+        paired_brief.value = ""
+        paired_export_status.value = ""
+
+        category_candidates = [
+            str(name) for name in df.columns
+            if not looks_like_identifier(name)
+            and 2 <= df[name].dropna().nunique() <= 10
+        ]
+        chi_a.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in category_candidates
+        ]
+        chi_b.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in category_candidates
+        ]
+        chi_a.value = (
+            "group" if "group" in category_candidates
+            else (category_candidates[0] if category_candidates else None)
+        )
+        chi_b.value = (
+            "outcome" if "outcome" in category_candidates
+            else next((v for v in category_candidates if v != chi_a.value), None)
+        )
+        chi_confirm.value = False
+        chi_main.value = ""
+        chi_brief.value = ""
+        chi_output.value = ""
+        chi_warnings.value = ""
+        chi_chart.controls.clear()
         page.update()
 
     async def choose_file(e):
@@ -455,6 +529,9 @@ async def main(page: ft.Page):
 
     async def load_paired_example(e):
         await show_file(PAIRED_SAMPLE)
+
+    async def load_categorical_example(e):
+        await show_file(CATEGORICAL_SAMPLE)
 
     async def calculate_alpha(e):
         reliability_chart_area.controls.clear()
@@ -611,8 +688,18 @@ async def main(page: ft.Page):
         page.update()
 
     async def calculate_paired(e):
+        nonlocal paired_report_text, paired_png_data
         paired_chart.controls.clear()
+        paired_main.value = ""
+        paired_descriptive.value = ""
+        paired_brief.value = ""
         paired_warnings.value = ""
+        paired_export_status.value = ""
+        paired_export_png_button.disabled = True
+        paired_export_txt_button.disabled = True
+        paired_report_text = ""
+        paired_png_data = None
+
         if dataframe is None:
             paired_output.value = "Load a dataset first."
             page.update()
@@ -630,14 +717,75 @@ async def main(page: ft.Page):
                 paired_method.value, paired_scale.value,
                 bool(paired_confirm.value), bool(paired_assumptions.value)
             )
-            paired_output.value = format_paired_report(analysis)
-            paired_warnings.value = "\n".join(analysis.warnings)
+            text_report = format_paired_report(analysis)
             png = await asyncio.to_thread(make_paired_chart, analysis)
-            paired_chart.controls.append(
-                ft.Image(src=png, width=850, height=530)
-            )
+            paired_report_text = text_report
+            paired_png_data = png
+            paired_main.value = paired_main_result(analysis)
+            paired_descriptive.value = paired_descriptives(analysis)
+            paired_brief.value = paired_interpretation(analysis)
+            paired_output.value = text_report
+            paired_warnings.value = "\n".join(analysis.warnings)
+            paired_chart.controls.append(ft.Image(src=png, width=850, height=530))
+            paired_export_png_button.disabled = False
+            paired_export_txt_button.disabled = False
         except Exception as error:
             paired_output.value = f"Paired analysis error: {error}"
+        page.update()
+
+    async def export_paired_png(e):
+        if not paired_png_data:
+            paired_export_status.value = "Run a paired analysis first."
+        else:
+            try:
+                path = await asyncio.to_thread(
+                    save_figure_png, paired_png_data, "paired_figure.png"
+                )
+                paired_export_status.value = f"Saved: {path}"
+            except Exception as error:
+                paired_export_status.value = f"Export error: {error}"
+        page.update()
+
+    async def export_paired_txt(e):
+        if not paired_report_text:
+            paired_export_status.value = "Run a paired analysis first."
+        else:
+            try:
+                path = await asyncio.to_thread(
+                    save_apa_txt, paired_report_text, "paired_APA7.txt"
+                )
+                paired_export_status.value = f"Saved: {path}"
+            except Exception as error:
+                paired_export_status.value = f"Export error: {error}"
+        page.update()
+
+    paired_export_png_button.on_click = export_paired_png
+    paired_export_txt_button.on_click = export_paired_txt
+
+    async def calculate_chi_square(e):
+        chi_chart.controls.clear()
+        chi_main.value = ""
+        chi_brief.value = ""
+        chi_warnings.value = ""
+        if dataframe is None:
+            chi_output.value = "Load a dataset first."
+            page.update()
+            return
+        chi_output.value = "Calculating categorical association..."
+        page.update()
+        try:
+            analysis = await asyncio.to_thread(
+                analyze_chi_square, dataframe, chi_a.value,
+                chi_b.value, bool(chi_confirm.value)
+            )
+            png = await asyncio.to_thread(make_chi_square_chart, analysis)
+            chi_main.value = summarize_chi_square(analysis)
+            chi_brief.value = interpret_chi_square(analysis)
+            chi_output.value = format_chi_square_report(analysis)
+            chi_warnings.value = "\n".join(analysis.warnings)
+            chi_chart.controls.append(ft.Image(src=png, width=850, height=550))
+        except Exception as error:
+            chi_output.value = f"Chi-square analysis error: {error}"
         page.update()
 
     # Visualization follows the same scale and identifier safeguards as the table.
@@ -766,6 +914,20 @@ async def main(page: ft.Page):
             "paired_output": paired_output,
             "paired_warnings": paired_warnings,
             "paired_chart": paired_chart,
+            "paired_main": paired_main,
+            "paired_descriptive": paired_descriptive,
+            "paired_brief": paired_brief,
+            "paired_export_png_button": paired_export_png_button,
+            "paired_export_txt_button": paired_export_txt_button,
+            "paired_export_status": paired_export_status,
+            "chi_a": chi_a,
+            "chi_b": chi_b,
+            "chi_confirm": chi_confirm,
+            "chi_main": chi_main,
+            "chi_brief": chi_brief,
+            "chi_output": chi_output,
+            "chi_warnings": chi_warnings,
+            "chi_chart": chi_chart,
         },
         actions={
             "choose_file": choose_file,
@@ -778,6 +940,8 @@ async def main(page: ft.Page):
             "calculate_groups": calculate_groups,
             "calculate_paired": calculate_paired,
             "load_paired_example": load_paired_example,
+            "load_categorical_example": load_categorical_example,
+            "calculate_chi_square": calculate_chi_square,
         },
     )
     page.add(ui)
