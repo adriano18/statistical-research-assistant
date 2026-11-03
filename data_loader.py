@@ -170,15 +170,52 @@ def _raw_table(path: Path, options: ImportOptions):
         separator = _detect_separator(text, path, options.separator)
         from io import StringIO
         try:
-            raw = pd.read_csv(
-                StringIO(text), sep=separator, engine="python", header=None,
-                dtype=object, keep_default_na=False, skip_blank_lines=False,
-                on_bad_lines="error",
-            )
-        except (pd.errors.ParserError, pd.errors.EmptyDataError) as error:
+            reader = csv.reader(StringIO(text), delimiter=separator, strict=True)
+            rows = list(reader)
+        except csv.Error as error:
             raise ValueError(
-                f"CSV rows have inconsistent delimiters or quotation marks: {error}"
+                f"CSV quotation marks or delimiters are malformed: {error}"
             ) from error
+        if not rows:
+            raise ValueError("The CSV contains no rows.")
+        if options.header_row > len(rows):
+            raise ValueError("Header row is after the end of the CSV.")
+        expected = len(rows[options.header_row - 1])
+        if not expected:
+            raise ValueError("The selected header row has no columns.")
+        shortened = 0
+        extra_empty = 0
+        normalized_rows = []
+        for row_index, row in enumerate(rows, start=1):
+            if row_index <= options.header_row:
+                normalized_rows.append(row[:expected] + [
+                    None for _ in range(max(0, expected - len(row)))
+                ])
+                continue
+            if not row:
+                normalized_rows.append([None] * expected)
+                continue
+            if len(row) > expected:
+                extras = row[expected:]
+                if any(str(extra).strip() for extra in extras):
+                    raise ValueError(
+                        f"CSV row {row_index} has {len(row)} cells but the header "
+                        f"has {expected}. Check separator or unquoted answer text."
+                    )
+                extra_empty += 1
+                row = row[:expected]
+            if len(row) < expected:
+                shortened += 1
+            normalized_rows.append(row + [None] * (expected - len(row)))
+        if shortened:
+            warnings.append(
+                f"{shortened} short CSV row(s) padded with missing trailing cells."
+            )
+        if extra_empty:
+            warnings.append(
+                f"{extra_empty} row(s) had empty trailing cells removed."
+            )
+        raw = pd.DataFrame(normalized_rows, dtype=object)
         return raw, None, encoding, separator, warnings
 
     sheets = workbook_sheets(path)
@@ -258,6 +295,15 @@ def _convert_numeric(frame: pd.DataFrame, style: str, warnings: list[str]) -> li
             continue
         observed = [v for v in column if not _blank(v)]
         if not observed:
+            continue
+        if any(
+            isinstance(value, str) and re.fullmatch(r"[+-]?0\d+", value.strip())
+            for value in observed
+        ):
+            warnings.append(
+                f"Variable '{name}' has leading-zero codes (e.g. 001); "
+                "preserved as text to avoid losing identifier information."
+            )
             continue
         if not all(isinstance(v, (int, float, str)) and
                    not isinstance(v, bool) for v in observed):
