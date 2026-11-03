@@ -272,7 +272,9 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     )
 
     # --- Draft list and selected question editor ---
-    draft_list = ft.Column(spacing=7)
+    draft_list = ft.ReorderableListView(
+        height=420, spacing=7, show_default_drag_handles=True,
+    )
     draft_count = text("No questions yet", color="#A8B6C9")
     editor_heading = ft.Text("New question", weight="bold", size=15)
     q_key = ft.TextField(label="Variable ID, e.g. stress_q1", width=260)
@@ -282,8 +284,10 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         options=[ft.DropdownOption(key=k, text=name) for k, name in QUESTION_TYPES],
     )
     q_section = ft.TextField(
-        label="Section, e.g. Demographics", width=285,
+        label="Topic / section, e.g. Demographics", width=285,
     )
+    q_page = ft.TextField(label="Page number (1–20)", value="1", width=160)
+    q_page_title = ft.TextField(label="Page title, e.g. Background", width=285)
     q_required = ft.Checkbox(label="Required answer", value=True)
     q_options = ft.TextField(
         label="Options separated by semicolons", width=580, visible=False,
@@ -295,7 +299,19 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         label="Reverse-scored item (metadata only)", value=False,
     )
     q_min_label = ft.TextField(label="Low anchor (e.g. Never)", width=285)
-    q_max_label = ft.TextField(label="High anchor (e.g. Always)", width=285)
+    q_max_label = ft.TextField(label="High anchor (legacy forms)", width=285)
+    q_preset = ft.Dropdown(
+        label="Text scale preset", width=285, value="agreement",
+        options=[
+            ft.DropdownOption(key="agreement", text="Agreement"),
+            ft.DropdownOption(key="quality", text="Quality: poor → good"),
+            ft.DropdownOption(key="frequency", text="Frequency"),
+        ],
+    )
+    q_value_labels = ft.TextField(
+        label="Respondent labels: one numeric code = text per line",
+        width=580, multiline=True, min_lines=5, max_lines=8,
+    )
     q_parent = ft.Dropdown(
         label="Show conditionally when…", width=285,
         value="always",
@@ -350,6 +366,9 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_reverse.visible = likert
         q_min_label.visible = likert
         q_max_label.visible = likert
+        q_preset.visible = likert
+        q_value_labels.visible = likert
+        apply_labels_button.visible = likert
         if not likert:
             q_reverse.value = False
         if q_kind.value == "consent":
@@ -358,6 +377,13 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_expected.visible = q_parent.value != "always"
         page.update()
 
+    def apply_preset(e=None):
+        q_value_labels.value = format_value_labels(
+            preset_value_labels(q_preset.value or "agreement", q_kind.value)
+        )
+        page.update()
+
+    apply_labels_button = ft.Button("Use preset labels", on_click=apply_preset)
     q_kind.on_select = refresh_editor_fields
     q_parent.on_select = refresh_editor_fields
 
@@ -367,13 +393,19 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_key.value = ""
         q_prompt.value = ""
         q_kind.value = "likert5"
-        q_section.value = ""
+        q_section.value = draft[-1].get("section", "") if draft else ""
+        q_page.value = str(draft[-1].get("page", 1)) if draft else "1"
+        q_page_title.value = draft[-1].get("page_title", "") if draft else ""
         q_required.value = True
         q_options.value = ""
         q_scale.value = ""
         q_reverse.value = False
         q_min_label.value = ""
         q_max_label.value = ""
+        q_preset.value = "agreement"
+        q_value_labels.value = format_value_labels(
+            preset_value_labels("agreement", "likert5")
+        )
         q_parent.value = "always"
         q_operator.value = "equals"
         q_expected.value = ""
@@ -388,12 +420,15 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_prompt.value = q["prompt"]
         q_kind.value = q["kind"]
         q_section.value = q.get("section", "")
+        q_page.value = str(q.get("page", 1))
+        q_page_title.value = q.get("page_title", "")
         q_required.value = q["required"]
         q_options.value = "; ".join(q.get("options", []))
         q_scale.value = q.get("scale_id", "")
         q_reverse.value = q.get("reverse_scored", False)
         q_min_label.value = q.get("min_label", "")
         q_max_label.value = q.get("max_label", "")
+        q_value_labels.value = format_value_labels(q.get("value_labels", {}))
         editor_dependencies()
         condition = q.get("condition")
         q_parent.value = condition["question"] if condition else "always"
@@ -453,6 +488,9 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             "required": bool(q_required.value) or kind == "consent",
             "options": choices,
             "section": (q_section.value or "").strip(),
+            "page": int((q_page.value or "").strip()),
+            "page_title": (q_page_title.value or "").strip(),
+            "value_labels": parse_value_labels(q_value_labels.value or "", kind),
             "scale_id": (
                 (q_scale.value or "").strip()
                 if kind in {"likert5", "likert7"} else ""
