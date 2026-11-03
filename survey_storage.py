@@ -78,6 +78,8 @@ def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         raise ValueError("Create between 1 and 40 questions.")
     normalized: list[dict[str, Any]] = []
     earlier = {}
+    page_titles: dict[int, str] = {}
+    previous_page = 1
     for item in questions:
         key = str(item.get("key", "")).strip()
         prompt = str(item.get("prompt", "")).strip()
@@ -108,6 +110,19 @@ def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         section = str(item.get("section", "")).strip()
         if len(section) > 80:
             raise ValueError("Section name must be no longer than 80 characters.")
+        page = item.get("page", 1)
+        if isinstance(page, bool) or not isinstance(page, int) or not 1 <= page <= 20:
+            raise ValueError("Page must be an integer from 1 to 20.")
+        if page < previous_page or page > previous_page + 1:
+            raise ValueError("Question pages must be consecutive and in order.")
+        previous_page = page
+        page_title = str(item.get("page_title", "")).strip()
+        if len(page_title) > 80:
+            raise ValueError("Page title must be 80 characters or shorter.")
+        if page_title:
+            if page_titles.get(page, page_title) != page_title:
+                raise ValueError("Questions on the same page must share a page title.")
+            page_titles[page] = page_title
         scale_id = str(item.get("scale_id", "")).strip()
         if scale_id and not NAME_PATTERN.fullmatch(scale_id):
             raise ValueError("Scale ID must be a valid variable-style name.")
@@ -118,6 +133,23 @@ def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
             raise ValueError("Only Likert items can be marked reverse-scored.")
         if reversed_key and not scale_id:
             raise ValueError("Assign a scale ID to reverse-scored items.")
+        raw_labels = item.get("value_labels") or {}
+        if not isinstance(raw_labels, dict):
+            raise ValueError("Value labels must map numeric codes to text.")
+        value_labels: dict[str, str] = {}
+        if raw_labels:
+            if kind not in {"likert5", "likert7"}:
+                raise ValueError("Value labels are supported for Likert items only.")
+            expected = {str(n) for n in range(1, int(kind[-1]) + 1)}
+            if set(raw_labels) != expected:
+                raise ValueError("Provide a label for every numeric Likert code.")
+            for n in range(1, int(kind[-1]) + 1):
+                label = raw_labels[str(n)]
+                if not isinstance(label, str) or not 1 <= len(label.strip()) <= 100:
+                    raise ValueError("Value labels must be 1–100 characters.")
+                value_labels[str(n)] = label.strip()
+            if len(set(value_labels.values())) != len(value_labels):
+                raise ValueError("Likert value labels must be distinct.")
         anchors = [
             str(item.get("min_label", "")).strip(),
             str(item.get("max_label", "")).strip(),
@@ -130,14 +162,44 @@ def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         normalized_item = {
             "key": key, "prompt": prompt, "kind": kind,
             "required": required, "options": options,
-            "section": section, "scale_id": scale_id,
-            "reverse_scored": reversed_key,
+            "section": section, "page": page, "page_title": page_title,
+            "scale_id": scale_id, "reverse_scored": reversed_key,
             "min_label": anchors[0], "max_label": anchors[1],
-            "condition": condition,
+            "value_labels": value_labels, "condition": condition,
         }
         normalized.append(normalized_item)
         earlier[key] = normalized_item
+    # A page heading is shared by every question, even if entered only once.
+    for q in normalized:
+        q["page_title"] = page_titles.get(q["page"], "")
     return normalized
+
+
+def likert_choices(question: dict[str, Any]) -> list[tuple[int, str]]:
+    """Respondent labels with stable numeric storage codes, including old surveys."""
+    kind = question["kind"]
+    if kind not in {"likert5", "likert7"}:
+        raise ValueError("Only Likert questions have numeric value labels.")
+    maximum = int(kind[-1])
+    labels = question.get("value_labels") or {}
+    result = []
+    for number in range(1, maximum + 1):
+        label = labels.get(str(number), "")
+        if not label and number == 1:
+            label = question.get("min_label", "")
+        if not label and number == maximum:
+            label = question.get("max_label", "")
+        result.append((number, f"{number} — {label}" if label else str(number)))
+    return result
+
+
+def reorder_questions(questions: list[dict[str, Any]], old: int, new: int) -> list[dict[str, Any]]:
+    """Move a draft question safely, rejecting broken skip-logic or page order."""
+    if not (0 <= old < len(questions) and 0 <= new < len(questions)):
+        raise ValueError("Reorder position is outside the questionnaire.")
+    candidate = [dict(q) for q in questions]
+    candidate.insert(new, candidate.pop(old))
+    return validate_questions(candidate)
 
 
 def question_is_visible(question: dict, answers: dict[str, Any]) -> bool:
@@ -353,7 +415,14 @@ def survey_codebook(root: str | Path, survey_id: str) -> dict[str, Any]:
         "title": definition.title,
         "description": definition.description,
         "response_id": "Random identifier, not an anonymization guarantee",
-        "questions": list(definition.questions),
+        "questions": [
+            {**q, "measurement_level": (
+                "ordinal" if q["kind"] in {"likert5", "likert7"}
+                else "quantitative" if q["kind"] == "number"
+                else "nominal"
+            )}
+            for q in definition.questions
+        ],
         "scoring_note": (
             "Reverse-scored flags are METADATA ONLY. Raw responses have not "
             "been reversed, and scale totals have not been calculated."
