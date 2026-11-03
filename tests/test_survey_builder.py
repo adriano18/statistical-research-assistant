@@ -141,6 +141,24 @@ class SurveyBuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "choice or numeric"):
             validate_questions(invalid)
 
+    def test_consent_cannot_be_hidden_by_skip_logic(self):
+        questions = test_questions()
+        questions[0]["condition"] = {
+            "question": "employed", "operator": "equals", "value": "Yes"
+        }
+        with self.assertRaises(ValueError):
+            validate_questions(questions)
+        questions = test_questions()
+        questions.insert(1, dict(
+            key="additional_consent", prompt="Additional consent",
+            kind="consent", required=True,
+            condition={
+                "question": "employed", "operator": "equals", "value": "Yes"
+            },
+        ))
+        with self.assertRaises(ValueError):
+            validate_questions(questions)
+
     def test_reject_unknown_conditional_values_and_unsafe_expressions(self):
         cases = [
             {"question": "employed", "operator": "equals", "value": "Maybe"},
