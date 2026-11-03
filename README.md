@@ -9,7 +9,7 @@ A Python project for exploring research datasets and, later, selecting and inter
 ## Development plan
 1. **v0.1 Data inspection** — import CSV/XLSX, review variables, missing values and their inferred data types.
 2. **v0.2 Descriptive statistics** (in progress) — N, mean, median, SD, distributions and plots.
-3. **v0.3 Research methods** (in progress) — reliability, correlations, chi-square, independent and repeated designs, group omnibus/post-hoc tests, linear/logistic regression and ANCOVA; data preparation and deeper psychometrics remain planned.
+3. **v0.3 Research methods** (in progress) — reliability, correlations, chi-square, independent and repeated designs, group omnibus/post-hoc tests, linear/logistic regression and ANCOVA; local preparation/forms added; advanced psychometrics and data dictionaries remain planned.
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
 5. **v0.5 Reports and localization** — TXT/PNG export and copying are available across analysis screens; next are structured APA tables, DOCX/PDF, and EN/LV/RU translations.
 
@@ -18,6 +18,8 @@ A Python project for exploring research datasets and, later, selecting and inter
 The Flet application uses a left navigation menu instead of one long scrolling page:
 
 - **Dataset**: load a local CSV/Excel file or a sample, inspect variables and missing values.
+- **Data preparation**: create new recoded variables, mark missing codes, reverse-score questionnaire items, calculate sums/means, export a working CSV and transformation log without changing source files.
+- **Questionnaires**: create a local Likert/choice/text/numeric form, enter answers on this device, persist them in SQLite and load them directly into Dataset.
 - **Descriptive**: choose a variable, confirm its scale, and view statistics and a graph.
 - **Scale reliability**: select questionnaire items, compute Cronbach’s α and view an APA-style report.
 - **Correlations**: analyze two variables with Pearson or Spearman and view the scatterplot.
@@ -189,6 +191,29 @@ The output includes a group F-test and p-value, partial η², R², a slope-inter
 To check the guard against invalid common-slope inference, choose **Load interaction example** (`examples/sample_ancova_interaction.csv`) and try common-slope ANCOVA. The dataset intentionally has differing age slopes. Switch to **GLM (group × covariate interactions)** to estimate conditional contrasts.
 
 **Important limitations:** All analyses use listwise-complete cases and ordinary OLS model assumptions. Adjusted predictions may extrapolate if the groups have little overlapping covariate range; the program reports a warning. Covariates are assumed to be quantitative and selected deliberately: a numeric storage type alone does not establish scale. Covariates measured after a treatment may introduce bias. This first version supports **one** group factor and **one to three** covariates, not factorial ANOVA, multivariate outcomes, repeated observations, or generalized GLMs. The results do not demonstrate causation. The report is an APA-style draft requiring researcher review.
+
+## Data preparation and locally collected questionnaires (Step 16)
+
+### Data preparation
+
+1. Open **Dataset → Load scale example** (`examples/sample_scale.csv`), then click **Data preparation** in the sidebar.
+2. Choose **Reverse-score an item** and select `stress_q2`; name the new variable `stress_q2_reverse`. Confirm a scale minimum of **1** and maximum of **5**, then click **Apply transformation**. For 1–5, the formula is `6 - response`. **Reverse a real instrument item only when its scoring key requires it**; the fictional example is for practicing the interface.
+3. Choose **Create mean/sum scale score**, select `stress_q1`, `stress_q2_reverse`, `stress_q3`, `stress_q4`. Name the variable `stress_mean` and select **Mean** with a minimum of **3 answered items**. A person with fewer than 3 valid responses receives a missing scale score. **Sum** requires all selected items to be observed.
+4. For imported surveys that code missing values as `99` or `-9`, use **Mark missing-value codes** before reverse scoring or summing. To recode categories, choose **Recode values** and enter exact pairs such as `No=0;Yes=1` separated by semicolons. Select explicitly whether unmatched values remain unchanged or become missing.
+5. Choose **Use working copy in analysis** to send the prepared table to the existing statistics screens. Choose **Save prepared CSV + steps JSON** to select a new CSV destination. A matching `_steps.json` file documents the exact transformation rules.
+
+**Important:** Operations add new columns and never modify the existing source columns. The original CSV/XLSX is not changed. The program blocks export to the exact original file path. It does not silently infer reverse-coded items, scoring rules, or why a value is missing. Always verify the questionnaire manual and sample characteristics before scientific analysis.
+
+### Questionnaire builder (local MVP)
+
+1. Select **Questionnaires** in the sidebar. Enter a survey title and participant instructions. Add questions one by one, choosing **Likert 1–5**, **Single choice**, **Numeric answer**, **Short text**, or **Required consent**. Use meaningful variable names such as `stress_q1`.
+2. For a quick demonstration, click **Pilot template**. It creates a draft with consent, a two-group question and four fictional Likert items. Click **Create local questionnaire** to save it.
+3. In **Enter and save participant responses**, use the form fields and click **Submit response locally**. Repeat for multiple mock respondents. Missing required values, invalid answers and lack of consent (when the consent question is selected) are rejected.
+4. Click **Load responses into Dataset** to analyze the collected rows immediately, or **Export responses CSV** to save a separate CSV copy.
+
+The survey definition and entries are stored in separate SQLite files under `data/surveys/`, which Git ignores. Questionnaire definitions are immutable after creation to prevent silently changing existing data columns; create a new survey for a changed questionnaire. Respondents get random local response IDs; no IP addresses, browser identifiers or email addresses are automatically collected. **No third-party service or network connection is required** for this local workflow.
+
+**Scope limitation:** This release is **not a Google Forms-style publicly shareable link**. Respondents enter answers **on the current computer**. Remote distribution, mobile-friendly self-hosted forms, secure HTTPS hosting, researcher access control, backups, consent/withdrawal workflows and encryption are planned separately. SQLite data is stored locally but **is not encrypted**. Do not conduct actual sensitive or identifiable participant research until privacy, consent, retention, security and ethics requirements have been addressed. The provided pilot form is fictional, not a substitute for research-specific informed consent.
 
 ## Interface languages
 
