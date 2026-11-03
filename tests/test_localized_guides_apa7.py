@@ -9,7 +9,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from PIL import Image
 
-from apa_figures import DEFAULT_NOTE, make_apa7_export_png
+from apa_figures import (
+    DEFAULT_NOTE, make_apa7_export_png,
+    default_section_figure_note, section_embeds_figure_header,
+)
 from localization import tr
 from output_workspace import PNG_SIGNATURE
 from statistical_guide import (
@@ -127,6 +130,30 @@ class APAFigureTests(unittest.TestCase):
             self.assertGreaterEqual(exported.height, 1000)
             self.assertAlmostEqual(exported.info["dpi"][0], 300, delta=1)
         self.assertIn("Note.", DEFAULT_NOTE)
+
+    def test_existing_figure_number_margins_are_not_duplicated(self):
+        # The old charts already contain fixed Figure 1–14 labels. Cropping
+        # *only* their header/note margins must not change plotted data.
+        old = Image.new("RGB", (200, 200), (20, 80, 180))
+        for y in list(range(0, 18)) + list(range(188, 200)):
+            for x in range(200):
+                old.putpixel((x, y), (255, 0, 0))
+        buffer = BytesIO()
+        old.save(buffer, format="PNG")
+        self.assertTrue(section_embeds_figure_header("omega"))
+        self.assertFalse(section_embeds_figure_header("descriptive"))
+        note = default_section_figure_note("omega")
+        self.assertIn("one-factor", note.lower())
+        processed = make_apa7_export_png(
+            buffer.getvalue(), "Omega item results",
+            strip_embedded_caption=True, note=note,
+        )
+        with Image.open(BytesIO(processed)) as result:
+            red = [
+                1 for pixel in result.convert("RGB").getdata()
+                if pixel[0] > 240 and pixel[1] < 20 and pixel[2] < 20
+            ]
+        self.assertEqual(len(red), 0)
 
     def test_figure_is_explicit_and_rejects_bad_inputs(self):
         with self.assertRaisesRegex(ValueError, "valid PNG"):
