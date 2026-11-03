@@ -67,6 +67,7 @@ from survey_ui import build_survey_workspace
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
 SCALE_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_scale.csv"
+FACTOR_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_factor.csv"
 PAIRED_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_paired.csv"
 CATEGORICAL_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_categorical.csv"
 THREE_GROUPS_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_three_groups.csv"
@@ -1242,6 +1243,9 @@ async def main(page: ft.Page):
     async def load_scale_example(e):
         await show_file(SCALE_SAMPLE)
 
+    async def load_factor_example(e):
+        await show_file(FACTOR_SAMPLE)
+
     async def load_paired_example(e):
         await show_file(PAIRED_SAMPLE)
 
@@ -2401,6 +2405,7 @@ async def main(page: ft.Page):
             "set_active_screen": set_active_screen,
             "load_sample": load_sample,
             "load_scale_example": load_scale_example,
+            "load_factor_example": load_factor_example,
             "analyze_variable": analyze_variable,
             "run_explore": run_explore,
             "run_regression": run_regression,
