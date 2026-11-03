@@ -10,7 +10,11 @@ import numpy as np
 
 
 def make_factor_chart(result) -> bytes:
-    fig, axes = plt.subplots(1, 2, figsize=(13.1, 6.3))
+    oblique = result.factor_correlations is not None
+    columns = 3 if oblique else 2
+    fig, axes = plt.subplots(
+        1, columns, figsize=(16.3 if oblique else 13.1, 6.3),
+    )
     try:
         ax, heat = axes
         k = len(result.items)
@@ -59,6 +63,29 @@ def make_factor_chart(result) -> bytes:
                     color="white" if abs(value) > .55 else "#1d2430",
                 )
         fig.colorbar(im, ax=heat, shrink=.78, label="Loading")
+        if oblique:
+            corr_ax = axes[2]
+            factor_corr = result.factor_correlations
+            corr_ax.imshow(
+                factor_corr, cmap="coolwarm", vmin=-1, vmax=1,
+                aspect="equal",
+            )
+            corr_ax.set_title("Oblique factor correlations (Phi)")
+            names = [f"F{i+1}" for i in range(result.n_components)]
+            corr_ax.set_xticks(
+                range(result.n_components), labels=names
+            )
+            corr_ax.set_yticks(
+                range(result.n_components), labels=names
+            )
+            for i in range(result.n_components):
+                for j in range(result.n_components):
+                    v = factor_corr[i, j]
+                    corr_ax.text(
+                        j, i, f"{v:+.2f}",
+                        ha="center", va="center", fontsize=9,
+                        color="white" if abs(v) > .55 else "#1d2430",
+                    )
         fig.text(.055, .985, "Figure 14", weight="bold", va="top", fontsize=11)
         fig.text(
             .055, .952,
@@ -70,7 +97,10 @@ def make_factor_chart(result) -> bytes:
             "PCA eigenvalues (95th percentile, 150 replications, fixed seed). "
             "Shown loadings reflect the user-selected model; factors are not "
             "automatically retained. PCA is NOT common factor analysis. "
-            "Correlations are Pearson, not polychoric."
+            "Correlations are Pearson, not polychoric. "
+            + ("For oblimin, loadings are PATTERN coefficients; the right "
+               "panel shows correlations between extracted factors. "
+               if oblique else "")
         )
         fig.text(
             .055, .026, textwrap.fill(note, 145),
