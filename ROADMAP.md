@@ -6,6 +6,19 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 **Next development sequence**: independently validate advanced psychometric estimates → polish stage-23 light desktop onboarding and respondent-scale UX → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX, packaging and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
+## Stage 26 — guided interpretation and editable APA 7 Word reports
+
+- [x] Add a four-step wizard for method selection, researcher assumption review, estimates and Word export
+- [x] Extract effect sizes, confidence intervals, p values and sample sizes from result objects, with no estimate fabrication
+- [x] Label mean difference intervals separately from effect-size intervals and display missing values explicitly
+- [x] Track unchecked assumptions and warn that review is not a proof of model suitability
+- [x] Create an editable APA 7-inspired .docx with native tables, figure captions, bitmap charts and bibliography
+- [x] Include full original numeric report and method-specific scientific publications
+- [x] Clear cached evidence on new dataset imports; add EN/LV/RU wizard navigation
+- [x] Add synthetic tests for confidence-interval integrity and editable Word file round-trips
+- [ ] Visually review Word rendering on Windows and test table break behavior and accessibility
+- [ ] Add editable vector figure data, fully formatted bibliography, complete model-specific JARS tables and reproducibility metadata
+
 ## Stage 25 — methodological guidance, LV/RU UI and APA figures
 
 - [x] Expand English-first LV/RU static labels across all statistical workspaces, most selection controls and questionnaire-builder editing stages
