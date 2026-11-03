@@ -81,11 +81,18 @@ ANCOVA_INTERACTION_SAMPLE = Path(__file__).resolve().parent / "examples" / "samp
 
 async def main(page: ft.Page):
     page.title = "Statistical Research Assistant"
-    page.window.width = 1350
-    page.window.height = 850
-    page.padding = 18
-    page.bgcolor = "#0E1622"
-    page.theme_mode = ft.ThemeMode.DARK
+    page.window.width = 1200
+    page.window.height = 720
+    page.window.resizable = True
+    page.window.visible = False  # Build the UI before showing the centered window.
+    page.padding = 14
+    page.bgcolor = "#F5F7FC"
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.theme = ft.Theme(
+        color_scheme_seed="#2755A1",
+        font_family="Segoe UI",
+        use_material3=True,
+    )
     page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
 
     # The source file stays on the user's computer; no cloud upload.
@@ -2484,6 +2491,14 @@ async def main(page: ft.Page):
     )
     page.add(ui)
     page.update()
+    try:
+        # Desktop-only. Do not block running the same app in a web runtime.
+        await page.window.center()
+    except (AttributeError, RuntimeError, NotImplementedError):
+        pass
+    finally:
+        page.window.visible = True
+        page.update()
 
 
 if __name__ == "__main__":

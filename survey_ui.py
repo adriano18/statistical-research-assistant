@@ -104,6 +104,47 @@ def semantic_differential_labels() -> dict[str, str]:
     }
 
 
+
+def build_numeric_rating_selector(question, on_change=None):
+    """One accessible selection group for scored choices and explicit missing."""
+    score_cards = [
+        ft.Container(
+            col={"xs": 12, "sm": 6, "xl": 4},
+            padding=10,
+            border_radius=10,
+            border=ft.Border.all(1, "#DAE3F0"),
+            bgcolor="#F8FAFE",
+            content=ft.Radio(
+                value=str(number), label=display, active_color="#2457AC",
+            ),
+        )
+        for number, display in likert_choices(question)
+    ]
+    content = [
+        ft.Text("Choose one answer", size=12, color="#51637B"),
+        ft.ResponsiveRow(
+            controls=score_cards, columns=12, spacing=8, run_spacing=8,
+        ),
+    ]
+    missing = question.get("missing_options") or {}
+    if missing:
+        content.extend([
+            ft.Divider(color="#E0E7F0"),
+            ft.Text("Another response", size=12, color="#51637B"),
+            ft.Column(
+                controls=[
+                    ft.Radio(value=code, label=label, active_color="#2457AC")
+                    for code, label in missing.items()
+                ],
+                spacing=5,
+            ),
+        ])
+    return ft.RadioGroup(
+        content=ft.Column(controls=content, spacing=8),
+        on_change=on_change,
+    )
+
+
 def _pilot_questions():
     """Original fictional practice items, not a validated clinical instrument."""
     return [
@@ -252,7 +293,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
 
     def block(title_text, controls, width=None, col=None):
         return ft.Container(
-            width=width, col=col, padding=16, bgcolor="#192638",
+            width=width, col=col, padding=16, bgcolor="#FFFFFF",
+            border=ft.Border.all(1, "#E1E7F1"),
             border_radius=14,
             content=ft.Column(
                 controls=[
@@ -265,7 +307,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
 
     status = ft.Text(
         "Create a draft, preview it, then save a local questionnaire.",
-        size=12, color="#A8B6C9",
+        size=12, color="#607087",
     )
     picker = ft.FilePicker()
     page.services.append(picker)
@@ -296,7 +338,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     draft_list = ft.ReorderableListView(
         height=420, spacing=7, show_default_drag_handles=True,
     )
-    draft_count = text("No questions yet", color="#A8B6C9")
+    draft_count = text("No questions yet", color="#607087")
     section_page = ft.Dropdown(label="Page for section reorder", width=220, options=[])
     section_drag_list = ft.ReorderableListView(
         height=260, spacing=7, show_default_drag_handles=True,
@@ -370,7 +412,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     )
     editor_note = text(
         "Changing a published survey is not allowed. Clone it as a new draft.",
-        color="#9CB7DA",
+        color="#2755A1",
     )
 
     def editor_dependencies():
@@ -553,7 +595,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             section_drag_list.controls.append(
                 ft.Container(
                     key="section_" + block_items[0]["key"],
-                    padding=9, border_radius=8, bgcolor="#1E2D41",
+                    padding=9, border_radius=8, bgcolor="#F5F8FD",
                     content=ft.Column(controls=[
                         ft.Text(
                             f"{section_name} · {len(block_items)} question(s)",
@@ -602,13 +644,14 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             draft_list.controls.append(
                 ft.Container(
                     key=f"draft_{q['key']}",
-                    bgcolor="#30415A" if current else "#1E2D41",
-                    border_radius=8, padding=10,
+                    bgcolor="#E7EFFD" if current else "#F5F8FD",
+                    border=ft.Border.all(1, "#DAE3F0"),
+                    border_radius=10, padding=10,
                     content=ft.Column(
                         controls=[
                             *(
                                 [ft.Text(f"PAGE {page_num} · {page_heading}",
-                                         size=11, weight="bold", color="#9CB7DA")]
+                                         size=11, weight="bold", color="#2755A1")]
                                 if page_num != previous_page else []
                             ),
                             ft.Button(
@@ -616,7 +659,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                                 on_click=lambda e, idx=i: edit_question(idx),
                             ),
                             ft.Text(q["key"] + " | " + details, size=11,
-                                    color="#B8C7D9"),
+                                    color="#4B5F79"),
                         ],
                         spacing=3,
                     ),
@@ -775,9 +818,9 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         label="Published questionnaires on this computer",
         width=None, options=[],
     )
-    published_info = ft.Text("", color="#B8C7D9", size=12)
+    published_info = ft.Text("", color="#4B5F79", size=12)
     preview_title = ft.Text("", weight="bold", size=19)
-    preview_description = ft.Text("", color="#B8C7D9")
+    preview_description = ft.Text("", color="#4B5F79")
     preview_form = ft.Column(spacing=10)
     preview_note = ft.Text("")
     fill_title = ft.Text("", weight="bold", size=19)
@@ -791,7 +834,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     response_hint = ft.Text(
         "For real participant research, document ethical approval, "
         "appropriate consent and data-retention procedures.",
-        color="#9CB7DA", size=12,
+        color="#2755A1", size=12,
     )
 
     def read_widget(entry):
@@ -831,8 +874,11 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             for q in questions
         }
         page_heading = ft.Text("", weight="bold", size=17)
-        page_progress = ft.Text("", color="#A8B6C9", size=12)
-        nav_note = ft.Text("", color="#E8BC8A", size=12)
+        page_progress = ft.Text("", color="#607087", size=12)
+        progress_bar = ft.ProgressBar(
+            value=0, color="#2755A1", bgcolor="#DFE7F3", height=7,
+        )
+        nav_note = ft.Text("", color="#A94E16", size=12)
         back_button = ft.Button("← Previous")
         next_button = ft.Button("Next →")
 
@@ -853,6 +899,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 panel.visible = number == current
             page_heading.value = page_title_map[current]
             page_progress.value = f"Page {pages.index(current)+1} of {len(pages)}"
+            progress_bar.value = (pages.index(current)+1) / len(pages)
             back_button.visible = current != pages[0]
             next_button.visible = current != pages[-1]
             if mode == "fill":
@@ -890,24 +937,15 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             if section != last_section_by_page.get(page_number):
                 body.controls.append(
                     ft.Text(section.upper(), size=12, weight="bold",
-                            color="#9CB7DA")
+                            color="#2755A1")
                 )
                 last_section_by_page[page_number] = section
 
             label = q["prompt"] + (" *" if q["required"] else "")
             kind = q["kind"]
             if kind in {"likert5", "likert7", "rating_scale"}:
-                values = [
-                    ft.DropdownOption(key=str(number), text=display)
-                    for number, display in likert_choices(q)
-                ]
-                values.extend(
-                    ft.DropdownOption(key=code, text=label + " (missing)")
-                    for code, label in q.get("missing_options", {}).items()
-                )
-                field = ft.Dropdown(
-                    label="Choose one answer", width=None,
-                    options=values, on_select=update_visibility,
+                field = build_numeric_rating_selector(
+                    q, on_change=update_visibility,
                 )
                 endpoint_note = (
                     f"{q.get('min_label') or ''}  —  {q.get('max_label') or ''}"
@@ -916,7 +954,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                     ) else ""
                 )
                 field_controls = [field] + (
-                    [ft.Text(endpoint_note, size=11, color="#A8B6C9")]
+                    [ft.Text(endpoint_note, size=12, color="#51637B")]
                     if endpoint_note else []
                 )
             elif kind in {"single_choice", "yes_no"}:
@@ -948,7 +986,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 field_controls = [field]
 
             container = ft.Container(
-                padding=14, border_radius=10, bgcolor="#1E2D41",
+                padding=16, border_radius=12, bgcolor="#FFFFFF",
+                border=ft.Border.all(1, "#DDE6F1"),
                 content=ft.Column(
                     controls=[
                         ft.Text(label, size=14, weight="bold"),
@@ -964,7 +1003,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         state[f"{mode}_page"] = pages[0]
         body = ft.Column(
             controls=[
-                page_heading, page_progress,
+                page_heading, page_progress, progress_bar,
                 *[page_panels[number] for number in pages],
                 ft.Row(controls=[back_button, next_button], wrap=True, spacing=10),
                 nav_note,
@@ -1149,7 +1188,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                     ft.Text(
                         "Preview shows the first 10 rows and 7 columns. "
                         "Export CSV for the complete dataset.",
-                        size=12, color="#A8B6C9",
+                        size=12, color="#607087",
                     )
                 )
         except Exception as err:
@@ -1219,7 +1258,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                     block("2. Questions", [
                         draft_count,
                         ft.Text("Drag the handle to reorder. Use Move up/down "
-                                "for keyboard access.", size=11, color="#A8B6C9"),
+                                "for keyboard access.", size=11, color="#607087"),
                         ft.Row(controls=[
                             ft.Button("+ New question", on_click=new_editor),
                             ft.Button("+ New page", on_click=new_page_editor),
@@ -1238,7 +1277,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                         ),
                         ft.Text("Group questions by topic and assign consecutive "
                                 "pages, starting with page 1.", size=11,
-                                color="#A8B6C9"),
+                                color="#607087"),
                         q_options,
                         q_required,
                         ft.Row(
@@ -1261,7 +1300,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                             "Use all numeric labels for Likert, or 2–11 custom "
                             "integer codes (e.g. −3…3). Missing options are "
                             "NOT scores; they export as NaN plus reason codes.",
-                            size=11, color="#A8B6C9",
+                            size=11, color="#607087",
                         ),
                         ft.Row(
                             controls=[q_min_label, q_max_label], wrap=True,
@@ -1298,7 +1337,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                     "Drag a section handle to move all of its questions "
                     "within the selected page. Use ↑/↓ if needed. Moves that "
                     "break conditional dependencies are rejected.",
-                    size=12, color="#A8B6C9",
+                    size=12, color="#607087",
                 ),
                 section_page,
                 section_drag_list,
@@ -1307,7 +1346,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 ft.Text(
                     "Preview pages and respondent-visible answer labels before "
                     "publishing. Saved definitions stay immutable; Clone to revise.",
-                    size=12, color="#A8B6C9",
+                    size=12, color="#607087",
                 ),
                 ft.Row(controls=[
                     ft.Button(
@@ -1328,7 +1367,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 preview_form,
                 ft.Text(
                     "Preview mode never saves submissions.",
-                    color="#9CB7DA",
+                    color="#2755A1",
                 ),
             ]),
         ],
@@ -1387,30 +1426,38 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     def select_view(which):
         for name, pane in panes.items():
             pane.visible = name == which
+            if name in tab_buttons:
+                tab_buttons[name].style = ft.ButtonStyle(
+                    bgcolor="#DFEAFB" if name == which else "#FFFFFF",
+                    color="#1C4D9A" if name == which else "#425873",
+                )
         if which == "preview":
             show_preview()
         if which == "responses":
             update_response_table()
         page.update()
 
+    tab_names = {
+        "build": "1. Build", "preview": "2. Preview",
+        "fill": "3. Fill survey", "responses": "4. Responses & export",
+    }
+    tab_buttons = {
+        name: ft.Button(
+            label, on_click=lambda e, target=name: select_view(target),
+        ) for name, label in tab_names.items()
+    }
     navigation = ft.Row(
-        controls=[
-            ft.Button("Build", on_click=lambda e: select_view("build")),
-            ft.Button("Preview", on_click=lambda e: select_view("preview")),
-            ft.Button("Fill survey", on_click=lambda e: select_view("fill")),
-            ft.Button("Responses / Export",
-                      on_click=lambda e: select_view("responses")),
-        ], wrap=True, spacing=10,
+        controls=list(tab_buttons.values()), wrap=True, spacing=10,
     )
     view = ft.Column(
         controls=[
             ft.Container(
                 width=None, padding=15, border_radius=12,
-                bgcolor="#152030",
+                bgcolor="#EDF3FF",
                 content=ft.Column(controls=[
                     ft.Text(
                         "LOCAL QUESTIONNAIRE WORKSPACE",
-                        weight="bold", size=12, color="#9CB7DA",
+                        weight="bold", size=12, color="#2755A1",
                     ),
                     ft.Text(
                         "Create forms, preview conditional questions, collect "
@@ -1420,7 +1467,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                     ft.Text(
                         "No public URL or remote collection. For real participant "
                         "data, review consent, privacy, access and retention first.",
-                        size=12, color="#A8B6C9",
+                        size=12, color="#607087",
                     ),
                     navigation,
                 ], spacing=8),
@@ -1433,4 +1480,5 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     new_editor()
     update_draft()
     refresh_saved()
+    select_view("build")
     return view
