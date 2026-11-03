@@ -6,6 +6,20 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 **Next development sequence**: independently validate advanced psychometric estimates → polish stage-23 light desktop onboarding and respondent-scale UX → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX, packaging and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
+## Stage 25 — methodological guidance, LV/RU UI and APA figures
+
+- [x] Expand English-first LV/RU static labels across all statistical workspaces, most selection controls and questionnaire-builder editing stages
+- [x] Persist language changes with no translation of numeric IDs, respondent data or previously published survey definitions
+- [x] Expand localization for major analysis assumptions, response-type instructions and ethical cautions
+- [x] Add collapsible multilingual methodological glossary to each of 17 workspaces, with source references and interpretive limitations
+- [x] Append scientific explanations and bibliographic URLs to copyable and exported TXT analysis outputs, without changing calculated results
+- [x] Offer an APA 7-inspired high-resolution PNG export template with user-specified figure number, italic title and figure note
+- [ ] Translate every contextual status/error, the complete free-text mathematical narratives and all statistical chart internals; complete LV/RU native-specialist review
+- [ ] Add editable APA figure objects / scalable vector export and automatic manuscript-wide sequential figure numbering
+- [ ] Extend source-backed guides to every infrequently used statistic and individual model-specific diagnostic; add clickable primary-literature links and publication date review
+- [ ] Compare formatted APA outputs with journal-specific JARS/reporting requirements; test screen-reader/keyboard-only accessibility on Windows
+- [ ] Package a tested and signed Windows release including an accessible help browser
+
 ## Stage 24 — localized onboarding and robust survey-data imports
 
 - [x] Default language **English** with optional **Latvian** and **Russian** navigation/onboarding selection; preserve preference locally

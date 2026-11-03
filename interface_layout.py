@@ -6,6 +6,7 @@ existing controls are reused, so switching screens preserves user selections.
 
 import flet as ft
 from localization import LANGUAGES, tr
+from statistical_guide import GUIDE_LABELS, method_guide_items
 
 
 def build_interface(
@@ -930,6 +931,46 @@ def build_interface(
         "repeated": "Repeated measures",
     }
 
+    guide_widgets = {}
+    def refresh_statistical_guides():
+        ui_labels = GUIDE_LABELS[language]
+        for section, entry in guide_widgets.items():
+            entry.title = ft.Text(
+                ui_labels["title"], weight="bold", size=14,
+                color="#2755A1",
+            )
+            content = [
+                ft.Text(ui_labels["caution"], size=12, color="#5D6F84"),
+            ]
+            for data in method_guide_items(section, language):
+                content.append(
+                    ft.Container(
+                        padding=12, border_radius=10, bgcolor="#F5F8FD",
+                        content=ft.Column(
+                            controls=[
+                                ft.Text(data["symbol"], size=14,
+                                        weight="bold", color="#172A43"),
+                                ft.Text(data["explanation"], size=12),
+                                ft.Text(
+                                    data["reference"] + "\n" + data["url"],
+                                    size=11, selectable=True, color="#526987",
+                                ),
+                            ],
+                            spacing=5,
+                        ),
+                    )
+                )
+            entry.controls = content
+
+    for name, screen in screens.items():
+        guide = ft.ExpansionTile(
+            title=ft.Text("Understanding the statistics · Sources"),
+            controls=[], expanded=False,
+        )
+        guide_widgets[name] = guide
+        screen.controls.append(guide)
+    refresh_statistical_guides()
+
     # One visible workspace avoids a several-screen-long vertical application.
     buttons = {}
 
@@ -998,6 +1039,7 @@ def build_interface(
         language_picker.label = tr(language, "Language")
         compact_language.value = value
         compact_language.label = tr(language, "Language")
+        refresh_statistical_guides()
         if on_language_change is not None:
             on_language_change(value)
         page.update()

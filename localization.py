@@ -107,6 +107,11 @@ TEXT = {
 }
 
 
+# Keep UI translations separate from stable numeric/scoring codes.
+from localization_extended import EXTRA_TEXT
+TEXT.update(EXTRA_TEXT)
+
+
 def tr(language: str, english: str) -> str:
     if language not in LANGUAGES:
         language = "en"

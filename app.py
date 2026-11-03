@@ -14,6 +14,12 @@ from app_preferences import (
     AppPreferences, load_preferences, save_preferences, remember_file,
 )
 from localization import tr
+from ui_i18n import UITranslator
+from statistical_guide import method_guide_text
+from apa_figures import (
+    make_apa7_export_png, default_section_figure_note,
+    section_embeds_figure_header,
+)
 from variable_rules import looks_like_identifier
 from descriptive_charts import make_descriptive_chart
 from reliability import analyze_cronbach
@@ -102,6 +108,7 @@ async def main(page: ft.Page):
     )
     page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
     preferences = load_preferences()  # Defaults to English on first launch.
+    ui_translator = UITranslator()
 
     # The source file stays on the user's computer; no cloud upload.
     picker = ft.FilePicker()
@@ -206,14 +213,48 @@ async def main(page: ft.Page):
     )
     save_text_button = ft.Button("Save TXT as...", disabled=True)
     save_picture_button = ft.Button("Save PNG as...", disabled=True)
+    figure_number = ft.TextField(
+        label="Figure number", value="1", width=140,
+    )
+    figure_title = ft.TextField(
+        label="Figure title (optional)", width=390,
+    )
+    figure_note = ft.TextField(
+        label="Figure note (optional)", width=520,
+        multiline=True, min_lines=1, max_lines=3,
+    )
+    figure_options = ft.ExpansionTile(
+        title=ft.Text("APA 7 figure export settings"),
+        expanded=False, controls=[
+            ft.Text(
+                "The exported PNG adds a figure number, italic title and "
+                "explanatory note. Check the original chart and revise the "
+                "caption for your manuscript.", size=12, color="#53657C",
+            ),
+            ft.Row(controls=[figure_number, figure_title], wrap=True),
+            figure_note,
+        ],
+    )
     output_toolbar = ft.Row(
         controls=[
             ft.Text("OUTPUT", weight="bold", size=12),
-            copy_button, save_text_button, save_picture_button, output_status,
+            copy_button, save_text_button, save_picture_button,
+            figure_options, output_status,
         ],
         wrap=True,
         spacing=12,
     )
+
+    def complete_output(item, section):
+        """Keep original numerical results, append cited educational context."""
+        if item is None:
+            return None
+        notes = method_guide_text(section, preferences.language)
+        return AnalysisOutput(
+            title=item.title,
+            report=item.report + ("\n\n---\n" + notes if notes else ""),
+            png=item.png,
+        )
 
     def refresh_output_buttons():
         item = output_cache.get(active_section)
@@ -221,7 +262,9 @@ async def main(page: ft.Page):
         copy_button.disabled = not enabled
         save_text_button.disabled = not enabled
         save_picture_button.disabled = item is None or not bool(item.png)
-        copy_button.action = ft.CopyToClipboard(item.report if enabled else "")
+        copy_button.action = ft.CopyToClipboard(
+            complete_output(item, active_section).report if enabled else ""
+        )
         output_status.value = (
             f"Last completed: {item.title}" if item is not None
             else "Run an analysis to enable copy and save."
@@ -255,8 +298,28 @@ async def main(page: ft.Page):
                 allowed_extensions=[suffix],
             )
             if selected:
+                for_export = complete_output(item, active_section)
+                if kind == "image":
+                    png_apa = await asyncio.to_thread(
+                        make_apa7_export_png,
+                        item.png,
+                        (figure_title.value or "").strip() or item.title,
+                        figure_number=int((figure_number.value or "").strip()),
+                        note=(figure_note.value or "").strip()
+                        or default_section_figure_note(
+                            "omega" if active_section == "reliability"
+                            and "omega" in item.title.lower()
+                            else active_section
+                        ),
+                        strip_embedded_caption=section_embeds_figure_header(
+                            active_section
+                        ),
+                    )
+                    for_export = AnalysisOutput(
+                        title=item.title, report=for_export.report, png=png_apa,
+                    )
                 destination = await asyncio.to_thread(
-                    save_selected_output, selected, item, kind
+                    save_selected_output, selected, for_export, kind
                 )
                 output_status.value = f"Saved: {destination}"
         except Exception as error:
@@ -1435,6 +1498,8 @@ async def main(page: ft.Page):
     def store_language(code):
         nonlocal preferences
         preferences = AppPreferences(code, preferences.recent_files)
+        ui_translator.apply(ui, code)
+        refresh_output_buttons()
         try:
             save_preferences(preferences)
         except OSError as error:
@@ -2508,6 +2573,10 @@ async def main(page: ft.Page):
     survey_panel = build_survey_workspace(
         page, load_dataframe=show_file,
         root=Path(__file__).resolve().parent / "data" / "surveys",
+        language_getter=lambda: preferences.language,
+        translate_view=lambda widget: ui_translator.apply(
+            widget, preferences.language
+        ),
     )
 
     # STEP 6: Present existing actions in separate, easier-to-navigate screens.
@@ -2699,6 +2768,7 @@ async def main(page: ft.Page):
             "load_three_groups_example": load_three_groups_example,
         },
     )
+    ui_translator.apply(ui, preferences.language)
     page.add(ui)
     page.update()
     try:

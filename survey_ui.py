@@ -12,6 +12,7 @@ from pathlib import Path
 import flet as ft
 import pandas as pd
 
+from localization import tr
 from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
     submit_response, response_count, responses_dataframe, save_survey_csv,
@@ -56,12 +57,62 @@ SCALE_PRESETS = {
 }
 
 
-def preset_value_labels(name: str, kind: str) -> dict[str, str]:
+
+# Template labels are an explicit draft-authoring choice, not an automatic
+# translation of previously collected study responses.
+LOCALIZED_SCALE_PRESETS = {
+    "lv": {
+        "agreement": {
+            5: ["Pilnīgi nepiekrītu", "Nepiekrītu", "Ne piekrītu, ne nepiekrītu",
+                "Piekrītu", "Pilnīgi piekrītu"],
+            7: ["Pilnīgi nepiekrītu", "Nepiekrītu", "Drīzāk nepiekrītu",
+                "Ne piekrītu, ne nepiekrītu", "Drīzāk piekrītu",
+                "Piekrītu", "Pilnīgi piekrītu"],
+        },
+        "quality": {
+            5: ["Ļoti slikti", "Slikti", "Vidēji", "Labi", "Ļoti labi"],
+            7: ["Ārkārtīgi slikti", "Ļoti slikti", "Slikti", "Vidēji",
+                "Labi", "Ļoti labi", "Izcili"],
+        },
+        "frequency": {
+            5: ["Nekad", "Reti", "Dažreiz", "Bieži", "Vienmēr"],
+            7: ["Nekad", "Gandrīz nekad", "Reti", "Dažreiz",
+                "Bieži", "Gandrīz vienmēr", "Vienmēr"],
+        },
+    },
+    "ru": {
+        "agreement": {
+            5: ["Совершенно не согласен(-на)", "Не согласен(-на)",
+                "Ни согласен(-на), ни не согласен(-на)",
+                "Согласен(-на)", "Полностью согласен(-на)"],
+            7: ["Совершенно не согласен(-на)", "Не согласен(-на)",
+                "Скорее не согласен(-на)",
+                "Ни согласен(-на), ни не согласен(-на)",
+                "Скорее согласен(-на)", "Согласен(-на)",
+                "Полностью согласен(-на)"],
+        },
+        "quality": {
+            5: ["Очень плохо", "Плохо", "Средне", "Хорошо", "Очень хорошо"],
+            7: ["Крайне плохо", "Очень плохо", "Плохо", "Средне",
+                "Хорошо", "Очень хорошо", "Отлично"],
+        },
+        "frequency": {
+            5: ["Никогда", "Редко", "Иногда", "Часто", "Всегда"],
+            7: ["Никогда", "Почти никогда", "Редко", "Иногда",
+                "Часто", "Почти всегда", "Всегда"],
+        },
+    },
+}
+
+def preset_value_labels(
+    name: str, kind: str, language: str = "en"
+) -> dict[str, str]:
     """Return full respondent-facing labels for stable numeric response codes."""
     if kind not in {"likert5", "likert7"}:
         raise ValueError("Presets only apply to Likert scales.")
     return {str(i): label for i, label in enumerate(
-        SCALE_PRESETS[name][int(kind[-1])], start=1
+        LOCALIZED_SCALE_PRESETS.get(language, SCALE_PRESETS)[name][int(kind[-1])],
+        start=1
     )}
 
 
@@ -96,12 +147,18 @@ def parse_value_labels(raw: str, kind: str) -> dict[str, str]:
     return labels
 
 
-def semantic_differential_labels() -> dict[str, str]:
-    """Sample seven-point bipolar wording; prompts must match the study."""
-    return {
-        "-3": "Very difficult", "-2": "Difficult", "-1": "Somewhat difficult",
-        "0": "Neutral", "1": "Somewhat easy", "2": "Easy", "3": "Very easy",
+def semantic_differential_labels(language: str = "en") -> dict[str, str]:
+    """Synthetic bipolar example. Wording requires study-specific validation."""
+    examples = {
+        "en": ["Very difficult", "Difficult", "Somewhat difficult",
+               "Neutral", "Somewhat easy", "Easy", "Very easy"],
+        "lv": ["Ļoti grūti", "Grūti", "Drīzāk grūti", "Neitrāli",
+               "Drīzāk viegli", "Viegli", "Ļoti viegli"],
+        "ru": ["Очень трудно", "Трудно", "Скорее трудно", "Нейтрально",
+               "Скорее легко", "Легко", "Очень легко"],
     }
+    labels = examples.get(language, examples["en"])
+    return {str(code): text for code, text in zip(range(-3, 4), labels)}
 
 
 
@@ -280,7 +337,17 @@ def _template_questions(template: str) -> list[dict]:
     ]
 
 
-def build_survey_workspace(page, load_dataframe, root: str | Path):
+def build_survey_workspace(
+    page, load_dataframe, root: str | Path, *,
+    language_getter=None, translate_view=None,
+):
+    """Researcher workspace; UI language never alters published survey data."""
+    def language():
+        return language_getter() if language_getter else "en"
+
+    def ui_label(english):
+        return tr(language(), english)
+
     root = Path(root)
     draft: list[dict] = []
     state = {
@@ -384,11 +451,11 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         label="Offer 'Prefer not to answer' as missing", value=False
     )
     q_missing_dk_label = ft.TextField(
-        label="Don't know: respondent label", value="Затрудняюсь ответить",
+        label="Don't know: respondent label", value="Don't know",
         width=285,
     )
     q_missing_pna_label = ft.TextField(
-        label="Prefer not: respondent label", value="Предпочитаю не отвечать",
+        label="Prefer not: respondent label", value="Prefer not to answer",
         width=285,
     )
     q_parent = ft.Dropdown(
@@ -465,15 +532,19 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
 
     def apply_preset(e=None):
         q_value_labels.value = format_value_labels(
-            preset_value_labels(q_preset.value or "agreement", q_kind.value)
+            preset_value_labels(
+                q_preset.value or "agreement", q_kind.value, language()
+            )
         )
         page.update()
 
     apply_labels_button = ft.Button("Use preset labels", on_click=apply_preset)
     def apply_semantic_example(e=None):
-        q_value_labels.value = format_value_labels(semantic_differential_labels())
-        q_min_label.value = "Difficult"
-        q_max_label.value = "Easy"
+        q_value_labels.value = format_value_labels(
+            semantic_differential_labels(language())
+        )
+        q_min_label.value = ui_label("Difficult")
+        q_max_label.value = ui_label("Easy")
         page.update()
 
     semantic_button = ft.Button(
@@ -501,12 +572,12 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_max_label.value = ""
         q_preset.value = "agreement"
         q_value_labels.value = format_value_labels(
-            preset_value_labels("agreement", "likert5")
+            preset_value_labels("agreement", "likert5", language())
         )
         q_missing_dk.value = False
         q_missing_pna.value = False
-        q_missing_dk_label.value = "Затрудняюсь ответить"
-        q_missing_pna_label.value = "Предпочитаю не отвечать"
+        q_missing_dk_label.value = ui_label("Don't know")
+        q_missing_pna_label.value = ui_label("Prefer not to answer")
         q_parent.value = "always"
         q_operator.value = "equals"
         q_expected.value = ""
@@ -545,10 +616,10 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_missing_dk.value = "DK" in q.get("missing_options", {})
         q_missing_pna.value = "PNA" in q.get("missing_options", {})
         q_missing_dk_label.value = q.get("missing_options", {}).get(
-            "DK", "Затрудняюсь ответить"
+            "DK", ui_label("Don't know")
         )
         q_missing_pna_label.value = q.get("missing_options", {}).get(
-            "PNA", "Предпочитаю не отвечать"
+            "PNA", ui_label("Prefer not to answer")
         )
         editor_dependencies()
         condition = q.get("condition")
@@ -806,6 +877,21 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
 
     def apply_template(e):
         new = _template_questions(template.value or "psychology")
+        if language() in LOCALIZED_SCALE_PRESETS:
+            for question in new:
+                kind = question.get("kind", "")
+                if kind in {"likert5", "likert7"} and question.get("value_labels"):
+                    for name in SCALE_PRESETS:
+                        if question["value_labels"] == preset_value_labels(name, kind):
+                            question["value_labels"] = preset_value_labels(
+                                name, kind, language()
+                            )
+                            break
+                for field in (
+                    "prompt", "section", "page_title", "min_label", "max_label"
+                ):
+                    if question.get(field):
+                        question[field] = ui_label(question[field])
         draft[:] = validate_questions(new)
         new_editor()
         status.value = (
@@ -898,7 +984,10 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             for number, panel in page_panels.items():
                 panel.visible = number == current
             page_heading.value = page_title_map[current]
-            page_progress.value = f"Page {pages.index(current)+1} of {len(pages)}"
+            page_progress.value = (
+                f"{ui_label('Page')} {pages.index(current)+1} "
+                f"{ui_label('of')} {len(pages)}"
+            )
             progress_bar.value = (pages.index(current)+1) / len(pages)
             back_button.visible = current != pages[0]
             next_button.visible = current != pages[-1]
@@ -933,7 +1022,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         for q in questions:
             page_number = q.get("page", 1)
             body = page_panels[page_number]
-            section = q.get("section") or "General"
+            section = q.get("section") or ui_label("General")
             if section != last_section_by_page.get(page_number):
                 body.controls.append(
                     ft.Text(section.upper(), size=12, weight="bold",
@@ -961,7 +1050,12 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 values = ["Yes", "No"] if kind == "yes_no" else q["options"]
                 field = ft.Dropdown(
                     label="Choose one answer", width=None,
-                    options=[ft.DropdownOption(key=v, text=v) for v in values],
+                    options=[
+                        ft.DropdownOption(
+                            key=v, text=ui_label(v) if kind == "yes_no" else v
+                        )
+                        for v in values
+                    ],
                     on_select=update_visibility,
                 )
                 field_controls = [field]
@@ -1435,6 +1529,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             show_preview()
         if which == "responses":
             update_response_table()
+        if translate_view is not None:
+            translate_view(view)
         page.update()
 
     tab_names = {
@@ -1481,4 +1577,6 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     update_draft()
     refresh_saved()
     select_view("build")
+    if translate_view is not None:
+        translate_view(view)
     return view
