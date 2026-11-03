@@ -48,6 +48,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         ft.Button("Open CSV / Excel", on_click=a["choose_file"]),
                         ft.Button("Load survey example", on_click=a["load_sample"]),
                         ft.Button("Load scale example", on_click=a["load_scale_example"]),
+                        ft.Button("Load factor example", on_click=a["load_factor_example"]),
                         ft.Button("Load paired example", on_click=a["load_paired_example"]),
                         ft.Button("Load categorical example", on_click=a["load_categorical_example"]),
                         ft.Button("Load three-group example", on_click=a["load_three_groups_example"]),
@@ -212,6 +213,61 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                     title="Review omega assumptions and limitations",
                     expanded=False,
                     controls=[c["omega_warnings"]],
+                ),
+            ]),
+        ],
+        spacing=18,
+        visible=False,
+    )
+
+    factor_screen = ft.Column(
+        controls=[
+            heading(
+                "Exploratory EFA / PCA",
+                "PCA is total-variance data reduction; EFA estimates latent shared structure.",
+            ),
+            panel("Select questionnaire or measurement variables", [
+                ft.Text(
+                    "Select 3–12 numeric research items from a coherent set. "
+                    "At least max(60, 8 × item count) complete rows are required.",
+                    color="#A8B6C9",
+                ),
+                c["factor_items"],
+                ft.Row(
+                    controls=[
+                        c["factor_method"], c["factor_count"],
+                        c["factor_rotation"],
+                    ], wrap=True, spacing=10,
+                ),
+                ft.Text(
+                    "PCA uses unrotated total-variance components. EFA uses "
+                    "principal-axis common-factor extraction, optionally varimax. "
+                    "Rotating PCA is not implemented.",
+                    size=12, color="#A8B6C9",
+                ),
+                c["factor_confirm"],
+                ft.Button(
+                    "Run exploratory factor / component analysis",
+                    on_click=a["calculate_factor_exploration"],
+                ),
+            ]),
+            panel("Factorability and retention summary", [
+                c["factor_main_text"],
+            ]),
+            panel("Scree, parallel analysis and item loadings", [
+                c["factor_chart_area"],
+            ]),
+            panel("Component / factor loading matrix", [
+                c["factor_loading_table"],
+            ]),
+            panel("APA-style report and methodological limitations", [
+                ft.ExpansionTile(
+                    title="Show full exploration report",
+                    controls=[c["factor_report"]], expanded=False,
+                ),
+                ft.ExpansionTile(
+                    title="Review factor-analysis cautions",
+                    controls=[c["factor_warnings"]], expanded=False,
                 ),
             ]),
         ],
@@ -712,6 +768,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "survey": survey_screen,
         "descriptive": descriptive_screen,
         "reliability": reliability_screen,
+        "factor": factor_screen,
         "correlation": correlation_screen,
         "matrix": matrix_screen,
         "groups": groups_screen,
@@ -729,6 +786,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "survey": "Questionnaires",
         "descriptive": "Descriptive",
         "reliability": "Scale reliability",
+        "factor": "EFA / PCA",
         "correlation": "Correlations",
         "matrix": "Correlation matrix",
         "groups": "Compare groups",
@@ -787,6 +845,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 buttons["survey"],
                 buttons["descriptive"],
                 buttons["reliability"],
+                buttons["factor"],
                 ft.Text("ASSOCIATIONS", size=10, color="#9CB7DA"),
                 buttons["correlation"],
                 buttons["matrix"],
