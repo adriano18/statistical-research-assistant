@@ -31,6 +31,7 @@ class ImportOptions:
     """Header row is 1-based. Sheet name or zero-based position for Excel."""
     sheet: str | int = 0
     header_row: int = 1
+    data_start_row: int | None = None
     separator: str = "auto"
     encoding: str = "auto"
     decimal: str = "auto"
@@ -44,6 +45,7 @@ class ImportReport:
     source: str
     sheet: str | None
     header_row: int
+    data_start_row: int
     encoding: str | None
     separator: str | None
     converted_columns: tuple[str, ...]
@@ -51,7 +53,8 @@ class ImportReport:
 
     def as_text(self) -> str:
         source_details = [f"{self.rows} rows × {self.columns} variables",
-                          f"header row {self.header_row}"]
+                          f"header row {self.header_row}",
+                          f"data starts row {self.data_start_row}"]
         if self.sheet:
             source_details.append(f"sheet '{self.sheet}'")
         if self.encoding:
@@ -73,6 +76,12 @@ def _validate_options(options: ImportOptions) -> None:
         raise ValueError("Header row must be a positive whole number.")
     if not 1 <= options.header_row <= 100:
         raise ValueError("Header row must be between 1 and 100.")
+    if options.data_start_row is not None and (
+        isinstance(options.data_start_row, bool) or
+        not isinstance(options.data_start_row, int) or
+        not options.header_row < options.data_start_row <= 150
+    ):
+        raise ValueError("Data start row must be after the header row (2–150).")
     if options.separator not in SEPARATORS:
         raise ValueError("Separator must be auto, comma, semicolon, tab or pipe.")
     if options.encoding != "auto" and options.encoding not in ENCODINGS:
@@ -187,7 +196,7 @@ def _raw_table(path: Path, options: ImportOptions):
         extra_empty = 0
         normalized_rows = []
         for row_index, row in enumerate(rows, start=1):
-            if row_index <= options.header_row:
+            if row_index < (options.data_start_row or options.header_row + 1):
                 normalized_rows.append(row[:expected] + [
                     None for _ in range(max(0, expected - len(row)))
                 ])
@@ -409,7 +418,8 @@ def load_dataset_with_report(
             "Split the source file into smaller research datasets."
         )
 
-    frame = raw.iloc[options.header_row:].copy().reset_index(drop=True)
+    first_data = options.data_start_row or options.header_row + 1
+    frame = raw.iloc[first_data - 1:].copy().reset_index(drop=True)
     frame.columns = names
     blank_rows = frame.apply(lambda row: all(_blank(x) for x in row), axis=1)
     removed = int(blank_rows.sum())
@@ -465,10 +475,15 @@ def load_dataset_with_report(
         warnings.append(
             f"Header row {options.header_row} selected; previous rows were excluded."
         )
+    if first_data > options.header_row + 1:
+        warnings.append(
+            f"{first_data - options.header_row - 1} metadata/description row(s) "
+            "between the header and answers were excluded at your request."
+        )
     report = ImportReport(
         rows=len(frame), columns=len(frame.columns),
         source=source.name, sheet=sheet, header_row=options.header_row,
-        encoding=encoding, separator=separator,
+        data_start_row=first_data, encoding=encoding, separator=separator,
         converted_columns=tuple(converted), warnings=tuple(warnings),
     )
     return frame, report
