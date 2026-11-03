@@ -918,3 +918,146 @@ EXTRA_TEXT = {
     "Частота шкалы"
   ]
 }
+
+EXTRA_TEXT.update({
+  "Don't know": [
+    "Nezinu",
+    "Затрудняюсь ответить"
+  ],
+  "Prefer not to answer": [
+    "Nevēlos atbildēt",
+    "Предпочитаю не отвечать"
+  ],
+  "Page": [
+    "Lapa",
+    "Страница"
+  ],
+  "of": [
+    "no",
+    "из"
+  ],
+  "General": [
+    "Vispārīgi",
+    "Общие"
+  ],
+  "Figure number": [
+    "Attēla numurs",
+    "Номер рисунка"
+  ],
+  "Figure title (optional)": [
+    "Attēla nosaukums (neobligāti)",
+    "Название рисунка (необязательно)"
+  ],
+  "Figure note (optional)": [
+    "Piezīme pie attēla (neobligāti)",
+    "Примечание к рисунку (необязательно)"
+  ],
+  "APA 7 figure export settings": [
+    "APA 7 attēla eksporta iestatījumi",
+    "Настройки экспорта рисунка APA 7"
+  ],
+  "For real participant research, document ethical approval, appropriate consent and data-retention procedures.": [
+    "Pirms īstu dalībnieku datu iegūšanas dokumentējiet ētikas atļauju, informētu piekrišanu un datu glabāšanas procedūras.",
+    "Перед сбором реальных данных оформите этическое разрешение, информированное согласие и процедуры хранения данных."
+  ],
+  "Preview shows the first 10 rows and 7 columns. Export CSV for the complete dataset.": [
+    "Priekšskatījums rāda pirmās 10 rindas un 7 kolonnas. Eksportējiet CSV pilniem datiem.",
+    "Предпросмотр показывает 10 строк и 7 столбцов. Экспортируйте CSV для полного набора данных."
+  ],
+  "Group questions by topic and assign consecutive pages, starting with page 1.": [
+    "Grupējiet jautājumus tēmās un veidojiet secīgas lapas, sākot ar 1. lapu.",
+    "Группируйте вопросы по темам и назначайте последовательные страницы, начиная с первой."
+  ],
+  "Use all numeric labels for Likert, or 2–11 custom integer codes (e.g. −3…3). Missing options are NOT scores; they export as NaN plus reason codes.": [
+    "Likerta skalā norādiet visus skaitliskos kodus; citām skalām 2–11 veselus skaitļus. Trūkstošās atbildes nav punkti; eksportā tie ir NaN ar iemesla kodu.",
+    "Для шкалы Лайкерта подпишите все значения, для других — от 2 до 11 целых кодов. Пропуски не являются баллами: экспортируются как NaN с отдельной причиной."
+  ],
+  "Drag a section handle to move all of its questions within the selected page. Use ↑/↓ if needed. Moves that break conditional dependencies are rejected.": [
+    "Velciet sadaļas rokturi, lai pārvietotu visus jautājumus vienā lapā. Var izmantot ↑/↓. Izmaiņas, kas lauž nosacījumus, tiek noraidītas.",
+    "Перетаскивайте раздел вместе со всеми вопросами в пределах страницы; доступны ↑/↓. Перемещения, нарушающие условия переходов, отклоняются."
+  ],
+  "Preview pages and respondent-visible answer labels before publishing. Saved definitions stay immutable; Clone to revise.": [
+    "Pirms publicēšanas pārbaudiet lapas un atbilžu tekstus. Saglabātās anketas ir nemainīgas; rediģēšanai izveidojiet kopiju.",
+    "Перед публикацией проверьте страницы и подписи ответов. Опубликованные анкеты неизменяемы; для правок создайте копию."
+  ],
+  "Create forms, preview conditional questions, collect local responses and analyze without Google Forms.": [
+    "Veidojiet anketas, pārbaudiet nosacījuma jautājumus un analizējiet lokālas atbildes.",
+    "Создавайте анкеты, проверяйте условные вопросы и анализируйте локально собранные ответы."
+  ],
+  "No public URL or remote collection. For real participant data, review consent, privacy, access and retention first.": [
+    "Nav publiskas saites vai attālinātas vākšanas. Pirms īstu datu izmantošanas pārbaudiet piekrišanu, privātumu un glabāšanu.",
+    "Публичной ссылки и удалённого сбора нет. Для реальных данных проверьте согласие, конфиденциальность, доступ и хранение."
+  ],
+  "The exported PNG adds a figure number, italic title and explanatory note. Check the original chart and revise the caption for your manuscript.": [
+    "Eksportētajam PNG pievienots attēla numurs, kursīva nosaukums un piezīme. Pārbaudiet grafiku un pielāgojiet rokrakstam.",
+    "Экспорт PNG добавляет номер рисунка, название курсивом и примечание. Проверьте исходный график и подпись перед публикацией."
+  ],
+  "Select at least three items from one scale. Check any reverse-scored items before running the analysis.": [
+    "Izvēlieties vismaz trīs vienas skalas punktus. Pirms analīzes pārbaudiet reversi kodētos punktus.",
+    "Выберите не менее трёх пунктов одной шкалы. Перед анализом проверьте реверсивное кодирование."
+  ],
+  "Both methods use the chosen complete-case items. Omega uses a Pearson one-factor model and does not automatically reverse-score answers. Optional CI resamples whole respondents with a fixed random seed.": [
+    "Abas metodes izmanto pilnos novērojumus. Omega balstās uz viena faktora Pīrsona modeli un automātiski nemaina reverso kodējumu.",
+    "Обе оценки используют полные наблюдения. Омега основана на однофакторной модели Пирсона и автоматически не выполняет реверсивное кодирование."
+  ],
+  "Select 3–12 numeric research items from a coherent set. At least max(60, 8 × item count) complete rows are required.": [
+    "Izvēlieties 3–12 vienotas skalas skaitliskus punktus. Nepieciešamas vismaz max(60; 8 × punktu skaits) pilnas rindas.",
+    "Выберите 3–12 числовых пунктов одной концепции. Требуется не менее max(60, 8 × число пунктов) полных строк."
+  ],
+  "PCA uses unrotated total-variance components. EFA uses principal-axis common-factor extraction, optionally varimax (orthogonal) or oblimin (correlated factors). Rotating PCA is not implemented.": [
+    "PCA apkopo kopējo dispersiju bez rotācijas; EFA izmanto kopīgos faktorus ar varimax vai oblimin rotāciju. PCA rotācija nav ieviesta.",
+    "PCA анализирует общую дисперсию без вращения; EFA выделяет общие факторы с varimax или oblimin. Вращение PCA не реализовано."
+  ],
+  "Choose a quantitative outcome and optional grouping variable. The figure includes a boxplot and normal Q–Q plot.": [
+    "Izvēlieties kvantitatīvu rezultātu un neobligātu grupu. Attēlā būs kastu diagramma un Q–Q grafiks.",
+    "Выберите количественную переменную и, при необходимости, группу. Будут показаны диаграмма размаха и Q–Q график."
+  ],
+  "This module does not support paired or repeated-measure data. The group variable must have exactly two observed categories.": [
+    "Šī sadaļa nav paredzēta saistītiem vai atkārtotiem mērījumiem. Grupas mainīgajam jābūt divām kategorijām.",
+    "Модуль не подходит для парных и повторных измерений. Группирующая переменная должна иметь ровно две категории."
+  ],
+  "Each spreadsheet row must represent one participant, with both values aligned. Independent groups are not paired.": [
+    "Katra rinda ir viens dalībnieks ar diviem savietotiem mērījumiem. Neatkarīgas grupas nav saistītas.",
+    "Каждая строка — один участник с двумя сопоставленными измерениями. Независимые группы не являются парными."
+  ],
+  "Choose two nominal or ordinal variables (including coded categories). This is a test of independence, not of means.": [
+    "Izvēlieties divus nominālus vai ordinālus mainīgos. Tests pārbauda neatkarību, nevis vidējās vērtības.",
+    "Выберите две номинальные или порядковые переменные. Проверяется независимость, а не различие средних."
+  ],
+  "One quantitative outcome and 1–5 quantitative predictors. Numeric category codes are not automatically converted to dummies.": [
+    "Viens kvantitatīvs rezultāts un 1–5 prediktori; kategoriju skaitliskie kodi netiek automātiski pārkodēti.",
+    "Одна количественная зависимая переменная и 1–5 предикторов. Коды категорий не становятся автоматически фиктивными переменными."
+  ],
+  "Wide format: one row per participant, one selected column per occasion. Select 3–8 columns in the intended time order.": [
+    "Plats formāts: viena rinda katram dalībniekam, katrai reizei sava kolonna; izvēlieties 3–8 kolonnas pareizā secībā.",
+    "Широкий формат: одна строка на участника, отдельный столбец для каждого измерения; выберите 3–8 столбцов по времени."
+  ],
+  "Outcome must be explicitly coded 0 = no event, 1 = event. Select 1–5 meaningful quantitative predictors; numeric category codes require separate recoding.": [
+    "Rezultātam jābūt 0/1 kodējumā. Izvēlieties 1–5 jēgpilnus skaitliskus prediktorus; kategorijas jāpārkodē atsevišķi.",
+    "Исход должен быть закодирован 0/1. Выберите 1–5 количественных предикторов; категориальные коды требуют отдельной перекодировки."
+  ],
+  "Choose one quantitative outcome, one categorical group factor (2–6 levels) and 1–3 quantitative covariates. ANCOVA assumes parallel regression slopes; interaction GLM allows different slopes.": [
+    "Izvēlieties vienu kvantitatīvu rezultātu, grupas faktoru (2–6 līmeņi) un 1–3 kovariātas. ANCOVA pieņem paralēlus slīpumus; GLM atļauj mijiedarbību.",
+    "Выберите количественный исход, фактор группы (2–6 уровней) и 1–3 ковариаты. ANCOVA предполагает одинаковые наклоны; GLM допускает взаимодействие."
+  ],
+  "Selected columns measure the same construct in the SAME participants": [
+    "Atlasītās kolonnas mēra to pašu konstruktu TIEM PAŠIEM dalībniekiem",
+    "Выбранные столбцы измеряют один конструкт У ТЕХ ЖЕ участников"
+  ],
+  "I reviewed measurement scales, difference scores, outliers and design assumptions": [
+    "Es pārbaudīju skalas, starpības, ekstrēmus un dizaina pieņēmumus",
+    "Я проверил(а) шкалы, разности, выбросы и предпосылки дизайна"
+  ],
+  "I checked that the items measure one construct and reversed items are recoded": [
+    "Es pārbaudīju, ka punkti mēra vienu konstruktu un reversie punkti ir pārkodēti",
+    "Я подтвердил(а), что пункты измеряют один конструкт и реверсивные пункты перекодированы"
+  ],
+  "I checked the study design, measurement scales, independence and suitability": [
+    "Es pārbaudīju dizainu, skalas, neatkarību un metodes atbilstību",
+    "Я проверил(а) дизайн, шкалы, независимость и пригодность метода"
+  ],
+  "I reviewed distributions, outliers and assumptions of the chosen test": [
+    "Es pārbaudīju sadalījumus, ekstrēmus un testa pieņēmumus",
+    "Я проверил(а) распределения, выбросы и предпосылки критерия"
+  ]
+})
