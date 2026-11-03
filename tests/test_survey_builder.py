@@ -415,6 +415,12 @@ class SurveyBuilderTests(unittest.TestCase):
         validate_page_answers(q, {"score": "DK"}, 1)
         self.assertFalse(question_is_visible(q[1], {"score": None}))
         self.assertFalse(question_is_visible(q[1], {"score": "DK"}))
+        not_equal_branch = {
+            "condition": {"question": "score", "operator": "not_equals",
+                          "value": 2.0}
+        }
+        self.assertFalse(question_is_visible(not_equal_branch, {"score": "DK"}))
+        self.assertTrue(question_is_visible(not_equal_branch, {"score": 5}))
         with self.assertRaisesRegex(ValueError, "Required"):
             validate_page_answers(q, {}, 1)
         with self.assertRaisesRegex(ValueError, "Required"):
