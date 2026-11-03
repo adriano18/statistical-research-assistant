@@ -52,6 +52,9 @@ from repeated_charts import make_repeated_chart
 from logistic_analysis import binary_logistic_regression
 from logistic_reporting import logistic_main, logistic_brief, format_logistic_report
 from logistic_charts import make_logistic_chart
+from ancova_analysis import analyze_ancova
+from ancova_reporting import ancova_main, ancova_brief, format_ancova_report
+from ancova_charts import make_ancova_chart
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -62,6 +65,8 @@ THREE_GROUPS_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_thr
 REGRESSION_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_regression.csv"
 REPEATED_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_repeated.csv"
 LOGISTIC_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_logistic.csv"
+ANCOVA_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_ancova.csv"
+ANCOVA_INTERACTION_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_ancova_interaction.csv"
 
 
 async def main(page: ft.Page):
@@ -216,6 +221,80 @@ async def main(page: ft.Page):
     log_report = ft.Text("")
     log_warnings = ft.Text("")
     log_chart = ft.Column()
+
+    # General Linear Model: categorical groups + continuous covariates.
+    ac_outcome = ft.Dropdown(
+        label="Quantitative outcome", width=310, options=[]
+    )
+    ac_group = ft.Dropdown(
+        label="Group factor (2–6 groups)", width=310, options=[]
+    )
+    ac_covariates = ft.Column(height=160, scroll=ft.ScrollMode.AUTO)
+    ac_mode = ft.Dropdown(
+        label="Model", width=340, value="ancova",
+        options=[
+            ft.DropdownOption(
+                key="ancova", text="ANCOVA (common slopes)"
+            ),
+            ft.DropdownOption(
+                key="interaction", text="GLM (group × covariate interactions)"
+            ),
+        ],
+    )
+    ac_confirm = ft.Checkbox(
+        label=(
+            "I reviewed independent observations, quantitative covariates, "
+            "group design, covariate timing, linearity and outliers"
+        ),
+        value=False,
+    )
+    ac_main = ft.Text("")
+    ac_brief = ft.Text("")
+    ac_means_table = ft.Column()
+    ac_pairs_table = ft.Column()
+    ac_chart = ft.Column()
+    ac_report = ft.Text("")
+    ac_warnings = ft.Text("")
+
+    def clear_ancova(e=None):
+        ac_main.value = ""
+        ac_brief.value = ""
+        ac_means_table.controls.clear()
+        ac_pairs_table.controls.clear()
+        ac_chart.controls.clear()
+        ac_report.value = ""
+        ac_warnings.value = ""
+        output_cache.pop("ancova", None)
+        if active_section == "ancova":
+            refresh_output_buttons()
+        page.update()
+
+    def refresh_ancova_covariates(e=None):
+        if dataframe is None:
+            return
+        checked = {
+            box.label for box in ac_covariates.controls if bool(box.value)
+        }
+        choices = [
+            str(name) for name in dataframe.columns
+            if pd.api.types.is_numeric_dtype(dataframe[name])
+            and not looks_like_identifier(name)
+            and name not in {ac_outcome.value, ac_group.value}
+        ]
+        ac_covariates.controls = [
+            ft.Checkbox(
+                label=name, value=name in checked,
+                on_change=clear_ancova,
+            )
+            for name in choices
+        ]
+        ac_confirm.value = False
+        clear_ancova()
+
+    ac_outcome.on_select = refresh_ancova_covariates
+    ac_group.on_select = refresh_ancova_covariates
+    ac_mode.on_select = clear_ancova
+    ac_confirm.on_change = clear_ancova
 
     def clear_logistic(e=None):
         log_main.value = ""
@@ -821,6 +900,47 @@ async def main(page: ft.Page):
         reg_warnings.value = ""
         reg_chart.controls.clear()
 
+        # Group-adjusted general linear model candidate selection.
+        ac_outcome.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in numeric_candidates
+        ]
+        ac_outcome.value = (
+            "wellbeing" if "wellbeing" in numeric_candidates
+            else (numeric_candidates[-1] if numeric_candidates else None)
+        )
+        group_factors = [
+            str(name) for name in df.columns
+            if not looks_like_identifier(name)
+            and 2 <= df[name].dropna().nunique() <= 6
+        ]
+        ac_group.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in group_factors
+        ]
+        ac_group.value = (
+            "group" if "group" in group_factors
+            else (group_factors[0] if group_factors else None)
+        )
+        ac_covariates.controls = [
+            ft.Checkbox(
+                label=name,
+                value=name in {"age", "baseline_score"},
+                on_change=clear_ancova,
+            )
+            for name in numeric_candidates
+            if name not in {ac_outcome.value, ac_group.value}
+        ]
+        ac_mode.value = "ancova"
+        ac_confirm.value = False
+        ac_main.value = ""
+        ac_brief.value = ""
+        ac_means_table.controls.clear()
+        ac_pairs_table.controls.clear()
+        ac_chart.controls.clear()
+        ac_report.value = ""
+        ac_warnings.value = ""
+
         # Binary regression requires a verified 0/1 outcome.
         binary_outcomes = [
             name for name in numeric_candidates
@@ -1063,6 +1183,12 @@ async def main(page: ft.Page):
 
     async def load_logistic_example(e):
         await show_file(LOGISTIC_SAMPLE)
+
+    async def load_ancova_example(e):
+        await show_file(ANCOVA_SAMPLE)
+
+    async def load_ancova_interaction_example(e):
+        await show_file(ANCOVA_INTERACTION_SAMPLE)
 
     async def calculate_alpha(e):
         reliability_chart_area.controls.clear()
@@ -1813,6 +1939,84 @@ async def main(page: ft.Page):
             log_report.value = f"Logistic regression error: {error}"
         page.update()
 
+    async def run_ancova(e):
+        clear_ancova()
+        ac_main.value = "Estimating covariate-adjusted group differences..."
+        page.update()
+        if dataframe is None or not ac_outcome.value or not ac_group.value:
+            ac_main.value = "Load a dataset, choose an outcome and a group factor."
+            page.update()
+            return
+
+        selected = [
+            box.label for box in ac_covariates.controls if bool(box.value)
+        ]
+        try:
+            result = await asyncio.to_thread(
+                analyze_ancova,
+                dataframe, ac_outcome.value, ac_group.value,
+                selected, ac_mode.value, bool(ac_confirm.value),
+            )
+            chart = await asyncio.to_thread(make_ancova_chart, result)
+            report = format_ancova_report(result)
+            ac_main.value = ancova_main(result)
+            ac_brief.value = ancova_brief(result)
+            ac_report.value = report
+            ac_warnings.value = "\n".join(result.warnings)
+            ac_chart.controls.append(
+                ft.Image(src=chart, width=1060, height=485)
+            )
+            means_columns = [
+                "Group", "N", "Raw mean", "Adjusted mean", "95% CI"
+            ]
+            ac_means_table.controls.append(ft.DataTable(
+                columns=[
+                    ft.DataColumn(label=ft.Text(title))
+                    for title in means_columns
+                ],
+                rows=[
+                    ft.DataRow(cells=[
+                        ft.DataCell(ft.Text(g.label)),
+                        ft.DataCell(ft.Text(str(g.n))),
+                        ft.DataCell(ft.Text(f"{g.raw_mean:.2f}")),
+                        ft.DataCell(ft.Text(f"{g.adjusted_mean:.2f}")),
+                        ft.DataCell(ft.Text(
+                            f"[{g.ci_low:.2f}, {g.ci_high:.2f}]"
+                        )),
+                    ]) for g in result.groups
+                ],
+            ))
+            pairs_columns = [
+                "Pair", "Adjusted diff.", "t", "Holm p", "Sig."
+            ]
+            ac_pairs_table.controls.append(ft.DataTable(
+                columns=[
+                    ft.DataColumn(label=ft.Text(title))
+                    for title in pairs_columns
+                ],
+                rows=[
+                    ft.DataRow(cells=[
+                        ft.DataCell(ft.Text(
+                            f"{p.first} → {p.second}"
+                        )),
+                        ft.DataCell(ft.Text(f"{p.difference:+.2f}")),
+                        ft.DataCell(ft.Text(f"{p.t:.2f}")),
+                        ft.DataCell(ft.Text(apa_p_value(p.p_holm))),
+                        ft.DataCell(ft.Text(
+                            "Yes" if p.p_holm < .05 else "No"
+                        )),
+                    ]) for p in result.pairs
+                ],
+            ))
+            remember_output(
+                "ancova", "ANCOVA / General Linear Model",
+                report, chart,
+            )
+        except Exception as error:
+            ac_main.value = f"ANCOVA / GLM error: {error}"
+            ac_report.value = ac_main.value
+        page.update()
+
     # STEP 6: Present existing actions in separate, easier-to-navigate screens.
     ui = build_interface(
         page,
@@ -1847,6 +2051,18 @@ async def main(page: ft.Page):
             "log_report": log_report,
             "log_warnings": log_warnings,
             "log_chart": log_chart,
+            "ac_outcome": ac_outcome,
+            "ac_group": ac_group,
+            "ac_covariates": ac_covariates,
+            "ac_mode": ac_mode,
+            "ac_confirm": ac_confirm,
+            "ac_main": ac_main,
+            "ac_brief": ac_brief,
+            "ac_means_table": ac_means_table,
+            "ac_pairs_table": ac_pairs_table,
+            "ac_chart": ac_chart,
+            "ac_report": ac_report,
+            "ac_warnings": ac_warnings,
             "rep_items": rep_items,
             "rep_scale": rep_scale,
             "rep_method": rep_method,
@@ -1946,6 +2162,9 @@ async def main(page: ft.Page):
             "run_explore": run_explore,
             "run_regression": run_regression,
             "run_logistic": run_logistic,
+            "run_ancova": run_ancova,
+            "load_ancova_example": load_ancova_example,
+            "load_ancova_interaction_example": load_ancova_interaction_example,
             "load_logistic_example": load_logistic_example,
             "run_repeated": run_repeated,
             "load_repeated_example": load_repeated_example,
