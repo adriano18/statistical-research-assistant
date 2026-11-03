@@ -333,7 +333,9 @@ class SurveyBuilderTests(unittest.TestCase):
                      page_title="Part B"),
             ])
         self.assertEqual(len(parse_value_labels(
-            "1 = Очень плохо\\n2 = Плохо\\n3 = Средне\\n4 = Хорошо\\n5 = Очень хорошо",
+            "\n".join([f"{i} = {label}" for i, label in enumerate(
+                ["Очень плохо", "Плохо", "Средне", "Хорошо", "Очень хорошо"], 1
+            )]),
             "likert5",
         )), 5)
         with self.assertRaisesRegex(ValueError, "Label every"):
