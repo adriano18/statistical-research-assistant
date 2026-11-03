@@ -227,6 +227,10 @@ class APAWordExportTests(unittest.TestCase):
         self.assertIn("Appendix: Original calculation output", all_text)
         self.assertIn("Original calculator report", all_text)
         self.assertIn("References", all_text)
+        self.assertLess(
+            all_text.index("References"),
+            all_text.index("Appendix: Original calculation output")
+        )
         self.assertIn("Cumming", all_text)
         self.assertNotIn("Note. Note.", all_text)
         from docx.shared import RGBColor
