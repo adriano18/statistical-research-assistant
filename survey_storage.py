@@ -207,7 +207,7 @@ def responses_dataframe(
     with sqlite3.connect(db_path) as db:
         data = db.execute(
             "SELECT response_id, answers_json FROM responses "
-            "ORDER BY submitted_at, response_id"
+            "ORDER BY rowid ASC"
         ).fetchall()
     rows = []
     for response_id, encoded in data:
