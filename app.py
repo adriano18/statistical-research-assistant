@@ -16,7 +16,10 @@ from app_preferences import (
 from localization import tr
 from ui_i18n import UITranslator
 from statistical_guide import method_guide_text
-from apa_figures import make_apa7_export_png
+from apa_figures import (
+    make_apa7_export_png, default_section_figure_note,
+    section_embeds_figure_header,
+)
 from variable_rules import looks_like_identifier
 from descriptive_charts import make_descriptive_chart
 from reliability import analyze_cronbach
@@ -302,7 +305,11 @@ async def main(page: ft.Page):
                         item.png,
                         (figure_title.value or "").strip() or item.title,
                         figure_number=int((figure_number.value or "").strip()),
-                        note=(figure_note.value or "").strip(),
+                        note=(figure_note.value or "").strip()
+                        or default_section_figure_note(active_section),
+                        strip_embedded_caption=section_embeds_figure_header(
+                            active_section
+                        ),
                     )
                     for_export = AnalysisOutput(
                         title=item.title, report=for_export.report, png=png_apa,
