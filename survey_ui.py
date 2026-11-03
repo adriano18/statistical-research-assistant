@@ -94,43 +94,47 @@ def _pilot_questions():
         dict(
             key="consent", prompt="I agree to take part in this fictional pilot.",
             kind="consent", required=True, section="Study information",
+            page=1, page_title="Introduction",
         ),
         dict(
             key="age", prompt="Your age in years (optional)",
             kind="number", required=False, section="Demographics",
+            page=2, page_title="Background",
         ),
         dict(
             key="group", prompt="Fictional study group",
             kind="single_choice", options=["A", "B"], required=True,
-            section="Demographics",
+            section="Demographics", page=2, page_title="Background",
         ),
         dict(
             key="employed", prompt="Are you currently employed?",
             kind="yes_no", required=True, section="Demographics",
+            page=2, page_title="Background",
         ),
         dict(
             key="work_years", prompt="Years in current employment",
             kind="number", required=True, section="Demographics",
+            page=2, page_title="Background",
             condition={
                 "question": "employed", "operator": "equals", "value": "Yes",
             },
         ),
         dict(
             key="stress_q1", prompt="Fictional stress statement 1",
-            kind="likert5", required=True, section="Stress items",
+            kind="likert5", required=True, section="Stress items", page=3, page_title="Stress scale",
             scale_id="stress", min_label="Never", max_label="Always",
             value_labels=preset_value_labels("frequency", "likert5"),
         ),
         dict(
             key="stress_q2", prompt="Fictional positively worded statement 2",
-            kind="likert5", required=True, section="Stress items",
+            kind="likert5", required=True, section="Stress items", page=3, page_title="Stress scale",
             scale_id="stress", reverse_scored=True,
             min_label="Never", max_label="Always",
             value_labels=preset_value_labels("frequency", "likert5"),
         ),
         dict(
             key="stress_q3", prompt="Fictional stress statement 3",
-            kind="likert5", required=True, section="Stress items",
+            kind="likert5", required=True, section="Stress items", page=3, page_title="Stress scale",
             scale_id="stress", min_label="Never", max_label="Always",
             value_labels=preset_value_labels("frequency", "likert5"),
         ),
