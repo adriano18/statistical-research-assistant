@@ -423,6 +423,7 @@ def load_dataset_with_report(
 
     missing = {x.strip().casefold() for x in options.missing_tokens}
     replaced = 0
+    normalized_linebreaks = 0
     for col in frame.columns:
         values = []
         for original in frame[col]:
@@ -433,8 +434,16 @@ def load_dataset_with_report(
                     replaced += 1
                 values.append(None)
             else:
+                if isinstance(original, str) and "\r" in original:
+                    original = original.replace("\r\n", "\n").replace("\r", "\n")
+                    normalized_linebreaks += 1
                 values.append(original)
         frame[col] = pd.Series(values, dtype=object)
+    if normalized_linebreaks:
+        warnings.append(
+            f"Normalized line endings in {normalized_linebreaks} text cell(s) "
+            "to match CSV/Excel behavior across Windows and other systems."
+        )
     if replaced:
         warnings.append(
             f"{replaced} text marker(s) converted to missing using the "
