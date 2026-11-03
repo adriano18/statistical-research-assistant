@@ -4,7 +4,7 @@
 
 A **local-first, reproducible statistical workbench** for psychology and marketing research, with correct calculations, practical guidance, APA-style output and later optional AI interpretation. This is a focused SPSS-like assistant, **not a promise to reproduce all IBM SPSS procedures**.
 
-**Next development sequence**: fix the questionnaire builder's usability (short focused UI milestone) → finish psychometric reliability and factor-analysis essentials → add research-method guidance and optional AI → deliver secure, respondent-facing survey distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
+**Next development sequence**: validate the newly implemented psychometric reliability and exploratory-factor screens → improve questionnaire response labeling and accessible navigation → build researcher method guidance / optional AI → complete EN/LV/RU UX and plan secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
 ## 1. Implemented statistical core
 
@@ -44,8 +44,10 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [ ] Import SPSS `.sav` (optional `pyreadstat`) without remote uploads
 - [ ] McNemar for paired binary classifications; chi-square goodness-of-fit for one categorical variable
 - [ ] Partial correlations
-- [ ] **McDonald's ω**, scale item diagnostics
-- [ ] EFA / PCA with loading matrices, scree plot, suitability checks and explained variance
+- [x] **One-factor standardized McDonald's ω**, ML Pearson factor loadings, uniqueness, corrected item-rest r, item mean/SD/missingness, PNG and cautious APA report
+- [ ] Omega extensions: bootstrap uncertainty intervals, ordinal/polychoric reliability, multi-factor ω total/hierarchical and formal fit assessment
+- [x] **Exploratory PCA and principal-axis EFA**, loading matrices, PCA explained variance, scree plot, KMO overall/item, Bartlett χ², fixed-seed PCA parallel analysis, optional varimax rotation
+- [ ] EFA extensions: polychoric correlations, oblique rotations and factor correlations, factor scores, alternative extraction criteria and stronger dimensionality validation
 - [ ] Sensitivity/sample-size and power interpretation, confidence intervals and multiple-testing policy
 
 ### Immediate priority: questionnaire usability before expanding forms
@@ -60,6 +62,15 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [ ] Keep the statistical/data-processing engine independent of Flet so a future dedicated browser-based respondent interface remains feasible
 
 **Priority decision:** test the rebuilt editor manually on Windows, fix confirmed UI blockers, then resume **McDonald's ω, item-level reliability checks and EFA/PCA**. Keep public survey hosting, clinical triage and complex logic outside this phase.
+
+### Questionnaire editor: deferred usability improvements
+
+- [ ] **Drag and drop** to reorder individual questions and whole sections, with keyboard-accessible move-up/move-down controls retained as a fallback
+- [ ] **Value-label mappings for all Likert and rating choices**: display a readable localized label (e.g. `1 = Ļoti slikti / Очень плохо`, `3 = Vidēji / Средне`, `5 = Ļoti labi / Очень хорошо`) while storing **stable numeric scores 1–5** in the dataset
+- [ ] Support fully custom and unequal-endpoint scales, semantic differentials and optional `Don't know / Prefer not to answer` missing-value codes without pretending the categories are continuous
+- [ ] Keep response labels, raw codes, ordinal metadata and reverse-key flags in the codebook; require the researcher to confirm reverse scoring before creating transformed columns
+- [ ] Responsive layout for smaller windows, text wrapping, compact item cards, keyboard navigation, accessible contrast and previews showing real respondent-visible labels
+- [ ] Usability test builder on Windows with several participants creating/previewing a real **licensed** questionnaire (no actual sensitive participant data during development)
 
 ### Future: questionnaire import from a photo or document (AI-assisted)
 
