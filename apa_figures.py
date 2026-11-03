@@ -114,12 +114,17 @@ def make_apa7_export_png(
         source_image = source_image.crop(
             (0, top, source_image.width, bottom)
         )
-    plot_height = min(8.5, max(3.0, source_image.height / source_image.width * 7.25))
-    height = plot_height + 2.1
+    effective_note = note.strip() or DEFAULT_NOTE
+    note_lines = textwrap.wrap(effective_note, width=105)
+    note_margin = max(0.85, 0.20 + 0.16 * len(note_lines))
+    plot_height = min(
+        8.5, max(3.0, source_image.height / source_image.width * 7.25)
+    )
+    height = plot_height + 1.30 + note_margin
     fig = plt.figure(figsize=(8.5, height), facecolor="white")
     try:
         y_top = 1.0 - 1.16 / height
-        y_bottom = 0.77 / height
+        y_bottom = note_margin / height
         ax = fig.add_axes([0.07, y_bottom, 0.86, y_top - y_bottom])
         ax.imshow(source_image)
         ax.set_axis_off()
@@ -134,9 +139,8 @@ def make_apa7_export_png(
             ha="left", va="top", fontsize=11, style="italic",
             fontfamily="DejaVu Sans", color="black",
         )
-        effective_note = note.strip() or DEFAULT_NOTE
         fig.text(
-            0.07, 0.58 / height,
+            0.07, (note_margin - 0.18) / height,
             textwrap.fill(effective_note, width=105),
             ha="left", va="top", fontsize=9, fontfamily="DejaVu Sans",
             color="black",
