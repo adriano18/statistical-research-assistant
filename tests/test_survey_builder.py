@@ -552,6 +552,41 @@ class SurveyBuilderTests(unittest.TestCase):
         self.assertEqual([radio.value for radio in missing.controls], ["DK", "PNA"])
         self.assertIsNone(field.value)
 
+    def test_likert_presets_are_localized_without_changing_score_codes(self):
+        for language in ("en", "lv", "ru"):
+            for kind in ("likert5", "likert7"):
+                for preset in ("agreement", "quality", "frequency"):
+                    with self.subTest(
+                        language=language, kind=kind, preset=preset
+                    ):
+                        labels = preset_value_labels(preset, kind, language)
+                        count = int(kind[-1])
+                        self.assertEqual(
+                            set(labels), {str(i) for i in range(1, count + 1)}
+                        )
+                        self.assertEqual(len(set(labels.values())), count)
+                        question = validate_questions([dict(
+                            key="item", prompt="Synthetic item", kind=kind,
+                            required=True, value_labels=labels,
+                        )])[0]
+                        self.assertEqual(
+                            [code for code, display in likert_choices(question)],
+                            list(range(1, count + 1)),
+                        )
+                        self.assertEqual(
+                            len(likert_choices(question)), count
+                        )
+        self.assertEqual(
+            preset_value_labels("quality", "likert5", "ru")["3"], "Средне"
+        )
+        self.assertEqual(
+            preset_value_labels("frequency", "likert5", "lv")["1"], "Nekad"
+        )
+        self.assertEqual(
+            preset_value_labels("quality", "likert5", "xx"),
+            preset_value_labels("quality", "likert5", "en"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
