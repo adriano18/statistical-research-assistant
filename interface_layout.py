@@ -1,6 +1,6 @@
 """Flet interface layout for the Statistical Research Assistant.
 
-The interface is divided into twelve screens. Calculation logic stays in app.py;
+The interface is divided into thirteen screens. Calculation logic stays in app.py;
 existing controls are reused, so switching screens preserves user selections.
 """
 
@@ -53,6 +53,8 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         ft.Button("Load three-group example", on_click=a["load_three_groups_example"]),
                         ft.Button("Load regression example", on_click=a["load_regression_example"]),
                         ft.Button("Load logistic example", on_click=a["load_logistic_example"]),
+                        ft.Button("Load ANCOVA example", on_click=a["load_ancova_example"]),
+                        ft.Button("Load interaction example", on_click=a["load_ancova_interaction_example"]),
                         ft.Button("Load repeated example", on_click=a["load_repeated_example"]),
                     ],
                     wrap=True,
@@ -582,6 +584,63 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         visible=False,
     )
 
+    # Screen 13: Gaussian general linear model for adjusted group comparisons.
+    ancova_screen = ft.Column(
+        controls=[
+            heading(
+                "ANCOVA / General Linear Model",
+                "Compare independent groups after accounting for quantitative covariates.",
+            ),
+            panel("Study design and model", [
+                ft.Text(
+                    "Choose one quantitative outcome, one categorical group factor "
+                    "(2–6 levels) and 1–3 quantitative covariates. ANCOVA assumes "
+                    "parallel regression slopes; interaction GLM allows different slopes.",
+                    color="#A8B6C9",
+                ),
+                ft.Row(
+                    controls=[c["ac_outcome"], c["ac_group"]],
+                    wrap=True, spacing=12,
+                ),
+                ft.Text("Quantitative covariates", weight="bold"),
+                c["ac_covariates"],
+                c["ac_mode"],
+                c["ac_confirm"],
+                ft.Button(
+                    "Run ANCOVA / GLM", on_click=a["run_ancova"]
+                ),
+            ]),
+            panel("Main result and interpretation", [
+                c["ac_main"], c["ac_brief"],
+            ]),
+            panel("Group fits and adjusted means", [
+                c["ac_chart"],
+            ]),
+            panel("Adjusted group means at covariate reference", [
+                c["ac_means_table"],
+            ]),
+            panel("Holm-adjusted group comparisons", [
+                c["ac_pairs_table"],
+            ]),
+            panel("Complete APA-style report", [
+                ft.ExpansionTile(
+                    title="Show detailed ANCOVA / GLM report",
+                    expanded=False,
+                    controls=[c["ac_report"]],
+                ),
+            ]),
+            panel("Assumptions and cautions", [
+                ft.ExpansionTile(
+                    title="Review methodological limitations",
+                    expanded=False,
+                    controls=[c["ac_warnings"]],
+                ),
+            ]),
+        ],
+        spacing=18,
+        visible=False,
+    )
+
     screens = {
         "dataset": dataset_screen,
         "descriptive": descriptive_screen,
@@ -594,6 +653,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "omnibus": omnibus_screen,
         "regression": regression_screen,
         "logistic": logistic_screen,
+        "ancova": ancova_screen,
         "repeated": repeated_screen,
     }
     labels = {
@@ -608,6 +668,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "omnibus": "ANOVA / Kruskal",
         "regression": "Linear regression",
         "logistic": "Logistic regression",
+        "ancova": "ANCOVA / GLM",
         "repeated": "Repeated measures",
     }
 
@@ -661,6 +722,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Text("MODELING", size=10, color="#9CB7DA"),
                 buttons["regression"],
                 buttons["logistic"],
+                buttons["ancova"],
                 ft.Divider(),
                 ft.Text(
                     "Tip: load data in Dataset, then choose any analysis "
