@@ -165,18 +165,54 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ),
                 c["reliability_items"],
                 c["reliability_confirm"],
-                ft.Button(
-                    "Calculate Cronbach’s α",
-                    on_click=a["calculate_alpha"],
+                ft.Row(
+                    controls=[
+                        ft.Button(
+                            "Calculate Cronbach’s α",
+                            on_click=a["calculate_alpha"],
+                        ),
+                        ft.Button(
+                            "Calculate McDonald’s ω + item analysis",
+                            on_click=a["calculate_omega"],
+                        ),
+                    ],
+                    wrap=True, spacing=10,
+                ),
+                ft.Text(
+                    "Both methods use the chosen complete-case items. "
+                    "Omega uses a Pearson one-factor model and does not "
+                    "automatically reverse-score answers.",
+                    size=12, color="#A8B6C9",
                 ),
             ]),
-            panel("APA 7-style result", [
+            panel("Cronbach’s α: APA-style result", [
                 c["reliability_output"],
                 c["reliability_guide"],
                 c["reliability_warnings"],
             ]),
-            panel("Reliability figure", [
+            panel("Cronbach α figure", [
                 c["reliability_chart_area"],
+            ]),
+            panel("McDonald’s ω: one-factor estimate", [
+                c["omega_summary_text"],
+            ]),
+            panel("Item diagnostics", [
+                c["omega_item_table"],
+            ]),
+            panel("Omega figure: item–rest correlations and loadings", [
+                c["omega_chart_area"],
+            ]),
+            panel("Omega report and methodological cautions", [
+                ft.ExpansionTile(
+                    title="Show full one-factor reliability report",
+                    expanded=False,
+                    controls=[c["omega_report"]],
+                ),
+                ft.ExpansionTile(
+                    title="Review omega assumptions and limitations",
+                    expanded=False,
+                    controls=[c["omega_warnings"]],
+                ),
             ]),
         ],
         spacing=18,
