@@ -1,6 +1,6 @@
 """Flet interface layout for the Statistical Research Assistant.
 
-The interface is divided into thirteen screens. Calculation logic stays in app.py;
+The interface is divided into fifteen screens. Calculation logic stays in app.py;
 existing controls are reused, so switching screens preserves user selections.
 """
 
@@ -77,6 +77,35 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             ]),
         ],
         spacing=18,
+    )
+
+    # Local data preparation and questionnaire collection are separate workflows.
+    preparation_screen = ft.Column(
+        controls=[
+            heading(
+                "Data preparation",
+                "Recode, reverse-score, handle missing codes and derive scale variables.",
+            ),
+            panel("Non-destructive transformation workspace", [
+                c["preparation_panel"],
+            ]),
+        ],
+        spacing=18,
+        visible=False,
+    )
+
+    survey_screen = ft.Column(
+        controls=[
+            heading(
+                "Questionnaire builder",
+                "Design a local questionnaire, enter responses and analyze them.",
+            ),
+            panel("Local forms and collected responses", [
+                c["survey_panel"],
+            ]),
+        ],
+        spacing=18,
+        visible=False,
     )
 
     # Screen 2: one variable, one appropriate descriptive graph.
@@ -643,6 +672,8 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
 
     screens = {
         "dataset": dataset_screen,
+        "preparation": preparation_screen,
+        "survey": survey_screen,
         "descriptive": descriptive_screen,
         "reliability": reliability_screen,
         "correlation": correlation_screen,
@@ -658,6 +689,8 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
     }
     labels = {
         "dataset": "Dataset",
+        "preparation": "Data preparation",
+        "survey": "Questionnaires",
         "descriptive": "Descriptive",
         "reliability": "Scale reliability",
         "correlation": "Correlations",
@@ -708,6 +741,8 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Divider(),
                 ft.Text("DATA & MEASUREMENT", size=10, color="#9CB7DA"),
                 buttons["dataset"],
+                buttons["preparation"],
+                buttons["survey"],
                 buttons["descriptive"],
                 buttons["reliability"],
                 ft.Text("ASSOCIATIONS", size=10, color="#9CB7DA"),
