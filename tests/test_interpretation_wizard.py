@@ -111,6 +111,11 @@ class InterpretationEvidenceTests(unittest.TestCase):
         effect = next(row for row in evidence.rows if row.parameter == "Hedges g")
         difference = next(row for row in evidence.rows
                           if row.parameter == "Mean difference")
+        self.assertEqual(evidence.n_complete, 110)
+        self.assertEqual(
+            next(r.estimate for r in evidence.rows
+                 if r.parameter == "Complete observations (N)"), "110",
+        )
         self.assertEqual(effect.estimate, ".533")
         self.assertEqual(effect.ci, "Not calculated")
         self.assertEqual(difference.ci, "[.360, 2.150]")
@@ -205,6 +210,11 @@ class APAWordExportTests(unittest.TestCase):
         self.assertIn("Original calculator report", all_text)
         self.assertIn("References", all_text)
         self.assertIn("Cumming", all_text)
+        self.assertNotIn("Note. Note.", all_text)
+        from docx.shared import RGBColor
+        self.assertEqual(
+            doc.styles["Title"].font.color.rgb, RGBColor(0, 0, 0)
+        )
         self.assertGreaterEqual(len(doc.tables), 1)
         cells = doc.tables[0].rows[0].cells
         self.assertEqual([cell.text for cell in cells],
