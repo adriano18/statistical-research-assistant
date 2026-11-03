@@ -50,14 +50,16 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 ### Immediate priority: questionnaire usability before expanding forms
 
-- [ ] **P0 - Split the current crowded Questionnaire screen** into **Build**, **Preview / Fill**, **Responses**, and **Export / Analyze** subviews, showing one task at a time
-- [ ] **P0 - Visual form editor**: question list on the left, readable question properties in the center and realistic respondent preview on the right (stacked panels on narrow screens)
-- [ ] **P0 - Fix spacing and sizing**: aligned labels, consistent input widths, readable typography, a constrained content column, clear primary action, and no unrelated controls separated across the full window
-- [ ] **P0 - Basic editing**: reorder questions, remove/edit drafts, duplicate a question, show required/optional state and safe preview without saving test responses
-- [ ] **P0 - Response usability**: clear submission confirmation, response count, a tabular data preview and an obvious **Load into Dataset** action
+- [x] **P0 - Split the crowded Questionnaire screen** into focused **Build**, **Preview**, **Fill survey**, **Responses / Export** views
+- [x] **P0 - Visual form editor**: editable list and question properties side by side; dedicated live-logic Preview tab
+- [ ] Add optional simultaneous split-pane original-source/preview mode and mobile/narrow-window layout review
+- [x] **P0 - Reduce visual clutter**: consistent field widths, compact panels, constrained content width and separate workflows
+- [ ] Verify final survey spacing, keyboard focus and accessibility manually on Windows
+- [x] **P0 - Basic editing**: reorder, duplicate, remove and edit draft questions; preview without storing responses; clone published survey to a new draft
+- [x] **P0 - Response usability**: submission confirmation, response count, first-ten-rows table, direct Dataset loading and CSV + JSON codebook export
 - [ ] Keep the statistical/data-processing engine independent of Flet so a future dedicated browser-based respondent interface remains feasible
 
-**Priority decision:** finish this short usability pass first, then return to **McDonald's ω, item-level reliability checks and EFA/PCA**. Avoid building a public survey-hosting platform or complex branching now; it would defer the project's main research-analysis value.
+**Priority decision:** test the rebuilt editor manually on Windows, fix confirmed UI blockers, then resume **McDonald's ω, item-level reliability checks and EFA/PCA**. Keep public survey hosting, clinical triage and complex logic outside this phase.
 
 ### Future: questionnaire import from a photo or document (AI-assisted)
 
@@ -72,13 +74,16 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 ### Local questionnaire collection
 
-- [x] **Local questionnaire builder (MVP)**: required/optional questions, 1–5 Likert, single choice, numeric, text and required consent checkbox
+- [x] **Local questionnaire builder**: Likert 1–5/1–7, single/multiple choice, Yes/No, numeric, short/long text, date and required consent
 - [x] Immutable survey definitions; transactional local SQLite responses in Git-ignored `data/surveys/`
 - [x] Load response dataframe directly into the existing analysis tools and optionally export a CSV
 - [ ] Research-ready consent information, configurable study information, retention and withdrawal policies, permissions and encryption at rest
 - [ ] Separate respondent-facing design optimized for phones, navigation, accessible scales and multilingual survey text
 - [ ] **Self-hosted web distribution** (NOT IMPLEMENTED): dedicated HTTPS server, privacy/legal review, per-survey access links, authentication for researchers, anti-abuse controls, backups and secure deployment
-- [ ] Surveys with pages, branching, randomization, validation rules, preview, questionnaire revisions/version control and data dictionary
+- [x] Named sections, one-condition-per-question branching with earlier valid choice/numeric fields, cascading hidden-as-null logic, metadata-only reverse-key marks and scale IDs
+- [x] Preview without saving answers, published-form cloning into a draft and machine-readable JSON codebook
+- [ ] Pages, full AND/OR logic, randomization/balancing, response timers and advanced validation
+- [ ] Real study version history, controlled edit/delete and a complete data dictionary with coded value labels
 - [ ] Data entry editing and controlled withdrawal/deletion for participants, plus explicit deletion of a study
 
 ### P2. Advanced / only if research needs it
