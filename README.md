@@ -27,6 +27,7 @@ The Flet application uses a left navigation menu instead of one long scrolling p
 - **Chi-square**: analyze two categorical variables, inspect observed/expected counts, Cramér’s V and sparse-table cautions.
 - **ANOVA / Kruskal**: compare 3–8 independent groups, review effect estimates, group distributions and omnibus cautions.
 - **Linear regression**: fit a model with one to five quantitative predictors, inspect coefficients, residuals, multicollinearity, influence and optional robust standard errors.
+- **Logistic regression**: model a binary 0/1 outcome, inspect odds ratios with 95% CIs, likelihood-ratio test and in-sample ROC/calibration diagnostics.
 - **Repeated measures**: Friedman or Greenhouse–Geisser-adjusted repeated-measures ANOVA, paired Holm comparisons and individual trajectories.
 
 Use **Dataset** first. Switching between sections preserves analysis results until a new dataset is loaded. The calculation modules and the local-data privacy approach have not changed.
@@ -139,7 +140,7 @@ The **HC3** option changes *coefficient* standard errors, t statistics, p-values
 
 **Research cautions:** predictors must represent meaningful **quantitative** measurements, not arbitrary nominal codes; categorical factors require dummy coding, which is not automatic here. Missing cases are removed listwise. These associations do not establish causality. Shapiro and Breusch–Pagan results are diagnostics, not assumption guarantees. Do not interpret a significant coefficient before checking the study design and potential confounders.
 
-The implementation uses [statsmodels](https://www.statsmodels.org/) for OLS estimation. Repeated-measure comparisons (**Friedman** and **repeated-measures ANOVA**) are still a separate upcoming stage, because the subjects/rows and assumptions differ substantially.
+The implementation uses [statsmodels](https://www.statsmodels.org/) for OLS estimation. Friedman and one-factor repeated-measures ANOVA are available separately in the **Repeated measures** workspace.
 
 ## Friedman and repeated-measures ANOVA (Step 13)
 
@@ -154,6 +155,25 @@ Outputs include the omnibus statistic and sample size, Kendall’s W (Friedman) 
 Use the shared **Copy report**, **Save TXT as...** and **Save PNG as...** toolbar.
 
 **Limitations:** no Mauchly sphericity test, no adjusted simultaneous confidence intervals and no mixed-effects handling of incomplete repeated observations. Participants with any missing selected occasion are excluded. Paired tests assume the selected timepoints describe the same people; choose other analyses for independent groups. These are synthetic examples, not evidence of treatment effects.
+
+## Binary logistic regression (Step 14)
+
+In **Dataset**, choose **Load logistic example** (`examples/sample_logistic.csv`). Open the new **Logistic regression** section. The example has 210 fictional participants, of whom 208 have complete information. The dependent variable is `wellbeing_improved`, explicitly coded **0 = no event** and **1 = event**. Select `sleep_hours` and `activity_hours` as quantitative predictors.
+
+Confirm that you reviewed independent observations, event coding, whether the predictors really are quantitative, the linearity of continuous predictors on the **log-odds** scale and the study design. Click **Fit logistic model**. A single checked predictor fits a one-predictor model; multiple checked predictors fit a multivariable model (maximum five).
+
+**Results** include an overall likelihood-ratio χ² and p-value, sample/event counts, McFadden pseudo-R², AIC, and each coefficient's B, SE, z, Wald p-value, **odds ratio (OR)** and **95% OR confidence interval**. The ROC curve, fitted-probability distribution and descriptive calibration plot are calculated on the *same training observations*. Use **Copy report**, **Save TXT as...** and **Save PNG as...** in the common toolbar.
+
+**Limitations and safeguards:**
+
+- OR is an odds ratio, **not** a relative risk or probability change. One-unit increments use the original predictor units.
+- McFadden pseudo-R² does not represent the fraction of outcome variance explained.
+- In-sample ROC AUC and calibration are optimistic. **No external validation, cross-validation, threshold optimization or clinical decision accuracy** is claimed.
+- Predictors must be meaningful quantitative measurements; integer codes for nominal categories must first be properly encoded. Only binary outcome values 0 and 1 are accepted; no automatic category guessing.
+- A row represents an independent observation. Repeated/clustered observations need other methods. Listwise missing-value deletion applies.
+- The program checks convergence, obvious perfect separation, nonsensical outcomes, singular predictors and extreme coefficients. **Quasi-separation and model misspecification may still occur.** Researcher review is required.
+
+This example is synthetic and cannot establish psychological or behavioral causal effects. The report is an APA 7-style draft, not a certified publication-ready output.
 
 ## Interface languages
 
