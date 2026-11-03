@@ -49,6 +49,26 @@ SOURCES = {
         "The American Statistician, 70(2), 129–133.",
         "https://doi.org/10.1080/00031305.2016.1154108",
     ),
+    "holm": Source(
+        "Holm, S. (1979). A simple sequentially rejective multiple test "
+        "procedure. Scandinavian Journal of Statistics, 6(2), 65–70.",
+        "https://www.jstor.org/stable/4615733",
+    ),
+    "shapiro": Source(
+        "Shapiro, S. S., & Wilk, M. B. (1965). An analysis of variance "
+        "test for normality (complete samples). Biometrika, 52(3–4), 591–611.",
+        "https://doi.org/10.1093/biomet/52.3-4.591",
+    ),
+    "spearman": Source(
+        "Spearman, C. (1904). The proof and measurement of association "
+        "between two things. The American Journal of Psychology, 15(1), 72–101.",
+        "https://doi.org/10.2307/1412159",
+    ),
+    "gg": Source(
+        "Greenhouse, S. W., & Geisser, S. (1959). On methods in the "
+        "analysis of profile data. Psychometrika, 24(2), 95–112.",
+        "https://doi.org/10.1007/BF02289823",
+    ),
     "apa": Source(
         "American Psychological Association. (2020). Publication manual "
         "of the American Psychological Association (7th ed.).",
@@ -133,7 +153,7 @@ TERMS = {
              "Normalitātes tests; jutība atkarīga no izlases apjoma. "
              "Pārbaudiet arī Q–Q grafiku.",
              "Проверяет гипотезу нормальности; чувствителен к объёму выборки. "
-             "Изучайте также Q–Q график.", "uncertainty"),
+             "Изучайте также Q–Q график.", "shapiro"),
         Term("levene", "Levene / Brown–Forsythe", "Assesses group-variance "
              "heterogeneity; a large p is not proof of equal variances.",
              "Pārbauda grupu dispersiju atšķirības; liels p nepierāda "
@@ -190,7 +210,7 @@ TERMS = {
         Term("rho", "Spearman ρ", "Rank-based monotonic association; appropriate "
              "when a monotonic relation is scientifically meaningful.",
              "Rangu korelācija monotonai saistībai.",
-             "Ранговая корреляция монотонной связи.", "uncertainty"),
+             "Ранговая корреляция монотонной связи.", "spearman"),
         Term("t", "t", "Standardized test statistic for a mean difference "
              "under a chosen t-test design; report degrees of freedom.",
              "Standartizēta vidējo starpības testa statistika; "
@@ -230,7 +250,7 @@ TERMS = {
              "correction. State the tested family.",
              "Secīga korekcija vairākiem testiem; definējiet testu saimi.",
              "Поправка на множественные сравнения; укажите семейство тестов.",
-             "pvalue"),
+             "holm"),
         Term("chi", "χ²", "Compares observed and expected categorical counts; "
              "inspect sparse expected cells.",
              "Salīdzina novērotās un sagaidāmās kategoriju frekvences; "
@@ -278,7 +298,7 @@ TERMS = {
              "sphericity violations; interpretation requires within-subject design.",
              "Korekcija sfēriskuma pieņēmumam atkārtotos mērījumos.",
              "Коррекция нарушений сферичности повторных измерений.",
-             "effect"),
+             "gg"),
         Term("adjusted", "Adjusted means", "Model-estimated group means at "
              "specified covariate values; not raw group means.",
              "Modeļa grupu vidējie pie noteiktām kovariātu vērtībām.",
