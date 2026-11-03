@@ -57,12 +57,62 @@ SCALE_PRESETS = {
 }
 
 
-def preset_value_labels(name: str, kind: str) -> dict[str, str]:
+
+# Template labels are an explicit draft-authoring choice, not an automatic
+# translation of previously collected study responses.
+LOCALIZED_SCALE_PRESETS = {
+    "lv": {
+        "agreement": {
+            5: ["Pilnīgi nepiekrītu", "Nepiekrītu", "Ne piekrītu, ne nepiekrītu",
+                "Piekrītu", "Pilnīgi piekrītu"],
+            7: ["Pilnīgi nepiekrītu", "Nepiekrītu", "Drīzāk nepiekrītu",
+                "Ne piekrītu, ne nepiekrītu", "Drīzāk piekrītu",
+                "Piekrītu", "Pilnīgi piekrītu"],
+        },
+        "quality": {
+            5: ["Ļoti slikti", "Slikti", "Vidēji", "Labi", "Ļoti labi"],
+            7: ["Ārkārtīgi slikti", "Ļoti slikti", "Slikti", "Vidēji",
+                "Labi", "Ļoti labi", "Izcili"],
+        },
+        "frequency": {
+            5: ["Nekad", "Reti", "Dažreiz", "Bieži", "Vienmēr"],
+            7: ["Nekad", "Gandrīz nekad", "Reti", "Dažreiz",
+                "Bieži", "Gandrīz vienmēr", "Vienmēr"],
+        },
+    },
+    "ru": {
+        "agreement": {
+            5: ["Совершенно не согласен(-на)", "Не согласен(-на)",
+                "Ни согласен(-на), ни не согласен(-на)",
+                "Согласен(-на)", "Полностью согласен(-на)"],
+            7: ["Совершенно не согласен(-на)", "Не согласен(-на)",
+                "Скорее не согласен(-на)",
+                "Ни согласен(-на), ни не согласен(-на)",
+                "Скорее согласен(-на)", "Согласен(-на)",
+                "Полностью согласен(-на)"],
+        },
+        "quality": {
+            5: ["Очень плохо", "Плохо", "Средне", "Хорошо", "Очень хорошо"],
+            7: ["Крайне плохо", "Очень плохо", "Плохо", "Средне",
+                "Хорошо", "Очень хорошо", "Отлично"],
+        },
+        "frequency": {
+            5: ["Никогда", "Редко", "Иногда", "Часто", "Всегда"],
+            7: ["Никогда", "Почти никогда", "Редко", "Иногда",
+                "Часто", "Почти всегда", "Всегда"],
+        },
+    },
+}
+
+def preset_value_labels(
+    name: str, kind: str, language: str = "en"
+) -> dict[str, str]:
     """Return full respondent-facing labels for stable numeric response codes."""
     if kind not in {"likert5", "likert7"}:
         raise ValueError("Presets only apply to Likert scales.")
     return {str(i): label for i, label in enumerate(
-        SCALE_PRESETS[name][int(kind[-1])], start=1
+        LOCALIZED_SCALE_PRESETS.get(language, SCALE_PRESETS)[name][int(kind[-1])],
+        start=1
     )}
 
 
@@ -476,7 +526,9 @@ def build_survey_workspace(
 
     def apply_preset(e=None):
         q_value_labels.value = format_value_labels(
-            preset_value_labels(q_preset.value or "agreement", q_kind.value)
+            preset_value_labels(
+                q_preset.value or "agreement", q_kind.value, language()
+            )
         )
         page.update()
 
@@ -512,7 +564,7 @@ def build_survey_workspace(
         q_max_label.value = ""
         q_preset.value = "agreement"
         q_value_labels.value = format_value_labels(
-            preset_value_labels("agreement", "likert5")
+            preset_value_labels("agreement", "likert5", language())
         )
         q_missing_dk.value = False
         q_missing_pna.value = False
@@ -817,6 +869,19 @@ def build_survey_workspace(
 
     def apply_template(e):
         new = _template_questions(template.value or "psychology")
+        if language() in LOCALIZED_SCALE_PRESETS:
+            for question in new:
+                kind = question.get("kind", "")
+                if kind in {"likert5", "likert7"} and question.get("value_labels"):
+                    for name in SCALE_PRESETS:
+                        if question["value_labels"] == preset_value_labels(name, kind):
+                            question["value_labels"] = preset_value_labels(
+                                name, kind, language()
+                            )
+                            break
+                for field in ("prompt", "section", "page_title"):
+                    if question.get(field):
+                        question[field] = ui_label(question[field])
         draft[:] = validate_questions(new)
         new_editor()
         status.value = (
