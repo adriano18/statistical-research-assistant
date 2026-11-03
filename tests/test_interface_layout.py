@@ -8,6 +8,7 @@ from interface_layout import build_interface
 
 CONTROL_NAMES = [
     "status", "overview_area", "variable", "scale", "results", "guidance",
+    "preparation_panel", "survey_panel",
     "chart_area", "output_toolbar",
     "explore_variable", "explore_group", "explore_output", "explore_chart",
     "reg_outcome", "reg_predictors", "reg_hc3", "reg_confirm",
@@ -66,7 +67,7 @@ class DummyPage:
 
 
 class LayoutTests(unittest.TestCase):
-    def test_all_thirteen_screens_exist_and_only_dataset_is_visible(self):
+    def test_all_fifteen_screens_exist_and_only_dataset_is_visible(self):
         controls = {name: ft.Text(name) for name in CONTROL_NAMES}
         actions = {name: (lambda e: None) for name in ACTION_NAMES}
 
@@ -80,12 +81,12 @@ class LayoutTests(unittest.TestCase):
             item for item in sidebar.content.controls
             if isinstance(item, ft.Button)
         ]
-        self.assertEqual(len(nav_buttons), 13)
+        self.assertEqual(len(nav_buttons), 15)
 
         workspace = root.controls[1].content
         # The output toolbar is pinned above one independently scrolling column.
         screens = workspace.controls[2].controls
-        self.assertEqual(len(screens), 13)
+        self.assertEqual(len(screens), 15)
         self.assertTrue(screens[0].visible)
         self.assertTrue(all(not screen.visible for screen in screens[1:]))
 
