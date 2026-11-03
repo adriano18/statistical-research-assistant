@@ -67,8 +67,10 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 ### Questionnaire editor: deferred usability improvements
 
-- [ ] **Drag and drop** to reorder individual questions and whole sections, with keyboard-accessible move-up/move-down controls retained as a fallback
-- [ ] **Value-label mappings for all Likert and rating choices**: display a readable localized label (e.g. `1 = Ļoti slikti / Очень плохо`, `3 = Vidēji / Средне`, `5 = Ļoti labi / Очень хорошо`) while storing **stable numeric scores 1–5** in the dataset
+- [x] **Drag and drop for individual questions** using Flet ReorderableListView, with safe dependency checks and Move up/down keyboard fallback
+- [ ] Drag-and-drop rearrangement of **whole sections** while preserving page groupings and conditional logic
+- [x] **Value-label mappings for Likert 1–5 and 1–7**: complete editable Unicode labels and preset wording, while storing **stable numeric scores** in the dataset; old endpoint-only surveys remain compatible
+- [ ] Extend value-label mapping to arbitrary custom rating scales and localized per-language displays
 - [ ] Support fully custom and unequal-endpoint scales, semantic differentials and optional `Don't know / Prefer not to answer` missing-value codes without pretending the categories are continuous
 - [ ] Keep response labels, raw codes, ordinal metadata and reverse-key flags in the codebook; require the researcher to confirm reverse scoring before creating transformed columns
 - [ ] Responsive layout for smaller windows, text wrapping, compact item cards, keyboard navigation, accessible contrast and previews showing real respondent-visible labels
@@ -95,9 +97,11 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [ ] **Self-hosted web distribution** (NOT IMPLEMENTED): dedicated HTTPS server, privacy/legal review, per-survey access links, authentication for researchers, anti-abuse controls, backups and secure deployment
 - [x] Named sections, one-condition-per-question branching with earlier valid choice/numeric fields, cascading hidden-as-null logic, metadata-only reverse-key marks and scale IDs
 - [x] Preview without saving answers, published-form cloning into a draft and machine-readable JSON codebook
-- [ ] Pages, full AND/OR logic, randomization/balancing, response timers and advanced validation
-- [ ] Real study version history, controlled edit/delete and a complete data dictionary with coded value labels
+- [x] Numbered pages with shared titles, topic headings, respondent navigation and per-page required-answer checks; no responses stored in Preview
+- [ ] Full AND/OR logic, randomization/balancing, response timers and advanced validation
+- [ ] Real study version history, controlled edit/delete and a complete data dictionary beyond current Likert code labels
 - [ ] Data entry editing and controlled withdrawal/deletion for participants, plus explicit deletion of a study
+- [ ] Optional HR recruitment mode with CV attachments **only after** secure access, consent, retention and deletion controls; exclude file uploads from default research surveys
 
 ### P2. Advanced / only if research needs it
 - [ ] MANOVA, repeated-measures mixed models and generalized linear models
