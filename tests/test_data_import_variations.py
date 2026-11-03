@@ -191,6 +191,28 @@ class SurveyImportVariationTests(unittest.TestCase):
         self.assertIn("HYPERLINK", df["comment"].iloc[0])
         self.assertEqual(df["q1"].iloc[0], 3.0)
 
+    def test_excel_formula_is_not_executed_and_is_reported(self):
+        path = self.folder / "formula_export.xlsx"
+        book = Workbook()
+        sheet = book.active
+        sheet.append(["score", "date_code"])
+        sheet.append(["=SUM(2,3)", "P1"])
+        sheet.append([5, "P2"])
+        book.save(path)
+        df, report = load_dataset_with_report(path)
+        self.assertTrue(pd.isna(df["score"].iloc[0]))
+        self.assertEqual(df["score"].iloc[1], 5.0)
+        self.assertTrue(any("NOT executed" in note for note in report.warnings))
+
+    def test_scientific_number_format_and_percent_strings(self):
+        path = self.csv(
+            "scientific.csv", "value;share\n1e-3;25%\n2E+4;50%\n"
+        )
+        df, report = load_dataset_with_report(path)
+        self.assertEqual(df["value"].tolist(), [0.001, 20000.0])
+        self.assertEqual(df["share"].tolist(), ["25%", "50%"])
+        self.assertTrue(any("percentages" in note for note in report.warnings))
+
     def test_missing_markers_are_configurable(self):
         path = self.csv("missing.csv", "a,b\nDK,2\nN/A,4\n")
         df, _ = load_dataset_with_report(
