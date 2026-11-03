@@ -140,7 +140,7 @@ def build_apa_docx(
     if not isinstance(evidence, AnalysisEvidence):
         raise ValueError("A calculated analysis snapshot is required.")
     if len(researcher_notes) > 10_000:
-        raise ValueError("Researcher interpretation must be under 10,000 characters.")
+        raise ValueError("Researcher interpretation is too long (limit: 10,000 characters).")
     if len(study_title) > 250 or len(figure_title) > 250 or len(figure_note) > 1000:
         raise ValueError("Report titles or figure note are too long.")
     document = Document()
