@@ -4,7 +4,7 @@
 
 A **local-first, reproducible statistical workbench** for psychology and marketing research, with correct calculations, practical guidance, APA-style output and later optional AI interpretation. This is a focused SPSS-like assistant, **not a promise to reproduce all IBM SPSS procedures**.
 
-**Next development sequence**: validate the newly implemented psychometric reliability and exploratory-factor screens → improve questionnaire response labeling and accessible navigation → build researcher method guidance / optional AI → complete EN/LV/RU UX and plan secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
+**Next development sequence**: validate omega bootstrap CI and oblique EFA with independent statistical tools → improve questionnaire response labeling / navigation → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
 ## 1. Implemented statistical core
 
@@ -45,9 +45,11 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [ ] McNemar for paired binary classifications; chi-square goodness-of-fit for one categorical variable
 - [ ] Partial correlations
 - [x] **One-factor standardized McDonald's ω**, ML Pearson factor loadings, uniqueness, corrected item-rest r, item mean/SD/missingness, PNG and cautious APA report
-- [ ] Omega extensions: bootstrap uncertainty intervals, ordinal/polychoric reliability, multi-factor ω total/hierarchical and formal fit assessment
+- [x] Optional 95% case-resampling percentile bootstrap CI for one-factor omega, deterministic seed and inadequate-fit rejection; Pearson/Spearman item-rest diagnostics
+- [ ] Omega extensions: BCa/model-based intervals, polychoric/ordinal reliability, multi-factor ω total/hierarchical and formal fit assessment
 - [x] **Exploratory PCA and principal-axis EFA**, loading matrices, PCA explained variance, scree plot, KMO overall/item, Bartlett χ², fixed-seed PCA parallel analysis, optional varimax rotation
-- [ ] EFA extensions: polychoric correlations, oblique rotations and factor correlations, factor scores, alternative extraction criteria and stronger dimensionality validation
+- [x] Oblique EFA oblimin rotation with factor correlation (Phi), pattern/structure matrix distinction and cross-loading warnings
+- [ ] EFA extensions: polychoric correlations, oblique rotation variants, factor scores, alternative extraction criteria and stronger dimensionality validation
 - [ ] Sensitivity/sample-size and power interpretation, confidence intervals and multiple-testing policy
 
 ### Immediate priority: questionnaire usability before expanding forms
