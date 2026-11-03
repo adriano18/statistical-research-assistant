@@ -25,6 +25,8 @@ class ItemDiagnostic:
     mean: float
     sd: float
     corrected_item_rest_r: float
+    rank_item_rest_r: float
+    unique_answers: int
     standardized_loading: float
     uniqueness: float
 
@@ -129,12 +131,17 @@ def analyze_omega(df: pd.DataFrame, item_names: list[str]) -> OmegaResult:
                 f"Rest-score for {name} has no variation; item diagnostics unavailable."
             )
         item_rest = float(stats.pearsonr(x[:, j], rest).statistic)
+        rank_rest = float(stats.spearmanr(x[:, j], rest).statistic)
+        if not math.isfinite(rank_rest):
+            raise ValueError(f"Spearman item-rest measure unavailable for {name}.")
         details.append(ItemDiagnostic(
             name=name,
             missing=int(numbers[name].isna().sum()),
             mean=float(x[:, j].mean()),
             sd=float(x[:, j].std(ddof=1)),
             corrected_item_rest_r=item_rest,
+            rank_item_rest_r=rank_rest,
+            unique_answers=int(np.unique(x[:, j]).size),
             standardized_loading=float(loadings[j]),
             uniqueness=float(uniqueness[j]),
         ))
@@ -149,10 +156,12 @@ def analyze_omega(df: pd.DataFrame, item_names: list[str]) -> OmegaResult:
         "Ordinal/polychoric reliability is not calculated.",
         "Confirm that items describe ONE construct and have matching scoring "
         "direction; use Data preparation to reverse-code keyed items.",
-        "Corrected item-rest correlations use the same listwise-complete cases "
-        "as the omega fit. A low correlation invites item review, not automatic removal.",
-        "No sampling confidence interval or formal factor-fit test is reported "
-        "for omega in this version.",
+        "Corrected Pearson and rank-based Spearman item-rest correlations use "
+        "the same listwise-complete sample. A low correlation invites item "
+        "review, not automatic item removal.",
+        "The default point estimate has no confidence interval. An optional "
+        "nonparametric complete-case percentile bootstrap can estimate a "
+        "95% interval but does not validate the factor model.",
         "Omega measures estimated internal consistency, NOT validity, "
         "unidimensionality or clinical diagnostic accuracy.",
     ]
