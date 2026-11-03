@@ -147,12 +147,18 @@ def parse_value_labels(raw: str, kind: str) -> dict[str, str]:
     return labels
 
 
-def semantic_differential_labels() -> dict[str, str]:
-    """Sample seven-point bipolar wording; prompts must match the study."""
-    return {
-        "-3": "Very difficult", "-2": "Difficult", "-1": "Somewhat difficult",
-        "0": "Neutral", "1": "Somewhat easy", "2": "Easy", "3": "Very easy",
+def semantic_differential_labels(language: str = "en") -> dict[str, str]:
+    """Synthetic bipolar example. Wording requires study-specific validation."""
+    examples = {
+        "en": ["Very difficult", "Difficult", "Somewhat difficult",
+               "Neutral", "Somewhat easy", "Easy", "Very easy"],
+        "lv": ["Ļoti grūti", "Grūti", "Drīzāk grūti", "Neitrāli",
+               "Drīzāk viegli", "Viegli", "Ļoti viegli"],
+        "ru": ["Очень трудно", "Трудно", "Скорее трудно", "Нейтрально",
+               "Скорее легко", "Легко", "Очень легко"],
     }
+    labels = examples.get(language, examples["en"])
+    return {str(code): text for code, text in zip(range(-3, 4), labels)}
 
 
 
@@ -534,9 +540,11 @@ def build_survey_workspace(
 
     apply_labels_button = ft.Button("Use preset labels", on_click=apply_preset)
     def apply_semantic_example(e=None):
-        q_value_labels.value = format_value_labels(semantic_differential_labels())
-        q_min_label.value = "Difficult"
-        q_max_label.value = "Easy"
+        q_value_labels.value = format_value_labels(
+            semantic_differential_labels(language())
+        )
+        q_min_label.value = ui_label("Difficult")
+        q_max_label.value = ui_label("Easy")
         page.update()
 
     semantic_button = ft.Button(
@@ -879,7 +887,9 @@ def build_survey_workspace(
                                 name, kind, language()
                             )
                             break
-                for field in ("prompt", "section", "page_title"):
+                for field in (
+                    "prompt", "section", "page_title", "min_label", "max_label"
+                ):
                     if question.get(field):
                         question[field] = ui_label(question[field])
         draft[:] = validate_questions(new)
@@ -1040,7 +1050,12 @@ def build_survey_workspace(
                 values = ["Yes", "No"] if kind == "yes_no" else q["options"]
                 field = ft.Dropdown(
                     label="Choose one answer", width=None,
-                    options=[ft.DropdownOption(key=v, text=v) for v in values],
+                    options=[
+                        ft.DropdownOption(
+                            key=v, text=ui_label(v) if kind == "yes_no" else v
+                        )
+                        for v in values
+                    ],
                     on_select=update_visibility,
                 )
                 field_controls = [field]
