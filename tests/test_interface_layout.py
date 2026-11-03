@@ -23,7 +23,9 @@ CONTROL_NAMES = [
     "rep_warnings", "rep_chart", "rep_pair_table",
     "reliability_items", "reliability_confirm",
     "reliability_output", "reliability_guide", "reliability_warnings",
-    "reliability_chart_area", "corr_x", "corr_y", "corr_scale_x",
+    "reliability_chart_area", "omega_summary_text", "omega_item_table",
+    "omega_report", "omega_warnings", "omega_chart_area",
+    "corr_x", "corr_y", "corr_scale_x",
     "corr_scale_y", "corr_advice", "corr_method", "corr_confirm",
     "corr_output", "corr_warnings", "corr_chart", "matrix_items",
     "matrix_method", "matrix_confirm", "matrix_output", "matrix_warnings",
@@ -50,7 +52,7 @@ CONTROL_NAMES = [
 
 ACTION_NAMES = [
     "choose_file", "load_sample", "load_scale_example", "analyze_variable",
-    "calculate_alpha", "calculate_correlation", "calculate_matrix",
+    "calculate_alpha", "calculate_omega", "calculate_correlation", "calculate_matrix",
     "calculate_groups", "calculate_paired", "load_paired_example",
     "calculate_chi_square", "load_categorical_example",
     "calculate_omnibus", "load_three_groups_example",
