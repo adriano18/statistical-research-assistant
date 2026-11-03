@@ -4,7 +4,7 @@
 
 A **local-first, reproducible statistical workbench** for psychology and marketing research, with correct calculations, practical guidance, APA-style output and later optional AI interpretation. This is a focused SPSS-like assistant, **not a promise to reproduce all IBM SPSS procedures**.
 
-**Next development sequence**: validate omega bootstrap CI and oblique EFA with independent statistical tools → improve questionnaire response labeling / navigation → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
+**Next development sequence**: independently validate advanced psychometric estimates → polish stage-23 light desktop onboarding and respondent-scale UX → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX, packaging and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
 ## 1. Implemented statistical core
 
@@ -64,6 +64,18 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [ ] Keep the statistical/data-processing engine independent of Flet so a future dedicated browser-based respondent interface remains feasible
 
 **Priority decision:** test the rebuilt editor manually on Windows, fix confirmed UI blockers, then resume **McDonald's ω, item-level reliability checks and EFA/PCA**. Keep public survey hosting, clinical triage and complex logic outside this phase.
+
+### Stage 23: desktop first-run experience and respondent-friendly choices
+
+- [x] Light Material 3 theme, readable Segoe UI font, centered resizable Windows desktop launch (1200 × 720 default)
+- [x] New beginner Home screen with direct paths to import research data, design a questionnaire or explore a fictional sample
+- [x] Group statistical tools into expandable menu sections; narrow windows get a compact navigation dropdown
+- [x] Hide the many sample datasets behind an expandable list; keep current dataset and analysis output visible in their workspaces
+- [x] Likert and custom numeric scales rendered as single-choice radio cards, including DK/PNA, with no preselected answer
+- [x] Clear numbered builder steps and a respondent page-progress bar; reuse existing required and conditional validation
+- [ ] Test visual rendering, screen-reader semantics, keyboard focus, long text wrapping, and desktop window sizing manually on Windows
+- [ ] Package a signed Windows executable/installer and establish reproducible release builds
+- [ ] Fully localize the interface and scale labels in EN/LV/RU with language selection; current UI copy remains largely English
 
 ### Questionnaire editor: deferred usability improvements
 
