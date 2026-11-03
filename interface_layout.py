@@ -186,6 +186,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             ]),
         ],
         spacing=18,
+        visible=False,
     )
 
     # Local data preparation and questionnaire collection are separate workflows.
@@ -1026,6 +1027,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
 
     # Keep export controls visible while long results scroll independently.
     dataset_header = ft.Container(
+        visible=False,
         bgcolor="#FFFFFF",
         border=ft.border.all(1, "#E1E7F1"),
         border_radius=12,
