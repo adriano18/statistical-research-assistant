@@ -44,8 +44,14 @@ class RepeatedTests(unittest.TestCase):
         wide = self.df[COLS].dropna()
         ref = pg.rm_anova(data=wide, detailed=True, correction=True)
         self.assertAlmostEqual(result.statistic, float(ref.iloc[0]["F"]), places=7)
+        # Pingouin versions differ in the spelling of the p-value column.
+        p_column = next(
+            (name for name in ("p-unc", "p_unc") if name in ref.columns),
+            None,
+        )
+        self.assertIsNotNone(p_column, str(list(ref.columns)))
         self.assertAlmostEqual(
-            result.p_uncorrected, float(ref.iloc[0]["p-unc"]), places=9
+            result.p_uncorrected, float(ref.iloc[0][p_column]), places=9
         )
         self.assertAlmostEqual(
             result.epsilon_gg, float(ref.iloc[0]["eps"]), places=7
