@@ -92,7 +92,7 @@ def recode_column(
     updated = []
     changed = missing_unmapped = 0
     for original, key in zip(df[source], source_keys):
-        if key is None:
+        if key is None or pd.isna(key):
             updated.append(np.nan)
         elif key in rules:
             updated.append(rules[key])
