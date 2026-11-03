@@ -8,6 +8,7 @@ estimate/CI was not calculated, show that explicitly instead of inventing one.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from numbers import Integral, Real
 import math
 from typing import Any
 
@@ -152,12 +153,12 @@ class AnalysisEvidence:
 
 
 def _number(value: Any) -> str | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, Real):
         return None
     if not math.isfinite(float(value)):
         return None
-    if isinstance(value, int):
-        return str(value)
+    if isinstance(value, Integral):
+        return str(int(value))
     clean = float(value)
     if round(clean, 3) == 0:
         clean = 0.
@@ -221,7 +222,7 @@ def build_analysis_evidence(
     n_total = getattr(result, "n_total", None)
     if section == "groups" and n_complete is None and result is not None:
         n_a, n_b = getattr(result, "n_a", None), getattr(result, "n_b", None)
-        if all(isinstance(n, int) and n >= 0 for n in (n_a, n_b)):
+        if all(isinstance(n, Integral) and n >= 0 for n in (n_a, n_b)):
             n_complete = n_a + n_b  # Verified retained group counts.
     for label, value in [("Complete observations (N)", n_complete),
                          ("Original records", n_total)]:
@@ -355,8 +356,8 @@ def build_analysis_evidence(
         limitation=profile.limitation, rows=tuple(rows), warnings=warnings,
         source_report=report, figure_png=png,
         has_structured_values=result is not None,
-        n_complete=n_complete if isinstance(n_complete, int) else None,
-        n_total=n_total if isinstance(n_total, int) else None,
+        n_complete=int(n_complete) if isinstance(n_complete, Integral) else None,
+        n_total=int(n_total) if isinstance(n_total, Integral) else None,
     )
 
 
