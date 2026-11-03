@@ -55,6 +55,8 @@ from logistic_charts import make_logistic_chart
 from ancova_analysis import analyze_ancova
 from ancova_reporting import ancova_main, ancova_brief, format_ancova_report
 from ancova_charts import make_ancova_chart
+from preparation_ui import build_preparation_workspace
+from survey_ui import build_survey_workspace
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -763,7 +765,15 @@ async def main(page: ft.Page):
     async def show_file(path):
         nonlocal dataframe, paired_report_text, paired_png_data, chi_report_text, chi_png_data, omnibus_report_text, omnibus_png_data, omnibus_result_data
         try:
-            df = await asyncio.to_thread(load_dataset, path)
+            from_memory = isinstance(path, pd.DataFrame)
+            df = (
+                path.copy(deep=True) if from_memory
+                else await asyncio.to_thread(load_dataset, path)
+            )
+            source_name = (
+                "Prepared / local survey responses"
+                if from_memory else Path(path).name
+            )
             if df.columns.empty:
                 raise ValueError("No variables found in this file.")
             overview = variable_overview(df)
@@ -776,7 +786,7 @@ async def main(page: ft.Page):
         output_cache.clear()
         refresh_output_buttons()
         status.value = (
-            f"Loaded: {Path(path).name} | "
+            f"Loaded: {source_name} | "
             f"Respondents/rows: {len(df)} | Variables: {len(df.columns)}"
         )
 
@@ -1141,6 +1151,10 @@ async def main(page: ft.Page):
         omnibus_export_status.value = ""
         omnibus_export_png_button.disabled = True
         omnibus_export_txt_button.disabled = True
+        # The source CSV/XLSX stays on disk unchanged. Preparation starts from a copy.
+        reset_preparation(
+            df, source_path=None if from_memory else path
+        )
         page.update()
 
     async def choose_file(e):
@@ -2017,6 +2031,16 @@ async def main(page: ft.Page):
             ac_report.value = ac_main.value
         page.update()
 
+    # Create local-first questionnaire and data-preparation tools after
+    # the Dataset loading callback is defined; both reuse that callback.
+    preparation_panel, reset_preparation = build_preparation_workspace(
+        page, load_dataframe=show_file
+    )
+    survey_panel = build_survey_workspace(
+        page, load_dataframe=show_file,
+        root=Path(__file__).resolve().parent / "data" / "surveys",
+    )
+
     # STEP 6: Present existing actions in separate, easier-to-navigate screens.
     ui = build_interface(
         page,
@@ -2024,6 +2048,8 @@ async def main(page: ft.Page):
             "status": status,
             "output_toolbar": output_toolbar,
             "overview_area": overview_area,
+            "preparation_panel": preparation_panel,
+            "survey_panel": survey_panel,
             "variable": variable,
             "scale": scale,
             "results": results,
