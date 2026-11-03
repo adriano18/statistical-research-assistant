@@ -27,6 +27,7 @@ The Flet application uses a left navigation menu instead of one long scrolling p
 - **Chi-square**: analyze two categorical variables, inspect observed/expected counts, Cramér’s V and sparse-table cautions.
 - **ANOVA / Kruskal**: compare 3–8 independent groups, review effect estimates, group distributions and omnibus cautions.
 - **Linear regression**: fit a model with one to five quantitative predictors, inspect coefficients, residuals, multicollinearity, influence and optional robust standard errors.
+- **Repeated measures**: Friedman or Greenhouse–Geisser-adjusted repeated-measures ANOVA, paired Holm comparisons and individual trajectories.
 
 Use **Dataset** first. Switching between sections preserves analysis results until a new dataset is loaded. The calculation modules and the local-data privacy approach have not changed.
 
@@ -139,6 +140,20 @@ The **HC3** option changes *coefficient* standard errors, t statistics, p-values
 **Research cautions:** predictors must represent meaningful **quantitative** measurements, not arbitrary nominal codes; categorical factors require dummy coding, which is not automatic here. Missing cases are removed listwise. These associations do not establish causality. Shapiro and Breusch–Pagan results are diagnostics, not assumption guarantees. Do not interpret a significant coefficient before checking the study design and potential confounders.
 
 The implementation uses [statsmodels](https://www.statsmodels.org/) for OLS estimation. Repeated-measure comparisons (**Friedman** and **repeated-measures ANOVA**) are still a separate upcoming stage, because the subjects/rows and assumptions differ substantially.
+
+## Friedman and repeated-measures ANOVA (Step 13)
+
+In **Dataset**, choose **Load repeated example** (`examples/sample_repeated.csv`). Open **Repeated measures** from the sidebar.
+
+The example represents 32 fictional participants measured on three occasions, with 31 complete sets of scores. Each selected column is one occasion of the **same construct**; the application assumes **one participant per row**. Choose `stress_before`, `stress_mid` and `stress_after` in the intended chronological order.
+
+For ordinal responses, confirm **Ordinal** and select **Friedman test**. For suitable quantitative scores, confirm **Quantitative** and select **Repeated-measures ANOVA**. Check both the same-participants/design confirmation and the assumptions confirmation, then choose **Analyze repeated scores**.
+
+Outputs include the omnibus statistic and sample size, Kendall’s W (Friedman) or partial η² (RM ANOVA), the occasion descriptives, a participant-trajectory figure and all paired comparisons with **Holm-adjusted** p-values. Friedman uses tie-corrected SciPy χ² and Wilcoxon signed-rank post-hoc. RM ANOVA uses Greenhouse–Geisser-corrected degrees of freedom for its **primary** p-value, and paired t tests for post-hoc comparisons. The uncorrected RM ANOVA p-value is shown separately.
+
+Use the shared **Copy report**, **Save TXT as...** and **Save PNG as...** toolbar.
+
+**Limitations:** no Mauchly sphericity test, no adjusted simultaneous confidence intervals and no mixed-effects handling of incomplete repeated observations. Participants with any missing selected occasion are excluded. Paired tests assume the selected timepoints describe the same people; choose other analyses for independent groups. These are synthetic examples, not evidence of treatment effects.
 
 ## Interface languages
 
