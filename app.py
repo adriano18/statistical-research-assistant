@@ -45,6 +45,9 @@ from explore_analysis import (
 from regression_analysis import analyze_regression
 from regression_reporting import format_regression_report, regression_brief
 from regression_charts import make_regression_chart
+from repeated_analysis import analyze_repeated
+from repeated_reporting import repeated_main, repeated_brief, format_repeated_report
+from repeated_charts import make_repeated_chart
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -53,6 +56,7 @@ PAIRED_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_paired.cs
 CATEGORICAL_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_categorical.csv"
 THREE_GROUPS_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_three_groups.csv"
 REGRESSION_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_regression.csv"
+REPEATED_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_repeated.csv"
 
 
 async def main(page: ft.Page):
@@ -187,6 +191,55 @@ async def main(page: ft.Page):
     reg_report = ft.Text("")
     reg_warnings = ft.Text("")
     reg_chart = ft.Column()
+
+    # Repeated measures: explicit columns with the same construct in occasion order.
+    rep_items = ft.Column(height=185, scroll=ft.ScrollMode.AUTO)
+    rep_scale = ft.Dropdown(
+        label="Measurement scale", width=260, value="unknown",
+        options=[
+            ft.DropdownOption(key="unknown", text="Not confirmed"),
+            ft.DropdownOption(key="ordinal", text="Ordinal"),
+            ft.DropdownOption(key="scale", text="Quantitative"),
+        ],
+    )
+    rep_method = ft.Dropdown(
+        label="Repeated-measures method", width=290, value="friedman",
+        options=[
+            ft.DropdownOption(key="friedman", text="Friedman test"),
+            ft.DropdownOption(key="rm_anova", text="Repeated-measures ANOVA"),
+        ],
+    )
+    rep_same_people = ft.Checkbox(
+        label="Selected columns measure the same construct in the SAME participants",
+        value=False,
+    )
+    rep_assumptions = ft.Checkbox(
+        label="I reviewed measurement scales, difference scores, outliers and design assumptions",
+        value=False,
+    )
+    rep_main = ft.Text("")
+    rep_brief = ft.Text("")
+    rep_report = ft.Text("")
+    rep_warnings = ft.Text("")
+    rep_chart = ft.Column()
+    rep_pair_table = ft.Column()
+
+    def clear_repeated(e=None):
+        rep_main.value = ""
+        rep_brief.value = ""
+        rep_report.value = ""
+        rep_warnings.value = ""
+        rep_chart.controls.clear()
+        rep_pair_table.controls.clear()
+        output_cache.pop("repeated", None)
+        if active_section == "repeated":
+            refresh_output_buttons()
+        page.update()
+
+    rep_method.on_select = clear_repeated
+    rep_scale.on_select = clear_repeated
+    rep_same_people.on_change = clear_repeated
+    rep_assumptions.on_change = clear_repeated
 
     def refresh_regression_choices(e=None):
         if dataframe is None:
@@ -662,6 +715,26 @@ async def main(page: ft.Page):
         explore_group.value = "(none)"
         explore_output.value = ""
         explore_chart.controls.clear()
+        rep_items.controls = [
+            ft.Checkbox(
+                label=name, value=name in {
+                    "stress_before", "stress_mid", "stress_after"
+                },
+                on_change=clear_repeated,
+            )
+            for name in numeric_candidates
+        ]
+        rep_scale.value = "unknown"
+        rep_method.value = "friedman"
+        rep_same_people.value = False
+        rep_assumptions.value = False
+        rep_main.value = ""
+        rep_brief.value = ""
+        rep_report.value = ""
+        rep_warnings.value = ""
+        rep_chart.controls.clear()
+        rep_pair_table.controls.clear()
+
         # Regression candidates exclude identifiers; categories still need manual review.
         reg_outcome.options = [
             ft.DropdownOption(key=name, text=name)
@@ -892,6 +965,9 @@ async def main(page: ft.Page):
 
     async def load_regression_example(e):
         await show_file(REGRESSION_SAMPLE)
+
+    async def load_repeated_example(e):
+        await show_file(REPEATED_SAMPLE)
 
     async def calculate_alpha(e):
         reliability_chart_area.controls.clear()
@@ -1528,6 +1604,64 @@ async def main(page: ft.Page):
             reg_report.value = f"Regression error: {error}"
         page.update()
 
+    async def run_repeated(e):
+        rep_main.value = ""
+        rep_brief.value = ""
+        rep_report.value = "Computing repeated-measures analysis..."
+        rep_warnings.value = ""
+        rep_chart.controls.clear()
+        rep_pair_table.controls.clear()
+        output_cache.pop("repeated", None)
+        if active_section == "repeated":
+            refresh_output_buttons()
+        page.update()
+        if dataframe is None:
+            rep_report.value = "Load a dataset first."
+            page.update()
+            return
+
+        selected = [
+            control.label for control in rep_items.controls
+            if bool(control.value)
+        ]
+        try:
+            result = await asyncio.to_thread(
+                analyze_repeated, dataframe, selected,
+                rep_method.value, rep_scale.value,
+                bool(rep_same_people.value), bool(rep_assumptions.value),
+            )
+            png = await asyncio.to_thread(make_repeated_chart, result)
+            report = format_repeated_report(result)
+            rep_main.value = repeated_main(result)
+            rep_brief.value = repeated_brief(result)
+            rep_report.value = report
+            rep_warnings.value = "\n".join(result.warnings)
+            rep_chart.controls.append(
+                ft.Image(src=png, width=980, height=510)
+            )
+
+            columns = ["Pair", "Change", "Statistic", "p (Holm)", "Sig."]
+            lines = []
+            for pair in result.pairs:
+                lines.append([
+                    f"{pair.before} → {pair.after}",
+                    f"{pair.estimate:+.2f}",
+                    f"{pair.statistic:.2f}" if pair.statistic is not None else "N/A",
+                    "< .001" if pair.p_holm < .001 else f"{pair.p_holm:.3f}",
+                    "Yes" if pair.p_holm < .05 else "No",
+                ])
+            rep_pair_table.controls.append(ft.DataTable(
+                columns=[ft.DataColumn(label=ft.Text(v)) for v in columns],
+                rows=[
+                    ft.DataRow(cells=[ft.DataCell(ft.Text(v)) for v in line])
+                    for line in lines
+                ],
+            ))
+            remember_output("repeated", "Repeated measurements", report, png)
+        except Exception as error:
+            rep_report.value = f"Repeated-measures error: {error}"
+        page.update()
+
     # STEP 6: Present existing actions in separate, easier-to-navigate screens.
     ui = build_interface(
         page,
@@ -1553,6 +1687,17 @@ async def main(page: ft.Page):
             "reg_report": reg_report,
             "reg_warnings": reg_warnings,
             "reg_chart": reg_chart,
+            "rep_items": rep_items,
+            "rep_scale": rep_scale,
+            "rep_method": rep_method,
+            "rep_same_people": rep_same_people,
+            "rep_assumptions": rep_assumptions,
+            "rep_main": rep_main,
+            "rep_brief": rep_brief,
+            "rep_report": rep_report,
+            "rep_warnings": rep_warnings,
+            "rep_chart": rep_chart,
+            "rep_pair_table": rep_pair_table,
             "reliability_items": reliability_items,
             "reliability_confirm": reliability_confirm,
             "reliability_output": reliability_output,
@@ -1640,6 +1785,8 @@ async def main(page: ft.Page):
             "analyze_variable": analyze_variable,
             "run_explore": run_explore,
             "run_regression": run_regression,
+            "run_repeated": run_repeated,
+            "load_repeated_example": load_repeated_example,
             "load_regression_example": load_regression_example,
             "calculate_alpha": calculate_alpha,
             "calculate_correlation": calculate_correlation,
