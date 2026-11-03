@@ -15,7 +15,8 @@ import pandas as pd
 from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
     submit_response, response_count, responses_dataframe, save_survey_csv,
-    save_survey_codebook, question_is_visible,
+    save_survey_codebook, question_is_visible, likert_choices,
+    reorder_questions, validate_page_answers,
 )
 
 
@@ -33,48 +34,109 @@ QUESTION_TYPES = [
 ]
 
 
+SCALE_PRESETS = {
+    "agreement": {
+        5: ["Strongly disagree", "Disagree", "Neither agree nor disagree",
+            "Agree", "Strongly agree"],
+        7: ["Strongly disagree", "Disagree", "Somewhat disagree",
+            "Neither agree nor disagree", "Somewhat agree", "Agree",
+            "Strongly agree"],
+    },
+    "quality": {
+        5: ["Very poor", "Poor", "Fair", "Good", "Very good"],
+        7: ["Extremely poor", "Very poor", "Poor", "Fair", "Good",
+            "Very good", "Excellent"],
+    },
+    "frequency": {
+        5: ["Never", "Rarely", "Sometimes", "Often", "Always"],
+        7: ["Never", "Almost never", "Rarely", "Sometimes",
+            "Often", "Almost always", "Always"],
+    },
+}
+
+
+def preset_value_labels(name: str, kind: str) -> dict[str, str]:
+    """Return full respondent-facing labels for stable numeric response codes."""
+    if kind not in {"likert5", "likert7"}:
+        raise ValueError("Presets only apply to Likert scales.")
+    return {str(i): label for i, label in enumerate(
+        SCALE_PRESETS[name][int(kind[-1])], start=1
+    )}
+
+
+def format_value_labels(labels: dict[str, str]) -> str:
+    return "\n".join(f"{code} = {label}" for code, label in labels.items())
+
+
+def parse_value_labels(raw: str, kind: str) -> dict[str, str]:
+    """Parse one numeric code = text per line, with complete coverage."""
+    if kind not in {"likert5", "likert7"} or not raw.strip():
+        return {}
+    labels = {}
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        if "=" not in line:
+            raise ValueError("Use one choice per line, e.g. 1 = Very poor.")
+        code, label = (part.strip() for part in line.split("=", 1))
+        if not code.isascii() or not code.isdigit() or code in labels:
+            raise ValueError("Every scale code must be a unique integer.")
+        labels[code] = label
+    expected = {str(n) for n in range(1, int(kind[-1]) + 1)}
+    if set(labels) != expected:
+        raise ValueError("Label every code in this Likert scale.")
+    return labels
+
+
 def _pilot_questions():
     """Original fictional practice items, not a validated clinical instrument."""
     return [
         dict(
             key="consent", prompt="I agree to take part in this fictional pilot.",
             kind="consent", required=True, section="Study information",
+            page=1, page_title="Introduction",
         ),
         dict(
             key="age", prompt="Your age in years (optional)",
             kind="number", required=False, section="Demographics",
+            page=2, page_title="Background",
         ),
         dict(
             key="group", prompt="Fictional study group",
             kind="single_choice", options=["A", "B"], required=True,
-            section="Demographics",
+            section="Demographics", page=2, page_title="Background",
         ),
         dict(
             key="employed", prompt="Are you currently employed?",
             kind="yes_no", required=True, section="Demographics",
+            page=2, page_title="Background",
         ),
         dict(
             key="work_years", prompt="Years in current employment",
             kind="number", required=True, section="Demographics",
+            page=2, page_title="Background",
             condition={
                 "question": "employed", "operator": "equals", "value": "Yes",
             },
         ),
         dict(
             key="stress_q1", prompt="Fictional stress statement 1",
-            kind="likert5", required=True, section="Stress items",
+            kind="likert5", required=True, section="Stress items", page=3, page_title="Stress scale",
             scale_id="stress", min_label="Never", max_label="Always",
+            value_labels=preset_value_labels("frequency", "likert5"),
         ),
         dict(
             key="stress_q2", prompt="Fictional positively worded statement 2",
-            kind="likert5", required=True, section="Stress items",
+            kind="likert5", required=True, section="Stress items", page=3, page_title="Stress scale",
             scale_id="stress", reverse_scored=True,
             min_label="Never", max_label="Always",
+            value_labels=preset_value_labels("frequency", "likert5"),
         ),
         dict(
             key="stress_q3", prompt="Fictional stress statement 3",
-            kind="likert5", required=True, section="Stress items",
+            kind="likert5", required=True, section="Stress items", page=3, page_title="Stress scale",
             scale_id="stress", min_label="Never", max_label="Always",
+            value_labels=preset_value_labels("frequency", "likert5"),
         ),
     ]
 
@@ -100,6 +162,7 @@ def _template_questions(template: str) -> list[dict]:
                     prompt=f"Fictional work engagement statement {i}",
                     kind="likert5", required=True, section="Engagement",
                     scale_id="engagement",
+                    value_labels=preset_value_labels("agreement", "likert5"),
                 )
                 for i in range(1, 4)
             ],
@@ -121,6 +184,7 @@ def _template_questions(template: str) -> list[dict]:
             dict(
                 key="experience", prompt="Rate your experience",
                 kind="likert5", required=True, section="Experience",
+                value_labels=preset_value_labels("quality", "likert5"),
                 condition={
                     "question": "customer", "operator": "equals", "value": "Yes",
                 },
@@ -212,7 +276,9 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     )
 
     # --- Draft list and selected question editor ---
-    draft_list = ft.Column(spacing=7)
+    draft_list = ft.ReorderableListView(
+        height=420, spacing=7, show_default_drag_handles=True,
+    )
     draft_count = text("No questions yet", color="#A8B6C9")
     editor_heading = ft.Text("New question", weight="bold", size=15)
     q_key = ft.TextField(label="Variable ID, e.g. stress_q1", width=260)
@@ -222,8 +288,10 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         options=[ft.DropdownOption(key=k, text=name) for k, name in QUESTION_TYPES],
     )
     q_section = ft.TextField(
-        label="Section, e.g. Demographics", width=285,
+        label="Topic / section, e.g. Demographics", width=285,
     )
+    q_page = ft.TextField(label="Page number (1–20)", value="1", width=160)
+    q_page_title = ft.TextField(label="Page title, e.g. Background", width=285)
     q_required = ft.Checkbox(label="Required answer", value=True)
     q_options = ft.TextField(
         label="Options separated by semicolons", width=580, visible=False,
@@ -235,7 +303,19 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         label="Reverse-scored item (metadata only)", value=False,
     )
     q_min_label = ft.TextField(label="Low anchor (e.g. Never)", width=285)
-    q_max_label = ft.TextField(label="High anchor (e.g. Always)", width=285)
+    q_max_label = ft.TextField(label="High anchor (legacy forms)", width=285)
+    q_preset = ft.Dropdown(
+        label="Text scale preset", width=285, value="agreement",
+        options=[
+            ft.DropdownOption(key="agreement", text="Agreement"),
+            ft.DropdownOption(key="quality", text="Quality: poor → good"),
+            ft.DropdownOption(key="frequency", text="Frequency"),
+        ],
+    )
+    q_value_labels = ft.TextField(
+        label="Respondent labels: one numeric code = text per line",
+        width=580, multiline=True, min_lines=5, max_lines=8,
+    )
     q_parent = ft.Dropdown(
         label="Show conditionally when…", width=285,
         value="always",
@@ -290,6 +370,9 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_reverse.visible = likert
         q_min_label.visible = likert
         q_max_label.visible = likert
+        q_preset.visible = likert
+        q_value_labels.visible = likert
+        apply_labels_button.visible = likert
         if not likert:
             q_reverse.value = False
         if q_kind.value == "consent":
@@ -298,6 +381,13 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_expected.visible = q_parent.value != "always"
         page.update()
 
+    def apply_preset(e=None):
+        q_value_labels.value = format_value_labels(
+            preset_value_labels(q_preset.value or "agreement", q_kind.value)
+        )
+        page.update()
+
+    apply_labels_button = ft.Button("Use preset labels", on_click=apply_preset)
     q_kind.on_select = refresh_editor_fields
     q_parent.on_select = refresh_editor_fields
 
@@ -307,18 +397,36 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_key.value = ""
         q_prompt.value = ""
         q_kind.value = "likert5"
-        q_section.value = ""
+        q_section.value = draft[-1].get("section", "") if draft else ""
+        q_page.value = str(draft[-1].get("page", 1)) if draft else "1"
+        q_page_title.value = draft[-1].get("page_title", "") if draft else ""
         q_required.value = True
         q_options.value = ""
         q_scale.value = ""
         q_reverse.value = False
         q_min_label.value = ""
         q_max_label.value = ""
+        q_preset.value = "agreement"
+        q_value_labels.value = format_value_labels(
+            preset_value_labels("agreement", "likert5")
+        )
         q_parent.value = "always"
         q_operator.value = "equals"
         q_expected.value = ""
         editor_dependencies()
         refresh_editor_fields()
+
+    def new_page_editor(e=None):
+        new_editor()
+        next_page = (draft[-1].get("page", 1) + 1) if draft else 1
+        if next_page > 20:
+            status.value = "Maximum 20 pages. Reuse an existing page."
+        else:
+            q_page.value = str(next_page)
+            q_page_title.value = ""
+            q_section.value = ""
+            status.value = f"New page {next_page}: give it a title and add a question."
+        page.update()
 
     def edit_question(index):
         state["edit"] = index
@@ -328,12 +436,15 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_prompt.value = q["prompt"]
         q_kind.value = q["kind"]
         q_section.value = q.get("section", "")
+        q_page.value = str(q.get("page", 1))
+        q_page_title.value = q.get("page_title", "")
         q_required.value = q["required"]
         q_options.value = "; ".join(q.get("options", []))
         q_scale.value = q.get("scale_id", "")
         q_reverse.value = q.get("reverse_scored", False)
         q_min_label.value = q.get("min_label", "")
         q_max_label.value = q.get("max_label", "")
+        q_value_labels.value = format_value_labels(q.get("value_labels", {}))
         editor_dependencies()
         condition = q.get("condition")
         q_parent.value = condition["question"] if condition else "always"
@@ -344,10 +455,13 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         refresh_editor_fields()
 
     def update_draft():
-        draft_count.value = f"{len(draft)} question(s) in this draft"
+        draft_count.value = f"{len(draft)} question(s) on {len({q.get('page', 1) for q in draft})} page(s)"
         draft_list.controls = []
+        previous_page = None
         for i, q in enumerate(draft):
             current = i == state["edit"]
+            page_num = q.get("page", 1)
+            page_heading = q.get("page_title") or f"Page {page_num}"
             details = (
                 f"{q['kind']} · {q.get('section') or 'General'}"
                 + (" · reverse-keyed" if q.get("reverse_scored") else "")
@@ -355,12 +469,18 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             )
             draft_list.controls.append(
                 ft.Container(
+                    key=f"draft_{q['key']}",
                     bgcolor="#30415A" if current else "#1E2D41",
                     border_radius=8, padding=10,
                     content=ft.Column(
                         controls=[
+                            *(
+                                [ft.Text(f"PAGE {page_num} · {page_heading}",
+                                         size=11, weight="bold", color="#9CB7DA")]
+                                if page_num != previous_page else []
+                            ),
                             ft.Button(
-                                f"{i+1}. {q['prompt'][:45]}",
+                                f"{i+1}. {q['prompt'][:38]}",
                                 on_click=lambda e, idx=i: edit_question(idx),
                             ),
                             ft.Text(q["key"] + " | " + details, size=11,
@@ -370,7 +490,27 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                     ),
                 )
             )
+            previous_page = page_num
         page.update()
+
+    def on_question_reorder(e):
+        try:
+            chosen_key = (
+                draft[state["edit"]]["key"]
+                if state["edit"] is not None else None
+            )
+            moved = reorder_questions(draft, e.old_index, e.new_index)
+            draft[:] = moved
+            state["edit"] = (
+                next((i for i, q in enumerate(draft) if q["key"] == chosen_key), None)
+                if chosen_key else None
+            )
+            status.value = "Question order updated; conditional dependencies preserved."
+        except Exception as err:
+            status.value = f"Move rejected: {err}"
+        update_draft()
+
+    draft_list.on_reorder = on_question_reorder
 
     def draft_from_editor():
         kind = q_kind.value
@@ -393,6 +533,9 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             "required": bool(q_required.value) or kind == "consent",
             "options": choices,
             "section": (q_section.value or "").strip(),
+            "page": int((q_page.value or "").strip()),
+            "page_title": (q_page_title.value or "").strip(),
+            "value_labels": parse_value_labels(q_value_labels.value or "", kind),
             "scale_id": (
                 (q_scale.value or "").strip()
                 if kind in {"likert5", "likert7"} else ""
@@ -414,6 +557,15 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             else:
                 selected = state["edit"]
                 candidate[selected] = draft_from_editor()
+            # Renaming a page title in-place renames the shared heading.
+            if state["edit"] is not None:
+                before = draft[state["edit"]]
+                changed = candidate[selected]
+                if (changed["page"] == before.get("page", 1)
+                        and changed["page_title"] != before.get("page_title", "")):
+                    for q in candidate:
+                        if q["page"] == changed["page"]:
+                            q["page_title"] = changed["page_title"]
             candidate = validate_questions(candidate)
             draft[:] = candidate
             status.value = f"Saved question {draft[selected]['key']} in draft."
@@ -491,6 +643,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     fill_info = ft.Text("")
     fill_form = ft.Column(spacing=12)
     fill_status = ft.Text("")
+    fill_submit_button = ft.Button("Submit response locally")
     response_count_text = ft.Text("")
     response_table = ft.Column(spacing=8)
     response_status = ft.Text("")
@@ -527,10 +680,20 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         return value
 
     def make_form(questions, *, mode):
-        """Build an actual response form; no entries are saved in preview."""
+        """Build a respondent form with topic headings and local page navigation."""
         entries = []
-        body = ft.Column(spacing=14)
         state[f"{mode}_items"] = entries
+        pages = sorted({q.get("page", 1) for q in questions})
+        page_panels = {}
+        page_title_map = {
+            q.get("page", 1): q.get("page_title") or f"Page {q.get('page', 1)}"
+            for q in questions
+        }
+        page_heading = ft.Text("", weight="bold", size=17)
+        page_progress = ft.Text("", color="#A8B6C9", size=12)
+        nav_note = ft.Text("", color="#E8BC8A", size=12)
+        back_button = ft.Button("← Previous")
+        next_button = ft.Button("Next →")
 
         def update_visibility(e=None):
             earlier = {}
@@ -543,77 +706,119 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 )
             page.update()
 
-        last_section = None
-        for i, q in enumerate(questions):
+        def render_current_page():
+            current = state[f"{mode}_page"]
+            for number, panel in page_panels.items():
+                panel.visible = number == current
+            page_heading.value = page_title_map[current]
+            page_progress.value = f"Page {pages.index(current)+1} of {len(pages)}"
+            back_button.visible = current != pages[0]
+            next_button.visible = current != pages[-1]
+            if mode == "fill":
+                fill_submit_button.visible = current == pages[-1]
+            page.update()
+
+        def change_page(direction):
+            current = state[f"{mode}_page"]
+            if direction > 0:
+                try:
+                    answers = {entry["question"]["key"]: read_widget(entry)
+                               for entry in entries}
+                    validate_page_answers(questions, answers, current)
+                except ValueError as err:
+                    nav_note.value = f"Complete this page before continuing: {err}"
+                    page.update()
+                    return
+            target_index = pages.index(current) + direction
+            if 0 <= target_index < len(pages):
+                state[f"{mode}_page"] = pages[target_index]
+                nav_note.value = ""
+                render_current_page()
+
+        back_button.on_click = lambda e: change_page(-1)
+        next_button.on_click = lambda e: change_page(1)
+        for number in pages:
+            page_panels[number] = ft.Column(
+                spacing=13, visible=number == pages[0]
+            )
+        last_section_by_page = {}
+        for q in questions:
+            page_number = q.get("page", 1)
+            body = page_panels[page_number]
             section = q.get("section") or "General"
-            if section != last_section:
+            if section != last_section_by_page.get(page_number):
                 body.controls.append(
                     ft.Text(section.upper(), size=12, weight="bold",
                             color="#9CB7DA")
                 )
-                last_section = section
+                last_section_by_page[page_number] = section
+
             label = q["prompt"] + (" *" if q["required"] else "")
             kind = q["kind"]
             if kind in {"likert5", "likert7"}:
-                max_value = int(kind[-1])
                 field = ft.Dropdown(
-                    label=label, width=620,
+                    label="Choose one answer", width=590,
                     options=[
-                        ft.DropdownOption(key=str(n), text=str(n))
-                        for n in range(1, max_value+1)
+                        ft.DropdownOption(key=str(number), text=display)
+                        for number, display in likert_choices(q)
                     ],
                     on_select=update_visibility,
                 )
-                note = (
-                    f"1 = {q.get('min_label') or 'lowest'}"
-                    f"   ·   {max_value} = {q.get('max_label') or 'highest'}"
-                )
-                field_controls = [field, ft.Text(note, size=11, color="#A8B6C9")]
+                field_controls = [field]
             elif kind in {"single_choice", "yes_no"}:
-                values = (
-                    ["Yes", "No"] if kind == "yes_no" else q["options"]
-                )
+                values = ["Yes", "No"] if kind == "yes_no" else q["options"]
                 field = ft.Dropdown(
-                    label=label, width=620,
-                    options=[
-                        ft.DropdownOption(key=v, text=v) for v in values
-                    ],
+                    label="Choose one answer", width=590,
+                    options=[ft.DropdownOption(key=v, text=v) for v in values],
                     on_select=update_visibility,
                 )
                 field_controls = [field]
             elif kind == "multiple_choice":
                 field = [
-                    ft.Checkbox(label=v, value=False,
-                                on_change=update_visibility)
+                    ft.Checkbox(label=v, value=False, on_change=update_visibility)
                     for v in q["options"]
                 ]
-                field_controls = [
-                    ft.Text(label, size=14),
-                    ft.Column(controls=field, spacing=5),
-                ]
+                field_controls = [ft.Column(controls=field, spacing=5)]
             elif kind == "consent":
                 field = ft.Checkbox(
-                    label=label, value=False,
-                    on_change=update_visibility,
+                    label="I agree", value=False, on_change=update_visibility,
                 )
                 field_controls = [field]
             else:
                 field = ft.TextField(
-                    label=label, width=620,
+                    label="Your answer", width=590,
                     on_change=update_visibility,
                     multiline=kind == "long_text",
                     hint_text="YYYY-MM-DD" if kind == "date" else None,
                 )
                 field_controls = [field]
+
             container = ft.Container(
-                padding=12, border_radius=10, bgcolor="#1E2D41",
-                content=ft.Column(controls=field_controls, spacing=6),
+                padding=14, border_radius=10, bgcolor="#1E2D41",
+                content=ft.Column(
+                    controls=[
+                        ft.Text(label, size=14, weight="bold"),
+                        *field_controls,
+                    ],
+                    spacing=9,
+                ),
             )
             body.controls.append(container)
             entries.append({
                 "question": q, "input": field, "container": container,
             })
+        state[f"{mode}_page"] = pages[0]
+        body = ft.Column(
+            controls=[
+                page_heading, page_progress,
+                *[page_panels[number] for number in pages],
+                ft.Row(controls=[back_button, next_button], wrap=True, spacing=10),
+                nav_note,
+            ],
+            spacing=12,
+        )
         update_visibility()
+        render_current_page()
         return body
 
     def show_preview(e=None):
@@ -749,6 +954,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             fill_status.value = f"Not saved: {err}"
         page.update()
 
+    fill_submit_button.on_click = submit
+
     def update_response_table():
         sid = state["survey_id"]
         response_table.controls.clear()
@@ -856,7 +1063,12 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 controls=[
                     block("2. Questions", [
                         draft_count,
-                        ft.Button("+ New question", on_click=new_editor),
+                        ft.Text("Drag the handle to reorder. Use Move up/down "
+                                "for keyboard access.", size=11, color="#A8B6C9"),
+                        ft.Row(controls=[
+                            ft.Button("+ New question", on_click=new_editor),
+                            ft.Button("+ New page", on_click=new_page_editor),
+                        ], wrap=True, spacing=6),
                         draft_list,
                     ], width=350),
                     block("3. Question editor", [
@@ -865,12 +1077,26 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                             controls=[q_key, q_kind], wrap=True, spacing=10
                         ),
                         q_prompt,
-                        q_section,
+                        ft.Row(
+                            controls=[q_section, q_page, q_page_title],
+                            wrap=True, spacing=10,
+                        ),
+                        ft.Text("Group questions by topic and assign consecutive "
+                                "pages, starting with page 1.", size=11,
+                                color="#A8B6C9"),
                         q_options,
                         q_required,
                         ft.Row(
                             controls=[q_scale, q_reverse], wrap=True,
                         ),
+                        ft.Row(
+                            controls=[q_preset, apply_labels_button],
+                            wrap=True, spacing=10,
+                        ),
+                        q_value_labels,
+                        ft.Text("Example: 1 = Очень плохо, 3 = Средне, "
+                                "5 = Очень хорошо. The code stored is still 1–5.",
+                                size=11, color="#A8B6C9"),
                         ft.Row(
                             controls=[q_min_label, q_max_label], wrap=True,
                         ),
@@ -904,8 +1130,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             ),
             block("4. Finish the draft", [
                 ft.Text(
-                    "Preview the form before publishing. Saved definitions "
-                    "cannot be edited in place; use Clone to revise.",
+                    "Preview pages and respondent-visible answer labels before "
+                    "publishing. Saved definitions stay immutable; Clone to revise.",
                     size=12, color="#A8B6C9",
                 ),
                 ft.Row(controls=[
@@ -945,7 +1171,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             ]),
             block("Enter a participant response on this computer", [
                 fill_title, fill_info, fill_form,
-                ft.Button("Submit response locally", on_click=submit),
+                fill_submit_button,
                 fill_status,
             ]),
         ],

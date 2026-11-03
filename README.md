@@ -19,7 +19,7 @@ The Flet application uses a left navigation menu instead of one long scrolling p
 
 - **Dataset**: load a local CSV/Excel file or a sample, inspect variables and missing values.
 - **Data preparation**: create new recoded variables, mark missing codes, reverse-score questionnaire items, calculate sums/means, export a working CSV and transformation log without changing source files.
-- **Questionnaires**: use the Build/Preview/Fill/Responses editor to collect conditional Likert, demographic and choice responses locally, preserve reverse-key metadata and export a codebook.
+- **Questionnaires**: use Build/Preview/Fill/Responses to create multi-page questionnaires grouped by topic, label Likert choices with readable text while storing numeric scores, drag questions to reorder, preview skip logic and export responses with a codebook.
 - **Descriptive**: choose a variable, confirm its scale, and view statistics and a graph.
 - **Scale reliability**: calculate Cronbach’s α and one-factor standardized McDonald’s ω, inspect corrected item-rest correlations, item loadings and diagnostic plots.
 - **EFA / PCA**: compare principal components with principal-axis exploratory factors, KMO/Bartlett checks, scree/parallel analysis and loading matrices.
@@ -45,6 +45,26 @@ After loading a fresh dataset the previous output buttons are cleared. Switching
 **Explore boxplots:** Open **Descriptive → Explore**. Choose a quantitative outcome and optionally a grouping variable (for example `score` and `group` from **Load three-group example**). Click **Explore distributions** to display group boxplots, individual observations, a normal Q–Q plot and Shapiro–Wilk. With groups selected, it also computes a median-centered Levene/Brown–Forsythe variance check. Review the caveats; **a nonsignificant Shapiro test does not prove normality**.
 
 The menu is grouped by purpose, the export controls stay visible while scrolling, ANOVA figures are above long explanations, methodological notes can be collapsed, and the post-hoc comparisons display in a table. See [ROADMAP.md](ROADMAP.md) for remaining SPSS-style methods, planned localization (EN, LV, RU) and the Flet versus PySide6 decision.
+
+## Questionnaire builder: pages and labeled scales
+
+In **Questionnaires → Build**, load the fictional Psychology template to see a three-page example (Introduction, Background, Stress scale). Edit each question's **Topic / section**, **Page number** (consecutive starting at 1) and **Page title**. Repeated questions on a page share its heading. Respondents navigate with **Previous / Next**; the next page is only shown after current-page required and conditional answers are valid. Preview does not store answers. The desktop app still collects responses only on the local computer; it does **not** produce a public survey link.
+
+For a Likert 1–5 or 1–7 item, select Agreement, Quality or Frequency and click **Use preset labels**, or type one line per response code, such as:
+
+```text
+1 = Очень плохо
+2 = Плохо
+3 = Средне
+4 = Хорошо
+5 = Очень хорошо
+```
+
+Every score needs a nonempty distinct text label. Participants see **1 — Очень плохо** etc.; the stored CSV and Dataset column still contain **1, 2, 3, 4, 5** as numeric values. The JSON codebook preserves all visible labels, page/section names, ordinal measurement metadata and reverse-key marks. For older saved questionnaires without full labels, numeric choices and any existing endpoint anchors remain usable.
+
+Drag the question list handle to reorder questions, or use **Move up / Move down** for keyboard accessibility. A move is rejected if it violates page ordering or puts a conditional question before its dependency. Existing published questionnaires and responses are not modified; use **Clone** to make a revised draft.
+
+**Scope:** sections and pages are implemented; section-level drag-and-drop, custom scales beyond 1–5/1–7, explicit missing-answer codes, hosted respondent links and HR CV/file uploads are not. CV uploads would require separate access, consent, storage/retention and deletion safeguards. Research data continues to stay local.
 
 ## Quick start
 

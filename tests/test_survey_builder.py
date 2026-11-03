@@ -10,9 +10,10 @@ import pandas as pd
 from survey_storage import (
     create_survey, get_survey, validate_questions, submit_response,
     responses_dataframe, response_count, survey_codebook,
-    save_survey_codebook, question_is_visible,
+    save_survey_codebook, question_is_visible, likert_choices,
+    reorder_questions, validate_page_answers,
 )
-from survey_ui import _template_questions
+from survey_ui import _template_questions, preset_value_labels, parse_value_labels
 
 
 def test_questions():
@@ -234,6 +235,111 @@ class SurveyBuilderTests(unittest.TestCase):
         self.assertEqual(frame.loc[0, "group"], "B")
         self.assertEqual(frame.loc[0, "q1"], 3)
         self.assertIsNone(get_survey(self.path, created.survey_id).questions[1]["condition"])
+
+    def test_text_labels_are_display_only_raw_scores_remain_numeric(self):
+        labels = {
+            "1": "Очень плохо", "2": "Плохо", "3": "Средне",
+            "4": "Хорошо", "5": "Очень хорошо",
+        }
+        questions = [
+            dict(key="agree", prompt="Consent to fictional pilot",
+                 kind="consent", required=True, page=1,
+                 page_title="Introduction", section="Study information"),
+            dict(key="quality", prompt="Rate this fictional experience",
+                 kind="likert5", required=True, page=2,
+                 page_title="Experience", section="Ratings",
+                 value_labels=labels, scale_id="experience"),
+        ]
+        created = create_survey(
+            self.path, "Quality label test", "Artificial responses", questions
+        )
+        saved = get_survey(self.path, created.survey_id)
+        self.assertEqual(
+            likert_choices(saved.questions[1])[2], (3, "3 — Средне")
+        )
+        submit_response(self.path, created.survey_id, {
+            "agree": True, "quality": "5",
+        })
+        data = responses_dataframe(self.path, created.survey_id)
+        self.assertEqual(data["quality"].iloc[0], 5)
+        self.assertTrue(pd.api.types.is_numeric_dtype(data["quality"]))
+        book = survey_codebook(self.path, created.survey_id)
+        self.assertEqual(book["questions"][1]["value_labels"]["5"], "Очень хорошо")
+        self.assertEqual(book["questions"][1]["measurement_level"], "ordinal")
+        self.assertEqual(book["questions"][1]["page"], 2)
+
+    def test_page_navigation_and_conditional_validation(self):
+        questions = validate_questions([
+            dict(key="accept", prompt="Fictional consent", kind="consent",
+                 required=True, page=1, page_title="Intro"),
+            dict(key="rating", prompt="Choose a rating", kind="likert5",
+                 required=True, page=2, page_title="Scale",
+                 value_labels=preset_value_labels("quality", "likert5")),
+            dict(key="details", prompt="Explain higher ratings",
+                 kind="short_text", required=True, page=2,
+                 condition={"question": "rating", "operator": "greater",
+                            "value": 3}),
+        ])
+        with self.assertRaisesRegex(ValueError, "Required"):
+            validate_page_answers(questions, {}, 1)
+        validate_page_answers(questions, {"accept": True}, 1)
+        validate_page_answers(
+            questions, {"accept": True, "rating": "2"}, 2
+        )
+        with self.assertRaisesRegex(ValueError, "Required"):
+            validate_page_answers(
+                questions, {"accept": True, "rating": "5"}, 2
+            )
+        validate_page_answers(
+            questions, {"accept": True, "rating": "5", "details": "Test"}, 2
+        )
+
+    def test_reordering_keeps_conditions_and_pages_valid(self):
+        questions = validate_questions([
+            dict(key="first", prompt="First choice", kind="yes_no", page=1),
+            dict(key="second", prompt="Independent text", kind="short_text", page=1),
+            dict(key="follow", prompt="Conditional follow-up", kind="short_text",
+                 page=1, condition={
+                     "question": "first", "operator": "equals", "value": "Yes",
+                 }),
+            dict(key="last", prompt="Final question", kind="likert5",
+                 page=2, page_title="Final"),
+        ])
+        valid = reorder_questions(questions, 1, 2)
+        self.assertEqual([q["key"] for q in valid], [
+            "first", "follow", "second", "last",
+        ])
+        with self.assertRaisesRegex(ValueError, "EARLIER"):
+            reorder_questions(questions, 0, 2)
+        with self.assertRaisesRegex(ValueError, "page"):
+            reorder_questions(questions, 3, 1)
+        self.assertEqual(questions[0]["key"], "first")
+
+    def test_scale_label_and_page_schema_rejections(self):
+        item = dict(key="q", prompt="Survey rating", kind="likert5")
+        incomplete = {str(i): f"Label {i}" for i in range(1, 5)}
+        with self.assertRaisesRegex(ValueError, "every numeric"):
+            validate_questions([{**item, "value_labels": incomplete}])
+        with self.assertRaisesRegex(ValueError, "distinct"):
+            validate_questions([{
+                **item, "value_labels": {str(i): "Same" for i in range(1, 6)}
+            }])
+        with self.assertRaisesRegex(ValueError, "page 1"):
+            validate_questions([{**item, "page": 2}])
+        with self.assertRaisesRegex(ValueError, "page title"):
+            validate_questions([
+                {**item, "page_title": "Part A"},
+                dict(key="q2", prompt="Another rating", kind="likert5",
+                     page_title="Part B"),
+            ])
+        self.assertEqual(len(parse_value_labels(
+            "\n".join([f"{i} = {label}" for i, label in enumerate(
+                ["Очень плохо", "Плохо", "Средне", "Хорошо", "Очень хорошо"], 1
+            )]),
+            "likert5",
+        )), 5)
+        with self.assertRaisesRegex(ValueError, "Label every"):
+            parse_value_labels("1 = Bad", "likert5")
 
 
 if __name__ == "__main__":
