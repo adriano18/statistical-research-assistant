@@ -13,11 +13,22 @@ A Python project for exploring research datasets and, later, selecting and inter
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
 5. **v0.5 Reports and localization** — TXT/PNG export and copying are available across analysis screens; next are structured APA tables, DOCX/PDF, and EN/LV/RU translations.
 
+## Desktop-first experience (Stage 23)
+
+The Windows desktop app opens in a **centered, resizable 1200 × 720 window** with a light Material 3 theme, readable Segoe UI typography and white panel surfaces. The new **Home** dashboard offers three beginner-friendly starting paths: open CSV/Excel data, create a local questionnaire, or explore a fictional dataset. A four-step workflow describes what to do after collecting data. Advanced statistical tools are tucked into **expandable navigation groups**, while screens narrower than 980 pixels use a compact navigation dropdown. The current analysis results stay in place when switching workspaces.
+
+Questionnaire **Build → Preview → Fill survey → Responses & export** is displayed as four clearly numbered stages. In Preview and Fill, Likert 1–5/1–7 and custom numeric/semantic-differential questions now show **visible radio-card choices**, not dropdown menus. All numeric and DK/PNA response codes are unchanged in SQLite and exported datasets. No response is pre-selected. Required-answer and conditional checks continue to apply on each page, which now has a visual progress indicator. Missing-answer choices are visually separated from scored choices.
+
+For a first tour, launch the app, click **Explore sample data**, review the variable overview, then use the sidebar to open **Descriptive**. For survey authoring, click **Create questionnaire** and load a fictional practice template. The same interface is used for respondents only on this local machine; no public survey link is created.
+
+**Desktop limitation:** CI tests check widget structure and calculations, not visual fidelity on actual Windows displays. A manual UX pass on 1366×768, 1920×1080, high-DPI scaling and keyboard-only operation is still required. The app is not yet packaged as a standalone Windows installer or executable; use the Python/Flet launch command below.
+
 ## Desktop interface
 
 The Flet application uses a left navigation menu instead of one long scrolling page:
 
-- **Dataset**: load a local CSV/Excel file or a sample, inspect variables and missing values.
+- **Home**: choose a simple beginner-friendly route and see how the research workflow fits together.
+- **Dataset**: load a local CSV/Excel file or choose a sample from a collapsed example gallery, inspect variables and missing values.
 - **Data preparation**: create new recoded variables, mark missing codes, reverse-score questionnaire items, calculate sums/means, export a working CSV and transformation log without changing source files.
 - **Questionnaires**: use Build/Preview/Fill/Responses to create multi-page questionnaires grouped by topic, label Likert choices with readable text while storing numeric scores, drag questions to reorder, preview skip logic and export responses with a codebook.
 - **Descriptive**: choose a variable, confirm its scale, and view statistics and a graph.
