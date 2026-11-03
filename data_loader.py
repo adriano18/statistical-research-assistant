@@ -237,6 +237,29 @@ def _raw_table(path: Path, options: ImportOptions):
     except (ValueError, OSError, KeyError) as error:
         raise ValueError(f"Could not read Excel worksheet: {error}") from error
     chosen_sheet = sheets[sheet] if isinstance(sheet, int) else sheet
+    # openpyxl returns cached values with data_only=True; formula cells without
+    # cached results can appear blank. Never calculate or evaluate formulas.
+    if path.stat().st_size <= 20 * 1024 * 1024:
+        from openpyxl import load_workbook
+        workbook = load_workbook(path, read_only=True, data_only=False)
+        try:
+            worksheet = workbook[chosen_sheet]
+            formulas = sum(
+                cell.data_type == "f"
+                for row in worksheet.iter_rows(
+                    min_row=1, max_row=min(worksheet.max_row or 0, 300),
+                    max_col=min(worksheet.max_column or 0, 60),
+                )
+                for cell in row
+            )
+            if formulas:
+                warnings.append(
+                    f"{formulas} spreadsheet formula cell(s) found in the "
+                    "inspected region. Formulas are NOT executed; export "
+                    "calculated values from Excel if their caches are blank."
+                )
+        finally:
+            workbook.close()
     if len(sheets) > 1 and options.sheet == 0:
         warnings.append(
             "Workbook contains multiple sheets. First sheet used; choose "
@@ -258,6 +281,12 @@ def _numeric_value(value: str, decimal: str) -> float | None:
     eu_groups = rf"{sign}\d{{1,3}}(?:\.\d{{3}})+(?:,\d+)?"
     if " " in token and re.fullmatch(space_groups, token):
         token = token.replace(" ", "")
+    exponent_dot = rf"{sign}\d+(?:\.\d+)?[eE][+-]?\d+"
+    exponent_comma = rf"{sign}\d+(?:,\d+)?[eE][+-]?\d+"
+    if decimal in {"auto", "dot"} and re.fullmatch(exponent_dot, token):
+        return float(token)
+    if decimal == "comma" and re.fullmatch(exponent_comma, token):
+        return float(token.replace(",", "."))
     if decimal == "auto":
         if re.fullmatch(us_groups, token) and "." in token and "," in token:
             return float(token.replace(",", ""))
@@ -308,6 +337,12 @@ def _convert_numeric(frame: pd.DataFrame, style: str, warnings: list[str]) -> li
         if not all(isinstance(v, (int, float, str)) and
                    not isinstance(v, bool) for v in observed):
             continue  # Dates, booleans and mixed date/number columns stay unchanged.
+        if any(isinstance(value, str) and "%" in value for value in observed):
+            warnings.append(
+                f"Variable '{name}' contains percentages as text; "
+                "it was not converted or divided by 100 automatically."
+            )
+            continue
         parsed = []
         for value in observed:
             parsed.append(_numeric_value(str(value), style))
