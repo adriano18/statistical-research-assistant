@@ -6,6 +6,21 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 **Next development sequence**: independently validate advanced psychometric estimates → polish stage-23 light desktop onboarding and respondent-scale UX → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX, packaging and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
+## Stage 24 — localized onboarding and robust survey-data imports
+
+- [x] Default language **English** with optional **Latvian** and **Russian** navigation/onboarding selection; preserve preference locally
+- [x] First batch of translated home/sidebar and workspace headings, with fallback English for technical areas
+- [ ] Full validated EN/LV/RU terminology across 16 analysis screens, all questionnaires, errors, output and documentation
+- [x] CSV/TSV delimiter selection (comma/semicolon/tab/pipe), UTF-8/UTF-16 and legacy Baltic/Cyrillic encodings
+- [x] Excel XLSX/XLSM worksheet selection, header-row override and non-destructive re-import
+- [x] Explicit missing token settings, conservative localized decimal conversion, preservation of leading-zero IDs and mixed text
+- [x] Import diagnostics and rejection of blank/duplicate headers, malformed data rows and empty sheets; retain previous dataset on failure
+- [x] Offline synthetic import tests for external survey exports and manually edited Excel workbooks
+- [x] Local history of up to eight recent file paths (no automatic upload)
+- [ ] Saved .sra research project snapshots with analysis settings, validation, backups and portable relative paths
+- [ ] User confirmation screen for ambiguous encodings, multi-row Qualtrics-style metadata exports and multi-response column mapping
+- [ ] Signed, tested Windows installer/executable with versioning, update policy and accessibility review
+
 ## 1. Implemented statistical core
 
 - [x] CSV/XLSX import and variable/missingness overview
