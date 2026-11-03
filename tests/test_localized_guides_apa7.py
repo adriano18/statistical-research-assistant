@@ -50,7 +50,7 @@ class ScientificGuideTests(unittest.TestCase):
         self.assertIn("not the probability", TERMS["p"].en.lower())
         self.assertIn("not a risk ratio", TERMS["or"].en.lower())
         self.assertIn("not interchangeable", TERMS["eta"].en.lower())
-        self.assertIn("APA", SOURCES["apa"].label)
+        self.assertIn("American Psychological Association", SOURCES["apa"].label)
 
     def test_untranslated_labels_fallback_to_english(self):
         self.assertEqual(tr("en", "Save question"), "Save question")
