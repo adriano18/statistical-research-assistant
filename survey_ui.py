@@ -416,6 +416,18 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         editor_dependencies()
         refresh_editor_fields()
 
+    def new_page_editor(e=None):
+        new_editor()
+        next_page = (draft[-1].get("page", 1) + 1) if draft else 1
+        if next_page > 20:
+            status.value = "Maximum 20 pages. Reuse an existing page."
+        else:
+            q_page.value = str(next_page)
+            q_page_title.value = ""
+            q_section.value = ""
+            status.value = f"New page {next_page}: give it a title and add a question."
+        page.update()
+
     def edit_question(index):
         state["edit"] = index
         q = draft[index]
@@ -468,7 +480,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                                 if page_num != previous_page else []
                             ),
                             ft.Button(
-                                f"{i+1}. {q['prompt'][:65]}",
+                                f"{i+1}. {q['prompt'][:38]}",
                                 on_click=lambda e, idx=i: edit_question(idx),
                             ),
                             ft.Text(q["key"] + " | " + details, size=11,
@@ -545,6 +557,15 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             else:
                 selected = state["edit"]
                 candidate[selected] = draft_from_editor()
+            # Renaming a page title in-place renames the shared heading.
+            if state["edit"] is not None:
+                before = draft[state["edit"]]
+                changed = candidate[selected]
+                if (changed["page"] == before.get("page", 1)
+                        and changed["page_title"] != before.get("page_title", "")):
+                    for q in candidate:
+                        if q["page"] == changed["page"]:
+                            q["page_title"] = changed["page_title"]
             candidate = validate_questions(candidate)
             draft[:] = candidate
             status.value = f"Saved question {draft[selected]['key']} in draft."
@@ -1044,7 +1065,10 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                         draft_count,
                         ft.Text("Drag the handle to reorder. Use Move up/down "
                                 "for keyboard access.", size=11, color="#A8B6C9"),
-                        ft.Button("+ New question", on_click=new_editor),
+                        ft.Row(controls=[
+                            ft.Button("+ New question", on_click=new_editor),
+                            ft.Button("+ New page", on_click=new_page_editor),
+                        ], wrap=True, spacing=6),
                         draft_list,
                     ], width=350),
                     block("3. Question editor", [
