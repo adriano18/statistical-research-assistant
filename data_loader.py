@@ -361,8 +361,9 @@ def _convert_numeric(frame: pd.DataFrame, style: str, warnings: list[str]) -> li
             )
         elif any(re.search(r"\d[,\.]\d", str(x)) for x in observed):
             warnings.append(
-                f"Variable '{name}' may contain locale-formatted values; "
-                "kept as text. Choose an explicit decimal style if appropriate."
+                f"Variable '{name}' has ambiguous locale-formatted numbers; "
+                "kept as text. Choose dot/comma decimal style explicitly "
+                "after checking the original file."
             )
     return converted
 
