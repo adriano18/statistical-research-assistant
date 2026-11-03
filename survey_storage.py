@@ -81,6 +81,8 @@ def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     page_titles: dict[int, str] = {}
     previous_page = 1
     for item in questions:
+        if not normalized and item.get("page", 1) != 1:
+            raise ValueError("The questionnaire must start on page 1.")
         key = str(item.get("key", "")).strip()
         prompt = str(item.get("prompt", "")).strip()
         kind = str(item.get("kind", "")).strip()
@@ -342,6 +344,20 @@ def _clean_answer(question: dict[str, Any], answer: Any) -> Any:
             raise ValueError("Consent must be explicitly confirmed before submission.")
         return 1
     raise ValueError(f"Unknown question type: {kind}")
+
+
+def validate_page_answers(
+    questions: list[dict[str, Any]], answers: dict[str, Any], current_page: int
+) -> None:
+    """Validate current and preceding pages before navigating forward."""
+    cleaned: dict[str, Any] = {}
+    for q in questions:
+        if q.get("page", 1) > current_page:
+            break
+        if question_is_visible(q, cleaned):
+            cleaned[q["key"]] = _clean_answer(q, answers.get(q["key"]))
+        else:
+            cleaned[q["key"]] = None
 
 
 def submit_response(
