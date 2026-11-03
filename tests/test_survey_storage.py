@@ -1,5 +1,6 @@
 """Tests for offline questionnaire storage, response validation and Pandas transfer."""
 
+from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import sqlite3
@@ -138,7 +139,7 @@ class SurveyTests(unittest.TestCase):
         submit_response(self.root, sid, self.response())
         path = self.root / f"survey_{sid}.sqlite3"
         self.assertTrue(path.is_file())
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db:
             rows = db.execute("SELECT COUNT(*) FROM responses").fetchone()[0]
         self.assertEqual(rows, 1)
 
