@@ -280,7 +280,7 @@ class SurveyBuilderTests(unittest.TestCase):
                  condition={"question": "rating", "operator": "greater",
                             "value": 3}),
         ])
-        with self.assertRaisesRegex(ValueError, "Consent"):
+        with self.assertRaisesRegex(ValueError, "Required"):
             validate_page_answers(questions, {}, 1)
         validate_page_answers(questions, {"accept": True}, 1)
         validate_page_answers(
