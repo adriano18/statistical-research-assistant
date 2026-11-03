@@ -219,6 +219,10 @@ def build_analysis_evidence(
     rows: list[EvidenceRow] = []
     n_complete = getattr(result, "n_complete", None)
     n_total = getattr(result, "n_total", None)
+    if section == "groups" and n_complete is None and result is not None:
+        n_a, n_b = getattr(result, "n_a", None), getattr(result, "n_b", None)
+        if all(isinstance(n, int) and n >= 0 for n in (n_a, n_b)):
+            n_complete = n_a + n_b  # Verified retained group counts.
     for label, value in [("Complete observations (N)", n_complete),
                          ("Original records", n_total)]:
         row = _row(label, value)
