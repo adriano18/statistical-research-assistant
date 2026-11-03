@@ -38,14 +38,26 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 ### P1. Data preparation and psychometrics
 - [ ] Variable labels, value labels, nominal/ordinal/quantitative metadata and manual designation of ID/group/scale
-- [ ] Explicit missing-value codes, recoding, reverse-coded items, total/mean scale scores (NEXT milestone)
-- [ ] Safe analysis copies: never mutate a source dataframe when recoding or reversing questionnaire items
+- [x] Non-destructive explicit missing codes, recoding, reverse-scored items, sum/mean scale variables with minimum-completeness rules
+- [x] Safe working-copy preparation; new columns only, protected source file and new CSV + JSON transformation log
+- [ ] Reuse or import existing transformation recipes and manually audit all steps before reuse
 - [ ] Import SPSS `.sav` (optional `pyreadstat`) without remote uploads
 - [ ] McNemar for paired binary classifications; chi-square goodness-of-fit for one categorical variable
 - [ ] Partial correlations
 - [ ] **McDonald's ω**, scale item diagnostics
 - [ ] EFA / PCA with loading matrices, scree plot, suitability checks and explained variance
 - [ ] Sensitivity/sample-size and power interpretation, confidence intervals and multiple-testing policy
+
+### Local questionnaire collection
+
+- [x] **Local questionnaire builder (MVP)**: required/optional questions, 1–5 Likert, single choice, numeric, text and required consent checkbox
+- [x] Immutable survey definitions; transactional local SQLite responses in Git-ignored `data/surveys/`
+- [x] Load response dataframe directly into the existing analysis tools and optionally export a CSV
+- [ ] Research-ready consent information, configurable study information, retention and withdrawal policies, permissions and encryption at rest
+- [ ] Separate respondent-facing design optimized for phones, navigation, accessible scales and multilingual survey text
+- [ ] **Self-hosted web distribution** (NOT IMPLEMENTED): dedicated HTTPS server, privacy/legal review, per-survey access links, authentication for researchers, anti-abuse controls, backups and secure deployment
+- [ ] Surveys with pages, branching, randomization, validation rules, preview, questionnaire revisions/version control and data dictionary
+- [ ] Data entry editing and controlled withdrawal/deletion for participants, plus explicit deletion of a study
 
 ### P2. Advanced / only if research needs it
 - [ ] MANOVA, repeated-measures mixed models and generalized linear models
@@ -89,7 +101,7 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 ### GUI platform decision
 
-**Stay with Flet for now.** The statistical functions live in independent Python files and can be reused in a future PySide6 (Qt) desktop client. Rebuilding nine workspaces immediately would take time away from statistics, testing and reports. Review migration **after P0**, if scientific data editing, very large tables, menus, drag-and-drop or accessibility still cannot be implemented satisfactorily.
+**Stay with Flet for now.** The statistical functions live in independent Python files and can be reused in a future PySide6 (Qt) desktop client. Rebuilding every current workspace immediately would take time away from statistics, testing and reports. Review migration **after P0**, if scientific data editing, very large tables, menus, drag-and-drop or accessibility still cannot be implemented satisfactorily.
 
 Alternatives to evaluate later:
 - **PySide6 / Qt**: richer native desktop tables, dialogs and docking, more frontend code.
