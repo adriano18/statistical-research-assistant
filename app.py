@@ -1648,7 +1648,8 @@ async def main(page: ft.Page):
             )
             remember_output(
                 "reliability", "Cronbach alpha",
-                reliability_output.value + "\n\n" + reliability_warnings.value, png
+                reliability_output.value + "\n\n" + reliability_warnings.value, png,
+                result=analysis,
             )
         except Exception as error:
             reliability_output.value = f"Reliability analysis error: {error}"
@@ -1749,7 +1750,7 @@ async def main(page: ft.Page):
             )
             remember_output(
                 "reliability", "McDonald omega and item diagnostics",
-                report, png,
+                report, png, result=result,
             )
         except Exception as error:
             omega_summary_text.value = f"Omega analysis error: {error}"
@@ -1825,7 +1826,8 @@ async def main(page: ft.Page):
             factor_chart_area.controls.append(
                 ft.Image(src=png, width=1090, height=570)
             )
-            remember_output("factor", "Exploratory PCA / EFA", report, png)
+            remember_output("factor", "Exploratory PCA / EFA", report, png,
+                            result=result)
         except Exception as error:
             factor_main_text.value = f"Exploratory analysis error: {error}"
         page.update()
@@ -1864,7 +1866,8 @@ async def main(page: ft.Page):
             )
             remember_output(
                 "correlation", "Bivariate correlation",
-                corr_output.value + "\n\n" + corr_warnings.value, figure
+                corr_output.value + "\n\n" + corr_warnings.value, figure,
+                result=analysis,
             )
         except Exception as error:
             corr_output.value = f"Correlation analysis error: {error}"
@@ -1917,7 +1920,8 @@ async def main(page: ft.Page):
             remember_output(
                 "matrix", "Exploratory correlation matrix",
                 matrix_output.value + "\n\n" + "\n".join(matrix_rows)
-                + "\n\n" + matrix_warnings.value, png
+                + "\n\n" + matrix_warnings.value, png,
+                result=analysis,
             )
         except Exception as error:
             matrix_output.value = f"Correlation matrix error: {error}"
@@ -1959,7 +1963,8 @@ async def main(page: ft.Page):
             )
             remember_output(
                 "groups", "Independent-group comparison",
-                group_output.value + "\n\n" + group_warnings.value, figure
+                group_output.value + "\n\n" + group_warnings.value, figure,
+                result=comparison,
             )
         except Exception as error:
             group_output.value = f"Group comparison error: {error}"
@@ -2007,7 +2012,8 @@ async def main(page: ft.Page):
             paired_chart.controls.append(ft.Image(src=png, width=850, height=530))
             remember_output(
                 "paired", "Paired comparison",
-                text_report + "\n\n" + paired_warnings.value, png
+                text_report + "\n\n" + paired_warnings.value, png,
+                result=analysis,
             )
             paired_export_png_button.disabled = False
             paired_export_txt_button.disabled = False
@@ -2077,7 +2083,8 @@ async def main(page: ft.Page):
             chi_chart.controls.append(ft.Image(src=png, width=850, height=550))
             remember_output(
                 "chi", "Chi-square independence",
-                text_report + "\n\n" + chi_warnings.value, png
+                text_report + "\n\n" + chi_warnings.value, png,
+                result=analysis,
             )
             chi_export_png_button.disabled = False
             chi_export_txt_button.disabled = False
@@ -2157,7 +2164,8 @@ async def main(page: ft.Page):
             omnibus_png_data = png
             remember_output(
                 "omnibus", "ANOVA / Kruskal–Wallis",
-                report + "\n\n" + omnibus_warnings.value, png
+                report + "\n\n" + omnibus_warnings.value, png,
+                result=analysis,
             )
             omnibus_result_data = analysis
             posthoc_button.disabled = False
@@ -2231,7 +2239,8 @@ async def main(page: ft.Page):
             )
             remember_output(
                 "omnibus", "ANOVA / Kruskal–Wallis with post-hoc",
-                omnibus_report_text, omnibus_png_data
+                omnibus_report_text, omnibus_png_data,
+                result=omnibus_result_data,
             )
         except Exception as error:
             posthoc_output.value = f"Post-hoc analysis error: {error}"
@@ -2297,7 +2306,7 @@ async def main(page: ft.Page):
             )
             remember_output(
                 "descriptive", f"Explore: {explore_variable.value}",
-                report, png
+                report, png, result=investigation,
             )
         except Exception as error:
             explore_output.value = f"Explore error: {error}"
@@ -2414,7 +2423,8 @@ async def main(page: ft.Page):
             reg_chart.controls.append(
                 ft.Image(src=image, width=1080, height=440)
             )
-            remember_output("regression", "Linear regression", report, image)
+            remember_output("regression", "Linear regression", report, image,
+                            result=result)
         except Exception as error:
             reg_report.value = f"Regression error: {error}"
         page.update()
@@ -2472,7 +2482,8 @@ async def main(page: ft.Page):
                     for line in lines
                 ],
             ))
-            remember_output("repeated", "Repeated measurements", report, png)
+            remember_output("repeated", "Repeated measurements", report, png,
+                            result=result)
         except Exception as error:
             rep_report.value = f"Repeated-measures error: {error}"
         page.update()
@@ -2527,7 +2538,8 @@ async def main(page: ft.Page):
                 ft.Image(src=png, width=1080, height=445)
             )
             remember_output(
-                "logistic", "Binary logistic regression", report, png
+                "logistic", "Binary logistic regression", report, png,
+                result=result,
             )
         except Exception as error:
             log_report.value = f"Logistic regression error: {error}"
@@ -2604,7 +2616,7 @@ async def main(page: ft.Page):
             ))
             remember_output(
                 "ancova", "ANCOVA / General Linear Model",
-                report, chart,
+                report, chart, result=result,
             )
         except Exception as error:
             ac_main.value = f"ANCOVA / GLM error: {error}"
