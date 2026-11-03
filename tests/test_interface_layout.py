@@ -25,6 +25,9 @@ CONTROL_NAMES = [
     "reliability_output", "reliability_guide", "reliability_warnings",
     "reliability_chart_area", "omega_summary_text", "omega_item_table",
     "omega_report", "omega_warnings", "omega_chart_area",
+    "factor_items", "factor_method", "factor_count", "factor_rotation",
+    "factor_confirm", "factor_main_text", "factor_report",
+    "factor_warnings", "factor_loading_table", "factor_chart_area",
     "corr_x", "corr_y", "corr_scale_x",
     "corr_scale_y", "corr_advice", "corr_method", "corr_confirm",
     "corr_output", "corr_warnings", "corr_chart", "matrix_items",
@@ -51,8 +54,8 @@ CONTROL_NAMES = [
 ]
 
 ACTION_NAMES = [
-    "choose_file", "load_sample", "load_scale_example", "analyze_variable",
-    "calculate_alpha", "calculate_omega", "calculate_correlation", "calculate_matrix",
+    "choose_file", "load_sample", "load_scale_example", "load_factor_example", "analyze_variable",
+    "calculate_alpha", "calculate_omega", "calculate_factor_exploration", "calculate_correlation", "calculate_matrix",
     "calculate_groups", "calculate_paired", "load_paired_example",
     "calculate_chi_square", "load_categorical_example",
     "calculate_omnibus", "load_three_groups_example",
@@ -69,7 +72,7 @@ class DummyPage:
 
 
 class LayoutTests(unittest.TestCase):
-    def test_all_fifteen_screens_exist_and_only_dataset_is_visible(self):
+    def test_all_sixteen_screens_exist_and_only_dataset_is_visible(self):
         controls = {name: ft.Text(name) for name in CONTROL_NAMES}
         actions = {name: (lambda e: None) for name in ACTION_NAMES}
 
@@ -83,12 +86,12 @@ class LayoutTests(unittest.TestCase):
             item for item in sidebar.content.controls
             if isinstance(item, ft.Button)
         ]
-        self.assertEqual(len(nav_buttons), 15)
+        self.assertEqual(len(nav_buttons), 16)
 
         workspace = root.controls[1].content
         # The output toolbar is pinned above one independently scrolling column.
         screens = workspace.controls[2].controls
-        self.assertEqual(len(screens), 15)
+        self.assertEqual(len(screens), 16)
         self.assertTrue(screens[0].visible)
         self.assertTrue(all(not screen.visible for screen in screens[1:]))
 
