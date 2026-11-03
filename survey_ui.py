@@ -112,7 +112,7 @@ def build_numeric_rating_selector(question, on_change=None):
             col={"xs": 12, "sm": 6, "xl": 4},
             padding=10,
             border_radius=10,
-            border=ft.border.all(1, "#DAE3F0"),
+            border=ft.Border.all(1, "#DAE3F0"),
             bgcolor="#F8FAFE",
             content=ft.Radio(
                 value=str(number), label=display, active_color="#2457AC",
@@ -294,7 +294,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     def block(title_text, controls, width=None, col=None):
         return ft.Container(
             width=width, col=col, padding=16, bgcolor="#FFFFFF",
-            border=ft.border.all(1, "#E1E7F1"),
+            border=ft.Border.all(1, "#E1E7F1"),
             border_radius=14,
             content=ft.Column(
                 controls=[
@@ -645,7 +645,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 ft.Container(
                     key=f"draft_{q['key']}",
                     bgcolor="#E7EFFD" if current else "#F5F8FD",
-                    border=ft.border.all(1, "#DAE3F0"),
+                    border=ft.Border.all(1, "#DAE3F0"),
                     border_radius=10, padding=10,
                     content=ft.Column(
                         controls=[
@@ -987,7 +987,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
 
             container = ft.Container(
                 padding=16, border_radius=12, bgcolor="#FFFFFF",
-                border=ft.border.all(1, "#DDE6F1"),
+                border=ft.Border.all(1, "#DDE6F1"),
                 content=ft.Column(
                     controls=[
                         ft.Text(label, size=14, weight="bold"),
