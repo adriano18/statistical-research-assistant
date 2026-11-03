@@ -22,7 +22,7 @@ import pandas as pd
 NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 ALLOWED_TYPES = {
     "likert5", "likert7", "single_choice", "multiple_choice", "yes_no",
-    "number", "short_text", "long_text", "date", "consent",
+    "number", "short_text", "long_text", "date", "consent", "rating_scale",
 }
 CONDITION_OPS = {"equals", "not_equals", "greater", "less"}
 
@@ -52,7 +52,7 @@ def _check_condition(condition, earlier: dict[str, dict]) -> dict | None:
     op = str(condition["operator"])
     if op not in CONDITION_OPS:
         raise ValueError("Unsupported visibility condition operator.")
-    if kind not in {"single_choice", "yes_no", "likert5", "likert7", "number"}:
+    if kind not in {"single_choice", "yes_no", "likert5", "likert7", "rating_scale", "number"}:
         raise ValueError("Conditions require a choice or numeric earlier question.")
     if kind in {"single_choice", "yes_no"}:
         if op not in {"equals", "not_equals"}:
@@ -70,6 +70,8 @@ def _check_condition(condition, earlier: dict[str, dict]) -> dict | None:
             raise ValueError("Numeric conditional value must be finite.")
         if kind.startswith("likert") and not (1 <= value <= int(kind[-1])):
             raise ValueError("Likert conditional value is outside response scale.")
+        if kind == "rating_scale" and str(int(value)) not in earlier[parent]["value_labels"]:
+            raise ValueError("Conditional rating value must be a defined scale code.")
     return {"question": parent, "operator": op, "value": value}
 
 
@@ -131,8 +133,8 @@ def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         reversed_key = item.get("reverse_scored", False)
         if not isinstance(reversed_key, bool):
             raise ValueError("Reverse-scored flag must be True or False.")
-        if reversed_key and kind not in {"likert5", "likert7"}:
-            raise ValueError("Only Likert items can be marked reverse-scored.")
+        if reversed_key and kind not in {"likert5", "likert7", "rating_scale"}:
+            raise ValueError("Only numeric rating items can be marked reverse-scored.")
         if reversed_key and not scale_id:
             raise ValueError("Assign a scale ID to reverse-scored items.")
         raw_labels = item.get("value_labels") or {}
@@ -140,18 +142,47 @@ def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
             raise ValueError("Value labels must map numeric codes to text.")
         value_labels: dict[str, str] = {}
         if raw_labels:
-            if kind not in {"likert5", "likert7"}:
-                raise ValueError("Value labels are supported for Likert items only.")
-            expected = {str(n) for n in range(1, int(kind[-1]) + 1)}
-            if set(raw_labels) != expected:
-                raise ValueError("Provide a label for every numeric Likert code.")
-            for n in range(1, int(kind[-1]) + 1):
-                label = raw_labels[str(n)]
-                if not isinstance(label, str) or not 1 <= len(label.strip()) <= 100:
-                    raise ValueError("Value labels must be 1–100 characters.")
-                value_labels[str(n)] = label.strip()
+            if kind not in {"likert5", "likert7", "rating_scale"}:
+                raise ValueError("Value labels are supported for numeric scales only.")
+            if kind == "rating_scale":
+                if not 2 <= len(raw_labels) <= 11:
+                    raise ValueError("Custom rating scales need 2–11 labeled values.")
+                for code, label in raw_labels.items():
+                    if (not isinstance(code, str) or
+                            not re.fullmatch(r"-?(0|[1-9][0-9]*)", code) or
+                            not -100 <= int(code) <= 100):
+                        raise ValueError("Rating codes must be unique integers from -100 to 100.")
+                    if not isinstance(label, str) or not 1 <= len(label.strip()) <= 100:
+                        raise ValueError("Value labels must be 1–100 characters.")
+                    value_labels[code] = label.strip()
+                value_labels = dict(sorted(value_labels.items(), key=lambda x: int(x[0])))
+            else:
+                expected = {str(n) for n in range(1, int(kind[-1]) + 1)}
+                if set(raw_labels) != expected:
+                    raise ValueError("Provide a label for every numeric Likert code.")
+                for n in range(1, int(kind[-1]) + 1):
+                    label = raw_labels[str(n)]
+                    if not isinstance(label, str) or not 1 <= len(label.strip()) <= 100:
+                        raise ValueError("Value labels must be 1–100 characters.")
+                    value_labels[str(n)] = label.strip()
             if len(set(value_labels.values())) != len(value_labels):
-                raise ValueError("Likert value labels must be distinct.")
+                raise ValueError("Numeric scale value labels must be distinct.")
+        if kind == "rating_scale" and not value_labels:
+            raise ValueError("Custom rating scales require labeled numeric codes.")
+        raw_missing = item.get("missing_options") or {}
+        if not isinstance(raw_missing, dict):
+            raise ValueError("Missing options must be a code-to-label mapping.")
+        if raw_missing and kind not in {"likert5", "likert7", "rating_scale"}:
+            raise ValueError("Missing options are supported on numeric scales only.")
+        if set(raw_missing) - {"DK", "PNA"}:
+            raise ValueError("Missing option codes must be DK and/or PNA.")
+        if any(not isinstance(label, str) or not 1 <= len(label.strip()) <= 100
+               for label in raw_missing.values()):
+            raise ValueError("Missing option labels must be 1–100 characters.")
+        missing_options = {code: raw_missing[code].strip()
+                           for code in ("DK", "PNA") if code in raw_missing}
+        if len(set(missing_options.values())) != len(missing_options):
+            raise ValueError("Missing option labels must be distinct.")
         anchors = [
             str(item.get("min_label", "")).strip(),
             str(item.get("max_label", "")).strip(),
@@ -167,10 +198,16 @@ def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "section": section, "page": page, "page_title": page_title,
             "scale_id": scale_id, "reverse_scored": reversed_key,
             "min_label": anchors[0], "max_label": anchors[1],
-            "value_labels": value_labels, "condition": condition,
+            "value_labels": value_labels, "missing_options": missing_options,
+            "condition": condition,
         }
         normalized.append(normalized_item)
         earlier[key] = normalized_item
+    # A reason column must never overwrite an actual question variable.
+    keys = {q["key"] for q in normalized}
+    for q in normalized:
+        if q["missing_options"] and q["key"] + "__missing_reason" in keys:
+            raise ValueError("Missing reason column conflicts with a question key.")
     # A page heading is shared by every question, even if entered only once.
     for q in normalized:
         q["page_title"] = page_titles.get(q["page"], "")
@@ -178,21 +215,58 @@ def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def likert_choices(question: dict[str, Any]) -> list[tuple[int, str]]:
-    """Respondent labels with stable numeric storage codes, including old surveys."""
+    """Numeric-valued respondent choices; missing options are handled separately."""
     kind = question["kind"]
-    if kind not in {"likert5", "likert7"}:
-        raise ValueError("Only Likert questions have numeric value labels.")
-    maximum = int(kind[-1])
+    if kind not in {"likert5", "likert7", "rating_scale"}:
+        raise ValueError("Only numeric rating questions have score labels.")
     labels = question.get("value_labels") or {}
+    codes = (sorted((int(code) for code in labels))
+             if kind == "rating_scale" else range(1, int(kind[-1]) + 1))
     result = []
-    for number in range(1, maximum + 1):
+    for number in codes:
         label = labels.get(str(number), "")
         if not label and number == 1:
             label = question.get("min_label", "")
-        if not label and number == maximum:
+        if not label and kind.startswith("likert") and number == int(kind[-1]):
             label = question.get("max_label", "")
         result.append((number, f"{number} — {label}" if label else str(number)))
     return result
+
+
+def section_blocks(questions: list[dict[str, Any]], page: int) -> list[list[dict[str, Any]]]:
+    """Return ordered contiguous topic blocks on the selected page."""
+    blocks: list[list[dict[str, Any]]] = []
+    for question in questions:
+        if question.get("page", 1) != page:
+            continue
+        if not blocks or (blocks[-1][0].get("section") or "General") != (
+            question.get("section") or "General"
+        ):
+            blocks.append([])
+        blocks[-1].append(question)
+    return blocks
+
+
+def reorder_sections(
+    questions: list[dict[str, Any]], page: int, old: int, new: int
+) -> list[dict[str, Any]]:
+    """Move a complete topic block within a page without breaking conditions."""
+    blocks = section_blocks(questions, page)
+    if not (0 <= old < len(blocks) and 0 <= new < len(blocks)):
+        raise ValueError("Section reorder position is invalid.")
+    proposed = [[dict(q) for q in block] for block in blocks]
+    proposed.insert(new, proposed.pop(old))
+    new_page = [q for block in proposed for q in block]
+    candidate = []
+    inserted = False
+    for q in questions:
+        if q.get("page", 1) == page:
+            if not inserted:
+                candidate.extend(new_page)
+                inserted = True
+        else:
+            candidate.append(dict(q))
+    return validate_questions(candidate)
 
 
 def reorder_questions(questions: list[dict[str, Any]], old: int, new: int) -> list[dict[str, Any]]:
@@ -296,12 +370,15 @@ def _clean_answer(question: dict[str, Any], answer: Any) -> Any:
         if question["required"]:
             raise ValueError(f"Required question not answered: {question['key']}")
         return None
-    if kind.startswith("likert"):
-        maximum = int(kind[-1])
-        if isinstance(answer, bool) or str(answer) not in {
-            str(n) for n in range(1, maximum + 1)
-        }:
-            raise ValueError(f"Choose 1–{maximum} for {question['key']}.")
+    if kind in {"likert5", "likert7", "rating_scale"}:
+        if isinstance(answer, str) and answer in question.get("missing_options", {}):
+            return answer  # Keep the reason in SQLite; export score as NaN.
+        valid = (
+            {str(n) for n in range(1, int(kind[-1]) + 1)}
+            if kind.startswith("likert") else set(question["value_labels"])
+        )
+        if isinstance(answer, bool) or str(answer) not in valid:
+            raise ValueError(f"Choose a listed numeric score for {question['key']}.")
         return int(answer)
     if kind == "single_choice":
         if not isinstance(answer, str) or answer not in question["options"]:
@@ -407,6 +484,14 @@ def responses_dataframe(root: str | Path, survey_id: str) -> pd.DataFrame:
             "response_id": response_id,
             **{q["key"]: answers.get(q["key"]) for q in definition.questions},
         }
+        for q in definition.questions:
+            if q.get("missing_options"):
+                value = row[q["key"]]
+                row[q["key"] + "__missing_reason"] = (
+                    value if value in q["missing_options"] else None
+                )
+                if value in q["missing_options"]:
+                    row[q["key"]] = None
         for question in definition.questions:
             if question["kind"] == "multiple_choice":
                 value = row[question["key"]]
@@ -416,10 +501,14 @@ def responses_dataframe(root: str | Path, survey_id: str) -> pd.DataFrame:
                 )
         rows.append(row)
     frame = pd.DataFrame(
-        rows, columns=["response_id", *[q["key"] for q in definition.questions]]
+        rows, columns=[
+            "response_id", *[q["key"] for q in definition.questions],
+            *[q["key"] + "__missing_reason" for q in definition.questions
+              if q.get("missing_options")],
+        ]
     )
     for q in definition.questions:
-        if q["kind"] in {"likert5", "likert7", "number", "consent"}:
+        if q["kind"] in {"likert5", "likert7", "rating_scale", "number", "consent"}:
             frame[q["key"]] = pd.to_numeric(frame[q["key"]], errors="coerce")
     return frame
 
@@ -433,9 +522,11 @@ def survey_codebook(root: str | Path, survey_id: str) -> dict[str, Any]:
         "response_id": "Random identifier, not an anonymization guarantee",
         "questions": [
             {**q, "measurement_level": (
-                "ordinal" if q["kind"] in {"likert5", "likert7"}
+                "ordinal" if q["kind"] in {"likert5", "likert7", "rating_scale"}
                 else "quantitative" if q["kind"] == "number"
                 else "nominal"
+            ), "missing_reason_column": (
+                q["key"] + "__missing_reason" if q.get("missing_options") else None
             )}
             for q in definition.questions
         ],
