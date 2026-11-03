@@ -9,9 +9,9 @@ A Python project for exploring research datasets and, later, selecting and inter
 ## Development plan
 1. **v0.1 Data inspection** — import CSV/XLSX, review variables, missing values and their inferred data types.
 2. **v0.2 Descriptive statistics** (in progress) — N, mean, median, SD, distributions and plots.
-3. **v0.3 Research methods** (in progress) — reliability, correlations, independent/paired tests, χ², three omnibus methods and their post-hoc comparisons; linear/multiple regression now implemented; repeated-measure tests and more advanced models remain planned.
+3. **v0.3 Research methods** (in progress) — reliability, correlations, chi-square, independent and repeated designs, group omnibus/post-hoc tests, linear/logistic regression and ANCOVA; data preparation and deeper psychometrics remain planned.
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
-5. **v0.5 Reports and localization** — local TXT/PNG export currently available for paired analyses; expand to APA tables, DOCX/PDF and English, Latvian and Russian.
+5. **v0.5 Reports and localization** — TXT/PNG export and copying are available across analysis screens; next are structured APA tables, DOCX/PDF, and EN/LV/RU translations.
 
 ## Desktop interface
 
@@ -28,6 +28,7 @@ The Flet application uses a left navigation menu instead of one long scrolling p
 - **ANOVA / Kruskal**: compare 3–8 independent groups, review effect estimates, group distributions and omnibus cautions.
 - **Linear regression**: fit a model with one to five quantitative predictors, inspect coefficients, residuals, multicollinearity, influence and optional robust standard errors.
 - **Logistic regression**: model a binary 0/1 outcome, inspect odds ratios with 95% CIs, likelihood-ratio test and in-sample ROC/calibration diagnostics.
+- **ANCOVA / GLM**: compare 2–6 independent groups controlling for quantitative covariates, inspect group-by-covariate interactions, adjusted means and Holm-adjusted group contrasts.
 - **Repeated measures**: Friedman or Greenhouse–Geisser-adjusted repeated-measures ANOVA, paired Holm comparisons and individual trajectories.
 
 Use **Dataset** first. Switching between sections preserves analysis results until a new dataset is loaded. The calculation modules and the local-data privacy approach have not changed.
@@ -174,6 +175,20 @@ Confirm that you reviewed independent observations, event coding, whether the pr
 - The program checks convergence, obvious perfect separation, nonsensical outcomes, singular predictors and extreme coefficients. **Quasi-separation and model misspecification may still occur.** Researcher review is required.
 
 This example is synthetic and cannot establish psychological or behavioral causal effects. The report is an APA 7-style draft, not a certified publication-ready output.
+
+## ANCOVA and General Linear Model (Step 15)
+
+In **Dataset**, select **Load ANCOVA example** (`examples/sample_ancova.csv`). Open the new **ANCOVA / GLM** screen. Use `wellbeing` as the quantitative outcome, `group` as a categorical factor (A, B or C), and `age` plus `baseline_score` as quantitative covariates. The example has 180 fictional records, 179 complete cases. Confirm independent observations, valid measurement scales, covariate timing, plausible linearity and outlier review. Click **Run ANCOVA / GLM**.
+
+**Mode 1: ANCOVA (common slopes).** Fits an additive ordinary least squares model. Before reporting an adjusted group F-test, the program fits a group × covariate model and performs a joint F-test for differences in slopes. If the interaction is significant at the .05 threshold, **the common-slope ANCOVA is blocked**. Switch modes and interpret the conditional interaction model instead; do not treat a nonsignificant interaction as proof of identical slopes.
+
+**Mode 2: GLM (group × covariate interactions).** Fits a **Gaussian General Linear Model** with each covariate's interaction with the group factor. This is not a *generalized* linear model such as logistic or Poisson regression. Because slopes may differ, the displayed group F-test, adjusted means, and pairwise contrasts describe differences **only at the observed complete-case grand mean of each covariate**; they are not constant effects across all covariate values.
+
+The output includes a group F-test and p-value, partial η², R², a slope-interaction F-test, the complete-case sample size, adjusted means with individual 95% confidence intervals, all group comparisons with **Holm-adjusted p-values**, a fitted-lines figure, and residual Shapiro–Wilk, median-centered Levene and Cook's D summaries. Pairwise **95% confidence intervals are unadjusted**, unlike the adjusted p-values. For multiple covariates the graph holds all but the first covariate at the observed reference mean. Use the shared **Copy report**, **Save TXT as...**, and **Save PNG as...** controls.
+
+To check the guard against invalid common-slope inference, choose **Load interaction example** (`examples/sample_ancova_interaction.csv`) and try common-slope ANCOVA. The dataset intentionally has differing age slopes. Switch to **GLM (group × covariate interactions)** to estimate conditional contrasts.
+
+**Important limitations:** All analyses use listwise-complete cases and ordinary OLS model assumptions. Adjusted predictions may extrapolate if the groups have little overlapping covariate range; the program reports a warning. Covariates are assumed to be quantitative and selected deliberately: a numeric storage type alone does not establish scale. Covariates measured after a treatment may introduce bias. This first version supports **one** group factor and **one to three** covariates, not factorial ANOVA, multivariate outcomes, repeated observations, or generalized GLMs. The results do not demonstrate causation. The report is an APA-style draft requiring researcher review.
 
 ## Interface languages
 
