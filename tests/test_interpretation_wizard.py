@@ -13,6 +13,7 @@ import flet as ft
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 
 from interpretation_docx import build_apa_docx, save_apa_docx
 from interpretation_ui import InterpretationWizardView
@@ -120,6 +121,23 @@ class InterpretationEvidenceTests(unittest.TestCase):
         self.assertEqual(effect.ci, "Not calculated")
         self.assertEqual(difference.ci, "[.360, 2.150]")
         self.assertEqual(evidence.method, "Welch independent-samples t test")
+
+    def test_numpy_scalar_estimates_and_counts_are_preserved(self):
+        result = fake_correlation()
+        result.n_complete = np.int64(94)
+        result.n_total = np.int32(108)
+        result.coefficient = np.float32(.432)
+        result.p_value = np.float32(.008)
+        result.ci_low = np.float32(.2)
+        result.ci_high = np.float32(.6)
+        evidence = build_analysis_evidence(
+            "correlation", "Synthetic numeric scalars", "Raw result",
+            None, result,
+        )
+        self.assertEqual(evidence.n_complete, 94)
+        self.assertEqual(evidence.n_total, 108)
+        self.assertEqual(evidence.rows[2].estimate, ".432")
+        self.assertEqual(evidence.rows[2].ci, "[.200, .600]")
 
     def test_missing_spearman_ci_explicit_and_no_false_claim(self):
         result = fake_correlation("spearman")
