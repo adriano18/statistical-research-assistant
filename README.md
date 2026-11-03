@@ -25,6 +25,8 @@ A Python project for exploring research datasets and, later, selecting and inter
 
 **Recent files:** Up to eight recently opened local file paths are stored only in the local preferences file, never in the repository or cloud. A missing recent file is skipped. Recent-file history is not a saved research project: workbooks, analysis selections and reports are not yet bundled into a restorable project file.
 
+**Windows executable preview:** A manually triggered GitHub Actions workflow, `.github/workflows/windows-package.yml`, can attempt an **unsigned portable Windows bundle** using the official `flet build windows` command on a Windows runner. The bundle must be validated on a real Windows machine, and **is not a signed installer or an automatic release**. Packaging depends on Flet/Flutter and the Visual Studio C++ workload. Until this build has been executed successfully, launch the source app using `flet run app.py`. See the [official Flet Windows packaging guide](https://flet.dev/docs/publish/windows/).
+
 **Test matrix:** `python -m unittest discover -s tests -v` includes generated synthetic Google/Microsoft-Forms-like worksheet patterns, mixed survey exports, CSV delimiters, encodings, header offsets, missing values, decimal styles, duplicate headings, bad rows, and malicious-looking cell text. Tests confirm ingestion behavior, not the validity of a real questionnaire, translation accuracy of all statistical prose, or real Windows GUI rendering.
 
 ## Desktop-first experience (Stage 23)
