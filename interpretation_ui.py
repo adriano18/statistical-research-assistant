@@ -11,6 +11,7 @@ import flet as ft
 from interpretation_wizard import (
     AnalysisEvidence, interpretation_summary,
 )
+from interpretation_i18n import translate_assumption, translate_method
 from statistical_guide import method_guide_items
 
 
@@ -174,8 +175,18 @@ class InterpretationWizardView:
             controls.extend([
                 ft.Text(labels["method"], weight="bold"),
                 ft.Text(item.method, size=18, weight="bold", color="#2755A1"),
-                ft.Text(item.rationale, selectable=True),
-                ft.Text(item.limitation, color="#9A4D25", selectable=True),
+                ft.Text(
+                    translate_method(
+                        item.section, "rationale", item.rationale,
+                        self.language_getter()
+                    ), selectable=True,
+                ),
+                ft.Text(
+                    translate_method(
+                        item.section, "limitation", item.limitation,
+                        self.language_getter()
+                    ), color="#9A4D25", selectable=True,
+                ),
             ])
             guide = method_guide_items(item.section, self.language_getter())
             controls.extend(
@@ -187,7 +198,10 @@ class InterpretationWizardView:
             controls.append(ft.Text(labels["review"], color="#526581", size=12))
             for assumption in item.assumptions:
                 checkbox = ft.Checkbox(
-                    label=assumption, value=assumption in self.reviewed,
+                    label=translate_assumption(
+                        assumption, self.language_getter()
+                    ),
+                    value=assumption in self.reviewed,
                     on_change=lambda e, key=assumption: self._mark_reviewed(
                         key, bool(e.control.value),
                     ),
