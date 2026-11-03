@@ -125,6 +125,8 @@ def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if any(len(v) > 80 for v in anchors):
             raise ValueError("Scale anchor labels must be at most 80 characters.")
         condition = _check_condition(item.get("condition"), earlier)
+        if kind == "consent" and condition is not None:
+            raise ValueError("Consent questions cannot be conditional.")
         normalized_item = {
             "key": key, "prompt": prompt, "kind": kind,
             "required": required, "options": options,
