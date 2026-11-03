@@ -13,6 +13,7 @@ from reliability import analyze_cronbach
 from reliability_reporting import apa_reliability_report, ALPHA_GUIDE
 from reliability_charts import make_reliability_chart
 from omega_analysis import analyze_omega
+from omega_bootstrap import bootstrap_omega
 from omega_reporting import format_omega_report, omega_summary
 from omega_charts import make_omega_chart
 from factor_exploration import analyze_factor_exploration
@@ -434,6 +435,14 @@ async def main(page: ft.Page):
     omega_report = ft.Text("")
     omega_warnings = ft.Text("")
     omega_chart_area = ft.Column()
+    omega_ci_reps = ft.Dropdown(
+        label="Omega 95% bootstrap CI", width=280, value="0",
+        options=[
+            ft.DropdownOption(key="0", text="Off (fast)"),
+            ft.DropdownOption(key="200", text="200 resamples (exploratory)"),
+            ft.DropdownOption(key="500", text="500 resamples (more stable)"),
+        ],
+    )
 
     factor_items = ft.Column(height=185, scroll=ft.ScrollMode.AUTO)
     factor_method = ft.Dropdown(label="Exploratory method", width=260, value="pca",
@@ -449,6 +458,7 @@ async def main(page: ft.Page):
         value="none", options=[
             ft.DropdownOption(key="none", text="None"),
             ft.DropdownOption(key="varimax", text="Varimax (orthogonal EFA)"),
+            ft.DropdownOption(key="oblimin", text="Oblimin (correlated factors)"),
         ])
     factor_confirm = ft.Checkbox(
         label="I checked the study design, measurement scales, independence and suitability",
@@ -458,6 +468,7 @@ async def main(page: ft.Page):
     factor_report = ft.Text("")
     factor_warnings = ft.Text("")
     factor_loading_table = ft.Column()
+    factor_correlation_text = ft.Text("")
     factor_chart_area = ft.Column()
 
     # Correlation requires two real measurements, not just two numeric columns.
@@ -883,6 +894,7 @@ async def main(page: ft.Page):
         omega_report.value = ""
         omega_warnings.value = ""
         omega_chart_area.controls.clear()
+        omega_ci_reps.value = "0"
 
         factor_items.controls = [
             ft.Checkbox(
@@ -901,6 +913,7 @@ async def main(page: ft.Page):
         factor_report.value = ""
         factor_warnings.value = ""
         factor_loading_table.controls.clear()
+        factor_correlation_text.value = ""
         factor_chart_area.controls.clear()
 
         # Offer numeric variables but leave their measurement scales unconfirmed.
@@ -1344,18 +1357,39 @@ async def main(page: ft.Page):
             result = await asyncio.to_thread(
                 analyze_omega, dataframe, selected
             )
-            report = format_omega_report(result)
-            png = await asyncio.to_thread(make_omega_chart, result)
-            omega_summary_text.value = omega_summary(result)
+            ci = None
+            extra_warning = ""
+            if omega_ci_reps.value != "0":
+                requested = int(omega_ci_reps.value)
+                omega_summary_text.value = (
+                    f"Estimating 95% bootstrap CI ({requested} refits)..."
+                )
+                page.update()
+                try:
+                    ci = await asyncio.to_thread(
+                        bootstrap_omega, dataframe, selected, requested
+                    )
+                except ValueError as bootstrap_error:
+                    extra_warning = (
+                        "Bootstrap CI not available: " + str(bootstrap_error)
+                    )
+            report = format_omega_report(result, ci)
+            if extra_warning:
+                report += "\n\n" + extra_warning
+            png = await asyncio.to_thread(make_omega_chart, result, ci)
+            omega_summary_text.value = omega_summary(result, ci)
             omega_report.value = report
-            omega_warnings.value = "\n".join(result.warnings)
+            omega_warnings.value = "\n".join(
+                [*result.warnings, *([extra_warning] if extra_warning else [])]
+            )
             omega_item_table.controls.append(
                 ft.DataTable(
                     columns=[
                         ft.DataColumn(label=ft.Text(title))
                         for title in (
-                            "Item", "M", "SD", "Missing",
-                            "Item-rest r", "Loading", "Uniqueness",
+                            "Item", "M", "SD", "Missing", "Unique",
+                            "Rest Pearson r", "Rest Spearman ρ",
+                            "Loading", "Uniqueness",
                         )
                     ],
                     rows=[
@@ -1364,8 +1398,12 @@ async def main(page: ft.Page):
                             ft.DataCell(ft.Text(f"{item.mean:.2f}")),
                             ft.DataCell(ft.Text(f"{item.sd:.2f}")),
                             ft.DataCell(ft.Text(str(item.missing))),
+                            ft.DataCell(ft.Text(str(item.unique_answers))),
                             ft.DataCell(ft.Text(
                                 f"{item.corrected_item_rest_r:.2f}"
+                            )),
+                            ft.DataCell(ft.Text(
+                                f"{item.rank_item_rest_r:.2f}"
                             )),
                             ft.DataCell(ft.Text(
                                 f"{item.standardized_loading:.2f}"
@@ -1397,6 +1435,7 @@ async def main(page: ft.Page):
         factor_report.value = ""
         factor_warnings.value = ""
         factor_loading_table.controls.clear()
+        factor_correlation_text.value = ""
         factor_chart_area.controls.clear()
         if dataframe is None:
             factor_main_text.value = "Load a dataset first."
@@ -1418,6 +1457,16 @@ async def main(page: ft.Page):
             factor_main_text.value = factor_main(result)
             factor_report.value = report
             factor_warnings.value = "\n".join(result.warnings)
+            if result.factor_correlations is not None:
+                factor_correlation_text.value = (
+                    "OBLIMIN FACTOR CORRELATIONS (Phi)\n"
+                    + "\n".join(
+                        " | ".join(f"{v:+.3f}" for v in row)
+                        for row in result.factor_correlations
+                    )
+                    + "\nThe EFA loading table shows PATTERN coefficients; "
+                    "the full report includes the STRUCTURE matrix."
+                )
             columns = [
                 "Variable", *[
                     f"{'PC' if result.method == 'pca' else 'F'}{j+1}"
@@ -2317,6 +2366,7 @@ async def main(page: ft.Page):
             "omega_report": omega_report,
             "omega_warnings": omega_warnings,
             "omega_chart_area": omega_chart_area,
+            "omega_ci_reps": omega_ci_reps,
             "factor_items": factor_items,
             "factor_method": factor_method,
             "factor_count": factor_count,
@@ -2326,6 +2376,7 @@ async def main(page: ft.Page):
             "factor_report": factor_report,
             "factor_warnings": factor_warnings,
             "factor_loading_table": factor_loading_table,
+            "factor_correlation_text": factor_correlation_text,
             "factor_chart_area": factor_chart_area,
             "corr_x": corr_x,
             "corr_y": corr_y,
