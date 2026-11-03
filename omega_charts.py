@@ -11,7 +11,7 @@ import numpy as np
 from reliability_reporting import apa_coefficient
 
 
-def make_omega_chart(result) -> bytes:
+def make_omega_chart(result, ci=None) -> bytes:
     labels = [q.name for q in result.diagnostics]
     corrected = np.array(
         [q.corrected_item_rest_r for q in result.diagnostics]
@@ -58,6 +58,12 @@ def make_omega_chart(result) -> bytes:
             "loadings are descriptive; reverse coding must be confirmed "
             "from the scale manual. The figure does not prove scale validity."
         )
+        if ci is not None:
+            note += (
+                f" Bootstrap percentile 95% CI "
+                f"[{apa_coefficient(ci.lower)}, {apa_coefficient(ci.upper)}] "
+                f"based on {ci.successful}/{ci.requested} valid refits."
+            )
         fig.text(
             .055, .02, textwrap.fill(note, 145),
             va="bottom", fontsize=8,
