@@ -68,12 +68,16 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 ### Questionnaire editor: deferred usability improvements
 
 - [x] **Drag and drop for individual questions** using Flet ReorderableListView, with safe dependency checks and Move up/down keyboard fallback
-- [ ] Drag-and-drop rearrangement of **whole sections** while preserving page groupings and conditional logic
+- [x] Drag-and-drop rearrangement of **whole sections within a page** with fallback move controls and dependency checks
+- [ ] Cross-page section moves with controlled reassignment of page metadata
 - [x] **Value-label mappings for Likert 1–5 and 1–7**: complete editable Unicode labels and preset wording, while storing **stable numeric scores** in the dataset; old endpoint-only surveys remain compatible
-- [ ] Extend value-label mapping to arbitrary custom rating scales and localized per-language displays
-- [ ] Support fully custom and unequal-endpoint scales, semantic differentials and optional `Don't know / Prefer not to answer` missing-value codes without pretending the categories are continuous
+- [x] Custom integer-coded ordinal rating / semantic differential scales (2–11 scores) with labeled endpoints, including negative and nonconsecutive codes
+- [ ] Localized per-language label dictionaries and in-form language switching
+- [x] Support custom numeric-coded ordinal scales, semantic differential labels and explicit `DK` / `PNA` codes retained in SQLite; numeric CSV score is null with a separate missing-reason column
+- [ ] Consider richer visual semantic differential response controls and scoring-rule validation for unequal categories
 - [ ] Keep response labels, raw codes, ordinal metadata and reverse-key flags in the codebook; require the researcher to confirm reverse scoring before creating transformed columns
-- [ ] Responsive layout for smaller windows, text wrapping, compact item cards, keyboard navigation, accessible contrast and previews showing real respondent-visible labels
+- [x] Responsive Build editor columns (stack on narrower windows), label wrapping and compact cards; dedicated previews show full labels
+- [ ] Manual Windows/mobile-sized UX audit, focus order, accessible contrast and assistive technology checks
 - [ ] Usability test builder on Windows with several participants creating/previewing a real **licensed** questionnaire (no actual sensitive participant data during development)
 
 ### Future: questionnaire import from a photo or document (AI-assisted)
@@ -99,7 +103,7 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [x] Preview without saving answers, published-form cloning into a draft and machine-readable JSON codebook
 - [x] Numbered pages with shared titles, topic headings, respondent navigation and per-page required-answer checks; no responses stored in Preview
 - [ ] Full AND/OR logic, randomization/balancing, response timers and advanced validation
-- [ ] Real study version history, controlled edit/delete and a complete data dictionary beyond current Likert code labels
+- [ ] Real study version history, controlled edit/delete and a complete data dictionary beyond current Likert/custom ordinal labels
 - [ ] Data entry editing and controlled withdrawal/deletion for participants, plus explicit deletion of a study
 - [ ] Optional HR recruitment mode with CV attachments **only after** secure access, consent, retention and deletion controls; exclude file uploads from default research surveys
 
