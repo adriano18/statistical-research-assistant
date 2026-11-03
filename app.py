@@ -15,6 +15,9 @@ from reliability_charts import make_reliability_chart
 from omega_analysis import analyze_omega
 from omega_reporting import format_omega_report, omega_summary
 from omega_charts import make_omega_chart
+from factor_exploration import analyze_factor_exploration
+from factor_reporting import factor_main, format_factor_report
+from factor_charts import make_factor_chart
 from correlation import analyze_correlation, recommend_method
 from correlation_reporting import format_correlation_report
 from correlation_charts import make_correlation_chart
@@ -430,6 +433,31 @@ async def main(page: ft.Page):
     omega_report = ft.Text("")
     omega_warnings = ft.Text("")
     omega_chart_area = ft.Column()
+
+    factor_items = ft.Column(height=185, scroll=ft.ScrollMode.AUTO)
+    factor_method = ft.Dropdown(label="Exploratory method", width=260, value="pca",
+        options=[
+            ft.DropdownOption(key="pca", text="Principal components (PCA)"),
+            ft.DropdownOption(key="efa", text="Principal-axis factors (EFA)"),
+        ])
+    factor_count = ft.Dropdown(label="Number of factors/components", width=250,
+        value="2", options=[
+            ft.DropdownOption(key=str(n), text=str(n)) for n in range(1, 6)
+        ])
+    factor_rotation = ft.Dropdown(label="Factor rotation", width=250,
+        value="none", options=[
+            ft.DropdownOption(key="none", text="None"),
+            ft.DropdownOption(key="varimax", text="Varimax (orthogonal EFA)"),
+        ])
+    factor_confirm = ft.Checkbox(
+        label="I checked the study design, measurement scales, independence and suitability",
+        value=False,
+    )
+    factor_main_text = ft.Text("")
+    factor_report = ft.Text("")
+    factor_warnings = ft.Text("")
+    factor_loading_table = ft.Column()
+    factor_chart_area = ft.Column()
 
     # Correlation requires two real measurements, not just two numeric columns.
     corr_x = ft.Dropdown(label="Variable X", width=270, options=[])
@@ -854,6 +882,25 @@ async def main(page: ft.Page):
         omega_report.value = ""
         omega_warnings.value = ""
         omega_chart_area.controls.clear()
+
+        factor_items.controls = [
+            ft.Checkbox(
+                label=str(name),
+                value=str(name).startswith(("wellbeing_q", "workstress_q")),
+            )
+            for name in df.columns
+            if pd.api.types.is_numeric_dtype(df[name])
+            and not looks_like_identifier(name)
+        ]
+        factor_method.value = "pca"
+        factor_count.value = "2"
+        factor_rotation.value = "none"
+        factor_confirm.value = False
+        factor_main_text.value = ""
+        factor_report.value = ""
+        factor_warnings.value = ""
+        factor_loading_table.controls.clear()
+        factor_chart_area.controls.clear()
 
         # Offer numeric variables but leave their measurement scales unconfirmed.
         numeric_candidates = [
@@ -1339,6 +1386,70 @@ async def main(page: ft.Page):
             )
         except Exception as error:
             omega_summary_text.value = f"Omega analysis error: {error}"
+        page.update()
+
+    async def calculate_factor_exploration(e):
+        factor_main_text.value = ""
+        factor_report.value = ""
+        factor_warnings.value = ""
+        factor_loading_table.controls.clear()
+        factor_chart_area.controls.clear()
+        if dataframe is None:
+            factor_main_text.value = "Load a dataset first."
+            page.update()
+            return
+        selected = [
+            item.label for item in factor_items.controls if bool(item.value)
+        ]
+        factor_main_text.value = "Running exploratory PCA/EFA..."
+        page.update()
+        try:
+            result = await asyncio.to_thread(
+                analyze_factor_exploration, dataframe, selected,
+                factor_method.value, int(factor_count.value),
+                factor_rotation.value, bool(factor_confirm.value),
+            )
+            png = await asyncio.to_thread(make_factor_chart, result)
+            report = format_factor_report(result)
+            factor_main_text.value = factor_main(result)
+            factor_report.value = report
+            factor_warnings.value = "\n".join(result.warnings)
+            columns = [
+                "Variable", *[
+                    f"{'PC' if result.method == 'pca' else 'F'}{j+1}"
+                    for j in range(result.n_components)
+                ],
+                "Uniqueness" if result.uniqueness is not None
+                else "Item KMO",
+            ]
+            extras = (
+                result.uniqueness if result.uniqueness is not None
+                else result.item_kmo
+            )
+            factor_loading_table.controls.append(
+                ft.DataTable(
+                    columns=[
+                        ft.DataColumn(label=ft.Text(col)) for col in columns
+                    ],
+                    rows=[
+                        ft.DataRow(cells=[
+                            ft.DataCell(ft.Text(item_name)),
+                            *[
+                                ft.DataCell(ft.Text(f"{x:+.3f}"))
+                                for x in result.loadings[j, :]
+                            ],
+                            ft.DataCell(ft.Text(f"{extras[j]:.3f}")),
+                        ])
+                        for j, item_name in enumerate(result.items)
+                    ],
+                )
+            )
+            factor_chart_area.controls.append(
+                ft.Image(src=png, width=1090, height=570)
+            )
+            remember_output("factor", "Exploratory PCA / EFA", report, png)
+        except Exception as error:
+            factor_main_text.value = f"Exploratory analysis error: {error}"
         page.update()
 
     async def calculate_correlation(e):
@@ -2202,6 +2313,16 @@ async def main(page: ft.Page):
             "omega_report": omega_report,
             "omega_warnings": omega_warnings,
             "omega_chart_area": omega_chart_area,
+            "factor_items": factor_items,
+            "factor_method": factor_method,
+            "factor_count": factor_count,
+            "factor_rotation": factor_rotation,
+            "factor_confirm": factor_confirm,
+            "factor_main_text": factor_main_text,
+            "factor_report": factor_report,
+            "factor_warnings": factor_warnings,
+            "factor_loading_table": factor_loading_table,
+            "factor_chart_area": factor_chart_area,
             "corr_x": corr_x,
             "corr_y": corr_y,
             "corr_scale_x": corr_scale_x,
@@ -2293,6 +2414,7 @@ async def main(page: ft.Page):
             "load_regression_example": load_regression_example,
             "calculate_alpha": calculate_alpha,
             "calculate_omega": calculate_omega,
+            "calculate_factor_exploration": calculate_factor_exploration,
             "calculate_correlation": calculate_correlation,
             "calculate_matrix": calculate_matrix,
             "calculate_groups": calculate_groups,
