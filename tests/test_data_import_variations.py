@@ -125,6 +125,27 @@ class SurveyImportVariationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, problem):
                     load_dataset(self.csv("broken.csv", text))
 
+    def test_qualtrics_like_question_text_and_import_id_metadata_rows(self):
+        path = self.csv(
+            "qualtrics_style.csv",
+            'QID1,QID2,finished\n'
+            '"How satisfied are you?","Tell us why","Finished"\n'
+            '"{""ImportId"":""QID1""}","{""ImportId"":""QID2""}","{""ImportId"":""finished""}"\n'
+            '4,"fine",1\n'
+            '5,"excellent",1\n',
+        )
+        frame, report = load_dataset_with_report(
+            path, ImportOptions(data_start_row=4)
+        )
+        self.assertEqual(frame.shape, (2, 3))
+        self.assertEqual(frame["QID1"].tolist(), [4.0, 5.0])
+        self.assertTrue(any("metadata/description" in w for w in report.warnings))
+        self.assertEqual(report.data_start_row, 4)
+        with self.assertRaisesRegex(ValueError, "Data start row"):
+            load_dataset_with_report(
+                path, ImportOptions(header_row=2, data_start_row=2)
+            )
+
     def test_malformed_rows_and_broken_quotes_rejected(self):
         for text in (
             "a,b\n1,2,unexpected\n",
