@@ -1061,3 +1061,150 @@ EXTRA_TEXT.update({
     "Я проверил(а) распределения, выбросы и предпосылки критерия"
   ]
 })
+
+EXTRA_TEXT.update({
+  "Yes": [
+    "Jā",
+    "Да"
+  ],
+  "No": [
+    "Nē",
+    "Нет"
+  ],
+  "Never": [
+    "Nekad",
+    "Никогда"
+  ],
+  "Always": [
+    "Vienmēr",
+    "Всегда"
+  ],
+  "Difficult": [
+    "Grūti",
+    "Трудно"
+  ],
+  "Easy": [
+    "Viegli",
+    "Легко"
+  ],
+  "Study information": [
+    "Pētījuma informācija",
+    "Информация об исследовании"
+  ],
+  "Introduction": [
+    "Ievads",
+    "Введение"
+  ],
+  "Background": [
+    "Pamatinformācija",
+    "Общие сведения"
+  ],
+  "Stress scale": [
+    "Stresa skala",
+    "Шкала стресса"
+  ],
+  "Stress items": [
+    "Stresa punkti",
+    "Пункты шкалы стресса"
+  ],
+  "Information": [
+    "Informācija",
+    "Информация"
+  ],
+  "Engagement": [
+    "Iesaistīšanās",
+    "Вовлечённость"
+  ],
+  "Feedback": [
+    "Atsauksmes",
+    "Обратная связь"
+  ],
+  "Screening": [
+    "Atlases jautājumi",
+    "Отборочные вопросы"
+  ],
+  "Experience": [
+    "Pieredze",
+    "Опыт"
+  ],
+  "Preferences": [
+    "Vēlmes",
+    "Предпочтения"
+  ],
+  "I agree to take part in this fictional pilot.": [
+    "Es piekrītu piedalīties šajā izdomātajā izmēģinājumā.",
+    "Я согласен(-на) участвовать в этом учебном исследовании."
+  ],
+  "Your age in years (optional)": [
+    "Jūsu vecums gados (neobligāti)",
+    "Ваш возраст в годах (необязательно)"
+  ],
+  "Fictional study group": [
+    "Izdomātā pētījuma grupa",
+    "Учебная группа исследования"
+  ],
+  "Are you currently employed?": [
+    "Vai jūs pašlaik strādājat?",
+    "Вы сейчас работаете?"
+  ],
+  "Years in current employment": [
+    "Darba stāžs pašreizējā darbavietā",
+    "Стаж на текущем месте работы"
+  ],
+  "Fictional stress statement 1": [
+    "Izdomāts apgalvojums par stresu 1",
+    "Учебное утверждение о стрессе 1"
+  ],
+  "Fictional positively worded statement 2": [
+    "Izdomāts pozitīvi formulēts apgalvojums 2",
+    "Учебное позитивно сформулированное утверждение 2"
+  ],
+  "Fictional stress statement 3": [
+    "Izdomāts apgalvojums par stresu 3",
+    "Учебное утверждение о стрессе 3"
+  ],
+  "I agree to join this fictional workplace pilot.": [
+    "Es piekrītu piedalīties izdomātā darba vietas pētījumā.",
+    "Я согласен(-на) участвовать в учебном исследовании рабочей среды."
+  ],
+  "Department": [
+    "Nodaļa",
+    "Отдел"
+  ],
+  "I agree to participate in this fictional survey.": [
+    "Es piekrītu piedalīties izdomātā aptaujā.",
+    "Я согласен(-на) участвовать в учебном опросе."
+  ],
+  "Have you used this product?": [
+    "Vai esat izmantojis/-usi šo produktu?",
+    "Вы пользовались этим продуктом?"
+  ],
+  "Rate your experience": [
+    "Novērtējiet pieredzi",
+    "Оцените ваш опыт"
+  ],
+  "Which features matter most?": [
+    "Kuras īpašības ir vissvarīgākās?",
+    "Какие характеристики наиболее важны?"
+  ],
+  "Any additional thoughts?": [
+    "Vai vēlaties ko piebilst?",
+    "Хотите что-нибудь добавить?"
+  ],
+  "Age in years (optional)": [
+    "Vecums gados (neobligāti)",
+    "Возраст в годах (необязательно)"
+  ],
+  "Education level": [
+    "Izglītības līmenis",
+    "Уровень образования"
+  ],
+  "Optional feedback": [
+    "Neobligātas atsauksmes",
+    "Отзыв (необязательно)"
+  ],
+  "Optional improvement suggestion": [
+    "Neobligāts uzlabojuma ieteikums",
+    "Предложение по улучшению (необязательно)"
+  ]
+})
