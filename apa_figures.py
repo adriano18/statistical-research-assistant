@@ -23,6 +23,56 @@ DEFAULT_NOTE = (
 )
 
 
+# Current plotting functions usually include fixed legacy figure numbers (1–14).
+# Descriptive graphs are the only exception; they have no embedded Figure header.
+EMBEDDED_CAPTION_SECTIONS = frozenset({
+    "reliability", "omega", "factor", "correlation", "matrix",
+    "groups", "paired", "chi", "omnibus", "regression", "logistic",
+    "ancova", "repeated",
+})
+
+SECTION_NOTES = {
+    "descriptive": "Note. Frequencies and distributions are descriptive; "
+                   "confirm the measurement scale and treatment of missing values.",
+    "reliability": "Note. Error bars apply only to the full-scale Cronbach alpha. "
+                   "Item-deletion estimates have no displayed confidence intervals. "
+                   "Reliability does not establish construct validity.",
+    "omega": "Note. One-factor omega uses a Pearson-based factor model; "
+             "loadings and correlations depend on assumptions and complete cases.",
+    "factor": "Note. EFA estimates common-factor structure, while PCA reduces "
+              "total variance. Retention and rotation decisions remain exploratory.",
+    "correlation": "Note. The plotted relationship is not evidence of causality. "
+                   "Tied Spearman scores may be jittered for display only; "
+                   "estimates use the original observations.",
+    "matrix": "Note. Correlations are exploratory associations, not causation. "
+              "Different pairs may have different effective sample sizes.",
+    "groups": "Note. Compare distributions and assumptions before interpreting "
+              "between-group differences as effects.",
+    "paired": "Note. Connected observations belong to the same participants. "
+              "Within-person changes alone do not establish causation.",
+    "chi": "Note. Sparse expected counts can invalidate asymptotic chi-square "
+           "approximations; check the numerical report.",
+    "omnibus": "Note. Group comparisons depend on design, distributional "
+               "assumptions and multiple-test correction; no causation implied.",
+    "regression": "Note. Fitted associations and residual diagnostics are "
+                  "in-sample; they do not establish causality or external accuracy.",
+    "logistic": "Note. ROC and calibration are in-sample diagnostics, not "
+                "external validation or a causal claim.",
+    "ancova": "Note. Adjusted means depend on covariate reference values "
+              "and the common-slope or interaction model.",
+    "repeated": "Note. Trajectories describe repeated measurements within "
+                "participants; check sphericity, missingness and design.",
+}
+
+
+def default_section_figure_note(section: str) -> str:
+    return SECTION_NOTES.get(section, DEFAULT_NOTE)
+
+
+def section_embeds_figure_header(section: str) -> bool:
+    return section in EMBEDDED_CAPTION_SECTIONS
+
+
 def make_apa7_export_png(
     original_png: bytes, title: str, *,
     figure_number: int = 1, note: str = DEFAULT_NOTE,
