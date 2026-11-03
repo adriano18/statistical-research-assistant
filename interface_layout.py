@@ -25,7 +25,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         return ft.Container(
             bgcolor="#FFFFFF",
             border_radius=16,
-            border=ft.border.all(1, "#E1E7F1"),
+            border=ft.Border.all(1, "#E1E7F1"),
             padding=20,
             content=ft.Column(
                 controls=[
@@ -42,7 +42,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             padding=20,
             bgcolor="#FFFFFF",
             border_radius=16,
-            border=ft.border.all(1, "#DBE4F0"),
+            border=ft.Border.all(1, "#DBE4F0"),
             content=ft.Column(
                 controls=[
                     ft.Icon(icon, size=30, color="#2755A1"),
@@ -960,7 +960,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
     sidebar = ft.Container(
         width=250,
         bgcolor="#FFFFFF",
-        border=ft.border.all(1, "#E1E7F1"),
+        border=ft.Border.all(1, "#E1E7F1"),
         border_radius=16,
         padding=12,
         content=ft.Column(
@@ -1029,7 +1029,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
     dataset_header = ft.Container(
         visible=False,
         bgcolor="#FFFFFF",
-        border=ft.border.all(1, "#E1E7F1"),
+        border=ft.Border.all(1, "#E1E7F1"),
         border_radius=12,
         padding=12,
         content=ft.Row(
