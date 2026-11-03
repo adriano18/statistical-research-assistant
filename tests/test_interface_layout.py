@@ -103,9 +103,10 @@ class LayoutTests(unittest.TestCase):
 
         workspace = root.controls[1].content
         self.assertFalse(workspace.controls[0].visible)
-        self.assertFalse(workspace.controls[1].visible)  # No dataset banner on Home
-        self.assertFalse(workspace.controls[2].visible)  # No export on Home
-        screens = workspace.controls[3].controls
+        self.assertFalse(workspace.controls[1].visible)  # Compact language hidden
+        self.assertFalse(workspace.controls[2].visible)  # No dataset banner on Home
+        self.assertFalse(workspace.controls[3].visible)  # No export on Home
+        screens = workspace.controls[4].controls
         self.assertEqual(len(screens), 17)
         self.assertTrue(screens[0].visible)
         self.assertTrue(all(not screen.visible for screen in screens[1:]))
@@ -118,6 +119,34 @@ class LayoutTests(unittest.TestCase):
         self.assertTrue(compact.visible)
         self.assertEqual(compact.value, "home")
         self.assertEqual(len(compact.options), 17)
+        locale = root.controls[1].content.controls[1]
+        self.assertIsInstance(locale, ft.Dropdown)
+        self.assertTrue(locale.visible)
+        self.assertEqual(locale.value, "en")
+
+    def test_default_is_english_and_language_switch_is_live(self):
+        controls = {name: ft.Text(name) for name in CONTROL_NAMES}
+        actions = {name: (lambda e: None) for name in ACTION_NAMES}
+        changed = []
+        root = build_interface(
+            DummyPage(), controls, actions,
+            on_language_change=changed.append,
+        )
+        sidebar = root.controls[0]
+        picker = next(item for item in sidebar.content.controls
+                      if isinstance(item, ft.Dropdown))
+        self.assertEqual(picker.value, "en")
+        picker.value = "ru"
+        picker.on_select(None)
+        self.assertEqual(changed, ["ru"])
+        home_button = next(item for item in sidebar.content.controls
+                           if isinstance(item, ft.Button))
+        self.assertIn("Главная", home_button.content.value)
+        picker.value = "lv"
+        picker.on_select(None)
+        self.assertEqual(changed, ["ru", "lv"])
+        self.assertIn("Sākums", home_button.content.value)
+        self.assertEqual(root.controls[1].content.controls[0].value, "home")
 
 
 if __name__ == "__main__":
