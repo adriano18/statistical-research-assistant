@@ -81,8 +81,8 @@ ANCOVA_INTERACTION_SAMPLE = Path(__file__).resolve().parent / "examples" / "samp
 
 async def main(page: ft.Page):
     page.title = "Statistical Research Assistant"
-    page.window.width = 1280
-    page.window.height = 820
+    page.window.width = 1200
+    page.window.height = 720
     page.window.resizable = True
     page.window.visible = False  # Build the UI before showing the centered window.
     page.padding = 14
