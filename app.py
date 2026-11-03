@@ -49,6 +49,9 @@ from regression_charts import make_regression_chart
 from repeated_analysis import analyze_repeated
 from repeated_reporting import repeated_main, repeated_brief, format_repeated_report
 from repeated_charts import make_repeated_chart
+from logistic_analysis import binary_logistic_regression
+from logistic_reporting import logistic_main, logistic_brief, format_logistic_report
+from logistic_charts import make_logistic_chart
 
 
 SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_survey.csv"
@@ -58,6 +61,7 @@ CATEGORICAL_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_cate
 THREE_GROUPS_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_three_groups.csv"
 REGRESSION_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_regression.csv"
 REPEATED_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_repeated.csv"
+LOGISTIC_SAMPLE = Path(__file__).resolve().parent / "examples" / "sample_logistic.csv"
 
 
 async def main(page: ft.Page):
@@ -192,6 +196,63 @@ async def main(page: ft.Page):
     reg_report = ft.Text("")
     reg_warnings = ft.Text("")
     reg_chart = ft.Column()
+
+    # Binary logistic regression is intentionally restricted to 0/1 outcomes
+    # and quantitative predictors. Categorical coding is a separate feature.
+    log_outcome = ft.Dropdown(
+        label="Binary outcome (0 / 1)", width=330, options=[]
+    )
+    log_predictors = ft.Column(height=170, scroll=ft.ScrollMode.AUTO)
+    log_confirm = ft.Checkbox(
+        label=(
+            "I confirmed independent observations, outcome coding, "
+            "quantitative predictors and logit-linearity assumptions"
+        ),
+        value=False,
+    )
+    log_main = ft.Text("")
+    log_brief = ft.Text("")
+    log_odds_table = ft.Column()
+    log_report = ft.Text("")
+    log_warnings = ft.Text("")
+    log_chart = ft.Column()
+
+    def clear_logistic(e=None):
+        log_main.value = ""
+        log_brief.value = ""
+        log_odds_table.controls.clear()
+        log_report.value = ""
+        log_warnings.value = ""
+        log_chart.controls.clear()
+        output_cache.pop("logistic", None)
+        if active_section == "logistic":
+            refresh_output_buttons()
+        page.update()
+
+    def refresh_logistic_predictors(e=None):
+        if dataframe is None:
+            return
+        previous = {
+            item.label for item in log_predictors.controls if bool(item.value)
+        }
+        options = [
+            str(name) for name in dataframe.columns
+            if pd.api.types.is_numeric_dtype(dataframe[name])
+            and not looks_like_identifier(name)
+            and str(name) != log_outcome.value
+        ]
+        log_predictors.controls = [
+            ft.Checkbox(
+                label=name, value=name in previous,
+                on_change=clear_logistic,
+            )
+            for name in options
+        ]
+        log_confirm.value = False
+        clear_logistic()
+
+    log_outcome.on_select = refresh_logistic_predictors
+    log_confirm.on_change = clear_logistic
 
     # Repeated measures: explicit columns with the same construct in occasion order.
     rep_items = ft.Column(height=185, scroll=ft.ScrollMode.AUTO)
@@ -760,6 +821,36 @@ async def main(page: ft.Page):
         reg_warnings.value = ""
         reg_chart.controls.clear()
 
+        # Binary regression requires a verified 0/1 outcome.
+        binary_outcomes = [
+            name for name in numeric_candidates
+            if set(df[name].dropna().unique().tolist()) == {0, 1}
+        ]
+        log_outcome.options = [
+            ft.DropdownOption(key=name, text=name)
+            for name in binary_outcomes
+        ]
+        log_outcome.value = (
+            "wellbeing_improved" if "wellbeing_improved" in binary_outcomes
+            else (binary_outcomes[0] if binary_outcomes else None)
+        )
+        log_predictors.controls = [
+            ft.Checkbox(
+                label=name,
+                value=name in {"sleep_hours", "activity_hours"},
+                on_change=clear_logistic,
+            )
+            for name in numeric_candidates
+            if name != log_outcome.value
+        ]
+        log_confirm.value = False
+        log_main.value = ""
+        log_brief.value = ""
+        log_odds_table.controls.clear()
+        log_report.value = ""
+        log_warnings.value = ""
+        log_chart.controls.clear()
+
         corr_x.options = [
             ft.DropdownOption(key=name, text=name) for name in numeric_candidates
         ]
@@ -969,6 +1060,9 @@ async def main(page: ft.Page):
 
     async def load_repeated_example(e):
         await show_file(REPEATED_SAMPLE)
+
+    async def load_logistic_example(e):
+        await show_file(LOGISTIC_SAMPLE)
 
     async def calculate_alpha(e):
         reliability_chart_area.controls.clear()
@@ -1663,6 +1757,62 @@ async def main(page: ft.Page):
             rep_report.value = f"Repeated-measures error: {error}"
         page.update()
 
+    async def run_logistic(e):
+        clear_logistic()
+        log_report.value = "Fitting binary logistic regression..."
+        page.update()
+        if dataframe is None or not log_outcome.value:
+            log_report.value = "Load a dataset with a binary 0/1 outcome first."
+            page.update()
+            return
+
+        chosen = [
+            box.label for box in log_predictors.controls
+            if bool(box.value) and box.label != log_outcome.value
+        ]
+        try:
+            result = await asyncio.to_thread(
+                binary_logistic_regression,
+                dataframe, log_outcome.value, chosen,
+                bool(log_confirm.value),
+            )
+            png = await asyncio.to_thread(make_logistic_chart, result)
+            report = format_logistic_report(result)
+            log_main.value = logistic_main(result)
+            log_brief.value = logistic_brief(result)
+            log_report.value = report
+            log_warnings.value = "\n".join(result.warnings)
+
+            columns = ["Variable", "B", "OR", "OR 95% CI", "p"]
+            log_odds_table.controls.append(
+                ft.DataTable(
+                    columns=[
+                        ft.DataColumn(label=ft.Text(name)) for name in columns
+                    ],
+                    rows=[
+                        ft.DataRow(cells=[
+                            ft.DataCell(ft.Text(c.name)),
+                            ft.DataCell(ft.Text(f"{c.b:+.3f}")),
+                            ft.DataCell(ft.Text(f"{c.odds_ratio:.3f}")),
+                            ft.DataCell(ft.Text(
+                                f"[{c.or_low:.3f}, {c.or_high:.3f}]"
+                            )),
+                            ft.DataCell(ft.Text(apa_p_value(c.p))),
+                        ])
+                        for c in result.coefficients
+                    ],
+                )
+            )
+            log_chart.controls.append(
+                ft.Image(src=png, width=1080, height=445)
+            )
+            remember_output(
+                "logistic", "Binary logistic regression", report, png
+            )
+        except Exception as error:
+            log_report.value = f"Logistic regression error: {error}"
+        page.update()
+
     # STEP 6: Present existing actions in separate, easier-to-navigate screens.
     ui = build_interface(
         page,
@@ -1688,6 +1838,15 @@ async def main(page: ft.Page):
             "reg_report": reg_report,
             "reg_warnings": reg_warnings,
             "reg_chart": reg_chart,
+            "log_outcome": log_outcome,
+            "log_predictors": log_predictors,
+            "log_confirm": log_confirm,
+            "log_main": log_main,
+            "log_brief": log_brief,
+            "log_odds_table": log_odds_table,
+            "log_report": log_report,
+            "log_warnings": log_warnings,
+            "log_chart": log_chart,
             "rep_items": rep_items,
             "rep_scale": rep_scale,
             "rep_method": rep_method,
@@ -1786,6 +1945,8 @@ async def main(page: ft.Page):
             "analyze_variable": analyze_variable,
             "run_explore": run_explore,
             "run_regression": run_regression,
+            "run_logistic": run_logistic,
+            "load_logistic_example": load_logistic_example,
             "run_repeated": run_repeated,
             "load_repeated_example": load_repeated_example,
             "load_regression_example": load_regression_example,
