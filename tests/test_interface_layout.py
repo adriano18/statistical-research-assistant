@@ -12,6 +12,8 @@ CONTROL_NAMES = [
     "explore_variable", "explore_group", "explore_output", "explore_chart",
     "reg_outcome", "reg_predictors", "reg_hc3", "reg_confirm",
     "reg_main", "reg_brief", "reg_report", "reg_warnings", "reg_chart",
+    "log_outcome", "log_predictors", "log_confirm", "log_main",
+    "log_brief", "log_odds_table", "log_report", "log_warnings", "log_chart",
     "rep_items", "rep_scale", "rep_method", "rep_same_people",
     "rep_assumptions", "rep_main", "rep_brief", "rep_report",
     "rep_warnings", "rep_chart", "rep_pair_table",
@@ -49,6 +51,7 @@ ACTION_NAMES = [
     "calculate_chi_square", "load_categorical_example",
     "calculate_omnibus", "load_three_groups_example",
     "run_explore", "set_active_screen", "run_regression", "load_regression_example",
+    "run_logistic", "load_logistic_example",
     "run_repeated", "load_repeated_example",
 ]
 
@@ -59,7 +62,7 @@ class DummyPage:
 
 
 class LayoutTests(unittest.TestCase):
-    def test_all_eleven_screens_exist_and_only_dataset_is_visible(self):
+    def test_all_twelve_screens_exist_and_only_dataset_is_visible(self):
         controls = {name: ft.Text(name) for name in CONTROL_NAMES}
         actions = {name: (lambda e: None) for name in ACTION_NAMES}
 
@@ -73,12 +76,12 @@ class LayoutTests(unittest.TestCase):
             item for item in sidebar.content.controls
             if isinstance(item, ft.Button)
         ]
-        self.assertEqual(len(nav_buttons), 11)
+        self.assertEqual(len(nav_buttons), 12)
 
         workspace = root.controls[1].content
         # The output toolbar is pinned above one independently scrolling column.
         screens = workspace.controls[2].controls
-        self.assertEqual(len(screens), 11)
+        self.assertEqual(len(screens), 12)
         self.assertTrue(screens[0].visible)
         self.assertTrue(all(not screen.visible for screen in screens[1:]))
 
