@@ -16,7 +16,7 @@ from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches, Pt
+from docx.shared import Inches, Pt, RGBColor
 from PIL import Image
 
 from apa_figures import (
@@ -41,6 +41,7 @@ def _style(document: Document):
     normal = document.styles["Normal"]
     normal.font.name = "Times New Roman"
     normal.font.size = Pt(12)
+    normal.font.color.rgb = RGBColor(0, 0, 0)
     normal.paragraph_format.line_spacing = 2
     normal.paragraph_format.space_after = Pt(0)
 
@@ -49,7 +50,7 @@ def _style(document: Document):
         style.font.name = "Times New Roman"
         style.font.size = Pt(12)
         style.font.bold = True
-        style.font.color.rgb = None
+        style.font.color.rgb = RGBColor(0, 0, 0)
         style.paragraph_format.line_spacing = 2
         style.paragraph_format.space_before = Pt(10)
         style.paragraph_format.space_after = Pt(2)
@@ -97,9 +98,14 @@ def _title(document, label: str, heading: str):
 
 
 def _note(document, text: str):
+    """Accept both plain note text and an existing 'Note.' prefix."""
+    body = text.strip()
+    if body.lower().startswith("note."):
+        body = body[5:].strip()
     paragraph = document.add_paragraph()
     paragraph.add_run("Note.").italic = True
-    paragraph.add_run(" " + text)
+    if body:
+        paragraph.add_run(" " + body)
 
 
 def _figure_body(image: bytes, section: str) -> BytesIO:
