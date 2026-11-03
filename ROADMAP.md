@@ -29,7 +29,8 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [x] **One-factor repeated-measures ANOVA** with Greenhouse–Geisser-adjusted inference, partial η² and Holm-adjusted paired t comparisons
 - [ ] Mauchly sphericity test, multilevel/mixed-effects repeated models and optional planned contrasts
 - [ ] **ANCOVA / general linear model** where design and sample sizes justify it
-- [ ] **Binary logistic regression**, odds ratios, CI, interpretation and separation warnings
+- [x] **Binary logistic regression** for 0/1 outcomes, MLE, OR and Wald 95% CI, likelihood-ratio test, convergence/separation safeguards and in-sample ROC/calibration
+- [ ] Logistic regression improvements: categorical factor encoding, penalized/Firth estimates for sparse samples, external validation and classification diagnostics
 - [ ] More complete diagnostics: residual vs fitted plots, outliers/influence, variance inflation factors, distribution checks of **paired differences**
 - [ ] Confidence intervals for important effect sizes; control of multiplicity
 - [ ] Independent reference checks against SciPy, statsmodels and jamovi/JASP
