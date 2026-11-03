@@ -74,8 +74,8 @@ def _check_condition(condition, earlier: dict[str, dict]) -> dict | None:
 
 
 def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if not 1 <= len(questions) <= 40:
-        raise ValueError("Create between 1 and 40 questions.")
+    if not 1 <= len(questions) <= 200:
+        raise ValueError("Create between 1 and 200 questions.")
     normalized: list[dict[str, Any]] = []
     earlier = {}
     page_titles: dict[int, str] = {}
