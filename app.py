@@ -44,6 +44,7 @@ from explore_analysis import (
 )
 from regression_analysis import analyze_regression
 from regression_reporting import format_regression_report, regression_brief
+from correlation_reporting import apa_p_value
 from regression_charts import make_regression_chart
 from repeated_analysis import analyze_repeated
 from repeated_reporting import repeated_main, repeated_brief, format_repeated_report
@@ -1591,7 +1592,7 @@ async def main(page: ft.Page):
                 f"N = {result.n_complete} | R² = {result.r_squared:.3f} | "
                 f"Adjusted R² = {result.adjusted_r_squared:.3f}\n"
                 f"F({result.model_df}, {result.residual_df}) = "
-                f"{result.f_value:.2f}, p = {result.f_p:.4f}"
+                f"{result.f_value:.2f}, {apa_p_value(result.f_p)}"
             )
             reg_brief.value = regression_brief(result)
             reg_report.value = report
