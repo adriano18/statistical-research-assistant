@@ -15,25 +15,124 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
     def heading(title, subtitle):
         return ft.Column(
             controls=[
-                ft.Text(title, size=26, weight="bold"),
-                ft.Text(subtitle, color="#A8B6C9", size=13),
+                ft.Text(title, size=27, weight="bold", color="#172A43"),
+                ft.Text(subtitle, color="#607087", size=13),
             ],
             spacing=5,
         )
 
     def panel(title, content):
         return ft.Container(
-            bgcolor="#1A2635",
-            border_radius=14,
+            bgcolor="#FFFFFF",
+            border_radius=16,
+            border=ft.border.all(1, "#E1E7F1"),
             padding=20,
             content=ft.Column(
                 controls=[
-                    ft.Text(title, size=17, weight="bold"),
+                    ft.Text(title, size=17, weight="bold", color="#172A43"),
                     *content,
                 ],
                 spacing=13,
             ),
         )
+
+    def start_card(title, description, action, action_label, icon):
+        return ft.Container(
+            col={"xs": 12, "md": 6, "lg": 4},
+            padding=20,
+            bgcolor="#FFFFFF",
+            border_radius=16,
+            border=ft.border.all(1, "#DBE4F0"),
+            content=ft.Column(
+                controls=[
+                    ft.Icon(icon, size=30, color="#2755A1"),
+                    ft.Text(title, size=18, weight="bold", color="#172A43"),
+                    ft.Text(description, size=13, color="#607087"),
+                    ft.Button(action_label, on_click=action),
+                ],
+                spacing=12,
+            ),
+        )
+
+    home_screen = ft.Column(
+        controls=[
+            ft.Container(
+                padding=24,
+                bgcolor="#EAF1FD",
+                border_radius=18,
+                content=ft.Column(
+                    controls=[
+                        ft.Text("YOUR RESEARCH WORKSPACE", size=12,
+                                weight="bold", color="#2755A1"),
+                        ft.Text("Start with a question. We'll help with the data.",
+                                size=28, weight="bold", color="#172A43"),
+                        ft.Text(
+                            "Create questionnaires, prepare datasets and run "
+                            "statistical analyses on this computer. Choose a "
+                            "starting point below; no previous SPSS experience is needed.",
+                            size=14, color="#415570",
+                        ),
+                    ],
+                    spacing=9,
+                ),
+            ),
+            ft.Text("What would you like to do?", size=20,
+                    weight="bold", color="#172A43"),
+            ft.ResponsiveRow(
+                columns=12, spacing=14, run_spacing=14,
+                controls=[
+                    start_card(
+                        "Open research data",
+                        "Import a CSV or Excel file, check variables and "
+                        "missing responses, then choose an analysis.",
+                        a["choose_file"], "Open CSV / Excel", ft.Icons.UPLOAD_FILE,
+                    ),
+                    start_card(
+                        "Design a questionnaire",
+                        "Build pages and rating scales, preview the respondent "
+                        "experience, collect local test answers.",
+                        lambda e: switch_screen("survey"),
+                        "Create questionnaire", ft.Icons.ASSIGNMENT_OUTLINED,
+                    ),
+                    start_card(
+                        "Try a guided example",
+                        "Load fictional sample responses and learn how to "
+                        "inspect data without using real participant records.",
+                        lambda e: (a["load_sample"](e), switch_screen("dataset")),
+                        "Explore sample data", ft.Icons.SCIENCE_OUTLINED,
+                    ),
+                ],
+            ),
+            panel("A simple research workflow", [
+                ft.Text(
+                    "1  Prepare or collect data    →    2  Review variable types "
+                    "and missingness    →    3  Choose a statistical method "
+                    "    →    4  Inspect assumptions and export the result",
+                    size=13, color="#415570",
+                ),
+                ft.Row(
+                    controls=[
+                        ft.Button(
+                            "Browse statistical methods",
+                            on_click=lambda e: switch_screen("descriptive"),
+                        ),
+                        ft.Button(
+                            "See loaded dataset",
+                            on_click=lambda e: switch_screen("dataset"),
+                        ),
+                    ],
+                    wrap=True, spacing=10,
+                ),
+            ]),
+            ft.Text(
+                "Private by design: local files and survey responses are not "
+                "automatically uploaded. Check consent and data-retention "
+                "requirements before collecting real participant data.",
+                color="#607087", size=12,
+            ),
+        ],
+        spacing=18,
+    )
 
     # Screen 1: upload and inspect the current local dataset.
     dataset_screen = ft.Column(
@@ -43,10 +142,16 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 "Import research data and inspect its variables before analysis.",
             ),
             panel("Choose a data source", [
-                ft.Row(
+                ft.Button(
+                    "Open CSV / Excel", on_click=a["choose_file"],
+                    icon=ft.Icons.FOLDER_OPEN,
+                ),
+                ft.ExpansionTile(
+                    title="Try a fictional example dataset",
+                    expanded=False,
                     controls=[
-                        ft.Button("Open CSV / Excel", on_click=a["choose_file"]),
-                        ft.Button("Load survey example", on_click=a["load_sample"]),
+                        ft.Row(controls=[
+                            ft.Button("Load survey example", on_click=a["load_sample"]),
                         ft.Button("Load scale example", on_click=a["load_scale_example"]),
                         ft.Button("Load factor example", on_click=a["load_factor_example"]),
                         ft.Button("Load paired example", on_click=a["load_paired_example"]),
@@ -56,15 +161,14 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         ft.Button("Load logistic example", on_click=a["load_logistic_example"]),
                         ft.Button("Load ANCOVA example", on_click=a["load_ancova_example"]),
                         ft.Button("Load interaction example", on_click=a["load_ancova_interaction_example"]),
-                        ft.Button("Load repeated example", on_click=a["load_repeated_example"]),
+                            ft.Button("Load repeated example", on_click=a["load_repeated_example"]),
+                        ], wrap=True, spacing=10),
                     ],
-                    wrap=True,
-                    spacing=10,
                 ),
                 ft.Text(
                     "Files are processed locally. Real participant records should "
                     "not be committed to a public repository.",
-                    color="#A8B6C9",
+                    color="#607087",
                     size=12,
                 ),
             ]),
@@ -72,7 +176,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Text(
                     "Check missing values and types. Numeric storage does not "
                     "prove that a measurement is continuous.",
-                    color="#A8B6C9",
+                    color="#607087",
                 ),
                 c["overview_area"],
             ]),
@@ -136,7 +240,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Text(
                     "Choose a quantitative outcome and optional grouping variable. "
                     "The figure includes a boxplot and normal Q–Q plot.",
-                    color="#A8B6C9",
+                    color="#607087",
                 ),
                 ft.Row(
                     controls=[c["explore_variable"], c["explore_group"]],
@@ -162,7 +266,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Text(
                     "Select at least three items from one scale. Check any "
                     "reverse-scored items before running the analysis.",
-                    color="#A8B6C9",
+                    color="#607087",
                 ),
                 c["reliability_items"],
                 c["reliability_confirm"],
@@ -185,7 +289,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                     "Omega uses a Pearson one-factor model and does not "
                     "automatically reverse-score answers. Optional CI "
                     "resamples whole respondents with a fixed random seed.",
-                    size=12, color="#A8B6C9",
+                    size=12, color="#607087",
                 ),
             ]),
             panel("Cronbach’s α: APA-style result", [
@@ -232,7 +336,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Text(
                     "Select 3–12 numeric research items from a coherent set. "
                     "At least max(60, 8 × item count) complete rows are required.",
-                    color="#A8B6C9",
+                    color="#607087",
                 ),
                 c["factor_items"],
                 ft.Row(
@@ -246,7 +350,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                     "principal-axis common-factor extraction, optionally "
                     "varimax (orthogonal) or oblimin (correlated factors). "
                     "Rotating PCA is not implemented.",
-                    size=12, color="#A8B6C9",
+                    size=12, color="#607087",
                 ),
                 c["factor_confirm"],
                 ft.Button(
@@ -356,7 +460,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Text(
                     "This module does not support paired or repeated-measure data. "
                     "The group variable must have exactly two observed categories.",
-                    color="#A8B6C9",
+                    color="#607087",
                 ),
                 ft.Row(
                     controls=[c["group_variable"], c["group_outcome"]],
@@ -399,7 +503,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Text(
                     "Each spreadsheet row must represent one participant, "
                     "with both values aligned. Independent groups are not paired.",
-                    color="#A8B6C9",
+                    color="#607087",
                 ),
                 ft.Row(
                     controls=[c["paired_before"], c["paired_after"]],
@@ -454,7 +558,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Text(
                     "Choose two nominal or ordinal variables (including coded "
                     "categories). This is a test of independence, not of means.",
-                    color="#A8B6C9",
+                    color="#607087",
                 ),
                 ft.Row(
                     controls=[c["chi_a"], c["chi_b"]],
@@ -570,7 +674,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Text(
                     "One quantitative outcome and 1–5 quantitative predictors. "
                     "Numeric category codes are not automatically converted to dummies.",
-                    color="#A8B6C9",
+                    color="#607087",
                 ),
                 c["reg_outcome"],
                 ft.Text("Predictors", weight="bold"),
@@ -616,7 +720,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Text(
                     "Wide format: one row per participant, one selected column "
                     "per occasion. Select 3–8 columns in the intended time order.",
-                    color="#A8B6C9",
+                    color="#607087",
                 ),
                 ft.Text("Repeated measurement columns", weight="bold"),
                 c["rep_items"],
@@ -670,7 +774,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                     "Outcome must be explicitly coded 0 = no event, "
                     "1 = event. Select 1–5 meaningful quantitative predictors; "
                     "numeric category codes require separate recoding.",
-                    color="#A8B6C9",
+                    color="#607087",
                 ),
                 c["log_outcome"],
                 ft.Text("Quantitative predictors", weight="bold"),
@@ -721,7 +825,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                     "Choose one quantitative outcome, one categorical group factor "
                     "(2–6 levels) and 1–3 quantitative covariates. ANCOVA assumes "
                     "parallel regression slopes; interaction GLM allows different slopes.",
-                    color="#A8B6C9",
+                    color="#607087",
                 ),
                 ft.Row(
                     controls=[c["ac_outcome"], c["ac_group"]],
@@ -767,6 +871,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
     )
 
     screens = {
+        "home": home_screen,
         "dataset": dataset_screen,
         "preparation": preparation_screen,
         "survey": survey_screen,
@@ -785,6 +890,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "repeated": repeated_screen,
     }
     labels = {
+        "home": "Home",
         "dataset": "Dataset",
         "preparation": "Data preparation",
         "survey": "Questionnaires",
@@ -810,56 +916,68 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         a["set_active_screen"](key)
         # The survey has its own draft/response workflow; the global statistical
         # copy/save bar and an unrelated loaded-dataset banner are distracting.
-        dataset_header.visible = key != "survey"
+        dataset_header.visible = key not in {"home", "survey"}
         c["output_toolbar"].visible = key not in {
-            "dataset", "preparation", "survey",
+            "home", "dataset", "preparation", "survey",
         }
         for name, screen in screens.items():
             screen.visible = name == key
             buttons[name].content.value = (
                 f"●  {labels[name]}" if name == key else f"    {labels[name]}"
             )
+            buttons[name].style = ft.ButtonStyle(
+                bgcolor="#EAF1FD" if name == key else "#FFFFFF",
+                color="#1D4FA3" if name == key else "#344B68",
+            )
         page.update()
 
     for key, label in labels.items():
         buttons[key] = ft.Button(
-            content=ft.Text(f"●  {label}" if key == "dataset" else f"    {label}"),
+            content=ft.Text(f"●  {label}" if key == "home" else f"    {label}"),
             on_click=lambda e, section=key: switch_screen(section),
             width=210,
+            style=ft.ButtonStyle(
+                bgcolor="#EAF1FD" if key == "home" else "#FFFFFF",
+                color="#1D4FA3" if key == "home" else "#344B68",
+            ),
         )
 
     sidebar = ft.Container(
         width=240,
-        bgcolor="#152030",
+        bgcolor="#FFFFFF",
         border_radius=16,
         padding=16,
         content=ft.Column(
             controls=[
-                ft.Text("RESEARCH", size=13, weight="bold", color="#9CB7DA"),
-                ft.Text("ANALYZER", size=21, weight="bold"),
-                ft.Text(
-                    "Statistics workspace",
-                    size=11,
-                    color="#A8B6C9",
-                ),
-                ft.Divider(),
-                ft.Text("DATA & MEASUREMENT", size=10, color="#9CB7DA"),
+                ft.Text("STATISTICAL", size=12, weight="bold", color="#2755A1"),
+                ft.Text("Research Assistant", size=18,
+                        weight="bold", color="#172A43"),
+                ft.Text("Research · Analysis · Reports",
+                        size=11, color="#607087"),
+                ft.Divider(color="#E1E7F1"),
+                buttons["home"],
+                ft.Text("START & DATA", size=11, weight="bold",
+                        color="#2755A1"),
                 buttons["dataset"],
                 buttons["preparation"],
                 buttons["survey"],
                 buttons["descriptive"],
                 buttons["reliability"],
                 buttons["factor"],
-                ft.Text("ASSOCIATIONS", size=10, color="#9CB7DA"),
+                ft.Divider(color="#E1E7F1"),
+                ft.Text("ASSOCIATIONS", size=11, weight="bold", color="#2755A1"),
                 buttons["correlation"],
                 buttons["matrix"],
                 buttons["chi"],
-                ft.Text("GROUP COMPARISONS", size=10, color="#9CB7DA"),
+                ft.Divider(color="#E1E7F1"),
+                ft.Text("GROUP COMPARISONS", size=11,
+                        weight="bold", color="#2755A1"),
                 buttons["groups"],
                 buttons["paired"],
                 buttons["omnibus"],
                 buttons["repeated"],
-                ft.Text("MODELING", size=10, color="#9CB7DA"),
+                ft.Divider(color="#E1E7F1"),
+                ft.Text("MODELING", size=11, weight="bold", color="#2755A1"),
                 buttons["regression"],
                 buttons["logistic"],
                 buttons["ancova"],
@@ -867,17 +985,20 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Text(
                     "Tip: load data in Dataset, then choose any analysis "
                     "from this menu.",
-                    color="#A8B6C9",
+                    color="#607087",
                     size=12,
                 ),
             ],
-            spacing=10,
+            spacing=8,
+            scroll=ft.ScrollMode.AUTO,
+            expand=True,
         ),
     )
 
     # Keep export controls visible while long results scroll independently.
     dataset_header = ft.Container(
-        bgcolor="#152030",
+        bgcolor="#FFFFFF",
+        border=ft.border.all(1, "#E1E7F1"),
         border_radius=12,
         padding=12,
         content=ft.Row(
@@ -910,7 +1031,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             sidebar,
             ft.Container(content=workspace, expand=True, padding=4),
         ],
-        vertical_alignment=ft.CrossAxisAlignment.START,
+        vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         spacing=20,
         expand=True,
     )
