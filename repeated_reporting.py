@@ -18,7 +18,7 @@ def repeated_main(result) -> str:
         f"{result.df2 * result.epsilon_gg:.2f}) = {result.statistic:.2f}, "
         f"{apa_p_value(result.p_primary)} [Greenhouse–Geisser]\n"
         f"Uncorrected F({int(result.df1)}, {int(result.df2)}) "
-        f"p = {result.p_uncorrected:.4f}; "
+        f"{apa_p_value(result.p_uncorrected)}; "
         f"εGG = {result.epsilon_gg:.3f}, partial η² = {result.effect_size:.3f}"
     )
 
