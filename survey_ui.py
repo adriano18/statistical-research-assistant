@@ -618,6 +618,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     fill_info = ft.Text("")
     fill_form = ft.Column(spacing=12)
     fill_status = ft.Text("")
+    fill_submit_button = ft.Button("Submit response locally")
     response_count_text = ft.Text("")
     response_table = ft.Column(spacing=8)
     response_status = ft.Text("")
@@ -654,10 +655,20 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         return value
 
     def make_form(questions, *, mode):
-        """Build an actual response form; no entries are saved in preview."""
+        """Build a respondent form with topic headings and local page navigation."""
         entries = []
-        body = ft.Column(spacing=14)
         state[f"{mode}_items"] = entries
+        pages = sorted({q.get("page", 1) for q in questions})
+        page_panels = {}
+        page_title_map = {
+            q.get("page", 1): q.get("page_title") or f"Page {q.get('page', 1)}"
+            for q in questions
+        }
+        page_heading = ft.Text("", weight="bold", size=17)
+        page_progress = ft.Text("", color="#A8B6C9", size=12)
+        nav_note = ft.Text("", color="#E8BC8A", size=12)
+        back_button = ft.Button("← Previous")
+        next_button = ft.Button("Next →")
 
         def update_visibility(e=None):
             earlier = {}
@@ -670,77 +681,119 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 )
             page.update()
 
-        last_section = None
-        for i, q in enumerate(questions):
+        def render_current_page():
+            current = state[f"{mode}_page"]
+            for number, panel in page_panels.items():
+                panel.visible = number == current
+            page_heading.value = page_title_map[current]
+            page_progress.value = f"Page {pages.index(current)+1} of {len(pages)}"
+            back_button.visible = current != pages[0]
+            next_button.visible = current != pages[-1]
+            if mode == "fill":
+                fill_submit_button.visible = current == pages[-1]
+            page.update()
+
+        def change_page(direction):
+            current = state[f"{mode}_page"]
+            if direction > 0:
+                try:
+                    answers = {entry["question"]["key"]: read_widget(entry)
+                               for entry in entries}
+                    validate_page_answers(questions, answers, current)
+                except ValueError as err:
+                    nav_note.value = f"Complete this page before continuing: {err}"
+                    page.update()
+                    return
+            target_index = pages.index(current) + direction
+            if 0 <= target_index < len(pages):
+                state[f"{mode}_page"] = pages[target_index]
+                nav_note.value = ""
+                render_current_page()
+
+        back_button.on_click = lambda e: change_page(-1)
+        next_button.on_click = lambda e: change_page(1)
+        for number in pages:
+            page_panels[number] = ft.Column(
+                spacing=13, visible=number == pages[0]
+            )
+        last_section_by_page = {}
+        for q in questions:
+            page_number = q.get("page", 1)
+            body = page_panels[page_number]
             section = q.get("section") or "General"
-            if section != last_section:
+            if section != last_section_by_page.get(page_number):
                 body.controls.append(
                     ft.Text(section.upper(), size=12, weight="bold",
                             color="#9CB7DA")
                 )
-                last_section = section
+                last_section_by_page[page_number] = section
+
             label = q["prompt"] + (" *" if q["required"] else "")
             kind = q["kind"]
             if kind in {"likert5", "likert7"}:
-                max_value = int(kind[-1])
                 field = ft.Dropdown(
-                    label=label, width=620,
+                    label="Choose one answer", width=590,
                     options=[
-                        ft.DropdownOption(key=str(n), text=str(n))
-                        for n in range(1, max_value+1)
+                        ft.DropdownOption(key=str(number), text=display)
+                        for number, display in likert_choices(q)
                     ],
                     on_select=update_visibility,
                 )
-                note = (
-                    f"1 = {q.get('min_label') or 'lowest'}"
-                    f"   ·   {max_value} = {q.get('max_label') or 'highest'}"
-                )
-                field_controls = [field, ft.Text(note, size=11, color="#A8B6C9")]
+                field_controls = [field]
             elif kind in {"single_choice", "yes_no"}:
-                values = (
-                    ["Yes", "No"] if kind == "yes_no" else q["options"]
-                )
+                values = ["Yes", "No"] if kind == "yes_no" else q["options"]
                 field = ft.Dropdown(
-                    label=label, width=620,
-                    options=[
-                        ft.DropdownOption(key=v, text=v) for v in values
-                    ],
+                    label="Choose one answer", width=590,
+                    options=[ft.DropdownOption(key=v, text=v) for v in values],
                     on_select=update_visibility,
                 )
                 field_controls = [field]
             elif kind == "multiple_choice":
                 field = [
-                    ft.Checkbox(label=v, value=False,
-                                on_change=update_visibility)
+                    ft.Checkbox(label=v, value=False, on_change=update_visibility)
                     for v in q["options"]
                 ]
-                field_controls = [
-                    ft.Text(label, size=14),
-                    ft.Column(controls=field, spacing=5),
-                ]
+                field_controls = [ft.Column(controls=field, spacing=5)]
             elif kind == "consent":
                 field = ft.Checkbox(
-                    label=label, value=False,
-                    on_change=update_visibility,
+                    label="I agree", value=False, on_change=update_visibility,
                 )
                 field_controls = [field]
             else:
                 field = ft.TextField(
-                    label=label, width=620,
+                    label="Your answer", width=590,
                     on_change=update_visibility,
                     multiline=kind == "long_text",
                     hint_text="YYYY-MM-DD" if kind == "date" else None,
                 )
                 field_controls = [field]
+
             container = ft.Container(
-                padding=12, border_radius=10, bgcolor="#1E2D41",
-                content=ft.Column(controls=field_controls, spacing=6),
+                padding=14, border_radius=10, bgcolor="#1E2D41",
+                content=ft.Column(
+                    controls=[
+                        ft.Text(label, size=14, weight="bold"),
+                        *field_controls,
+                    ],
+                    spacing=9,
+                ),
             )
             body.controls.append(container)
             entries.append({
                 "question": q, "input": field, "container": container,
             })
+        state[f"{mode}_page"] = pages[0]
+        body = ft.Column(
+            controls=[
+                page_heading, page_progress,
+                *[page_panels[number] for number in pages],
+                ft.Row(controls=[back_button, next_button], wrap=True, spacing=10),
+                nav_note,
+            ],
+            spacing=12,
+        )
         update_visibility()
+        render_current_page()
         return body
 
     def show_preview(e=None):
@@ -875,6 +928,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         except Exception as err:
             fill_status.value = f"Not saved: {err}"
         page.update()
+
+    fill_submit_button.on_click = submit
 
     def update_response_table():
         sid = state["survey_id"]
@@ -1072,7 +1127,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             ]),
             block("Enter a participant response on this computer", [
                 fill_title, fill_info, fill_form,
-                ft.Button("Submit response locally", on_click=submit),
+                fill_submit_button,
                 fill_status,
             ]),
         ],
