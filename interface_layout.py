@@ -924,6 +924,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         c["output_toolbar"].visible = key not in {
             "home", "dataset", "preparation", "survey",
         }
+        compact_navigation.value = key
         for name, screen in screens.items():
             screen.visible = name == key
             buttons[name].content.value = (
@@ -946,11 +947,21 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             ),
         )
 
+    def nav_group(title, keys, *, expanded=False):
+        return ft.ExpansionTile(
+            title=ft.Text(
+                title, weight="bold", size=12, color="#2755A1",
+            ),
+            expanded=expanded,
+            controls=[buttons[key] for key in keys],
+        )
+
     sidebar = ft.Container(
-        width=240,
+        width=250,
         bgcolor="#FFFFFF",
+        border=ft.border.all(1, "#E1E7F1"),
         border_radius=16,
-        padding=16,
+        padding=12,
         content=ft.Column(
             controls=[
                 ft.Text("STATISTICAL", size=12, weight="bold", color="#2755A1"),
@@ -960,37 +971,29 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         size=11, color="#607087"),
                 ft.Divider(color="#E1E7F1"),
                 buttons["home"],
-                ft.Text("START & DATA", size=11, weight="bold",
-                        color="#2755A1"),
-                buttons["dataset"],
-                buttons["preparation"],
-                buttons["survey"],
-                buttons["descriptive"],
-                buttons["reliability"],
-                buttons["factor"],
+                nav_group(
+                    "DATA & MEASUREMENT",
+                    ["dataset", "preparation", "survey", "descriptive",
+                     "reliability", "factor"],
+                    expanded=True,
+                ),
+                nav_group(
+                    "RELATIONSHIPS",
+                    ["correlation", "matrix", "chi"],
+                ),
+                nav_group(
+                    "GROUP COMPARISONS",
+                    ["groups", "paired", "omnibus", "repeated"],
+                ),
+                nav_group(
+                    "STATISTICAL MODELS",
+                    ["regression", "logistic", "ancova"],
+                ),
                 ft.Divider(color="#E1E7F1"),
-                ft.Text("ASSOCIATIONS", size=11, weight="bold", color="#2755A1"),
-                buttons["correlation"],
-                buttons["matrix"],
-                buttons["chi"],
-                ft.Divider(color="#E1E7F1"),
-                ft.Text("GROUP COMPARISONS", size=11,
-                        weight="bold", color="#2755A1"),
-                buttons["groups"],
-                buttons["paired"],
-                buttons["omnibus"],
-                buttons["repeated"],
-                ft.Divider(color="#E1E7F1"),
-                ft.Text("MODELING", size=11, weight="bold", color="#2755A1"),
-                buttons["regression"],
-                buttons["logistic"],
-                buttons["ancova"],
-                ft.Divider(),
                 ft.Text(
-                    "Tip: load data in Dataset, then choose any analysis "
-                    "from this menu.",
-                    color="#607087",
-                    size=12,
+                    "Start on Home. The advanced modules are grouped "
+                    "so you can open only what you need.",
+                    color="#607087", size=12,
                 ),
             ],
             spacing=8,
@@ -998,6 +1001,28 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             expand=True,
         ),
     )
+
+    compact_navigation = ft.Dropdown(
+        label="Go to workspace",
+        width=None,
+        visible=False,
+        value="home",
+        options=[
+            ft.DropdownOption(key=key, text=label)
+            for key, label in labels.items()
+        ],
+        on_select=lambda e: switch_screen(compact_navigation.value),
+    )
+
+    def resize_navigation(e=None):
+        page_width = getattr(page, "width", None) or 1280
+        compact = page_width < 980
+        sidebar.visible = not compact
+        compact_navigation.visible = compact
+        page.update()
+
+    if hasattr(page, "on_resize"):
+        page.on_resize = resize_navigation
 
     # Keep export controls visible while long results scroll independently.
     dataset_header = ft.Container(
@@ -1017,6 +1042,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
     c["output_toolbar"].visible = False
     workspace = ft.Column(
         controls=[
+            compact_navigation,
             dataset_header,
             c["output_toolbar"],
             ft.Column(
@@ -1030,6 +1056,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         expand=True,
     )
 
+    resize_navigation()
     return ft.Row(
         controls=[
             sidebar,
