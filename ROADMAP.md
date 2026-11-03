@@ -28,7 +28,8 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [x] **Friedman test** for 3–8 related ordinal measurements with Kendall’s W and Holm-adjusted paired Wilcoxon comparisons
 - [x] **One-factor repeated-measures ANOVA** with Greenhouse–Geisser-adjusted inference, partial η² and Holm-adjusted paired t comparisons
 - [ ] Mauchly sphericity test, multilevel/mixed-effects repeated models and optional planned contrasts
-- [ ] **ANCOVA / general linear model** where design and sample sizes justify it
+- [x] **One-factor ANCOVA / Gaussian General Linear Model** with 1–3 quantitative covariates, joint common-slope interaction check, conditional GLM, adjusted group means, Holm pair comparisons, group-fit plot and OLS diagnostics
+- [ ] ANCOVA/GLM expansion: factorial designs, custom covariate references, estimated marginal mean contrasts with simultaneous intervals, robust group tests and model diagnostics for nonlinear covariate effects
 - [x] **Binary logistic regression** for 0/1 outcomes, MLE, OR and Wald 95% CI, likelihood-ratio test, convergence/separation safeguards and in-sample ROC/calibration
 - [ ] Logistic regression improvements: categorical factor encoding, penalized/Firth estimates for sparse samples, external validation and classification diagnostics
 - [ ] More complete diagnostics: residual vs fitted plots, outliers/influence, variance inflation factors, distribution checks of **paired differences**
@@ -37,7 +38,8 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 ### P1. Data preparation and psychometrics
 - [ ] Variable labels, value labels, nominal/ordinal/quantitative metadata and manual designation of ID/group/scale
-- [ ] Explicit missing-value codes, recoding, reverse-coded items, total/mean scale scores
+- [ ] Explicit missing-value codes, recoding, reverse-coded items, total/mean scale scores (NEXT milestone)
+- [ ] Safe analysis copies: never mutate a source dataframe when recoding or reversing questionnaire items
 - [ ] Import SPSS `.sav` (optional `pyreadstat`) without remote uploads
 - [ ] McNemar for paired binary classifications; chi-square goodness-of-fit for one categorical variable
 - [ ] Partial correlations
