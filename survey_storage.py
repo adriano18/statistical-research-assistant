@@ -1,12 +1,13 @@
-"""Local-first survey definitions and responses in the ignored data/ directory.
+"""Local-first survey schemas, conditional answers, and SQLite responses.
 
-No network server, analytics, IP collection, email, or third-party account.
-Definitions become immutable after creation. Responses are SQLite transactions.
+Survey definitions are immutable after creation. Editing happens in the draft
+editor, before saving; existing surveys/responses remain backwards compatible.
+No networking or automatic upload is performed by this module.
 """
 
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import json
 import math
 from pathlib import Path
@@ -18,11 +19,12 @@ from typing import Any
 import pandas as pd
 
 
-# sqlite3.Connection as a context manager commits/rolls back a transaction,
-# but does NOT close the connection. closing(...) releases Windows file locks.
-
 NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
-ALLOWED_TYPES = {"likert5", "single_choice", "number", "short_text", "consent"}
+ALLOWED_TYPES = {
+    "likert5", "likert7", "single_choice", "multiple_choice", "yes_no",
+    "number", "short_text", "long_text", "date", "consent",
+}
+CONDITION_OPS = {"equals", "not_equals", "greater", "less"}
 
 
 @dataclass(frozen=True)
@@ -33,11 +35,49 @@ class SurveyDefinition:
     questions: tuple[dict[str, Any], ...]
 
 
+def _check_condition(condition, earlier: dict[str, dict]) -> dict | None:
+    if condition is None or condition == {}:
+        return None
+    if not isinstance(condition, dict):
+        raise ValueError("Visibility condition must be a structured rule.")
+    if set(condition) != {"question", "operator", "value"}:
+        raise ValueError("Use question, operator, value for a conditional rule.")
+    parent = str(condition["question"])
+    if parent not in earlier:
+        raise ValueError(
+            "Conditional question must depend on an EARLIER question "
+            "(not itself or a later question)."
+        )
+    kind = earlier[parent]["kind"]
+    op = str(condition["operator"])
+    if op not in CONDITION_OPS:
+        raise ValueError("Unsupported visibility condition operator.")
+    if kind not in {"single_choice", "yes_no", "likert5", "likert7", "number"}:
+        raise ValueError("Conditions require a choice or numeric earlier question.")
+    if kind in {"single_choice", "yes_no"}:
+        if op not in {"equals", "not_equals"}:
+            raise ValueError("Choice conditions support equals / not_equals only.")
+        allowed = earlier[parent]["options"] if kind == "single_choice" else ["Yes", "No"]
+        value = str(condition["value"])
+        if value not in allowed:
+            raise ValueError("Conditional value must be a listed answer option.")
+    else:
+        try:
+            value = float(condition["value"])
+        except (TypeError, ValueError) as err:
+            raise ValueError("Numeric conditional value is invalid.") from err
+        if not math.isfinite(value):
+            raise ValueError("Numeric conditional value must be finite.")
+        if kind.startswith("likert") and not (1 <= value <= int(kind[-1])):
+            raise ValueError("Likert conditional value is outside response scale.")
+    return {"question": parent, "operator": op, "value": value}
+
+
 def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not 1 <= len(questions) <= 40:
         raise ValueError("Create between 1 and 40 questions.")
-    normalized = []
-    seen = set()
+    normalized: list[dict[str, Any]] = []
+    earlier = {}
     for item in questions:
         key = str(item.get("key", "")).strip()
         prompt = str(item.get("prompt", "")).strip()
@@ -47,30 +87,73 @@ def validate_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "response_id", "submitted_at", "survey_id",
         }:
             raise ValueError(f"Invalid question variable: {key}")
-        if key in seen:
+        if key in earlier:
             raise ValueError(f"Duplicate question variable: {key}")
         if not 2 <= len(prompt) <= 300:
             raise ValueError(f"Question {key} needs a prompt of 2–300 characters.")
         if kind not in ALLOWED_TYPES:
             raise ValueError(f"Unsupported question type: {kind}")
-        options = [str(v).strip() for v in item.get("options", [])]
-        if kind == "single_choice":
+        options = [str(x).strip() for x in item.get("options", [])]
+        if kind in {"single_choice", "multiple_choice"}:
             if not 2 <= len(options) <= 12:
-                raise ValueError("Multiple choice needs 2–12 options.")
+                raise ValueError("Choice questions need 2–12 options.")
             if any(not v or len(v) > 120 for v in options):
                 raise ValueError("Choice labels must be 1–120 characters.")
             if len(options) != len(set(options)):
                 raise ValueError("Choice options must be unique.")
         elif options:
-            raise ValueError("Only single-choice questions may specify options.")
+            raise ValueError("Only choice questions may specify options.")
         if kind == "consent" and not required:
             raise ValueError("Consent questions must be required.")
-        normalized.append({
+        section = str(item.get("section", "")).strip()
+        if len(section) > 80:
+            raise ValueError("Section name must be no longer than 80 characters.")
+        scale_id = str(item.get("scale_id", "")).strip()
+        if scale_id and not NAME_PATTERN.fullmatch(scale_id):
+            raise ValueError("Scale ID must be a valid variable-style name.")
+        reversed_key = item.get("reverse_scored", False)
+        if not isinstance(reversed_key, bool):
+            raise ValueError("Reverse-scored flag must be True or False.")
+        if reversed_key and kind not in {"likert5", "likert7"}:
+            raise ValueError("Only Likert items can be marked reverse-scored.")
+        if reversed_key and not scale_id:
+            raise ValueError("Assign a scale ID to reverse-scored items.")
+        anchors = [
+            str(item.get("min_label", "")).strip(),
+            str(item.get("max_label", "")).strip(),
+        ]
+        if any(len(v) > 80 for v in anchors):
+            raise ValueError("Scale anchor labels must be at most 80 characters.")
+        condition = _check_condition(item.get("condition"), earlier)
+        normalized_item = {
             "key": key, "prompt": prompt, "kind": kind,
             "required": required, "options": options,
-        })
-        seen.add(key)
+            "section": section, "scale_id": scale_id,
+            "reverse_scored": reversed_key,
+            "min_label": anchors[0], "max_label": anchors[1],
+            "condition": condition,
+        }
+        normalized.append(normalized_item)
+        earlier[key] = normalized_item
     return normalized
+
+
+def question_is_visible(question: dict, answers: dict[str, Any]) -> bool:
+    """Safe non-executable visibility evaluation on already cleaned prior answers."""
+    rule = question.get("condition")
+    if not rule:
+        return True
+    parent = answers.get(rule["question"])
+    if parent is None:
+        return False  # Includes prior hidden questions: cascading visibility.
+    op, compare = rule["operator"], rule["value"]
+    if op == "equals":
+        return parent == compare
+    if op == "not_equals":
+        return parent != compare
+    if isinstance(parent, bool) or not isinstance(parent, (int, float)):
+        return False
+    return parent > compare if op == "greater" else parent < compare
 
 
 def _database(root: Path, survey_id: str) -> Path:
@@ -113,7 +196,7 @@ def get_survey(root: str | Path, survey_id: str) -> SurveyDefinition:
     path = _database(Path(root).expanduser().resolve(), survey_id)
     if not path.is_file():
         raise FileNotFoundError("Survey not found on this device.")
-    with closing(sqlite3.connect(path)) as db, db:
+    with closing(sqlite3.connect(path)) as db:
         row = db.execute(
             "SELECT id, title, description, questions_json FROM survey"
         ).fetchone()
@@ -135,39 +218,61 @@ def list_surveys(root: str | Path) -> list[SurveyDefinition]:
         try:
             results.append(get_survey(directory, survey_id))
         except (ValueError, sqlite3.DatabaseError, FileNotFoundError):
-            # An unrelated or damaged file cannot prevent opening the app.
             continue
     return results
 
 
 def _clean_answer(question: dict[str, Any], answer: Any) -> Any:
     kind = question["kind"]
-    if answer is None or (isinstance(answer, str) and not answer.strip()):
+    if answer is None or (isinstance(answer, str) and not answer.strip()) or (
+        kind == "multiple_choice" and answer == []
+    ):
         if question["required"]:
             raise ValueError(f"Required question not answered: {question['key']}")
         return None
-    if kind == "likert5":
-        if isinstance(answer, bool) or str(answer) not in {"1", "2", "3", "4", "5"}:
-            raise ValueError(f"Choose 1–5 for {question['key']}.")
+    if kind.startswith("likert"):
+        maximum = int(kind[-1])
+        if isinstance(answer, bool) or str(answer) not in {
+            str(n) for n in range(1, maximum + 1)
+        }:
+            raise ValueError(f"Choose 1–{maximum} for {question['key']}.")
         return int(answer)
     if kind == "single_choice":
         if not isinstance(answer, str) or answer not in question["options"]:
             raise ValueError(f"Choose a listed option for {question['key']}.")
+        return answer
+    if kind == "multiple_choice":
+        if not isinstance(answer, list) or len(answer) != len(set(map(str, answer))):
+            raise ValueError(f"Choose distinct listed options for {question['key']}.")
+        if any(not isinstance(v, str) or v not in question["options"] for v in answer):
+            raise ValueError(f"Choose listed options for {question['key']}.")
+        return answer
+    if kind == "yes_no":
+        if answer not in ("Yes", "No"):
+            raise ValueError(f"Choose Yes or No for {question['key']}.")
         return answer
     if kind == "number":
         if isinstance(answer, bool):
             raise ValueError(f"Numeric answer required for {question['key']}.")
         try:
             number = float(str(answer).strip())
-        except (ValueError, TypeError) as err:
+        except (TypeError, ValueError) as err:
             raise ValueError(f"Numeric answer required for {question['key']}.") from err
         if not math.isfinite(number) or abs(number) > 1e12:
             raise ValueError(f"Invalid numeric answer for {question['key']}.")
         return number
-    if kind == "short_text":
-        if not isinstance(answer, str) or len(answer.strip()) > 500:
+    if kind in {"short_text", "long_text"}:
+        limit = 500 if kind == "short_text" else 2000
+        if not isinstance(answer, str) or len(answer.strip()) > limit:
             raise ValueError(f"Text too long or invalid for {question['key']}.")
         return answer.strip()
+    if kind == "date":
+        if not isinstance(answer, str):
+            raise ValueError(f"Valid ISO date required for {question['key']}.")
+        try:
+            return date.fromisoformat(answer.strip()).isoformat()
+        except ValueError as err:
+            raise ValueError(f"Valid ISO date required for {question['key']}.") from err
     if kind == "consent":
         if answer is not True:
             raise ValueError("Consent must be explicitly confirmed before submission.")
@@ -182,10 +287,15 @@ def submit_response(
     known = {q["key"] for q in definition.questions}
     if not isinstance(answers, dict) or set(answers) - known:
         raise ValueError("Response includes unknown fields.")
-    cleaned = {
-        q["key"]: _clean_answer(q, answers.get(q["key"]))
-        for q in definition.questions
-    }
+    cleaned: dict[str, Any] = {}
+    for question in definition.questions:
+        key = question["key"]
+        if question_is_visible(question, cleaned):
+            cleaned[key] = _clean_answer(question, answers.get(key))
+        else:
+            # Never treat a skipped question as zero, and do not trust stale UI
+            # values sent for a field that is currently hidden.
+            cleaned[key] = None
     response_id = uuid.uuid4().hex
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     db_path = _database(Path(root).expanduser().resolve(), survey_id)
@@ -199,39 +309,70 @@ def submit_response(
 
 def response_count(root: str | Path, survey_id: str) -> int:
     db_path = _database(Path(root).expanduser().resolve(), survey_id)
-    with closing(sqlite3.connect(db_path)) as db, db:
+    with closing(sqlite3.connect(db_path)) as db:
         return int(db.execute("SELECT COUNT(*) FROM responses").fetchone()[0])
 
 
-def responses_dataframe(
-    root: str | Path, survey_id: str
-) -> pd.DataFrame:
+def responses_dataframe(root: str | Path, survey_id: str) -> pd.DataFrame:
     definition = get_survey(root, survey_id)
     db_path = _database(Path(root).expanduser().resolve(), survey_id)
-    with closing(sqlite3.connect(db_path)) as db, db:
+    with closing(sqlite3.connect(db_path)) as db:
         data = db.execute(
-            "SELECT response_id, answers_json FROM responses "
-            "ORDER BY rowid ASC"
+            "SELECT response_id, answers_json FROM responses ORDER BY rowid ASC"
         ).fetchall()
     rows = []
     for response_id, encoded in data:
         answers = json.loads(encoded)
-        rows.append({
+        row = {
             "response_id": response_id,
             **{q["key"]: answers.get(q["key"]) for q in definition.questions},
-        })
+        }
+        for question in definition.questions:
+            if question["kind"] == "multiple_choice":
+                value = row[question["key"]]
+                row[question["key"]] = (
+                    json.dumps(value, ensure_ascii=False)
+                    if value is not None else None
+                )
+        rows.append(row)
     frame = pd.DataFrame(
         rows, columns=["response_id", *[q["key"] for q in definition.questions]]
     )
     for q in definition.questions:
-        if q["kind"] in {"likert5", "number", "consent"}:
+        if q["kind"] in {"likert5", "likert7", "number", "consent"}:
             frame[q["key"]] = pd.to_numeric(frame[q["key"]], errors="coerce")
     return frame
 
 
-def save_survey_csv(
+def survey_codebook(root: str | Path, survey_id: str) -> dict[str, Any]:
+    definition = get_survey(root, survey_id)
+    return {
+        "survey_id": definition.survey_id,
+        "title": definition.title,
+        "description": definition.description,
+        "response_id": "Random identifier, not an anonymization guarantee",
+        "questions": list(definition.questions),
+        "scoring_note": (
+            "Reverse-scored flags are METADATA ONLY. Raw responses have not "
+            "been reversed, and scale totals have not been calculated."
+        ),
+    }
+
+
+def save_survey_codebook(
     root: str | Path, survey_id: str, path: str | Path
 ) -> Path:
+    destination = Path(path).expanduser().resolve()
+    if destination.suffix.lower() != ".json" or not destination.parent.is_dir():
+        raise ValueError("Choose an existing folder and a .json file.")
+    destination.write_text(
+        json.dumps(survey_codebook(root, survey_id), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return destination
+
+
+def save_survey_csv(root: str | Path, survey_id: str, path: str | Path) -> Path:
     destination = Path(path).expanduser().resolve()
     if destination.suffix.lower() != ".csv":
         raise ValueError("Export must be a .csv file.")
