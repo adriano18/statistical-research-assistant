@@ -55,6 +55,37 @@ def format_factor_report(result) -> str:
             else result.item_kmo[j]
         )
         rows.append(f"{name} | " + " | ".join(numbers) + f" | {extra:.3f}")
+    if result.factor_correlations is not None:
+        rows.extend([
+            "",
+            "Oblique factor correlations (Phi):",
+            "Factor | " + " | ".join(
+                f"F{i+1}" for i in range(result.n_components)
+            ),
+        ])
+        for i in range(result.n_components):
+            rows.append(
+                f"F{i+1} | " + " | ".join(
+                    f"{v:+.3f}" for v in result.factor_correlations[i, :]
+                )
+            )
+        rows.extend([
+            "",
+            "Structure matrix (item–factor correlations, not pattern coefficients):",
+            "Variable | " + " | ".join(
+                f"F{i+1}" for i in range(result.n_components)
+            ),
+        ])
+        for i, name in enumerate(result.items):
+            rows.append(
+                name + " | " + " | ".join(
+                    f"{v:+.3f}" for v in result.structure_loadings[i, :]
+                )
+            )
+        rows.append(
+            "Interpret oblique pattern loadings and structure correlations "
+            "separately; correlated factors can make the numbers differ."
+        )
     if result.component_variance_share is not None:
         rows.extend([
             "",
