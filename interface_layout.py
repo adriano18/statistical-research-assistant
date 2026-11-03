@@ -1,6 +1,6 @@
 """Flet interface layout for the Statistical Research Assistant.
 
-The interface is divided into eleven screens. Calculation logic stays in app.py;
+The interface is divided into twelve screens. Calculation logic stays in app.py;
 existing controls are reused, so switching screens preserves user selections.
 """
 
@@ -52,6 +52,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         ft.Button("Load categorical example", on_click=a["load_categorical_example"]),
                         ft.Button("Load three-group example", on_click=a["load_three_groups_example"]),
                         ft.Button("Load regression example", on_click=a["load_regression_example"]),
+                        ft.Button("Load logistic example", on_click=a["load_logistic_example"]),
                         ft.Button("Load repeated example", on_click=a["load_repeated_example"]),
                     ],
                     wrap=True,
@@ -530,6 +531,57 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         visible=False,
     )
 
+    # Screen 12: each row is independent; the binary event is coded 0 or 1.
+    logistic_screen = ft.Column(
+        controls=[
+            heading(
+                "Binary logistic regression",
+                "Estimate a 0/1 outcome using quantitative predictors.",
+            ),
+            panel("Outcome, predictors and design", [
+                ft.Text(
+                    "Outcome must be explicitly coded 0 = no event, "
+                    "1 = event. Select 1–5 meaningful quantitative predictors; "
+                    "numeric category codes require separate recoding.",
+                    color="#A8B6C9",
+                ),
+                c["log_outcome"],
+                ft.Text("Quantitative predictors", weight="bold"),
+                c["log_predictors"],
+                c["log_confirm"],
+                ft.Button(
+                    "Fit logistic model", on_click=a["run_logistic"]
+                ),
+            ]),
+            panel("Main result and interpretation", [
+                c["log_main"],
+                c["log_brief"],
+            ]),
+            panel("Odds ratios and 95% confidence intervals", [
+                c["log_odds_table"],
+            ]),
+            panel("ROC, predicted probabilities and calibration", [
+                c["log_chart"],
+            ]),
+            panel("Complete APA-style report", [
+                ft.ExpansionTile(
+                    title="Show logistic regression report",
+                    expanded=False,
+                    controls=[c["log_report"]],
+                ),
+            ]),
+            panel("Assumptions and cautions", [
+                ft.ExpansionTile(
+                    title="Review interpretation and model limitations",
+                    expanded=False,
+                    controls=[c["log_warnings"]],
+                ),
+            ]),
+        ],
+        spacing=18,
+        visible=False,
+    )
+
     screens = {
         "dataset": dataset_screen,
         "descriptive": descriptive_screen,
@@ -541,6 +593,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "chi": chi_screen,
         "omnibus": omnibus_screen,
         "regression": regression_screen,
+        "logistic": logistic_screen,
         "repeated": repeated_screen,
     }
     labels = {
@@ -554,6 +607,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "chi": "Chi-square",
         "omnibus": "ANOVA / Kruskal",
         "regression": "Linear regression",
+        "logistic": "Logistic regression",
         "repeated": "Repeated measures",
     }
 
@@ -606,6 +660,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 buttons["repeated"],
                 ft.Text("MODELING", size=10, color="#9CB7DA"),
                 buttons["regression"],
+                buttons["logistic"],
                 ft.Divider(),
                 ft.Text(
                     "Tip: load data in Dataset, then choose any analysis "
