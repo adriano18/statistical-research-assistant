@@ -16,6 +16,9 @@ import matplotlib.pyplot as plt
 
 from interpretation_docx import build_apa_docx, save_apa_docx
 from interpretation_ui import InterpretationWizardView
+from interpretation_i18n import (
+    ASSUMPTION_TEXT, METHOD_TEXT, translate_assumption, translate_method,
+)
 from interpretation_wizard import (
     METHOD_PROFILES, build_analysis_evidence,
     interpretation_summary, source_references,
@@ -50,6 +53,29 @@ class InterpretationEvidenceTests(unittest.TestCase):
                 self.assertGreaterEqual(len(profile.assumptions), 3)
                 self.assertTrue(profile.rationale)
                 self.assertTrue(profile.limitation)
+
+    def test_every_assumption_has_lv_ru_explanation(self):
+        self.assertEqual(set(METHOD_TEXT), set(METHOD_PROFILES))
+        original_assumptions = {
+            assumption for profile in METHOD_PROFILES.values()
+            for assumption in profile.assumptions
+        }
+        self.assertEqual(set(ASSUMPTION_TEXT), original_assumptions)
+        for section, profile in METHOD_PROFILES.items():
+            for language in ("ru", "lv"):
+                with self.subTest(section=section, language=language):
+                    self.assertNotEqual(
+                        translate_method(
+                            section, "rationale", profile.rationale, language
+                        ), profile.rationale,
+                    )
+                    for original in profile.assumptions:
+                        translated = translate_assumption(original, language)
+                        self.assertNotEqual(translated, original)
+                        self.assertTrue(translated)
+        self.assertEqual(
+            translate_assumption("unknown key", "ru"), "unknown key",
+        )
 
     def test_correlation_numbers_come_from_result_not_report_text(self):
         result = fake_correlation()
@@ -271,6 +297,7 @@ class WizardViewTests(unittest.TestCase):
         wizard.next()
         self.assertEqual(wizard.step, 1)
         self.assertEqual(len(wizard.step_content.controls), 5)
+        self.assertIn("Подтвердить", wizard.step_content.controls[1].label)
         wizard._mark_reviewed(evidence.assumptions[0], True)
         wizard.next()
         self.assertEqual(wizard.step, 2)
