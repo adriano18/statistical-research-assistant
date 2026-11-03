@@ -5,18 +5,31 @@ existing controls are reused, so switching screens preserves user selections.
 """
 
 import flet as ft
+from localization import LANGUAGES, tr
 
 
-def build_interface(page: ft.Page, controls: dict, actions: dict):
-    """Create a sidebar and one visible workspace at a time."""
+def build_interface(
+    page: ft.Page, controls: dict, actions: dict, *,
+    language: str = "en", on_language_change=None,
+):
+    """Create a navigation shell. English is the fresh-install default."""
     c = controls
     a = actions
+    language = language if language in LANGUAGES else "en"
+    translated_controls = []
+
+    def localized_text(value="", *args, **kwargs):
+        translated = tr(language, value) if isinstance(value, str) else value
+        control = ft.Text(translated, *args, **kwargs)
+        if isinstance(value, str):
+            translated_controls.append((control, value))
+        return control
 
     def heading(title, subtitle):
         return ft.Column(
             controls=[
-                ft.Text(title, size=27, weight="bold", color="#172A43"),
-                ft.Text(subtitle, color="#607087", size=13),
+                localized_text(title, size=27, weight="bold", color="#172A43"),
+                localized_text(subtitle, color="#607087", size=13),
             ],
             spacing=5,
         )
@@ -29,7 +42,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             padding=20,
             content=ft.Column(
                 controls=[
-                    ft.Text(title, size=17, weight="bold", color="#172A43"),
+                    localized_text(title, size=17, weight="bold", color="#172A43"),
                     *content,
                 ],
                 spacing=13,
@@ -46,9 +59,9 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             content=ft.Column(
                 controls=[
                     ft.Icon(icon, size=30, color="#2755A1"),
-                    ft.Text(title, size=18, weight="bold", color="#172A43"),
-                    ft.Text(description, size=13, color="#607087"),
-                    ft.Button(action_label, on_click=action),
+                    localized_text(title, size=18, weight="bold", color="#172A43"),
+                    localized_text(description, size=13, color="#607087"),
+                    ft.Button(content=localized_text(action_label), on_click=action),
                 ],
                 spacing=12,
             ),
@@ -66,11 +79,11 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 border_radius=18,
                 content=ft.Column(
                     controls=[
-                        ft.Text("YOUR RESEARCH WORKSPACE", size=12,
+                        localized_text("YOUR RESEARCH WORKSPACE", size=12,
                                 weight="bold", color="#2755A1"),
-                        ft.Text("Start with a question. We'll help with the data.",
+                        localized_text("Start with a question. We'll help with the data.",
                                 size=28, weight="bold", color="#172A43"),
-                        ft.Text(
+                        localized_text(
                             "Create questionnaires, prepare datasets and run "
                             "statistical analyses on this computer. Choose a "
                             "starting point below; no previous SPSS experience is needed.",
@@ -80,7 +93,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                     spacing=9,
                 ),
             ),
-            ft.Text("What would you like to do?", size=20,
+            localized_text("What would you like to do?", size=20,
                     weight="bold", color="#172A43"),
             ft.ResponsiveRow(
                 columns=12, spacing=14, run_spacing=14,
@@ -108,7 +121,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ],
             ),
             panel("A simple research workflow", [
-                ft.Text(
+                localized_text(
                     "1  Prepare or collect data    →    2  Review variable types "
                     "and missingness    →    3  Choose a statistical method "
                     "    →    4  Inspect assumptions and export the result",
@@ -117,18 +130,18 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Row(
                     controls=[
                         ft.Button(
-                            "Browse statistical methods",
+                            content=localized_text("Browse statistical methods"),
                             on_click=lambda e: switch_screen("descriptive"),
                         ),
                         ft.Button(
-                            "See loaded dataset",
+                            content=localized_text("See loaded dataset"),
                             on_click=lambda e: switch_screen("dataset"),
                         ),
                     ],
                     wrap=True, spacing=10,
                 ),
             ]),
-            ft.Text(
+            localized_text(
                 "Private by design: local files and survey responses are not "
                 "automatically uploaded. Check consent and data-retention "
                 "requirements before collecting real participant data.",
@@ -147,8 +160,8 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             ),
             panel("Choose a data source", [
                 ft.Button(
-                    "Open CSV / Excel", on_click=a["choose_file"],
-                    icon=ft.Icons.FOLDER_OPEN,
+                    content=localized_text("Open CSV / Excel"),
+                    on_click=a["choose_file"], icon=ft.Icons.FOLDER_OPEN,
                 ),
                 ft.ExpansionTile(
                     title="Try a fictional example dataset",
@@ -169,15 +182,18 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         ], wrap=True, spacing=10),
                     ],
                 ),
-                ft.Text(
+                localized_text(
                     "Files are processed locally. Real participant records should "
                     "not be committed to a public repository.",
                     color="#607087",
                     size=12,
                 ),
             ]),
+            panel("Import settings", [
+                c.get("import_panel", localized_text("No file imported yet.")),
+            ]),
             panel("Variable overview", [
-                ft.Text(
+                localized_text(
                     "Check missing values and types. Numeric storage does not "
                     "prove that a measurement is continuous.",
                     color="#607087",
@@ -242,7 +258,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 c["chart_area"],
             ]),
             panel("Explore: boxplot and assumption checks", [
-                ft.Text(
+                localized_text(
                     "Choose a quantitative outcome and optional grouping variable. "
                     "The figure includes a boxplot and normal Q–Q plot.",
                     color="#607087",
@@ -268,7 +284,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 "Cronbach’s α for multiple items measuring the same construct.",
             ),
             panel("Select questionnaire items", [
-                ft.Text(
+                localized_text(
                     "Select at least three items from one scale. Check any "
                     "reverse-scored items before running the analysis.",
                     color="#607087",
@@ -289,7 +305,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                     ],
                     wrap=True, spacing=10,
                 ),
-                ft.Text(
+                localized_text(
                     "Both methods use the chosen complete-case items. "
                     "Omega uses a Pearson one-factor model and does not "
                     "automatically reverse-score answers. Optional CI "
@@ -338,7 +354,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 "PCA is total-variance data reduction; EFA estimates latent shared structure.",
             ),
             panel("Select questionnaire or measurement variables", [
-                ft.Text(
+                localized_text(
                     "Select 3–12 numeric research items from a coherent set. "
                     "At least max(60, 8 × item count) complete rows are required.",
                     color="#607087",
@@ -350,7 +366,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         c["factor_rotation"],
                     ], wrap=True, spacing=10,
                 ),
-                ft.Text(
+                localized_text(
                     "PCA uses unrotated total-variance components. EFA uses "
                     "principal-axis common-factor extraction, optionally "
                     "varimax (orthogonal) or oblimin (correlated factors). "
@@ -462,7 +478,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 "Choose two independent groups and a suitable outcome measurement.",
             ),
             panel("Study design and variables", [
-                ft.Text(
+                localized_text(
                     "This module does not support paired or repeated-measure data. "
                     "The group variable must have exactly two observed categories.",
                     color="#607087",
@@ -505,7 +521,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 "Compare before and after results from the same participants.",
             ),
             panel("Select repeated measurements", [
-                ft.Text(
+                localized_text(
                     "Each spreadsheet row must represent one participant, "
                     "with both values aligned. Independent groups are not paired.",
                     color="#607087",
@@ -560,7 +576,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 "Explore association between two categorical variables.",
             ),
             panel("Select categorical variables", [
-                ft.Text(
+                localized_text(
                     "Choose two nominal or ordinal variables (including coded "
                     "categories). This is a test of independence, not of means.",
                     color="#607087",
@@ -676,13 +692,13 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 "Simple and multiple OLS with transparent coefficients and residual checks.",
             ),
             panel("Study variables and design", [
-                ft.Text(
+                localized_text(
                     "One quantitative outcome and 1–5 quantitative predictors. "
                     "Numeric category codes are not automatically converted to dummies.",
                     color="#607087",
                 ),
                 c["reg_outcome"],
-                ft.Text("Predictors", weight="bold"),
+                localized_text("Predictors", weight="bold"),
                 c["reg_predictors"],
                 c["reg_hc3"],
                 c["reg_confirm"],
@@ -722,12 +738,12 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 "Friedman for ordinal responses or repeated-measures ANOVA for quantitative scores.",
             ),
             panel("Study design and occasions", [
-                ft.Text(
+                localized_text(
                     "Wide format: one row per participant, one selected column "
                     "per occasion. Select 3–8 columns in the intended time order.",
                     color="#607087",
                 ),
-                ft.Text("Repeated measurement columns", weight="bold"),
+                localized_text("Repeated measurement columns", weight="bold"),
                 c["rep_items"],
                 ft.Row(
                     controls=[c["rep_scale"], c["rep_method"]],
@@ -775,14 +791,14 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 "Estimate a 0/1 outcome using quantitative predictors.",
             ),
             panel("Outcome, predictors and design", [
-                ft.Text(
+                localized_text(
                     "Outcome must be explicitly coded 0 = no event, "
                     "1 = event. Select 1–5 meaningful quantitative predictors; "
                     "numeric category codes require separate recoding.",
                     color="#607087",
                 ),
                 c["log_outcome"],
-                ft.Text("Quantitative predictors", weight="bold"),
+                localized_text("Quantitative predictors", weight="bold"),
                 c["log_predictors"],
                 c["log_confirm"],
                 ft.Button(
@@ -826,7 +842,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 "Compare independent groups after accounting for quantitative covariates.",
             ),
             panel("Study design and model", [
-                ft.Text(
+                localized_text(
                     "Choose one quantitative outcome, one categorical group factor "
                     "(2–6 levels) and 1–3 quantitative covariates. ANCOVA assumes "
                     "parallel regression slopes; interaction GLM allows different slopes.",
@@ -836,7 +852,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                     controls=[c["ac_outcome"], c["ac_group"]],
                     wrap=True, spacing=12,
                 ),
-                ft.Text("Quantitative covariates", weight="bold"),
+                localized_text("Quantitative covariates", weight="bold"),
                 c["ac_covariates"],
                 c["ac_mode"],
                 c["ac_confirm"],
@@ -929,7 +945,8 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         for name, screen in screens.items():
             screen.visible = name == key
             buttons[name].content.value = (
-                f"●  {labels[name]}" if name == key else f"    {labels[name]}"
+                f"●  {tr(language, labels[name])}" if name == key
+                else f"    {tr(language, labels[name])}"
             )
             buttons[name].style = ft.ButtonStyle(
                 bgcolor="#EAF1FD" if name == key else "#FFFFFF",
@@ -939,7 +956,10 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
 
     for key, label in labels.items():
         buttons[key] = ft.Button(
-            content=ft.Text(f"●  {label}" if key == "home" else f"    {label}"),
+            content=localized_text(
+                f"●  {tr(language, label)}" if key == "home"
+                else f"    {tr(language, label)}"
+            ),
             on_click=lambda e, section=key: switch_screen(section),
             width=210,
             style=ft.ButtonStyle(
@@ -950,12 +970,56 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
 
     def nav_group(title, keys, *, expanded=False):
         return ft.ExpansionTile(
-            title=ft.Text(
+            title=localized_text(
                 title, weight="bold", size=12, color="#2755A1",
             ),
             expanded=expanded,
             controls=[buttons[key] for key in keys],
         )
+
+    def change_language(value):
+        nonlocal language
+        if value not in LANGUAGES:
+            return
+        language = value
+        for widget, original in translated_controls:
+            widget.value = tr(language, original)
+        for key, button in buttons.items():
+            label = tr(language, labels[key])
+            button.content.value = (
+                f"●  {label}" if screens[key].visible else f"    {label}"
+            )
+        compact_navigation.options = [
+            ft.DropdownOption(key=key, text=tr(language, english))
+            for key, english in labels.items()
+        ]
+        compact_navigation.label = tr(language, "Go to workspace")
+        language_picker.value = value
+        language_picker.label = tr(language, "Language")
+        compact_language.value = value
+        compact_language.label = tr(language, "Language")
+        if on_language_change is not None:
+            on_language_change(value)
+        page.update()
+
+    language_picker = ft.Dropdown(
+        label=tr(language, "Language"), width=220,
+        value=language,
+        options=[
+            ft.DropdownOption(key=code, text=label)
+            for code, label in LANGUAGES.items()
+        ],
+        on_select=lambda e: change_language(language_picker.value),
+    )
+    compact_language = ft.Dropdown(
+        label=tr(language, "Language"), width=180, visible=False,
+        value=language,
+        options=[
+            ft.DropdownOption(key=code, text=label)
+            for code, label in LANGUAGES.items()
+        ],
+        on_select=lambda e: change_language(compact_language.value),
+    )
 
     sidebar = ft.Container(
         width=250,
@@ -965,13 +1029,14 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         padding=12,
         content=ft.Column(
             controls=[
-                ft.Text("STATISTICAL", size=12, weight="bold", color="#2755A1"),
-                ft.Text("Research Assistant", size=18,
+                localized_text("STATISTICAL", size=12, weight="bold", color="#2755A1"),
+                localized_text("Research Assistant", size=18,
                         weight="bold", color="#172A43"),
-                ft.Text("Research · Analysis · Reports",
+                localized_text("Research · Analysis · Reports",
                         size=11, color="#607087"),
                 ft.Divider(color="#E1E7F1"),
                 buttons["home"],
+                language_picker,
                 nav_group(
                     "DATA & MEASUREMENT",
                     ["dataset", "preparation", "survey", "descriptive",
@@ -991,7 +1056,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                     ["regression", "logistic", "ancova"],
                 ),
                 ft.Divider(color="#E1E7F1"),
-                ft.Text(
+                localized_text(
                     "Start on Home. The advanced modules are grouped "
                     "so you can open only what you need.",
                     color="#607087", size=12,
@@ -1004,12 +1069,12 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
     )
 
     compact_navigation = ft.Dropdown(
-        label="Go to workspace",
+        label=tr(language, "Go to workspace"),
         width=None,
         visible=False,
         value="home",
         options=[
-            ft.DropdownOption(key=key, text=label)
+            ft.DropdownOption(key=key, text=tr(language, label))
             for key, label in labels.items()
         ],
         on_select=lambda e: switch_screen(compact_navigation.value),
@@ -1020,6 +1085,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         compact = page_width < 980
         sidebar.visible = not compact
         compact_navigation.visible = compact
+        compact_language.visible = compact
         page.update()
 
     if hasattr(page, "on_resize"):
@@ -1034,7 +1100,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         padding=12,
         content=ft.Row(
             controls=[
-                ft.Text("CURRENT DATASET", weight="bold", size=12),
+                localized_text("CURRENT DATASET", weight="bold", size=12),
                 c["status"],
             ],
             wrap=True,
@@ -1045,6 +1111,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
     workspace = ft.Column(
         controls=[
             compact_navigation,
+            compact_language,
             dataset_header,
             c["output_toolbar"],
             ft.Column(
