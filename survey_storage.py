@@ -289,6 +289,12 @@ def question_is_visible(question: dict, answers: dict[str, Any]) -> bool:
     if parent is None:
         return False  # Includes prior hidden questions: cascading visibility.
     op, compare = rule["operator"], rule["value"]
+    # DK/PNA are explicit missing selections, not numeric scores; neither
+    # equals nor not_equals may activate a numeric branch on those strings.
+    if isinstance(compare, (int, float)) and (
+        isinstance(parent, bool) or not isinstance(parent, (int, float))
+    ):
+        return False
     if op == "equals":
         return parent == compare
     if op == "not_equals":
