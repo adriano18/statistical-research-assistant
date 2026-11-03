@@ -12,6 +12,9 @@ from descriptive_charts import make_descriptive_chart
 from reliability import analyze_cronbach
 from reliability_reporting import apa_reliability_report, ALPHA_GUIDE
 from reliability_charts import make_reliability_chart
+from omega_analysis import analyze_omega
+from omega_reporting import format_omega_report, omega_summary
+from omega_charts import make_omega_chart
 from correlation import analyze_correlation, recommend_method
 from correlation_reporting import format_correlation_report
 from correlation_charts import make_correlation_chart
@@ -420,6 +423,13 @@ async def main(page: ft.Page):
     reliability_warnings = ft.Text("")
     reliability_guide = ft.Text("")
     reliability_chart_area = ft.Column()
+
+    # One-factor standardized omega and corrected item-rest diagnostics.
+    omega_summary_text = ft.Text("")
+    omega_item_table = ft.Column()
+    omega_report = ft.Text("")
+    omega_warnings = ft.Text("")
+    omega_chart_area = ft.Column()
 
     # Correlation requires two real measurements, not just two numeric columns.
     corr_x = ft.Dropdown(label="Variable X", width=270, options=[])
@@ -839,6 +849,11 @@ async def main(page: ft.Page):
         reliability_warnings.value = ""
         reliability_guide.value = ""
         reliability_chart_area.controls.clear()
+        omega_summary_text.value = ""
+        omega_item_table.controls.clear()
+        omega_report.value = ""
+        omega_warnings.value = ""
+        omega_chart_area.controls.clear()
 
         # Offer numeric variables but leave their measurement scales unconfirmed.
         numeric_candidates = [
@@ -1248,6 +1263,82 @@ async def main(page: ft.Page):
             )
         except Exception as error:
             reliability_output.value = f"Reliability analysis error: {error}"
+        page.update()
+
+    async def calculate_omega(e):
+        omega_summary_text.value = ""
+        omega_report.value = ""
+        omega_warnings.value = ""
+        omega_item_table.controls.clear()
+        omega_chart_area.controls.clear()
+        if dataframe is None:
+            omega_summary_text.value = "Load a questionnaire dataset first."
+            page.update()
+            return
+
+        selected = [
+            box.label for box in reliability_items.controls if box.value
+        ]
+        if not reliability_confirm.value:
+            omega_summary_text.value = (
+                "Confirm common construct and correctly keyed reverse "
+                "scoring before computing omega."
+            )
+            page.update()
+            return
+
+        omega_summary_text.value = "Estimating one-factor omega..."
+        page.update()
+        try:
+            result = await asyncio.to_thread(
+                analyze_omega, dataframe, selected
+            )
+            report = format_omega_report(result)
+            png = await asyncio.to_thread(make_omega_chart, result)
+            omega_summary_text.value = omega_summary(result)
+            omega_report.value = report
+            omega_warnings.value = "\n".join(result.warnings)
+            omega_item_table.controls.append(
+                ft.DataTable(
+                    columns=[
+                        ft.DataColumn(label=ft.Text(title))
+                        for title in (
+                            "Item", "M", "SD", "Missing",
+                            "Item-rest r", "Loading", "Uniqueness",
+                        )
+                    ],
+                    rows=[
+                        ft.DataRow(cells=[
+                            ft.DataCell(ft.Text(item.name)),
+                            ft.DataCell(ft.Text(f"{item.mean:.2f}")),
+                            ft.DataCell(ft.Text(f"{item.sd:.2f}")),
+                            ft.DataCell(ft.Text(str(item.missing))),
+                            ft.DataCell(ft.Text(
+                                f"{item.corrected_item_rest_r:.2f}"
+                            )),
+                            ft.DataCell(ft.Text(
+                                f"{item.standardized_loading:.2f}"
+                            )),
+                            ft.DataCell(ft.Text(
+                                f"{item.uniqueness:.2f}"
+                            )),
+                        ])
+                        for item in result.diagnostics
+                    ],
+                )
+            )
+            height = min(
+                950, max(440, 290 + len(result.items) * 48)
+            )
+            omega_chart_area.controls.append(
+                ft.Image(src=png, width=1050, height=height)
+            )
+            remember_output(
+                "reliability", "McDonald omega and item diagnostics",
+                report, png,
+            )
+        except Exception as error:
+            omega_summary_text.value = f"Omega analysis error: {error}"
         page.update()
 
     async def calculate_correlation(e):
@@ -2106,6 +2197,11 @@ async def main(page: ft.Page):
             "reliability_guide": reliability_guide,
             "reliability_warnings": reliability_warnings,
             "reliability_chart_area": reliability_chart_area,
+            "omega_summary_text": omega_summary_text,
+            "omega_item_table": omega_item_table,
+            "omega_report": omega_report,
+            "omega_warnings": omega_warnings,
+            "omega_chart_area": omega_chart_area,
             "corr_x": corr_x,
             "corr_y": corr_y,
             "corr_scale_x": corr_scale_x,
@@ -2196,6 +2292,7 @@ async def main(page: ft.Page):
             "load_repeated_example": load_repeated_example,
             "load_regression_example": load_regression_example,
             "calculate_alpha": calculate_alpha,
+            "calculate_omega": calculate_omega,
             "calculate_correlation": calculate_correlation,
             "calculate_matrix": calculate_matrix,
             "calculate_groups": calculate_groups,
