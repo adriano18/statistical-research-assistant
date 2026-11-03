@@ -4,6 +4,7 @@ No network server, analytics, IP collection, email, or third-party account.
 Definitions become immutable after creation. Responses are SQLite transactions.
 """
 
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
@@ -16,6 +17,9 @@ from typing import Any
 
 import pandas as pd
 
+
+# sqlite3.Connection as a context manager commits/rolls back a transaction,
+# but does NOT close the connection. closing(...) releases Windows file locks.
 
 NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 ALLOWED_TYPES = {"likert5", "single_choice", "number", "short_text", "consent"}
@@ -89,7 +93,7 @@ def create_survey(
     survey_id = uuid.uuid4().hex
     definition = SurveyDefinition(survey_id, title, description, tuple(items))
     path = _database(directory, survey_id)
-    with sqlite3.connect(path) as db:
+    with closing(sqlite3.connect(path)) as db, db:
         db.execute(
             "CREATE TABLE survey (id TEXT PRIMARY KEY, title TEXT NOT NULL, "
             "description TEXT NOT NULL, questions_json TEXT NOT NULL)"
@@ -109,7 +113,7 @@ def get_survey(root: str | Path, survey_id: str) -> SurveyDefinition:
     path = _database(Path(root).expanduser().resolve(), survey_id)
     if not path.is_file():
         raise FileNotFoundError("Survey not found on this device.")
-    with sqlite3.connect(path) as db:
+    with closing(sqlite3.connect(path)) as db, db:
         row = db.execute(
             "SELECT id, title, description, questions_json FROM survey"
         ).fetchone()
@@ -185,7 +189,7 @@ def submit_response(
     response_id = uuid.uuid4().hex
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     db_path = _database(Path(root).expanduser().resolve(), survey_id)
-    with sqlite3.connect(db_path, timeout=10) as db:
+    with closing(sqlite3.connect(db_path, timeout=10)) as db, db:
         db.execute(
             "INSERT INTO responses VALUES (?, ?, ?)",
             (response_id, stamp, json.dumps(cleaned, ensure_ascii=False)),
@@ -195,7 +199,7 @@ def submit_response(
 
 def response_count(root: str | Path, survey_id: str) -> int:
     db_path = _database(Path(root).expanduser().resolve(), survey_id)
-    with sqlite3.connect(db_path) as db:
+    with closing(sqlite3.connect(db_path)) as db, db:
         return int(db.execute("SELECT COUNT(*) FROM responses").fetchone()[0])
 
 
@@ -204,7 +208,7 @@ def responses_dataframe(
 ) -> pd.DataFrame:
     definition = get_survey(root, survey_id)
     db_path = _database(Path(root).expanduser().resolve(), survey_id)
-    with sqlite3.connect(db_path) as db:
+    with closing(sqlite3.connect(db_path)) as db, db:
         data = db.execute(
             "SELECT response_id, answers_json FROM responses "
             "ORDER BY rowid ASC"
