@@ -178,7 +178,7 @@ def build_apa_docx(
 
     document.add_heading("Results", level=1)
     document.add_paragraph(
-        interpretation_summary(evidence, reviewed_set, researcher_notes)
+        interpretation_summary(evidence, reviewed_set)
     )
     _title(document, "Table 1", "Verified Statistics From the Current Analysis")
     table = document.add_table(rows=1, cols=4)
