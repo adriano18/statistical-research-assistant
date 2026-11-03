@@ -77,6 +77,57 @@ class FactorExplorationTests(unittest.TestCase):
             rtol=1e-5, atol=1e-5,
         )
 
+    def test_oblimin_factor_correlations_and_structure(self):
+        result = self.run_analysis(method="efa", rotation="oblimin")
+        self.assertEqual(result.factor_correlations.shape, (2, 2))
+        self.assertEqual(result.structure_loadings.shape, (6, 2))
+        np.testing.assert_allclose(
+            np.diag(result.factor_correlations),
+            np.ones(2), atol=1e-4,
+        )
+        np.testing.assert_allclose(
+            result.factor_correlations,
+            result.factor_correlations.T,
+            atol=1e-8,
+        )
+        np.testing.assert_allclose(
+            result.structure_loadings,
+            result.loadings @ result.factor_correlations,
+            atol=1e-8,
+        )
+        reference = Factor(
+            corr=np.corrcoef(
+                self.df[self.items].dropna().to_numpy(), rowvar=False
+            ),
+            n_factor=2, method="pa", nobs=result.n_complete,
+        ).fit()
+        # Both the unrotated and oblimin EFA model reproduce the
+        # same common covariance: Lrot @ Phi @ Lrot.T = L @ L.T.
+        np.testing.assert_allclose(
+            result.loadings @ result.factor_correlations @ result.loadings.T,
+            reference.loadings @ reference.loadings.T,
+            rtol=1e-5, atol=1e-5,
+        )
+        report = format_factor_report(result)
+        self.assertIn("Oblique factor correlations", report)
+        self.assertIn("Structure matrix", report)
+        png = make_factor_chart(result)
+        self.assertTrue(png.startswith(bytes.fromhex("89504e470d0a1a0a")))
+
+    def test_oblimin_requires_multiple_factors(self):
+        with self.assertRaisesRegex(ValueError, "at least two"):
+            analyze_factor_exploration(
+                self.df, self.items, method="efa",
+                n_components=1, rotation="oblimin",
+                assumptions_confirmed=True,
+            )
+        with self.assertRaisesRegex(ValueError, "without rotation"):
+            analyze_factor_exploration(
+                self.df, self.items, method="pca",
+                n_components=2, rotation="oblimin",
+                assumptions_confirmed=True,
+            )
+
     def test_report_and_chart(self):
         a = self.run_analysis(method="efa", rotation="varimax")
         report = format_factor_report(a)
