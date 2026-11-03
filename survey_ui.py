@@ -16,13 +16,14 @@ from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
     submit_response, response_count, responses_dataframe, save_survey_csv,
     save_survey_codebook, question_is_visible, likert_choices,
-    reorder_questions, validate_page_answers,
+    reorder_questions, reorder_sections, section_blocks, validate_page_answers,
 )
 
 
 QUESTION_TYPES = [
     ("likert5", "Likert scale 1–5"),
     ("likert7", "Likert scale 1–7"),
+    ("rating_scale", "Custom numeric / semantic differential"),
     ("single_choice", "One choice"),
     ("multiple_choice", "Multiple choices"),
     ("yes_no", "Yes / No"),
@@ -69,8 +70,8 @@ def format_value_labels(labels: dict[str, str]) -> str:
 
 
 def parse_value_labels(raw: str, kind: str) -> dict[str, str]:
-    """Parse one numeric code = text per line, with complete coverage."""
-    if kind not in {"likert5", "likert7"} or not raw.strip():
+    """Parse numeric code = text lines; schemas validate full code ranges."""
+    if kind not in {"likert5", "likert7", "rating_scale"} or not raw.strip():
         return {}
     labels = {}
     for line in raw.splitlines():
@@ -79,13 +80,28 @@ def parse_value_labels(raw: str, kind: str) -> dict[str, str]:
         if "=" not in line:
             raise ValueError("Use one choice per line, e.g. 1 = Very poor.")
         code, label = (part.strip() for part in line.split("=", 1))
-        if not code.isascii() or not code.isdigit() or code in labels:
-            raise ValueError("Every scale code must be a unique integer.")
+        try:
+            canonical = str(int(code))
+        except ValueError as err:
+            raise ValueError("Scale codes must be integers.") from err
+        if canonical != code or code in labels:
+            raise ValueError("Every scale code must be a unique canonical integer.")
         labels[code] = label
-    expected = {str(n) for n in range(1, int(kind[-1]) + 1)}
-    if set(labels) != expected:
-        raise ValueError("Label every code in this Likert scale.")
+    if kind.startswith("likert"):
+        expected = {str(n) for n in range(1, int(kind[-1]) + 1)}
+        if set(labels) != expected:
+            raise ValueError("Label every code in this Likert scale.")
+    elif not 2 <= len(labels) <= 11:
+        raise ValueError("Custom scales need 2–11 distinct numeric codes.")
     return labels
+
+
+def semantic_differential_labels() -> dict[str, str]:
+    """Sample seven-point bipolar wording; prompts must match the study."""
+    return {
+        "-3": "Very difficult", "-2": "Difficult", "-1": "Somewhat difficult",
+        "0": "Neutral", "1": "Somewhat easy", "2": "Easy", "3": "Very easy",
+    }
 
 
 def _pilot_questions():
@@ -234,9 +250,10 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     def text(value="", *, color=None, size=12, weight=None):
         return ft.Text(value, color=color, size=size, weight=weight)
 
-    def block(title_text, controls, width=980):
+    def block(title_text, controls, width=None, col=None):
         return ft.Container(
-            width=width, padding=18, bgcolor="#192638", border_radius=14,
+            width=width, col=col, padding=16, bgcolor="#192638",
+            border_radius=14,
             content=ft.Column(
                 controls=[
                     ft.Text(title_text, weight="bold", size=16),
@@ -255,7 +272,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
 
     title = ft.TextField(
         label="Survey title", value="Pilot wellbeing questionnaire",
-        width=780,
+        width=None,
     )
     description = ft.TextField(
         label="Participant instructions / research information",
@@ -263,7 +280,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             "Fictional local pilot. Replace this text with study-specific "
             "information, privacy details and consent instructions."
         ),
-        width=780, multiline=True,
+        width=None, multiline=True,
     )
     template = ft.Dropdown(
         label="Starting template", width=270, value="psychology",
@@ -280,9 +297,13 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         height=420, spacing=7, show_default_drag_handles=True,
     )
     draft_count = text("No questions yet", color="#A8B6C9")
+    section_page = ft.Dropdown(label="Page for section reorder", width=220, options=[])
+    section_drag_list = ft.ReorderableListView(
+        height=260, spacing=7, show_default_drag_handles=True,
+    )
     editor_heading = ft.Text("New question", weight="bold", size=15)
     q_key = ft.TextField(label="Variable ID, e.g. stress_q1", width=260)
-    q_prompt = ft.TextField(label="Question text", width=580)
+    q_prompt = ft.TextField(label="Question text", width=None)
     q_kind = ft.Dropdown(
         label="Response type", width=285, value="likert5",
         options=[ft.DropdownOption(key=k, text=name) for k, name in QUESTION_TYPES],
@@ -294,7 +315,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     q_page_title = ft.TextField(label="Page title, e.g. Background", width=285)
     q_required = ft.Checkbox(label="Required answer", value=True)
     q_options = ft.TextField(
-        label="Options separated by semicolons", width=580, visible=False,
+        label="Options separated by semicolons", width=None, visible=False,
     )
     q_scale = ft.TextField(
         label="Scale / subscale ID, e.g. stress", width=285,
@@ -314,7 +335,19 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     )
     q_value_labels = ft.TextField(
         label="Respondent labels: one numeric code = text per line",
-        width=580, multiline=True, min_lines=5, max_lines=8,
+        width=None, multiline=True, min_lines=5, max_lines=11,
+    )
+    q_missing_dk = ft.Checkbox(label="Offer 'Don't know' as missing", value=False)
+    q_missing_pna = ft.Checkbox(
+        label="Offer 'Prefer not to answer' as missing", value=False
+    )
+    q_missing_dk_label = ft.TextField(
+        label="Don't know: respondent label", value="Затрудняюсь ответить",
+        width=285,
+    )
+    q_missing_pna_label = ft.TextField(
+        label="Prefer not: respondent label", value="Предпочитаю не отвечать",
+        width=285,
     )
     q_parent = ft.Dropdown(
         label="Show conditionally when…", width=285,
@@ -345,7 +378,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         possible = [
             q for q in draft[:limit]
             if q["kind"] in {
-                "single_choice", "yes_no", "likert5", "likert7", "number",
+                "single_choice", "yes_no", "likert5", "likert7",
+                "rating_scale", "number",
             }
         ]
         old = q_parent.value
@@ -365,15 +399,21 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
 
     def refresh_editor_fields(e=None):
         q_options.visible = q_kind.value in {"single_choice", "multiple_choice"}
+        rated = q_kind.value in {"likert5", "likert7", "rating_scale"}
         likert = q_kind.value in {"likert5", "likert7"}
-        q_scale.visible = likert
-        q_reverse.visible = likert
-        q_min_label.visible = likert
-        q_max_label.visible = likert
+        q_scale.visible = rated
+        q_reverse.visible = rated
+        q_min_label.visible = rated
+        q_max_label.visible = rated
         q_preset.visible = likert
-        q_value_labels.visible = likert
+        q_value_labels.visible = rated
         apply_labels_button.visible = likert
-        if not likert:
+        semantic_button.visible = q_kind.value == "rating_scale"
+        q_missing_dk.visible = rated
+        q_missing_pna.visible = rated
+        q_missing_dk_label.visible = rated and q_missing_dk.value
+        q_missing_pna_label.visible = rated and q_missing_pna.value
+        if not rated:
             q_reverse.value = False
         if q_kind.value == "consent":
             q_required.value = True
@@ -388,8 +428,19 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         page.update()
 
     apply_labels_button = ft.Button("Use preset labels", on_click=apply_preset)
+    def apply_semantic_example(e=None):
+        q_value_labels.value = format_value_labels(semantic_differential_labels())
+        q_min_label.value = "Difficult"
+        q_max_label.value = "Easy"
+        page.update()
+
+    semantic_button = ft.Button(
+        "Use bipolar example −3…3", on_click=apply_semantic_example
+    )
     q_kind.on_select = refresh_editor_fields
     q_parent.on_select = refresh_editor_fields
+    q_missing_dk.on_change = refresh_editor_fields
+    q_missing_pna.on_change = refresh_editor_fields
 
     def new_editor(e=None):
         state["edit"] = None
@@ -410,6 +461,10 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_value_labels.value = format_value_labels(
             preset_value_labels("agreement", "likert5")
         )
+        q_missing_dk.value = False
+        q_missing_pna.value = False
+        q_missing_dk_label.value = "Затрудняюсь ответить"
+        q_missing_pna_label.value = "Предпочитаю не отвечать"
         q_parent.value = "always"
         q_operator.value = "equals"
         q_expected.value = ""
@@ -445,6 +500,14 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_min_label.value = q.get("min_label", "")
         q_max_label.value = q.get("max_label", "")
         q_value_labels.value = format_value_labels(q.get("value_labels", {}))
+        q_missing_dk.value = "DK" in q.get("missing_options", {})
+        q_missing_pna.value = "PNA" in q.get("missing_options", {})
+        q_missing_dk_label.value = q.get("missing_options", {}).get(
+            "DK", "Затрудняюсь ответить"
+        )
+        q_missing_pna_label.value = q.get("missing_options", {}).get(
+            "PNA", "Предпочитаю не отвечать"
+        )
         editor_dependencies()
         condition = q.get("condition")
         q_parent.value = condition["question"] if condition else "always"
@@ -453,6 +516,75 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             str(condition["value"]) if condition else ""
         )
         refresh_editor_fields()
+
+    def move_section(page_no, old, new):
+        try:
+            selected_key = (
+                draft[state["edit"]]["key"] if state["edit"] is not None else None
+            )
+            reordered = reorder_sections(draft, page_no, old, new)
+            draft[:] = reordered
+            state["edit"] = (
+                next((i for i, item in enumerate(draft)
+                      if item["key"] == selected_key), None)
+                if selected_key else None
+            )
+            status.value = "Entire section moved; question dependencies are valid."
+        except ValueError as err:
+            status.value = f"Section not moved: {err}"
+        update_draft()
+
+    def update_section_list():
+        pages = sorted({q.get("page", 1) for q in draft})
+        previous = section_page.value
+        section_page.options = [
+            ft.DropdownOption(key=str(n), text=f"Page {n}") for n in pages
+        ]
+        section_page.value = (
+            previous if previous in {str(n) for n in pages}
+            else (str(pages[0]) if pages else None)
+        )
+        section_drag_list.controls = []
+        if not section_page.value:
+            return
+        current = int(section_page.value)
+        for index, block_items in enumerate(section_blocks(draft, current)):
+            section_name = block_items[0].get("section") or "General"
+            section_drag_list.controls.append(
+                ft.Container(
+                    key="section_" + block_items[0]["key"],
+                    padding=9, border_radius=8, bgcolor="#1E2D41",
+                    content=ft.Column(controls=[
+                        ft.Text(
+                            f"{section_name} · {len(block_items)} question(s)",
+                            size=12, weight="bold",
+                        ),
+                        ft.Row(controls=[
+                            ft.Button(
+                                "↑", tooltip="Move section up",
+                                on_click=lambda e, i=index, p=current:
+                                    move_section(p, i, i-1),
+                            ),
+                            ft.Button(
+                                "↓", tooltip="Move section down",
+                                on_click=lambda e, i=index, p=current:
+                                    move_section(p, i, i+1),
+                            ),
+                        ], spacing=6),
+                    ], spacing=5),
+                )
+            )
+
+    def on_section_reorder(e):
+        if section_page.value:
+            move_section(int(section_page.value), e.old_index, e.new_index)
+
+    def choose_section_page(e=None):
+        update_section_list()
+        page.update()
+
+    section_page.on_select = choose_section_page
+    section_drag_list.on_reorder = on_section_reorder
 
     def update_draft():
         draft_count.value = f"{len(draft)} question(s) on {len({q.get('page', 1) for q in draft})} page(s)"
@@ -491,6 +623,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 )
             )
             previous_page = page_num
+        update_section_list()
         page.update()
 
     def on_question_reorder(e):
@@ -536,12 +669,20 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             "page": int((q_page.value or "").strip()),
             "page_title": (q_page_title.value or "").strip(),
             "value_labels": parse_value_labels(q_value_labels.value or "", kind),
+            "missing_options": (
+                {**({"DK": q_missing_dk_label.value or ""}
+                     if q_missing_dk.value else {}),
+                 **({"PNA": q_missing_pna_label.value or ""}
+                     if q_missing_pna.value else {})}
+                if kind in {"likert5", "likert7", "rating_scale"} else {}
+            ),
             "scale_id": (
                 (q_scale.value or "").strip()
-                if kind in {"likert5", "likert7"} else ""
+                if kind in {"likert5", "likert7", "rating_scale"} else ""
             ),
             "reverse_scored": (
-                bool(q_reverse.value) if kind in {"likert5", "likert7"} else False
+                bool(q_reverse.value)
+                if kind in {"likert5", "likert7", "rating_scale"} else False
             ),
             "min_label": (q_min_label.value or "").strip(),
             "max_label": (q_max_label.value or "").strip(),
@@ -632,7 +773,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
 
     saved_picker = ft.Dropdown(
         label="Published questionnaires on this computer",
-        width=690, options=[],
+        width=None, options=[],
     )
     published_info = ft.Text("", color="#B8C7D9", size=12)
     preview_title = ft.Text("", weight="bold", size=19)
@@ -667,7 +808,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         if value is None or value == "":
             return None
         kind = question["kind"]
-        if kind in {"likert5", "likert7"}:
+        if kind in {"likert5", "likert7", "rating_scale"}:
             try:
                 return int(value)
             except (ValueError, TypeError):
@@ -755,20 +896,33 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
 
             label = q["prompt"] + (" *" if q["required"] else "")
             kind = q["kind"]
-            if kind in {"likert5", "likert7"}:
-                field = ft.Dropdown(
-                    label="Choose one answer", width=590,
-                    options=[
-                        ft.DropdownOption(key=str(number), text=display)
-                        for number, display in likert_choices(q)
-                    ],
-                    on_select=update_visibility,
+            if kind in {"likert5", "likert7", "rating_scale"}:
+                values = [
+                    ft.DropdownOption(key=str(number), text=display)
+                    for number, display in likert_choices(q)
+                ]
+                values.extend(
+                    ft.DropdownOption(key=code, text=label + " (missing)")
+                    for code, label in q.get("missing_options", {}).items()
                 )
-                field_controls = [field]
+                field = ft.Dropdown(
+                    label="Choose one answer", width=None,
+                    options=values, on_select=update_visibility,
+                )
+                endpoint_note = (
+                    f"{q.get('min_label') or ''}  —  {q.get('max_label') or ''}"
+                    if kind == "rating_scale" and (
+                        q.get("min_label") or q.get("max_label")
+                    ) else ""
+                )
+                field_controls = [field] + (
+                    [ft.Text(endpoint_note, size=11, color="#A8B6C9")]
+                    if endpoint_note else []
+                )
             elif kind in {"single_choice", "yes_no"}:
                 values = ["Yes", "No"] if kind == "yes_no" else q["options"]
                 field = ft.Dropdown(
-                    label="Choose one answer", width=590,
+                    label="Choose one answer", width=None,
                     options=[ft.DropdownOption(key=v, text=v) for v in values],
                     on_select=update_visibility,
                 )
@@ -786,7 +940,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 field_controls = [field]
             else:
                 field = ft.TextField(
-                    label="Your answer", width=590,
+                    label="Your answer", width=None,
                     on_change=update_visibility,
                     multiline=kind == "long_text",
                     hint_text="YYYY-MM-DD" if kind == "date" else None,
@@ -1046,7 +1200,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             response_status.value = f"Export error: {err}"
         page.update()
 
-    # The four focused views share one fixed-width content column.
+    # Responsive layout: on narrow windows the editor stacks below the list.
     build_view = ft.Column(
         controls=[
             block("1. Survey details", [
@@ -1059,7 +1213,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                     wrap=True, spacing=12,
                 ),
             ]),
-            ft.Row(
+            ft.ResponsiveRow(
+                columns=12, spacing=12, run_spacing=12,
                 controls=[
                     block("2. Questions", [
                         draft_count,
@@ -1070,7 +1225,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                             ft.Button("+ New page", on_click=new_page_editor),
                         ], wrap=True, spacing=6),
                         draft_list,
-                    ], width=350),
+                    ], col={"xs": 12, "md": 5, "lg": 4}),
                     block("3. Question editor", [
                         editor_heading,
                         ft.Row(
@@ -1090,13 +1245,24 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                             controls=[q_scale, q_reverse], wrap=True,
                         ),
                         ft.Row(
-                            controls=[q_preset, apply_labels_button],
+                            controls=[q_preset, apply_labels_button, semantic_button],
                             wrap=True, spacing=10,
                         ),
                         q_value_labels,
-                        ft.Text("Example: 1 = Очень плохо, 3 = Средне, "
-                                "5 = Очень хорошо. The code stored is still 1–5.",
-                                size=11, color="#A8B6C9"),
+                        ft.Row(
+                            controls=[q_missing_dk, q_missing_dk_label],
+                            wrap=True, spacing=8,
+                        ),
+                        ft.Row(
+                            controls=[q_missing_pna, q_missing_pna_label],
+                            wrap=True, spacing=8,
+                        ),
+                        ft.Text(
+                            "Use all numeric labels for Likert, or 2–11 custom "
+                            "integer codes (e.g. −3…3). Missing options are "
+                            "NOT scores; they export as NaN plus reason codes.",
+                            size=11, color="#A8B6C9",
+                        ),
                         ft.Row(
                             controls=[q_min_label, q_max_label], wrap=True,
                         ),
@@ -1124,11 +1290,20 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                             ),
                         ], wrap=True, spacing=8),
                         editor_note,
-                    ], width=600),
+                    ], col={"xs": 12, "md": 7, "lg": 8}),
                 ],
-                spacing=12, wrap=True,
             ),
-            block("4. Finish the draft", [
+            block("4. Reorder entire topic sections", [
+                ft.Text(
+                    "Drag a section handle to move all of its questions "
+                    "within the selected page. Use ↑/↓ if needed. Moves that "
+                    "break conditional dependencies are rejected.",
+                    size=12, color="#A8B6C9",
+                ),
+                section_page,
+                section_drag_list,
+            ]),
+            block("5. Finish the draft", [
                 ft.Text(
                     "Preview pages and respondent-visible answer labels before "
                     "publishing. Saved definitions stay immutable; Clone to revise.",
@@ -1230,7 +1405,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     view = ft.Column(
         controls=[
             ft.Container(
-                width=980, padding=15, border_radius=12,
+                width=None, padding=15, border_radius=12,
                 bgcolor="#152030",
                 content=ft.Column(controls=[
                     ft.Text(
@@ -1253,7 +1428,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             build_view, preview_view, fill_view, responses_view,
             status,
         ],
-        width=1010, spacing=15,
+        width=None, spacing=15,
     )
     new_editor()
     update_draft()
