@@ -59,6 +59,6 @@ def omega_summary(result, ci=None) -> str:
            f"{apa_coefficient(ci.upper)}], "
            f"{ci.successful}/{ci.requested} successful refits.\n"
            if ci else "Bootstrap CI not requested.\n")
-        "Standardized one-factor internal-consistency estimate, "
+        + "Standardized one-factor internal-consistency estimate, "
         "NOT evidence of validity or confirmed unidimensionality."
     )
