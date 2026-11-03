@@ -6,7 +6,14 @@ from pathlib import Path
 import flet as ft
 import pandas as pd
 
-from data_loader import load_dataset, variable_overview
+from data_loader import (
+    load_dataset, load_dataset_with_report, workbook_sheets,
+    variable_overview, ImportOptions,
+)
+from app_preferences import (
+    AppPreferences, load_preferences, save_preferences, remember_file,
+)
+from localization import tr
 from variable_rules import looks_like_identifier
 from descriptive_charts import make_descriptive_chart
 from reliability import analyze_cronbach
@@ -94,6 +101,7 @@ async def main(page: ft.Page):
         use_material3=True,
     )
     page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
+    preferences = load_preferences()  # Defaults to English on first launch.
 
     # The source file stays on the user's computer; no cloud upload.
     picker = ft.FilePicker()
@@ -101,6 +109,88 @@ async def main(page: ft.Page):
     export_picker = ft.FilePicker()
     page.services.append(export_picker)
     dataframe = None
+    source_file = None
+    import_header_row = ft.TextField(
+        label="Header row (1-based)", value="1", width=175,
+    )
+    import_sheet = ft.Dropdown(
+        label="Excel worksheet", width=280, disabled=True,
+        options=[],
+    )
+    import_separator = ft.Dropdown(
+        label="CSV separator", value="auto", width=170,
+        options=[
+            ft.DropdownOption(key=key, text=label)
+            for key, label in [
+                ("auto", "Auto detect"), ("comma", "Comma ,"),
+                ("semicolon", "Semicolon ;"), ("tab", "Tab"),
+                ("pipe", "Pipe |"),
+            ]
+        ],
+    )
+    import_encoding = ft.Dropdown(
+        label="Text encoding", value="auto", width=200,
+        options=[
+            ft.DropdownOption(key=key, text=label)
+            for key, label in [
+                ("auto", "Auto detect / UTF-8"),
+                ("utf-8-sig", "UTF-8"), ("utf-16", "UTF-16"),
+                ("cp1257", "Windows Baltic (CP1257)"),
+                ("cp1251", "Windows Cyrillic (CP1251)"),
+                ("cp1252", "Windows Western (CP1252)"),
+            ]
+        ],
+    )
+    import_decimal = ft.Dropdown(
+        label="Decimal notation", value="auto", width=200,
+        options=[
+            ft.DropdownOption(key="auto", text="Auto (conservative)"),
+            ft.DropdownOption(key="dot", text="Dot decimal / 1,234.5"),
+            ft.DropdownOption(key="comma", text="Comma decimal / 1.234,5"),
+        ],
+    )
+    import_missing = ft.TextField(
+        label="Missing text markers (semicolon-separated)",
+        value="NA;N/A;NULL", width=430,
+    )
+    import_diagnostics = ft.Text(
+        "No file imported yet.", selectable=True,
+        color="#4A5B71", size=12,
+    )
+    import_apply = ft.Button(
+        "Apply import settings", disabled=True,
+    )
+    recent_picker = ft.Dropdown(
+        label="Recent files (stored only on this computer)",
+        width=480, options=[],
+    )
+    recent_open = ft.Button("Open recent file", disabled=True)
+    import_panel = ft.Column(
+        controls=[
+            ft.Text(
+                "If the source is a custom questionnaire export, choose the "
+                "worksheet and header row. Mixed or ambiguous responses "
+                "remain text until you explicitly recode them.",
+                size=12, color="#4A5B71",
+            ),
+            ft.Row(
+                controls=[import_sheet, import_header_row,
+                          import_separator, import_decimal, import_encoding],
+                wrap=True, spacing=10,
+            ),
+            import_missing,
+            import_apply,
+            ft.Divider(color="#E1E7F1"),
+            ft.Text("Import diagnostics", weight="bold"),
+            import_diagnostics,
+            ft.Divider(color="#E1E7F1"),
+            ft.Row(
+                controls=[recent_picker, recent_open],
+                wrap=True, spacing=10,
+            ),
+        ],
+        spacing=10,
+    )
 
     # Every section shares one consistent output toolbar. Results remain
     # local and only the last successful analysis per section is retained.
@@ -819,27 +909,80 @@ async def main(page: ft.Page):
     variable.on_select = reset_scale
 
     # The same data loader is shared by this GUI and inspect_data.py.
-    async def show_file(path):
-        nonlocal dataframe, paired_report_text, paired_png_data, chi_report_text, chi_png_data, omnibus_report_text, omnibus_png_data, omnibus_result_data
+    async def show_file(path, *, use_import_settings=False):
+        nonlocal dataframe, source_file, preferences
+        nonlocal paired_report_text, paired_png_data, chi_report_text
+        nonlocal chi_png_data, omnibus_report_text, omnibus_png_data
+        nonlocal omnibus_result_data
+        report = None
         try:
             from_memory = isinstance(path, pd.DataFrame)
-            df = (
-                path.copy(deep=True) if from_memory
-                else await asyncio.to_thread(load_dataset, path)
-            )
-            source_name = (
-                "Prepared / local survey responses"
-                if from_memory else Path(path).name
-            )
+            if from_memory:
+                df = path.copy(deep=True)
+                source_name = "Prepared / local survey responses"
+                sheets = []
+            else:
+                if not use_import_settings:
+                    import_header_row.value = "1"
+                    import_separator.value = "auto"
+                    import_decimal.value = "auto"
+                    import_encoding.value = "auto"
+                    import_missing.value = "NA;N/A;NULL"
+                    import_sheet.value = None
+                options = ImportOptions(
+                    sheet=(
+                        import_sheet.value if use_import_settings and
+                        import_sheet.value else 0
+                    ),
+                    header_row=int((import_header_row.value or "").strip()),
+                    separator=import_separator.value or "auto",
+                    encoding=import_encoding.value or "auto",
+                    decimal=import_decimal.value or "auto",
+                    missing_tokens=(
+                        "", *[x.strip() for x in
+                               (import_missing.value or "").split(";")
+                               if x.strip()]
+                    ),
+                )
+                df, report = await asyncio.to_thread(
+                    load_dataset_with_report, path, options
+                )
+                sheets = await asyncio.to_thread(workbook_sheets, path)
+                source_name = Path(path).name
             if df.columns.empty:
                 raise ValueError("No variables found in this file.")
             overview = variable_overview(df)
         except Exception as error:
             status.value = f"Could not load file: {error}"
+            import_diagnostics.value = (
+                f"Import error: {error}\nExisting dataset remains unchanged."
+            )
             page.update()
             return
 
         dataframe = df
+        if report is not None:
+            source_file = Path(path)
+            import_diagnostics.value = report.as_text()
+            import_apply.disabled = False
+            import_sheet.options = [
+                ft.DropdownOption(key=name, text=name) for name in sheets
+            ]
+            import_sheet.disabled = not bool(sheets)
+            import_sheet.value = report.sheet if sheets else None
+            try:
+                preferences = remember_file(preferences, path)
+                save_preferences(preferences)
+            except OSError:
+                import_diagnostics.value += (
+                    "\nReview: Could not update the local recent-files list."
+                )
+            refresh_recent_files()
+        elif from_memory:
+            import_diagnostics.value = (
+                "Loaded an in-memory dataset. The source file import settings "
+                "are unchanged."
+            )
         output_cache.clear()
         refresh_output_buttons()
         status.value = (
