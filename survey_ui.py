@@ -12,6 +12,7 @@ from pathlib import Path
 import flet as ft
 import pandas as pd
 
+from localization import tr
 from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
     submit_response, response_count, responses_dataframe, save_survey_csv,
@@ -280,7 +281,17 @@ def _template_questions(template: str) -> list[dict]:
     ]
 
 
-def build_survey_workspace(page, load_dataframe, root: str | Path):
+def build_survey_workspace(
+    page, load_dataframe, root: str | Path, *,
+    language_getter=None, translate_view=None,
+):
+    """Researcher workspace; UI language never alters published survey data."""
+    def language():
+        return language_getter() if language_getter else "en"
+
+    def ui_label(english):
+        return tr(language(), english)
+
     root = Path(root)
     draft: list[dict] = []
     state = {
@@ -384,11 +395,11 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         label="Offer 'Prefer not to answer' as missing", value=False
     )
     q_missing_dk_label = ft.TextField(
-        label="Don't know: respondent label", value="Затрудняюсь ответить",
+        label="Don't know: respondent label", value="Don't know",
         width=285,
     )
     q_missing_pna_label = ft.TextField(
-        label="Prefer not: respondent label", value="Предпочитаю не отвечать",
+        label="Prefer not: respondent label", value="Prefer not to answer",
         width=285,
     )
     q_parent = ft.Dropdown(
@@ -505,8 +516,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         )
         q_missing_dk.value = False
         q_missing_pna.value = False
-        q_missing_dk_label.value = "Затрудняюсь ответить"
-        q_missing_pna_label.value = "Предпочитаю не отвечать"
+        q_missing_dk_label.value = ui_label("Don't know")
+        q_missing_pna_label.value = ui_label("Prefer not to answer")
         q_parent.value = "always"
         q_operator.value = "equals"
         q_expected.value = ""
@@ -545,10 +556,10 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_missing_dk.value = "DK" in q.get("missing_options", {})
         q_missing_pna.value = "PNA" in q.get("missing_options", {})
         q_missing_dk_label.value = q.get("missing_options", {}).get(
-            "DK", "Затрудняюсь ответить"
+            "DK", ui_label("Don't know")
         )
         q_missing_pna_label.value = q.get("missing_options", {}).get(
-            "PNA", "Предпочитаю не отвечать"
+            "PNA", ui_label("Prefer not to answer")
         )
         editor_dependencies()
         condition = q.get("condition")
@@ -898,7 +909,10 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             for number, panel in page_panels.items():
                 panel.visible = number == current
             page_heading.value = page_title_map[current]
-            page_progress.value = f"Page {pages.index(current)+1} of {len(pages)}"
+            page_progress.value = (
+                f"{ui_label('Page')} {pages.index(current)+1} "
+                f"{ui_label('of')} {len(pages)}"
+            )
             progress_bar.value = (pages.index(current)+1) / len(pages)
             back_button.visible = current != pages[0]
             next_button.visible = current != pages[-1]
@@ -933,7 +947,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         for q in questions:
             page_number = q.get("page", 1)
             body = page_panels[page_number]
-            section = q.get("section") or "General"
+            section = q.get("section") or ui_label("General")
             if section != last_section_by_page.get(page_number):
                 body.controls.append(
                     ft.Text(section.upper(), size=12, weight="bold",
@@ -1435,6 +1449,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             show_preview()
         if which == "responses":
             update_response_table()
+        if translate_view is not None:
+            translate_view(view)
         page.update()
 
     tab_names = {
@@ -1481,4 +1497,6 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     update_draft()
     refresh_saved()
     select_view("build")
+    if translate_view is not None:
+        translate_view(view)
     return view
