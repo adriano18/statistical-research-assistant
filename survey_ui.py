@@ -1426,20 +1426,28 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     def select_view(which):
         for name, pane in panes.items():
             pane.visible = name == which
+            if name in tab_buttons:
+                tab_buttons[name].style = ft.ButtonStyle(
+                    bgcolor="#DFEAFB" if name == which else "#FFFFFF",
+                    color="#1C4D9A" if name == which else "#425873",
+                )
         if which == "preview":
             show_preview()
         if which == "responses":
             update_response_table()
         page.update()
 
+    tab_names = {
+        "build": "1. Build", "preview": "2. Preview",
+        "fill": "3. Fill survey", "responses": "4. Responses & export",
+    }
+    tab_buttons = {
+        name: ft.Button(
+            label, on_click=lambda e, target=name: select_view(target),
+        ) for name, label in tab_names.items()
+    }
     navigation = ft.Row(
-        controls=[
-            ft.Button("Build", on_click=lambda e: select_view("build")),
-            ft.Button("Preview", on_click=lambda e: select_view("preview")),
-            ft.Button("Fill survey", on_click=lambda e: select_view("fill")),
-            ft.Button("Responses / Export",
-                      on_click=lambda e: select_view("responses")),
-        ], wrap=True, spacing=10,
+        controls=list(tab_buttons.values()), wrap=True, spacing=10,
     )
     view = ft.Column(
         controls=[
@@ -1472,4 +1480,5 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     new_editor()
     update_draft()
     refresh_saved()
+    select_view("build")
     return view
