@@ -18,7 +18,8 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [x] Offline synthetic import tests for external survey exports and manually edited Excel workbooks
 - [x] Local history of up to eight recent file paths (no automatic upload)
 - [ ] Saved .sra research project snapshots with analysis settings, validation, backups and portable relative paths
-- [ ] User confirmation screen for ambiguous encodings, multi-row Qualtrics-style metadata exports and multi-response column mapping
+- [x] Explicit respondent data-start row for Qualtrics-style metadata/header records, with skipped-row diagnostics
+- [ ] User confirmation screen for ambiguous encodings, automatic Qualtrics metadata detection and multi-response column mapping
 - [ ] Signed, tested Windows installer/executable with versioning, update policy and accessibility review
 
 ## 1. Implemented statistical core
