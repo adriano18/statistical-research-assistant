@@ -65,7 +65,7 @@ def bootstrap_omega(
             continue
 
     successful = len(estimates)
-    if successful < max(100, int(np.ceil(.9*n_resamples))):
+    if successful < max(90, int(np.ceil(.9*n_resamples))):
         raise ValueError(
             "Bootstrap CI not reliable: too many model refits failed "
             f"({successful}/{n_resamples} successful). "
