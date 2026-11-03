@@ -29,6 +29,8 @@ class FactorExplorationResult:
     n_components: int
     loadings: np.ndarray
     uniqueness: np.ndarray | None
+    factor_correlations: np.ndarray | None
+    structure_loadings: np.ndarray | None
     kmo: float
     item_kmo: np.ndarray
     bartlett_chi2: float
@@ -105,8 +107,10 @@ def analyze_factor_exploration(
         raise ValueError("Choose PCA or principal-axis EFA.")
     if not 1 <= n_components <= min(5, k-1):
         raise ValueError("Choose 1–5 factors/components, fewer than the item count.")
-    if rotation not in {"none", "varimax"}:
-        raise ValueError("Only none and orthogonal varimax rotation are supported.")
+    if rotation not in {"none", "varimax", "oblimin"}:
+        raise ValueError("Choose none, varimax (orthogonal), or oblimin (oblique).")
+    if rotation == "oblimin" and n_components < 2:
+        raise ValueError("Oblimin requires at least two factors.")
     if method == "pca" and rotation != "none":
         raise ValueError("PCA is reported without rotation in this version.")
 
@@ -143,6 +147,8 @@ def analyze_factor_exploration(
 
     uniqueness = None
     variance_share = None
+    factor_correlations = None
+    structure_loadings = None
     if method == "pca":
         loadings = eigenvectors[:, :n_components] * np.sqrt(
             eigenvalues[:n_components]
@@ -159,9 +165,30 @@ def analyze_factor_exploration(
                     corr=corr, n_factor=n_components, method="pa",
                     nobs=n,
                 ).fit()
-                if rotation == "varimax" and n_components > 1:
-                    solution.rotate("varimax")
+                if rotation in {"varimax", "oblimin"} and n_components > 1:
+                    solution.rotate(rotation)
             loadings = np.asarray(solution.loadings, dtype=float)
+            if rotation == "oblimin":
+                # Statsmodels documents Phi = T.T @ T for the oblique
+                # transformation stored in FactorResults.rotation_matrix.
+                transformation = np.asarray(
+                    solution.rotation_matrix, dtype=float
+                )
+                factor_correlations = transformation.T @ transformation
+                factor_correlations = (
+                    factor_correlations + factor_correlations.T
+                ) / 2
+                if (
+                    not np.isfinite(factor_correlations).all()
+                    or not np.allclose(
+                        np.diag(factor_correlations), 1, atol=1e-4
+                    )
+                    or np.linalg.eigvalsh(factor_correlations)[0] <= 0
+                ):
+                    raise ValueError(
+                        "Invalid oblique factor correlation matrix."
+                    )
+                structure_loadings = loadings @ factor_correlations
             uniqueness = np.asarray(solution.uniqueness, dtype=float)
             if any("did not converge" in str(w.message).lower()
                    for w in fitted_warnings):
@@ -194,9 +221,10 @@ def analyze_factor_exploration(
         "PCA components summarize TOTAL variance and do not represent "
         "latent common factors or correct for item error.",
         "EFA principal axes describe SHARED item variance and uniqueness; "
-        "orthogonal varimax assumes uncorrelated extracted factors.",
-        "No factor-score predictions, ordinal correlations, oblique factor "
-        "correlations, confirmatory fit or cross-sample validation are provided.",
+        "varimax assumes independent factors, whereas oblimin allows "
+        "correlated factors.",
+        "No factor-score predictions, polychoric ordinal correlations, "
+        "confirmatory fit or cross-sample validation are provided.",
         "Neither scree plot nor loadings alone establish scale validity.",
     ]
     if n != len(df):
@@ -214,6 +242,21 @@ def analyze_factor_exploration(
             "Chosen factor/component number exceeds this PCA parallel-analysis "
             "heuristic; verify the number substantively."
         )
+    if method == "efa" and n_components > 1 and rotation == "oblimin":
+        largest_offdiag = float(np.max(np.abs(
+            factor_correlations - np.eye(n_components)
+        )))
+        notes.append(
+            f"Oblimin factor correlations: largest absolute off-diagonal "
+            f"association = {largest_offdiag:.3f}. Inspect the pattern "
+            "and structure matrices separately."
+        )
+        if np.any((np.abs(loadings) >= .30).sum(axis=1) > 1):
+            notes.append(
+                "Some items have absolute pattern loadings >= .30 on "
+                "multiple factors (descriptive cross-loadings). "
+                "These are not automatic exclusion decisions."
+            )
     if method == "efa" and n_components > 1 and rotation == "none":
         notes.append(
             "Multiple unrotated EFA factors can be hard to interpret. "
@@ -226,6 +269,8 @@ def analyze_factor_exploration(
         n_components=n_components,
         loadings=loadings,
         uniqueness=uniqueness,
+        factor_correlations=factor_correlations,
+        structure_loadings=structure_loadings,
         kmo=kmo,
         item_kmo=item_kmo,
         bartlett_chi2=bartlett,
