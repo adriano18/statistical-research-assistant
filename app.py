@@ -979,9 +979,13 @@ async def main(page: ft.Page):
                 )
             refresh_recent_files()
         elif from_memory:
+            source_file = None
+            import_apply.disabled = True
+            import_sheet.disabled = True
+            import_sheet.value = None
             import_diagnostics.value = (
-                "Loaded an in-memory dataset. The source file import settings "
-                "are unchanged."
+                "Loaded an in-memory dataset. No CSV/Excel import settings "
+                "were applied."
             )
         output_cache.clear()
         refresh_output_buttons()
@@ -1382,6 +1386,42 @@ async def main(page: ft.Page):
             df, source_path=None if from_memory else path
         )
         page.update()
+
+    def refresh_recent_files():
+        paths = [path for path in preferences.recent_files if Path(path).is_file()]
+        recent_picker.options = [
+            ft.DropdownOption(key=path, text=f"{Path(path).name}  —  {path}")
+            for path in paths
+        ]
+        if recent_picker.value not in paths:
+            recent_picker.value = paths[0] if paths else None
+        recent_open.disabled = not bool(recent_picker.value)
+
+    def select_recent(e=None):
+        recent_open.disabled = not bool(recent_picker.value)
+        page.update()
+
+    async def open_recent(e=None):
+        if recent_picker.value:
+            await show_file(recent_picker.value)
+
+    async def apply_import(e=None):
+        if source_file is not None:
+            await show_file(source_file, use_import_settings=True)
+
+    def store_language(code):
+        nonlocal preferences
+        preferences = AppPreferences(code, preferences.recent_files)
+        try:
+            save_preferences(preferences)
+        except OSError as error:
+            status.value = f"Language changed for this session; save failed: {error}"
+        page.update()
+
+    recent_picker.on_select = select_recent
+    recent_open.on_click = open_recent
+    import_apply.on_click = apply_import
+    refresh_recent_files()
 
     async def choose_file(e):
         try:
@@ -2449,12 +2489,15 @@ async def main(page: ft.Page):
     # STEP 6: Present existing actions in separate, easier-to-navigate screens.
     ui = build_interface(
         page,
+        language=preferences.language,
+        on_language_change=store_language,
         controls={
             "status": status,
             "output_toolbar": output_toolbar,
             "overview_area": overview_area,
             "preparation_panel": preparation_panel,
             "survey_panel": survey_panel,
+            "import_panel": import_panel,
             "variable": variable,
             "scale": scale,
             "results": results,
