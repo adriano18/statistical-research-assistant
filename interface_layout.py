@@ -54,6 +54,10 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             ),
         )
 
+    async def open_sample_from_home(e):
+        await a["load_sample"](e)
+        switch_screen("dataset")
+
     home_screen = ft.Column(
         controls=[
             ft.Container(
@@ -98,7 +102,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         "Try a guided example",
                         "Load fictional sample responses and learn how to "
                         "inspect data without using real participant records.",
-                        lambda e: (a["load_sample"](e), switch_screen("dataset")),
+                        open_sample_from_home,
                         "Explore sample data", ft.Icons.SCIENCE_OUTLINED,
                     ),
                 ],
