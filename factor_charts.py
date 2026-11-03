@@ -16,7 +16,7 @@ def make_factor_chart(result) -> bytes:
         1, columns, figsize=(16.3 if oblique else 13.1, 6.3),
     )
     try:
-        ax, heat = axes
+        ax, heat = axes[:2]
         k = len(result.items)
         x = np.arange(1, k+1)
         ax.plot(
