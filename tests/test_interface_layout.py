@@ -14,6 +14,9 @@ CONTROL_NAMES = [
     "reg_main", "reg_brief", "reg_report", "reg_warnings", "reg_chart",
     "log_outcome", "log_predictors", "log_confirm", "log_main",
     "log_brief", "log_odds_table", "log_report", "log_warnings", "log_chart",
+    "ac_outcome", "ac_group", "ac_covariates", "ac_mode", "ac_confirm",
+    "ac_main", "ac_brief", "ac_means_table", "ac_pairs_table",
+    "ac_chart", "ac_report", "ac_warnings",
     "rep_items", "rep_scale", "rep_method", "rep_same_people",
     "rep_assumptions", "rep_main", "rep_brief", "rep_report",
     "rep_warnings", "rep_chart", "rep_pair_table",
@@ -52,6 +55,7 @@ ACTION_NAMES = [
     "calculate_omnibus", "load_three_groups_example",
     "run_explore", "set_active_screen", "run_regression", "load_regression_example",
     "run_logistic", "load_logistic_example",
+    "run_ancova", "load_ancova_example", "load_ancova_interaction_example",
     "run_repeated", "load_repeated_example",
 ]
 
@@ -62,7 +66,7 @@ class DummyPage:
 
 
 class LayoutTests(unittest.TestCase):
-    def test_all_twelve_screens_exist_and_only_dataset_is_visible(self):
+    def test_all_thirteen_screens_exist_and_only_dataset_is_visible(self):
         controls = {name: ft.Text(name) for name in CONTROL_NAMES}
         actions = {name: (lambda e: None) for name in ACTION_NAMES}
 
@@ -76,12 +80,12 @@ class LayoutTests(unittest.TestCase):
             item for item in sidebar.content.controls
             if isinstance(item, ft.Button)
         ]
-        self.assertEqual(len(nav_buttons), 12)
+        self.assertEqual(len(nav_buttons), 13)
 
         workspace = root.controls[1].content
         # The output toolbar is pinned above one independently scrolling column.
         screens = workspace.controls[2].controls
-        self.assertEqual(len(screens), 12)
+        self.assertEqual(len(screens), 13)
         self.assertTrue(screens[0].visible)
         self.assertTrue(all(not screen.visible for screen in screens[1:]))
 
