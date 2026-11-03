@@ -439,10 +439,13 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         refresh_editor_fields()
 
     def update_draft():
-        draft_count.value = f"{len(draft)} question(s) in this draft"
+        draft_count.value = f"{len(draft)} question(s) on {len({q.get('page', 1) for q in draft})} page(s)"
         draft_list.controls = []
+        previous_page = None
         for i, q in enumerate(draft):
             current = i == state["edit"]
+            page_num = q.get("page", 1)
+            page_heading = q.get("page_title") or f"Page {page_num}"
             details = (
                 f"{q['kind']} · {q.get('section') or 'General'}"
                 + (" · reverse-keyed" if q.get("reverse_scored") else "")
@@ -450,12 +453,18 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             )
             draft_list.controls.append(
                 ft.Container(
+                    key=f"draft_{q['key']}",
                     bgcolor="#30415A" if current else "#1E2D41",
                     border_radius=8, padding=10,
                     content=ft.Column(
                         controls=[
+                            *(
+                                [ft.Text(f"PAGE {page_num} · {page_heading}",
+                                         size=11, weight="bold", color="#9CB7DA")]
+                                if page_num != previous_page else []
+                            ),
                             ft.Button(
-                                f"{i+1}. {q['prompt'][:45]}",
+                                f"{i+1}. {q['prompt'][:65]}",
                                 on_click=lambda e, idx=i: edit_question(idx),
                             ),
                             ft.Text(q["key"] + " | " + details, size=11,
@@ -465,7 +474,27 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                     ),
                 )
             )
+            previous_page = page_num
         page.update()
+
+    def on_question_reorder(e):
+        try:
+            chosen_key = (
+                draft[state["edit"]]["key"]
+                if state["edit"] is not None else None
+            )
+            moved = reorder_questions(draft, e.old_index, e.new_index)
+            draft[:] = moved
+            state["edit"] = (
+                next((i for i, q in enumerate(draft) if q["key"] == chosen_key), None)
+                if chosen_key else None
+            )
+            status.value = "Question order updated; conditional dependencies preserved."
+        except Exception as err:
+            status.value = f"Move rejected: {err}"
+        update_draft()
+
+    draft_list.on_reorder = on_question_reorder
 
     def draft_from_editor():
         kind = q_kind.value
