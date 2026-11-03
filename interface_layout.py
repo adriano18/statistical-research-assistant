@@ -710,6 +710,12 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
 
     def switch_screen(key):
         a["set_active_screen"](key)
+        # The survey has its own draft/response workflow; the global statistical
+        # copy/save bar and an unrelated loaded-dataset banner are distracting.
+        dataset_header.visible = key != "survey"
+        c["output_toolbar"].visible = key not in {
+            "dataset", "preparation", "survey",
+        }
         for name, screen in screens.items():
             screen.visible = name == key
             buttons[name].content.value = (
@@ -771,21 +777,23 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
     )
 
     # Keep export controls visible while long results scroll independently.
+    dataset_header = ft.Container(
+        bgcolor="#152030",
+        border_radius=12,
+        padding=12,
+        content=ft.Row(
+            controls=[
+                ft.Text("CURRENT DATASET", weight="bold", size=12),
+                c["status"],
+            ],
+            wrap=True,
+            spacing=16,
+        ),
+    )
+    c["output_toolbar"].visible = False
     workspace = ft.Column(
         controls=[
-            ft.Container(
-                bgcolor="#152030",
-                border_radius=12,
-                padding=12,
-                content=ft.Row(
-                    controls=[
-                        ft.Text("CURRENT DATASET", weight="bold", size=12),
-                        c["status"],
-                    ],
-                    wrap=True,
-                    spacing=16,
-                ),
-            ),
+            dataset_header,
             c["output_toolbar"],
             ft.Column(
                 controls=list(screens.values()),
