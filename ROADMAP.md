@@ -4,7 +4,7 @@
 
 A **local-first, reproducible statistical workbench** for psychology and marketing research, with correct calculations, practical guidance, APA-style output and later optional AI interpretation. This is a focused SPSS-like assistant, **not a promise to reproduce all IBM SPSS procedures**.
 
-**Current development sequence**: complete the essential statistical core and data preparation → validate against reference cases → make output and workflow usable → integrate a method advisor and optional AI → finish EN/LV/RU localization and UI polish. Usability problems that prevent testing, copying or saving are fixed immediately, not postponed.
+**Next development sequence**: fix the questionnaire builder's usability (short focused UI milestone) → finish psychometric reliability and factor-analysis essentials → add research-method guidance and optional AI → deliver secure, respondent-facing survey distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
 ## 1. Implemented statistical core
 
@@ -47,6 +47,28 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [ ] **McDonald's ω**, scale item diagnostics
 - [ ] EFA / PCA with loading matrices, scree plot, suitability checks and explained variance
 - [ ] Sensitivity/sample-size and power interpretation, confidence intervals and multiple-testing policy
+
+### Immediate priority: questionnaire usability before expanding forms
+
+- [ ] **P0 - Split the current crowded Questionnaire screen** into **Build**, **Preview / Fill**, **Responses**, and **Export / Analyze** subviews, showing one task at a time
+- [ ] **P0 - Visual form editor**: question list on the left, readable question properties in the center and realistic respondent preview on the right (stacked panels on narrow screens)
+- [ ] **P0 - Fix spacing and sizing**: aligned labels, consistent input widths, readable typography, a constrained content column, clear primary action, and no unrelated controls separated across the full window
+- [ ] **P0 - Basic editing**: reorder questions, remove/edit drafts, duplicate a question, show required/optional state and safe preview without saving test responses
+- [ ] **P0 - Response usability**: clear submission confirmation, response count, a tabular data preview and an obvious **Load into Dataset** action
+- [ ] Keep the statistical/data-processing engine independent of Flet so a future dedicated browser-based respondent interface remains feasible
+
+**Priority decision:** finish this short usability pass first, then return to **McDonald's ω, item-level reliability checks and EFA/PCA**. Avoid building a public survey-hosting platform or complex branching now; it would defer the project's main research-analysis value.
+
+### Future: questionnaire import from a photo or document (AI-assisted)
+
+- [ ] Accept an **image/photo, scanned PDF or digital PDF**; prefer extracting text directly from digital PDFs and use OCR/vision on scanned pages
+- [ ] Detect question blocks, item wording, numbering, Likert anchors, choices, required fields and possible reversed-key markers, then generate a **draft survey schema (JSON)** rather than publishing a form automatically
+- [ ] Open a **side-by-side source image/PDF and editable questionnaire draft** with uncertain items highlighted; researcher must review and approve each question, coding and skip rule
+- [ ] Check for omitted/duplicated questions, broken page order, wrong answer scales, ambiguous instructions and inconsistent key names before finalizing
+- [ ] Offer an optional local OCR/vision pathway; any cloud AI document processing requires explicit consent and clear disclosure of what is uploaded, with **local-only as the default**
+- [ ] Respect permissions and copyright/licensing of published psychological instruments; a photograph does **not** establish the right to reproduce or deploy a questionnaire
+- [ ] Test with clean scans, skewed phone photos, multilingual EN/LV/RU forms, tables, multi-page instruments and deliberately ambiguous layouts
+- [ ] Do not infer scale validity, reliability or scoring/reverse coding from an image alone. Require the official scoring manual or researcher confirmation.
 
 ### Local questionnaire collection
 
@@ -97,7 +119,7 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [ ] Sortable/exportable post-hoc and descriptive tables, improved compactness and keyboard navigation
 - [ ] EN / LV / RU localization using translation keys for menus, errors, notes, reports and accessibility strings
 - [ ] English default; Latvian and Russian selectable in Settings
-- [ ] Polish Flet desktop and responsive layout after core stability
+- [ ] Fix questionnaire editor layout and navigation now; reserve broader Flet polish for after the next psychometrics milestone
 
 ### GUI platform decision
 
