@@ -1,6 +1,6 @@
 """Flet interface layout for the Statistical Research Assistant.
 
-The interface is divided into ten screens. Calculation logic stays in app.py;
+The interface is divided into eleven screens. Calculation logic stays in app.py;
 existing controls are reused, so switching screens preserves user selections.
 """
 
@@ -52,6 +52,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                         ft.Button("Load categorical example", on_click=a["load_categorical_example"]),
                         ft.Button("Load three-group example", on_click=a["load_three_groups_example"]),
                         ft.Button("Load regression example", on_click=a["load_regression_example"]),
+                        ft.Button("Load repeated example", on_click=a["load_repeated_example"]),
                     ],
                     wrap=True,
                     spacing=10,
@@ -476,6 +477,59 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         visible=False,
     )
 
+    # Screen 11: three or more observations from the SAME participants.
+    repeated_screen = ft.Column(
+        controls=[
+            heading(
+                "Repeated measurements",
+                "Friedman for ordinal responses or repeated-measures ANOVA for quantitative scores.",
+            ),
+            panel("Study design and occasions", [
+                ft.Text(
+                    "Wide format: one row per participant, one selected column "
+                    "per occasion. Select 3–8 columns in the intended time order.",
+                    color="#A8B6C9",
+                ),
+                ft.Text("Repeated measurement columns", weight="bold"),
+                c["rep_items"],
+                ft.Row(
+                    controls=[c["rep_scale"], c["rep_method"]],
+                    wrap=True, spacing=12,
+                ),
+                c["rep_same_people"],
+                c["rep_assumptions"],
+                ft.Button(
+                    "Analyze repeated scores", on_click=a["run_repeated"]
+                ),
+            ]),
+            panel("Main result and interpretation", [
+                c["rep_main"], c["rep_brief"],
+            ]),
+            panel("Individual trajectories", [
+                c["rep_chart"],
+            ]),
+            panel("Holm-adjusted pairwise comparisons", [
+                c["rep_pair_table"],
+            ]),
+            panel("APA 7-style report", [
+                ft.ExpansionTile(
+                    title="Show full repeated-measures report",
+                    expanded=False,
+                    controls=[c["rep_report"]],
+                ),
+            ]),
+            panel("Assumptions and cautions", [
+                ft.ExpansionTile(
+                    title="View repeated-measures limitations",
+                    expanded=False,
+                    controls=[c["rep_warnings"]],
+                ),
+            ]),
+        ],
+        spacing=18,
+        visible=False,
+    )
+
     screens = {
         "dataset": dataset_screen,
         "descriptive": descriptive_screen,
@@ -487,6 +541,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "chi": chi_screen,
         "omnibus": omnibus_screen,
         "regression": regression_screen,
+        "repeated": repeated_screen,
     }
     labels = {
         "dataset": "Dataset",
@@ -499,6 +554,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
         "chi": "Chi-square",
         "omnibus": "ANOVA / Kruskal",
         "regression": "Linear regression",
+        "repeated": "Repeated measures",
     }
 
     # One visible workspace avoids a several-screen-long vertical application.
@@ -547,6 +603,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 buttons["groups"],
                 buttons["paired"],
                 buttons["omnibus"],
+                buttons["repeated"],
                 ft.Text("MODELING", size=10, color="#9CB7DA"),
                 buttons["regression"],
                 ft.Divider(),
