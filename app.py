@@ -165,6 +165,7 @@ async def main(page: ft.Page):
         width=480, options=[],
     )
     recent_open = ft.Button("Open recent file", disabled=True)
+    recent_clear = ft.Button("Clear recent history")
     import_panel = ft.Column(
         controls=[
             ft.Text(
@@ -185,7 +186,7 @@ async def main(page: ft.Page):
             import_diagnostics,
             ft.Divider(color="#E1E7F1"),
             ft.Row(
-                controls=[recent_picker, recent_open],
+                controls=[recent_picker, recent_open, recent_clear],
                 wrap=True, spacing=10,
             ),
         ],
@@ -1409,6 +1410,18 @@ async def main(page: ft.Page):
         if source_file is not None:
             await show_file(source_file, use_import_settings=True)
 
+    def clear_recent(e=None):
+        nonlocal preferences
+        preferences = AppPreferences(preferences.language, ())
+        try:
+            save_preferences(preferences)
+            recent_picker.value = None
+            refresh_recent_files()
+            status.value = "Local recent-file history cleared."
+        except OSError as error:
+            status.value = f"Could not clear recent-file history: {error}"
+        page.update()
+
     def store_language(code):
         nonlocal preferences
         preferences = AppPreferences(code, preferences.recent_files)
@@ -1420,6 +1433,7 @@ async def main(page: ft.Page):
 
     recent_picker.on_select = select_recent
     recent_open.on_click = open_recent
+    recent_clear.on_click = clear_recent
     import_apply.on_click = apply_import
     refresh_recent_files()
 
