@@ -16,8 +16,9 @@ from survey_storage import (
 )
 from survey_ui import (
     _template_questions, preset_value_labels, parse_value_labels,
-    semantic_differential_labels,
+    semantic_differential_labels, build_numeric_rating_selector,
 )
+import flet as ft
 
 
 def test_questions():
@@ -512,6 +513,44 @@ class SurveyBuilderTests(unittest.TestCase):
         ])
         with self.assertRaisesRegex(ValueError, "EARLIER"):
             reorder_sections(dependent, 1, 1, 0)
+
+    def test_likert_radio_choices_are_scored_without_default_selection(self):
+        question = validate_questions([dict(
+            key="mood", prompt="Fictional mood item", kind="likert5",
+            required=True,
+            value_labels=preset_value_labels("frequency", "likert5"),
+        )])[0]
+        field = build_numeric_rating_selector(question)
+        self.assertIsInstance(field, ft.RadioGroup)
+        self.assertIsNone(field.value)
+        cards = field.content.controls[1]
+        self.assertIsInstance(cards, ft.ResponsiveRow)
+        self.assertEqual(
+            [container.content.value for container in cards.controls],
+            ["1", "2", "3", "4", "5"],
+        )
+        self.assertEqual(cards.controls[0].content.label, "1 — Never")
+        self.assertEqual(cards.controls[-1].content.label, "5 — Always")
+
+    def test_custom_rating_cards_have_separate_missing_choices(self):
+        question = validate_questions([dict(
+            key="comfort", prompt="Fictional comfort item",
+            kind="rating_scale", required=True,
+            value_labels={"-1": "Not comfortable", "0": "Neutral",
+                          "1": "Comfortable"},
+            missing_options={
+                "DK": "Затрудняюсь ответить",
+                "PNA": "Предпочитаю не отвечать",
+            },
+        )])[0]
+        field = build_numeric_rating_selector(question)
+        self.assertEqual(
+            [card.content.value for card in field.content.controls[1].controls],
+            ["-1", "0", "1"],
+        )
+        missing = field.content.controls[-1]
+        self.assertEqual([radio.value for radio in missing.controls], ["DK", "PNA"])
+        self.assertIsNone(field.value)
 
 
 if __name__ == "__main__":
