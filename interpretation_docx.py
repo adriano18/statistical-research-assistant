@@ -248,6 +248,13 @@ def build_apa_docx(
             "hypothesis, design, effect size, uncertainty, and limitations.]"
         )
 
+    document.add_heading("References", level=1)
+    for source in source_references(evidence.section):
+        paragraph = document.add_paragraph(source)
+        paragraph.paragraph_format.left_indent = Inches(.5)
+        paragraph.paragraph_format.first_line_indent = Inches(-.5)
+        paragraph.paragraph_format.line_spacing = 2
+
     if include_original_report:
         document.add_heading("Appendix: Original calculation output", level=1)
         document.add_paragraph(
@@ -257,13 +264,6 @@ def build_apa_docx(
         for line in evidence.source_report.splitlines():
             if line.strip():
                 document.add_paragraph(line)
-
-    document.add_heading("References", level=1)
-    for source in source_references(evidence.section):
-        paragraph = document.add_paragraph(source)
-        paragraph.paragraph_format.left_indent = Inches(.5)
-        paragraph.paragraph_format.first_line_indent = Inches(-.5)
-        paragraph.paragraph_format.line_spacing = 2
 
     return document
 
