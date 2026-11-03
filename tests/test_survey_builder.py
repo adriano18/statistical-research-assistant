@@ -1,6 +1,7 @@
 """Survey builder tests: skip logic, safe metadata, response types and codebooks."""
 
 import json
+import sqlite3
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -11,9 +12,12 @@ from survey_storage import (
     create_survey, get_survey, validate_questions, submit_response,
     responses_dataframe, response_count, survey_codebook,
     save_survey_codebook, question_is_visible, likert_choices,
-    reorder_questions, validate_page_answers,
+    reorder_questions, reorder_sections, section_blocks, validate_page_answers,
 )
-from survey_ui import _template_questions, preset_value_labels, parse_value_labels
+from survey_ui import (
+    _template_questions, preset_value_labels, parse_value_labels,
+    semantic_differential_labels,
+)
 
 
 def test_questions():
@@ -340,6 +344,168 @@ class SurveyBuilderTests(unittest.TestCase):
         )), 5)
         with self.assertRaisesRegex(ValueError, "Label every"):
             parse_value_labels("1 = Bad", "likert5")
+
+    def test_custom_semantic_scale_and_missing_reason_export(self):
+        questions = [
+            dict(key="consent", prompt="Consent to synthetic test",
+                 kind="consent", required=True, page=1),
+            dict(key="difficulty", prompt="Rate fictional task difficulty",
+                 kind="rating_scale", required=True, page=2,
+                 page_title="Bipolar scale", section="Task",
+                 min_label="Difficult", max_label="Easy",
+                 scale_id="user_experience",
+                 value_labels=semantic_differential_labels(),
+                 missing_options={
+                     "DK": "Затрудняюсь ответить",
+                     "PNA": "Предпочитаю не отвечать",
+                 }),
+        ]
+        definition = create_survey(
+            self.path, "Bipolar fictional research", "Synthetic data only", questions
+        )
+        sid = definition.survey_id
+        submit_response(self.path, sid, {"consent": True, "difficulty": "-3"})
+        submit_response(self.path, sid, {"consent": True, "difficulty": "DK"})
+        submit_response(self.path, sid, {"consent": True, "difficulty": "PNA"})
+        submit_response(self.path, sid, {"consent": True, "difficulty": 3})
+        frame = responses_dataframe(self.path, sid)
+        self.assertTrue(pd.api.types.is_numeric_dtype(frame["difficulty"]))
+        self.assertEqual(frame["difficulty"].iloc[[0, 3]].tolist(), [-3, 3])
+        self.assertTrue(frame["difficulty"].iloc[1:3].isna().all())
+        self.assertEqual(
+            frame["difficulty__missing_reason"].iloc[1:3].tolist(),
+            ["DK", "PNA"],
+        )
+        self.assertTrue(pd.isna(frame["difficulty__missing_reason"].iloc[0]))
+        self.assertEqual(response_count(self.path, sid), 4)
+        with sqlite3.connect(
+            self.path / f"survey_{sid}.sqlite3"
+        ) as conn:
+            stored = [json.loads(row[0])["difficulty"] for row in conn.execute(
+                "SELECT answers_json FROM responses ORDER BY rowid"
+            )]
+        self.assertEqual(stored, [-3, "DK", "PNA", 3])
+        exported = self.path / "custom_scale.csv"
+        from survey_storage import save_survey_csv
+        save_survey_csv(self.path, sid, exported)
+        self.assertIn("difficulty__missing_reason", exported.read_text(
+            encoding="utf-8-sig"
+        ))
+        book = survey_codebook(self.path, sid)
+        self.assertEqual(book["questions"][1]["measurement_level"], "ordinal")
+        self.assertEqual(
+            book["questions"][1]["missing_reason_column"],
+            "difficulty__missing_reason",
+        )
+        self.assertEqual(book["questions"][1]["value_labels"]["-3"],
+                         "Very difficult")
+        self.assertEqual(likert_choices(book["questions"][1])[0][0], -3)
+
+    def test_required_missing_code_is_answer_not_score(self):
+        q = validate_questions([
+            dict(key="score", prompt="Rate fictional concern",
+                 kind="rating_scale", required=True,
+                 value_labels={"0": "No concern", "2": "Some", "5": "High"},
+                 missing_options={"DK": "Don't know"}),
+            dict(key="explain", prompt="Explain high concern",
+                 kind="short_text", required=True,
+                 condition={"question": "score", "operator": "greater",
+                            "value": 2}),
+        ])
+        validate_page_answers(q, {"score": "DK"}, 1)
+        self.assertFalse(question_is_visible(q[1], {"score": None}))
+        self.assertFalse(question_is_visible(q[1], {"score": "DK"}))
+        with self.assertRaisesRegex(ValueError, "Required"):
+            validate_page_answers(q, {}, 1)
+        with self.assertRaisesRegex(ValueError, "Required"):
+            validate_page_answers(q, {"score": "5"}, 1)
+        validate_page_answers(q, {"score": "5", "explain": "Synthetic"}, 1)
+
+    def test_custom_ratings_and_missing_code_validation(self):
+        base = dict(key="rating", prompt="Choose rating", kind="rating_scale",
+                    value_labels={"-2": "Low", "0": "Neutral", "4": "High"})
+        self.assertEqual(
+            list(validate_questions([base])[0]["value_labels"]), ["-2", "0", "4"]
+        )
+        for malformed in (
+            {"1": "One"},  # only one code
+            {"01": "Bad", "1": "Good"},  # noncanonical
+            {"-101": "Too low", "2": "High"},
+            {"1": "Same", "2": "Same"},
+        ):
+            with self.subTest(malformed=malformed):
+                with self.assertRaises(ValueError):
+                    validate_questions([{**base, "value_labels": malformed}])
+        for bad_options in (
+            {"99": "Unknown"},
+            {"DK": ""},
+            {"PNA": "Unknown", "DK": "Unknown"},
+        ):
+            with self.subTest(options=bad_options):
+                with self.assertRaises(ValueError):
+                    validate_questions([{**base, "missing_options": bad_options}])
+        with self.assertRaisesRegex(ValueError, "numeric scales"):
+            validate_questions([dict(
+                key="text", prompt="Some text", kind="short_text",
+                missing_options={"DK": "Unknown"},
+            )])
+        with self.assertRaisesRegex(ValueError, "conflicts"):
+            validate_questions([
+                {**base, "missing_options": {"DK": "Unknown"}},
+                dict(key="rating__missing_reason", prompt="Collision",
+                     kind="short_text"),
+            ])
+        with self.assertRaisesRegex(ValueError, "rating value"):
+            validate_questions([
+                base, dict(key="followup", prompt="Other question",
+                           kind="short_text", condition={
+                               "question": "rating", "operator": "equals",
+                               "value": "1",
+                           }),
+            ])
+        with self.assertRaisesRegex(ValueError, "rating value"):
+            validate_questions([
+                base, dict(key="followup", prompt="Other question",
+                           kind="short_text", condition={
+                               "question": "rating", "operator": "equals",
+                               "value": "2.5",
+                           }),
+            ])
+
+    def test_reorder_complete_sections_without_breaking_pages_or_logic(self):
+        questions = validate_questions([
+            dict(key="consent", prompt="Fictional consent", kind="consent",
+                 required=True, page=1, section="Consent"),
+            dict(key="topic_a", prompt="Topic A question", kind="yes_no",
+                 page=2, section="Topic A"),
+            dict(key="topic_b", prompt="Topic B question", kind="number",
+                 page=2, section="Topic B"),
+            dict(key="topic_b2", prompt="Second topic B question",
+                 kind="short_text", page=2, section="Topic B"),
+            dict(key="topic_c", prompt="Topic C question", kind="short_text",
+                 page=2, section="Topic C"),
+        ])
+        self.assertEqual(
+            [len(block) for block in section_blocks(questions, 2)], [1, 2, 1]
+        )
+        reordered = reorder_sections(questions, 2, 1, 0)
+        self.assertEqual([q["key"] for q in reordered], [
+            "consent", "topic_b", "topic_b2", "topic_a", "topic_c"
+        ])
+        self.assertEqual([q["key"] for q in questions], [
+            "consent", "topic_a", "topic_b", "topic_b2", "topic_c"
+        ])
+        with self.assertRaisesRegex(ValueError, "invalid"):
+            reorder_sections(questions, 2, 0, 5)
+        dependent = validate_questions([
+            dict(key="gate", prompt="Entry choice", kind="yes_no", section="Gate"),
+            dict(key="dependent", prompt="Conditional question",
+                 kind="short_text", section="Dependent",
+                 condition={"question": "gate", "operator": "equals",
+                            "value": "Yes"}),
+        ])
+        with self.assertRaisesRegex(ValueError, "EARLIER"):
+            reorder_sections(dependent, 1, 1, 0)
 
 
 if __name__ == "__main__":
