@@ -25,8 +25,9 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 ### P0. Essential research methods
 - [x] **Simple and multiple linear regression (OLS)**, model summary, B/SE/t/p, 95% CI, R², residual plots, VIF, Cook's distance, HC3 robust coefficient inference
-- [ ] **Friedman test** for 3+ repeated/related ordinal measurements, with corrected pairwise Wilcoxon follow-up
-- [ ] **Repeated-measures ANOVA** with correct within-subject assumptions and multiple-testing treatment
+- [x] **Friedman test** for 3–8 related ordinal measurements with Kendall’s W and Holm-adjusted paired Wilcoxon comparisons
+- [x] **One-factor repeated-measures ANOVA** with Greenhouse–Geisser-adjusted inference, partial η² and Holm-adjusted paired t comparisons
+- [ ] Mauchly sphericity test, multilevel/mixed-effects repeated models and optional planned contrasts
 - [ ] **ANCOVA / general linear model** where design and sample sizes justify it
 - [ ] **Binary logistic regression**, odds ratios, CI, interpretation and separation warnings
 - [ ] More complete diagnostics: residual vs fitted plots, outliers/influence, variance inflation factors, distribution checks of **paired differences**
