@@ -26,7 +26,7 @@ DEFAULT_NOTE = (
 def make_apa7_export_png(
     original_png: bytes, title: str, *,
     figure_number: int = 1, note: str = DEFAULT_NOTE,
-    dpi: int = 300,
+    dpi: int = 300, strip_embedded_caption: bool = False,
 ) -> bytes:
     """Add manuscript-style number, italic title and explanatory note.
 
@@ -51,6 +51,19 @@ def make_apa7_export_png(
         if photo.width * photo.height > 24_000_000:
             raise ValueError("PNG chart has too many pixels.")
         source_image = photo.convert("RGBA").copy()
+    if strip_embedded_caption:
+        # Older plots in this project embed hard-coded Figure numbers in the
+        # top margin and their Note in the bottom margin. Their matplotlib
+        # layouts reserve roughly 10–15% top and 8–12% bottom for captions.
+        # Crop *only* those reserved margins; the axes retain the whole
+        # statistical image. User-specified title/note replace them below.
+        top = int(source_image.height * 0.10)
+        bottom = int(source_image.height * 0.925)
+        if bottom - top < 50:
+            raise ValueError("Original PNG too short to replace its caption.")
+        source_image = source_image.crop(
+            (0, top, source_image.width, bottom)
+        )
     plot_height = min(8.5, max(3.0, source_image.height / source_image.width * 7.25))
     height = plot_height + 2.1
     fig = plt.figure(figsize=(8.5, height), facecolor="white")
