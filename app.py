@@ -113,6 +113,9 @@ async def main(page: ft.Page):
     import_header_row = ft.TextField(
         label="Header row (1-based)", value="1", width=175,
     )
+    import_data_start = ft.TextField(
+        label="Data begins at row (optional)", value="", width=240,
+    )
     import_sheet = ft.Dropdown(
         label="Excel worksheet", width=280, disabled=True,
         options=[],
@@ -175,7 +178,7 @@ async def main(page: ft.Page):
                 size=12, color="#4A5B71",
             ),
             ft.Row(
-                controls=[import_sheet, import_header_row,
+                controls=[import_sheet, import_header_row, import_data_start,
                           import_separator, import_decimal, import_encoding],
                 wrap=True, spacing=10,
             ),
@@ -925,6 +928,7 @@ async def main(page: ft.Page):
             else:
                 if not use_import_settings:
                     import_header_row.value = "1"
+                    import_data_start.value = ""
                     import_separator.value = "auto"
                     import_decimal.value = "auto"
                     import_encoding.value = "auto"
@@ -936,6 +940,12 @@ async def main(page: ft.Page):
                         import_sheet.value else 0
                     ),
                     header_row=int((import_header_row.value or "").strip()),
+                    data_start_row=(
+                        int(import_data_start.value.strip())
+                        if import_data_start.value and
+                           import_data_start.value.strip()
+                        else None
+                    ),
                     separator=import_separator.value or "auto",
                     encoding=import_encoding.value or "auto",
                     decimal=import_decimal.value or "auto",
