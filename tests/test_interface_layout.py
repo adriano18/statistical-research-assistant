@@ -68,33 +68,56 @@ ACTION_NAMES = [
 
 
 class DummyPage:
+    def __init__(self, width=1280):
+        self.width = width
+        self.on_resize = None
+
     def update(self):
         pass
 
 
 class LayoutTests(unittest.TestCase):
-    def test_all_sixteen_screens_exist_and_only_dataset_is_visible(self):
+    def make_screen(self, width=1280):
         controls = {name: ft.Text(name) for name in CONTROL_NAMES}
         actions = {name: (lambda e: None) for name in ACTION_NAMES}
+        return build_interface(DummyPage(width), controls, actions)
 
-        root = build_interface(DummyPage(), controls, actions)
-
+    def test_home_is_initial_screen_and_methods_are_grouped(self):
+        root = self.make_screen()
         self.assertIsInstance(root, ft.Row)
         self.assertEqual(len(root.controls), 2)
-
         sidebar = root.controls[0]
-        nav_buttons = [
+        groups = [
+            item for item in sidebar.content.controls
+            if isinstance(item, ft.ExpansionTile)
+        ]
+        self.assertEqual(len(groups), 4)
+        buttons = [
             item for item in sidebar.content.controls
             if isinstance(item, ft.Button)
         ]
-        self.assertEqual(len(nav_buttons), 16)
+        for group in groups:
+            buttons.extend(item for item in group.controls
+                           if isinstance(item, ft.Button))
+        self.assertEqual(len(buttons), 17)
 
         workspace = root.controls[1].content
-        # The output toolbar is pinned above one independently scrolling column.
-        screens = workspace.controls[2].controls
-        self.assertEqual(len(screens), 16)
+        self.assertFalse(workspace.controls[0].visible)
+        self.assertFalse(workspace.controls[1].visible)  # No dataset banner on Home
+        self.assertFalse(workspace.controls[2].visible)  # No export on Home
+        screens = workspace.controls[3].controls
+        self.assertEqual(len(screens), 17)
         self.assertTrue(screens[0].visible)
         self.assertTrue(all(not screen.visible for screen in screens[1:]))
+
+    def test_compact_windows_show_dropdown_navigation(self):
+        root = self.make_screen(width=800)
+        self.assertFalse(root.controls[0].visible)
+        compact = root.controls[1].content.controls[0]
+        self.assertIsInstance(compact, ft.Dropdown)
+        self.assertTrue(compact.visible)
+        self.assertEqual(compact.value, "home")
+        self.assertEqual(len(compact.options), 17)
 
 
 if __name__ == "__main__":
