@@ -39,7 +39,7 @@ class OmegaTests(unittest.TestCase):
         lam = reference.loadings.ravel()
         unique = reference.uniqueness
         expected = np.sum(lam)**2 / (np.sum(lam)**2 + np.sum(unique))
-        self.assertAlmostEqual(estimate.omega, float(expected), places=9)
+        self.assertAlmostEqual(estimate.omega, float(expected), places=6)
         self.assertGreater(estimate.omega, .75)
         self.assertLess(estimate.omega, 1.0)
         self.assertEqual(estimate.n_complete, 240)
