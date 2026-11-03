@@ -19,7 +19,7 @@ The Flet application uses a left navigation menu instead of one long scrolling p
 
 - **Dataset**: load a local CSV/Excel file or a sample, inspect variables and missing values.
 - **Data preparation**: create new recoded variables, mark missing codes, reverse-score questionnaire items, calculate sums/means, export a working CSV and transformation log without changing source files.
-- **Questionnaires**: create a local Likert/choice/text/numeric form, enter answers on this device, persist them in SQLite and load them directly into Dataset.
+- **Questionnaires**: use the Build/Preview/Fill/Responses editor to collect conditional Likert, demographic and choice responses locally, preserve reverse-key metadata and export a codebook.
 - **Descriptive**: choose a variable, confirm its scale, and view statistics and a graph.
 - **Scale reliability**: select questionnaire items, compute Cronbach’s α and view an APA-style report.
 - **Correlations**: analyze two variables with Pearson or Spearman and view the scatterplot.
@@ -204,16 +204,24 @@ To check the guard against invalid common-slope inference, choose **Load interac
 
 **Important:** Operations add new columns and never modify the existing source columns. The original CSV/XLSX is not changed. The program blocks export to the exact original file path. It does not silently infer reverse-coded items, scoring rules, or why a value is missing. Always verify the questionnaire manual and sample characteristics before scientific analysis.
 
-### Questionnaire builder (local MVP)
+### Questionnaire builder: focused four-view editor (Step 17)
 
-1. Select **Questionnaires** in the sidebar. Enter a survey title and participant instructions. Add questions one by one, choosing **Likert 1–5**, **Single choice**, **Numeric answer**, **Short text**, or **Required consent**. Use meaningful variable names such as `stress_q1`.
-2. For a quick demonstration, click **Pilot template**. It creates a draft with consent, a two-group question and four fictional Likert items. Click **Create local questionnaire** to save it.
-3. In **Enter and save participant responses**, use the form fields and click **Submit response locally**. Repeat for multiple mock respondents. Missing required values, invalid answers and lack of consent (when the consent question is selected) are rejected.
-4. Click **Load responses into Dataset** to analyze the collected rows immediately, or **Export responses CSV** to save a separate CSV copy.
+The questionnaire section now has **four tabs** rather than one long page.
 
-The survey definition and entries are stored in separate SQLite files under `data/surveys/`, which Git ignores. Questionnaire definitions are immutable after creation to prevent silently changing existing data columns; create a new survey for a changed questionnaire. Respondents get random local response IDs; no IP addresses, browser identifiers or email addresses are automatically collected. **No third-party service or network connection is required** for this local workflow.
+1. **Build.** Choose a study title and introduction, then start from a **Psychology/Likert**, **Demographics**, **HR/Workplace** or **Marketing/Feedback** fictional template, or add questions manually. Use the left-hand question list and right-hand properties panel to **edit, duplicate, reorder, delete** and save questions to a draft. Changing a question's key can invalidate conditions in later questions; the editor prevents saving an inconsistent draft.
+2. **Preview.** Inspect how the respondent will see sections, instructions, answer scales and conditional questions. Preview answers are **not saved**.
+3. **Fill survey.** Choose an already published local questionnaire, enter responses and submit them into the same on-device SQLite survey database. Saved questionnaire definitions are immutable to protect collected response data. **Clone** an existing questionnaire to create and edit a new version without altering the original.
+4. **Responses / Export.** Preview the first ten rows and first seven columns, transfer the full response table directly to **Dataset** or export the complete **CSV + JSON codebook**. The codebook records prompts, response types, option labels, scale IDs and reverse-key flags.
 
-**Scope limitation:** This release is **not a Google Forms-style publicly shareable link**. Respondents enter answers **on the current computer**. Remote distribution, mobile-friendly self-hosted forms, secure HTTPS hosting, researcher access control, backups, consent/withdrawal workflows and encryption are planned separately. SQLite data is stored locally but **is not encrypted**. Do not conduct actual sensitive or identifiable participant research until privacy, consent, retention, security and ethics requirements have been addressed. The provided pilot form is fictional, not a substitute for research-specific informed consent.
+Available response types: **Likert 1–5, Likert 1–7, single choice, multiple choice, Yes/No, numeric answer, short/long text, ISO date and required consent checkbox**. Questions can be assigned to named sections such as *Consent*, *Demographics*, *Stress* or *Feedback*. Optional lower/upper response anchors clarify Likert interpretation.
+
+**Simple conditional logic:** For a question, select an **earlier** single-choice, Yes/No, Likert or numeric response, choose *equals*, *not equals*, *greater than* or *less than*, and enter a valid value. For example, ask `work_years` only when `employed` equals `Yes`. Hidden required questions are automatically skipped; responses to hidden questions are saved as **null**, never as zeros or stale values. There is no arbitrary code or executable formula in conditions. Complex AND/OR, pages, randomization and clinical triage are **not implemented**.
+
+**Reverse-scored items:** Mark a Likert question as reverse-scored and assign its scale/subscale ID, such as `stress`. The mark is included in the JSON codebook; **raw answers are not modified or scored automatically**. Researchers must check the official test scoring key and then use **Data preparation** to create a reverse-coded column and construct a validated scale score. The fictional templates are not validated psychological tests.
+
+**Quick smoke test:** In **Questionnaires → Build**, select **Psychology / Likert**, click **Load template**, inspect `stress_q2` as a reverse-keyed item, and inspect `work_years`, which depends on `employed = Yes`. Click **Preview draft** and change `employed` from `Yes` to `No`; the `work_years` question should disappear. Publish the draft using **Create local questionnaire**, fill a couple of *fictional* responses in **Fill survey**, then use **Responses / Export**.
+
+**Privacy and scope:** The builder and respondent form work locally on the current computer; there is still **no public survey link or remote multi-user hosting**. Data are in SQLite under Git-ignored `data/surveys/`, not encrypted at rest. No automatic IP logging or third-party survey account is used, but the presence of random response IDs does **not automatically make personal or sensitive responses anonymous**. Collecting health-related or identifiable research data requires a legal basis, data-protection controls and potentially ethics approval. The exact requirements depend on the research and institution. The next major milestones are secure deployment, EN/LV/RU respondent-facing language support, more complete consent/withdrawal controls, and **AI-assisted photo/PDF-to-draft import with human review**.
 
 ## Interface languages
 
