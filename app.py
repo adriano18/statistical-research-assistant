@@ -306,7 +306,11 @@ async def main(page: ft.Page):
                         (figure_title.value or "").strip() or item.title,
                         figure_number=int((figure_number.value or "").strip()),
                         note=(figure_note.value or "").strip()
-                        or default_section_figure_note(active_section),
+                        or default_section_figure_note(
+                            "omega" if active_section == "reliability"
+                            and "omega" in item.title.lower()
+                            else active_section
+                        ),
                         strip_embedded_caption=section_embeds_figure_header(
                             active_section
                         ),
