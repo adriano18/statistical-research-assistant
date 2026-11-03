@@ -166,6 +166,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ),
                 c["reliability_items"],
                 c["reliability_confirm"],
+                c["omega_ci_reps"],
                 ft.Row(
                     controls=[
                         ft.Button(
@@ -182,7 +183,8 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ft.Text(
                     "Both methods use the chosen complete-case items. "
                     "Omega uses a Pearson one-factor model and does not "
-                    "automatically reverse-score answers.",
+                    "automatically reverse-score answers. Optional CI "
+                    "resamples whole respondents with a fixed random seed.",
                     size=12, color="#A8B6C9",
                 ),
             ]),
@@ -241,7 +243,8 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
                 ),
                 ft.Text(
                     "PCA uses unrotated total-variance components. EFA uses "
-                    "principal-axis common-factor extraction, optionally varimax. "
+                    "principal-axis common-factor extraction, optionally "
+                    "varimax (orthogonal) or oblimin (correlated factors). "
                     "Rotating PCA is not implemented.",
                     size=12, color="#A8B6C9",
                 ),
@@ -259,6 +262,7 @@ def build_interface(page: ft.Page, controls: dict, actions: dict):
             ]),
             panel("Component / factor loading matrix", [
                 c["factor_loading_table"],
+                c["factor_correlation_text"],
             ]),
             panel("APA-style report and methodological limitations", [
                 ft.ExpansionTile(
