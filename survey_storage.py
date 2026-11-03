@@ -70,7 +70,9 @@ def _check_condition(condition, earlier: dict[str, dict]) -> dict | None:
             raise ValueError("Numeric conditional value must be finite.")
         if kind.startswith("likert") and not (1 <= value <= int(kind[-1])):
             raise ValueError("Likert conditional value is outside response scale.")
-        if kind == "rating_scale" and str(int(value)) not in earlier[parent]["value_labels"]:
+        if (kind == "rating_scale" and
+                (not value.is_integer() or
+                 str(int(value)) not in earlier[parent]["value_labels"])):
             raise ValueError("Conditional rating value must be a defined scale code.")
     return {"question": parent, "operator": op, "value": value}
 
@@ -378,6 +380,10 @@ def _clean_answer(question: dict[str, Any], answer: Any) -> Any:
             if kind.startswith("likert") else set(question["value_labels"])
         )
         if isinstance(answer, bool) or str(answer) not in valid:
+            if kind.startswith("likert"):
+                raise ValueError(
+                    f"Choose 1–{int(kind[-1])} for {question['key']}."
+                )
             raise ValueError(f"Choose a listed numeric score for {question['key']}.")
         return int(answer)
     if kind == "single_choice":
