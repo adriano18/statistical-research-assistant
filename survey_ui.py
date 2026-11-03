@@ -15,7 +15,8 @@ import pandas as pd
 from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
     submit_response, response_count, responses_dataframe, save_survey_csv,
-    save_survey_codebook, question_is_visible,
+    save_survey_codebook, question_is_visible, likert_choices,
+    reorder_questions, validate_page_answers,
 )
 
 
@@ -31,6 +32,60 @@ QUESTION_TYPES = [
     ("date", "Date"),
     ("consent", "Required consent"),
 ]
+
+
+SCALE_PRESETS = {
+    "agreement": {
+        5: ["Strongly disagree", "Disagree", "Neither agree nor disagree",
+            "Agree", "Strongly agree"],
+        7: ["Strongly disagree", "Disagree", "Somewhat disagree",
+            "Neither agree nor disagree", "Somewhat agree", "Agree",
+            "Strongly agree"],
+    },
+    "quality": {
+        5: ["Very poor", "Poor", "Fair", "Good", "Very good"],
+        7: ["Extremely poor", "Very poor", "Poor", "Fair", "Good",
+            "Very good", "Excellent"],
+    },
+    "frequency": {
+        5: ["Never", "Rarely", "Sometimes", "Often", "Always"],
+        7: ["Never", "Almost never", "Rarely", "Sometimes",
+            "Often", "Almost always", "Always"],
+    },
+}
+
+
+def preset_value_labels(name: str, kind: str) -> dict[str, str]:
+    """Return full respondent-facing labels for stable numeric response codes."""
+    if kind not in {"likert5", "likert7"}:
+        raise ValueError("Presets only apply to Likert scales.")
+    return {str(i): label for i, label in enumerate(
+        SCALE_PRESETS[name][int(kind[-1])], start=1
+    )}
+
+
+def format_value_labels(labels: dict[str, str]) -> str:
+    return "\n".join(f"{code} = {label}" for code, label in labels.items())
+
+
+def parse_value_labels(raw: str, kind: str) -> dict[str, str]:
+    """Parse one numeric code = text per line, with complete coverage."""
+    if kind not in {"likert5", "likert7"} or not raw.strip():
+        return {}
+    labels = {}
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        if "=" not in line:
+            raise ValueError("Use one choice per line, e.g. 1 = Very poor.")
+        code, label = (part.strip() for part in line.split("=", 1))
+        if not code.isascii() or not code.isdigit() or code in labels:
+            raise ValueError("Every scale code must be a unique integer.")
+        labels[code] = label
+    expected = {str(n) for n in range(1, int(kind[-1]) + 1)}
+    if set(labels) != expected:
+        raise ValueError("Label every code in this Likert scale.")
+    return labels
 
 
 def _pilot_questions():
@@ -64,17 +119,20 @@ def _pilot_questions():
             key="stress_q1", prompt="Fictional stress statement 1",
             kind="likert5", required=True, section="Stress items",
             scale_id="stress", min_label="Never", max_label="Always",
+            value_labels=preset_value_labels("frequency", "likert5"),
         ),
         dict(
             key="stress_q2", prompt="Fictional positively worded statement 2",
             kind="likert5", required=True, section="Stress items",
             scale_id="stress", reverse_scored=True,
             min_label="Never", max_label="Always",
+            value_labels=preset_value_labels("frequency", "likert5"),
         ),
         dict(
             key="stress_q3", prompt="Fictional stress statement 3",
             kind="likert5", required=True, section="Stress items",
             scale_id="stress", min_label="Never", max_label="Always",
+            value_labels=preset_value_labels("frequency", "likert5"),
         ),
     ]
 
@@ -100,6 +158,7 @@ def _template_questions(template: str) -> list[dict]:
                     prompt=f"Fictional work engagement statement {i}",
                     kind="likert5", required=True, section="Engagement",
                     scale_id="engagement",
+                    value_labels=preset_value_labels("agreement", "likert5"),
                 )
                 for i in range(1, 4)
             ],
@@ -121,6 +180,7 @@ def _template_questions(template: str) -> list[dict]:
             dict(
                 key="experience", prompt="Rate your experience",
                 kind="likert5", required=True, section="Experience",
+                value_labels=preset_value_labels("quality", "likert5"),
                 condition={
                     "question": "customer", "operator": "equals", "value": "Yes",
                 },
