@@ -408,6 +408,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         q_preset.visible = likert
         q_value_labels.visible = rated
         apply_labels_button.visible = likert
+        semantic_button.visible = q_kind.value == "rating_scale"
         q_missing_dk.visible = rated
         q_missing_pna.visible = rated
         q_missing_dk_label.visible = rated and q_missing_dk.value
@@ -427,6 +428,15 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         page.update()
 
     apply_labels_button = ft.Button("Use preset labels", on_click=apply_preset)
+    def apply_semantic_example(e=None):
+        q_value_labels.value = format_value_labels(semantic_differential_labels())
+        q_min_label.value = "Difficult"
+        q_max_label.value = "Easy"
+        page.update()
+
+    semantic_button = ft.Button(
+        "Use bipolar example −3…3", on_click=apply_semantic_example
+    )
     q_kind.on_select = refresh_editor_fields
     q_parent.on_select = refresh_editor_fields
     q_missing_dk.on_change = refresh_editor_fields
@@ -507,6 +517,75 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
         )
         refresh_editor_fields()
 
+    def move_section(page_no, old, new):
+        try:
+            selected_key = (
+                draft[state["edit"]]["key"] if state["edit"] is not None else None
+            )
+            reordered = reorder_sections(draft, page_no, old, new)
+            draft[:] = reordered
+            state["edit"] = (
+                next((i for i, item in enumerate(draft)
+                      if item["key"] == selected_key), None)
+                if selected_key else None
+            )
+            status.value = "Entire section moved; question dependencies are valid."
+        except ValueError as err:
+            status.value = f"Section not moved: {err}"
+        update_draft()
+
+    def update_section_list():
+        pages = sorted({q.get("page", 1) for q in draft})
+        previous = section_page.value
+        section_page.options = [
+            ft.DropdownOption(key=str(n), text=f"Page {n}") for n in pages
+        ]
+        section_page.value = (
+            previous if previous in {str(n) for n in pages}
+            else (str(pages[0]) if pages else None)
+        )
+        section_drag_list.controls = []
+        if not section_page.value:
+            return
+        current = int(section_page.value)
+        for index, block_items in enumerate(section_blocks(draft, current)):
+            section_name = block_items[0].get("section") or "General"
+            section_drag_list.controls.append(
+                ft.Container(
+                    key="section_" + block_items[0]["key"],
+                    padding=9, border_radius=8, bgcolor="#1E2D41",
+                    content=ft.Column(controls=[
+                        ft.Text(
+                            f"{section_name} · {len(block_items)} question(s)",
+                            size=12, weight="bold",
+                        ),
+                        ft.Row(controls=[
+                            ft.Button(
+                                "↑", tooltip="Move section up",
+                                on_click=lambda e, i=index, p=current:
+                                    move_section(p, i, i-1),
+                            ),
+                            ft.Button(
+                                "↓", tooltip="Move section down",
+                                on_click=lambda e, i=index, p=current:
+                                    move_section(p, i, i+1),
+                            ),
+                        ], spacing=6),
+                    ], spacing=5),
+                )
+            )
+
+    def on_section_reorder(e):
+        if section_page.value:
+            move_section(int(section_page.value), e.old_index, e.new_index)
+
+    def choose_section_page(e=None):
+        update_section_list()
+        page.update()
+
+    section_page.on_select = choose_section_page
+    section_drag_list.on_reorder = on_section_reorder
+
     def update_draft():
         draft_count.value = f"{len(draft)} question(s) on {len({q.get('page', 1) for q in draft})} page(s)"
         draft_list.controls = []
@@ -544,6 +623,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 )
             )
             previous_page = page_num
+        update_section_list()
         page.update()
 
     def on_question_reorder(e):
@@ -693,7 +773,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
 
     saved_picker = ft.Dropdown(
         label="Published questionnaires on this computer",
-        width=690, options=[],
+        width=None, options=[],
     )
     published_info = ft.Text("", color="#B8C7D9", size=12)
     preview_title = ft.Text("", weight="bold", size=19)
@@ -1120,7 +1200,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             response_status.value = f"Export error: {err}"
         page.update()
 
-    # The four focused views share one fixed-width content column.
+    # Responsive layout: on narrow windows the editor stacks below the list.
     build_view = ft.Column(
         controls=[
             block("1. Survey details", [
@@ -1133,7 +1213,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                     wrap=True, spacing=12,
                 ),
             ]),
-            ft.Row(
+            ft.ResponsiveRow(
+                columns=12, spacing=12, run_spacing=12,
                 controls=[
                     block("2. Questions", [
                         draft_count,
@@ -1144,7 +1225,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                             ft.Button("+ New page", on_click=new_page_editor),
                         ], wrap=True, spacing=6),
                         draft_list,
-                    ], width=350),
+                    ], col={"xs": 12, "md": 5, "lg": 4}),
                     block("3. Question editor", [
                         editor_heading,
                         ft.Row(
@@ -1164,13 +1245,24 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                             controls=[q_scale, q_reverse], wrap=True,
                         ),
                         ft.Row(
-                            controls=[q_preset, apply_labels_button],
+                            controls=[q_preset, apply_labels_button, semantic_button],
                             wrap=True, spacing=10,
                         ),
                         q_value_labels,
-                        ft.Text("Example: 1 = Очень плохо, 3 = Средне, "
-                                "5 = Очень хорошо. The code stored is still 1–5.",
-                                size=11, color="#A8B6C9"),
+                        ft.Row(
+                            controls=[q_missing_dk, q_missing_dk_label],
+                            wrap=True, spacing=8,
+                        ),
+                        ft.Row(
+                            controls=[q_missing_pna, q_missing_pna_label],
+                            wrap=True, spacing=8,
+                        ),
+                        ft.Text(
+                            "Use all numeric labels for Likert, or 2–11 custom "
+                            "integer codes (e.g. −3…3). Missing options are "
+                            "NOT scores; they export as NaN plus reason codes.",
+                            size=11, color="#A8B6C9",
+                        ),
                         ft.Row(
                             controls=[q_min_label, q_max_label], wrap=True,
                         ),
@@ -1198,11 +1290,20 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                             ),
                         ], wrap=True, spacing=8),
                         editor_note,
-                    ], width=600),
+                    ], col={"xs": 12, "md": 7, "lg": 8}),
                 ],
-                spacing=12, wrap=True,
             ),
-            block("4. Finish the draft", [
+            block("4. Reorder entire topic sections", [
+                ft.Text(
+                    "Drag a section handle to move all of its questions "
+                    "within the selected page. Use ↑/↓ if needed. Moves that "
+                    "break conditional dependencies are rejected.",
+                    size=12, color="#A8B6C9",
+                ),
+                section_page,
+                section_drag_list,
+            ]),
+            block("5. Finish the draft", [
                 ft.Text(
                     "Preview pages and respondent-visible answer labels before "
                     "publishing. Saved definitions stay immutable; Clone to revise.",
@@ -1304,7 +1405,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
     view = ft.Column(
         controls=[
             ft.Container(
-                width=980, padding=15, border_radius=12,
+                width=None, padding=15, border_radius=12,
                 bgcolor="#152030",
                 content=ft.Column(controls=[
                     ft.Text(
@@ -1327,7 +1428,7 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             build_view, preview_view, fill_view, responses_view,
             status,
         ],
-        width=1010, spacing=15,
+        width=None, spacing=15,
     )
     new_editor()
     update_draft()
