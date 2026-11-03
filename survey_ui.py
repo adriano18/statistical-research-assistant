@@ -1038,6 +1038,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                 controls=[
                     block("2. Questions", [
                         draft_count,
+                        ft.Text("Drag the handle to reorder. Use Move up/down "
+                                "for keyboard access.", size=11, color="#A8B6C9"),
                         ft.Button("+ New question", on_click=new_editor),
                         draft_list,
                     ], width=350),
@@ -1047,12 +1049,26 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
                             controls=[q_key, q_kind], wrap=True, spacing=10
                         ),
                         q_prompt,
-                        q_section,
+                        ft.Row(
+                            controls=[q_section, q_page, q_page_title],
+                            wrap=True, spacing=10,
+                        ),
+                        ft.Text("Group questions by topic and assign consecutive "
+                                "pages, starting with page 1.", size=11,
+                                color="#A8B6C9"),
                         q_options,
                         q_required,
                         ft.Row(
                             controls=[q_scale, q_reverse], wrap=True,
                         ),
+                        ft.Row(
+                            controls=[q_preset, apply_labels_button],
+                            wrap=True, spacing=10,
+                        ),
+                        q_value_labels,
+                        ft.Text("Example: 1 = Очень плохо, 3 = Средне, "
+                                "5 = Очень хорошо. The code stored is still 1–5.",
+                                size=11, color="#A8B6C9"),
                         ft.Row(
                             controls=[q_min_label, q_max_label], wrap=True,
                         ),
@@ -1086,8 +1102,8 @@ def build_survey_workspace(page, load_dataframe, root: str | Path):
             ),
             block("4. Finish the draft", [
                 ft.Text(
-                    "Preview the form before publishing. Saved definitions "
-                    "cannot be edited in place; use Clone to revise.",
+                    "Preview pages and respondent-visible answer labels before "
+                    "publishing. Saved definitions stay immutable; Clone to revise.",
                     size=12, color="#A8B6C9",
                 ),
                 ft.Row(controls=[
