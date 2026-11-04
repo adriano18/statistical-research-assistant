@@ -340,6 +340,7 @@ def _template_questions(template: str) -> list[dict]:
 def build_survey_workspace(
     page, load_dataframe, root: str | Path, *,
     language_getter=None, translate_view=None,
+    on_dataset_loaded=None,
 ):
     """Researcher workspace; UI language never alters published survey data."""
     def language():
@@ -1308,11 +1309,20 @@ def build_survey_workspace(
             frame = await asyncio.to_thread(responses_dataframe, root, sid)
             if frame.empty:
                 raise ValueError("No submitted responses to analyze.")
-            await load_dataframe(frame)
+            loaded = await load_dataframe(frame)
+            if loaded is not True:
+                raise ValueError(
+                    "Dataset did not accept the questionnaire responses. "
+                    "The previous dataset remains active; check the import status."
+                )
             response_status.value = (
                 f"Loaded {len(frame)} local responses into Dataset. "
                 "Raw scale answers are not reverse-scored automatically."
             )
+            if on_dataset_loaded is not None:
+                # Only navigate after confirmation that the dataset was
+                # actually accepted; never leave Survey on a failed import.
+                on_dataset_loaded()
         except Exception as err:
             response_status.value = f"Import error: {err}"
         page.update()
