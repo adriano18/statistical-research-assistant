@@ -102,11 +102,15 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(len(buttons), 17)
 
         workspace = root.controls[1].content
-        self.assertFalse(workspace.controls[0].visible)
-        self.assertFalse(workspace.controls[1].visible)  # Compact language hidden
-        self.assertFalse(workspace.controls[2].visible)  # No dataset banner on Home
-        self.assertFalse(workspace.controls[3].visible)  # No export on Home
-        screens = workspace.controls[4].controls
+        self.assertIsInstance(workspace.controls[0].content.controls[0],
+                              ft.MenuBar)
+        self.assertFalse(workspace.controls[1].visible)  # Help notice hidden
+        self.assertFalse(workspace.controls[2].visible)  # Compact nav hidden
+        self.assertFalse(workspace.controls[3].visible)  # Compact language hidden
+        self.assertFalse(workspace.controls[4].visible)  # Compact style hidden
+        self.assertFalse(workspace.controls[5].visible)  # Dataset banner on Home
+        self.assertFalse(workspace.controls[6].visible)  # No export on Home
+        screens = workspace.controls[7].controls
         self.assertEqual(len(screens), 17)
         self.assertTrue(screens[0].visible)
         self.assertTrue(all(not screen.visible for screen in screens[1:]))
@@ -114,12 +118,12 @@ class LayoutTests(unittest.TestCase):
     def test_compact_windows_show_dropdown_navigation(self):
         root = self.make_screen(width=800)
         self.assertFalse(root.controls[0].visible)
-        compact = root.controls[1].content.controls[0]
+        compact = root.controls[1].content.controls[2]
         self.assertIsInstance(compact, ft.Dropdown)
         self.assertTrue(compact.visible)
         self.assertEqual(compact.value, "home")
         self.assertEqual(len(compact.options), 17)
-        locale = root.controls[1].content.controls[1]
+        locale = root.controls[1].content.controls[3]
         self.assertIsInstance(locale, ft.Dropdown)
         self.assertTrue(locale.visible)
         self.assertEqual(locale.value, "en")
@@ -161,9 +165,50 @@ class LayoutTests(unittest.TestCase):
         self.assertTrue(all(button.action is pick_action for button in picker_buttons))
         self.assertEqual(len(registered_navigation), 1)
         registered_navigation[0]("dataset")
-        workspace = root.controls[1].content.controls[4].controls
+        workspace = root.controls[1].content.controls[7].controls
         self.assertTrue(workspace[1].visible)
         self.assertFalse(workspace[0].visible)
+
+    def test_desktop_menu_and_style_preset_are_real_controls(self):
+        controls = {name: ft.Text(name) for name in CONTROL_NAMES}
+        actions = {name: (lambda e: None) for name in ACTION_NAMES}
+        selected = []
+        root = build_interface(
+            DummyPage(), controls, actions,
+            on_appearance_change=selected.append,
+        )
+        sidebar = root.controls[0]
+        self.assertEqual(sidebar.width, 288)
+        self.assertEqual(sidebar.border_radius, 0)
+        nav_button = next(c for c in sidebar.content.controls
+                          if isinstance(c, ft.Button))
+        self.assertGreaterEqual(nav_button.height, 44)
+        self.assertGreaterEqual(nav_button.width, 240)
+        dropdowns = [x for x in sidebar.content.controls
+                     if isinstance(x, ft.Dropdown)]
+        self.assertEqual(len(dropdowns), 2)
+        appearance_picker = dropdowns[1]
+        self.assertEqual(appearance_picker.value, "windows")
+        appearance_picker.value = "macos"
+        appearance_picker.on_select(None)
+        self.assertEqual(selected, ["macos"])
+        self.assertEqual(sidebar.border_radius, 10)
+        menu = root.controls[1].content.controls[0].content.controls[0]
+        self.assertIsInstance(menu, ft.MenuBar)
+        titles = [x.content.value for x in menu.controls]
+        self.assertEqual(titles, [
+            "File", "Data", "Analysis", "Reports",
+            "Database", "Settings", "Help",
+        ])
+        # Direct action labels must not be inert decorations.
+        self.assertTrue(all(
+            isinstance(x, ft.SubmenuButton) and x.controls
+            for x in menu.controls
+        ))
+        dropdowns[0].value = "ru"
+        dropdowns[0].on_select(None)
+        self.assertEqual(menu.controls[0].content.value, "Файл")
+        self.assertEqual(menu.controls[4].content.value, "База данных")
 
     def test_default_is_english_and_language_switch_is_live(self):
         controls = {name: ft.Text(name) for name in CONTROL_NAMES}
@@ -187,7 +232,7 @@ class LayoutTests(unittest.TestCase):
         picker.on_select(None)
         self.assertEqual(changed, ["ru", "lv"])
         self.assertIn("Sākums", home_button.content.value)
-        self.assertEqual(root.controls[1].content.controls[0].value, "home")
+        self.assertEqual(root.controls[1].content.controls[2].value, "home")
 
 
 if __name__ == "__main__":
