@@ -7,17 +7,36 @@ existing controls are reused, so switching screens preserves user selections.
 import flet as ft
 from localization import LANGUAGES, tr
 from statistical_guide import GUIDE_LABELS, method_guide_items
+from desktop_shell_text import shell_label
+from desktop_button_style import style_buttons
 
 
 def build_interface(
     page: ft.Page, controls: dict, actions: dict, *,
     language: str = "en", on_language_change=None,
+    appearance: str = "windows", on_appearance_change=None,
 ):
     """Create a navigation shell. English is the fresh-install default."""
     c = controls
     a = actions
     language = language if language in LANGUAGES else "en"
     translated_controls = []
+    appearance = appearance if appearance in {"windows", "macos"} else "windows"
+    cornered = []
+    nav_groups = []
+    menu_texts = []
+    shell_root = None
+
+    def corner_radius():
+        return 10 if appearance == "macos" else 0
+
+    def square_button_style(*, active=False):
+        return ft.ButtonStyle(
+            shape=ft.RoundedRectangleBorder(radius=corner_radius()),
+            bgcolor="#E5EFFC" if active else "#FFFFFF",
+            color="#164C96" if active else "#283C58",
+            elevation=0,
+        )
 
     def localized_text(value="", *args, **kwargs):
         translated = tr(language, value) if isinstance(value, str) else value
@@ -36,9 +55,9 @@ def build_interface(
         )
 
     def panel(title, content):
-        return ft.Container(
+        container = ft.Container(
             bgcolor="#FFFFFF",
-            border_radius=16,
+            border_radius=corner_radius(),
             border=ft.Border.all(1, "#E1E7F1"),
             padding=20,
             content=ft.Column(
@@ -49,13 +68,15 @@ def build_interface(
                 spacing=13,
             ),
         )
+        cornered.append(container)
+        return container
 
     def start_card(title, description, action, action_label, icon):
-        return ft.Container(
+        container = ft.Container(
             col={"xs": 12, "md": 6, "lg": 4},
             padding=20,
             bgcolor="#FFFFFF",
-            border_radius=16,
+            border_radius=corner_radius(),
             border=ft.Border.all(1, "#DBE4F0"),
             content=ft.Column(
                 controls=[
@@ -64,6 +85,7 @@ def build_interface(
                     localized_text(description, size=13, color="#607087"),
                     ft.Button(
                         content=localized_text(action_label),
+                        style=square_button_style(),
                         **(
                             {"action": action}
                             if isinstance(action, ft.PickFiles)
@@ -74,33 +96,38 @@ def build_interface(
                 spacing=12,
             ),
         )
+        cornered.append(container)
+        return container
 
     async def open_sample_from_home(e):
         await a["load_sample"](e)
         switch_screen("dataset")
 
+    home_banner = ft.Container(
+        padding=24,
+        bgcolor="#EAF1FD",
+        border_radius=corner_radius(),
+        content=ft.Column(
+            controls=[
+                localized_text("YOUR RESEARCH WORKSPACE", size=12,
+                        weight="bold", color="#2755A1"),
+                localized_text("Start with a question. We'll help with the data.",
+                        size=28, weight="bold", color="#172A43"),
+                localized_text(
+                    "Create questionnaires, prepare datasets and run "
+                    "statistical analyses on this computer. Choose a "
+                    "starting point below; no previous SPSS experience is needed.",
+                    size=14, color="#415570",
+                ),
+            ],
+            spacing=9,
+        ),
+    )
+    cornered.append(home_banner)
+
     home_screen = ft.Column(
         controls=[
-            ft.Container(
-                padding=24,
-                bgcolor="#EAF1FD",
-                border_radius=18,
-                content=ft.Column(
-                    controls=[
-                        localized_text("YOUR RESEARCH WORKSPACE", size=12,
-                                weight="bold", color="#2755A1"),
-                        localized_text("Start with a question. We'll help with the data.",
-                                size=28, weight="bold", color="#172A43"),
-                        localized_text(
-                            "Create questionnaires, prepare datasets and run "
-                            "statistical analyses on this computer. Choose a "
-                            "starting point below; no previous SPSS experience is needed.",
-                            size=14, color="#415570",
-                        ),
-                    ],
-                    spacing=9,
-                ),
-            ),
+            home_banner,
             localized_text("What would you like to do?", size=20,
                     weight="bold", color="#172A43"),
             ft.ResponsiveRow(
@@ -1008,10 +1035,7 @@ def build_interface(
                 f"●  {tr(language, labels[name])}" if name == key
                 else f"    {tr(language, labels[name])}"
             )
-            buttons[name].style = ft.ButtonStyle(
-                bgcolor="#EAF1FD" if name == key else "#FFFFFF",
-                color="#1D4FA3" if name == key else "#344B68",
-            )
+            buttons[name].style = square_button_style(active=name == key)
         page.update()
 
     if a.get("register_import_navigation"):
@@ -1024,21 +1048,26 @@ def build_interface(
                 else f"    {tr(language, label)}"
             ),
             on_click=lambda e, section=key: switch_screen(section),
-            width=210,
-            style=ft.ButtonStyle(
-                bgcolor="#EAF1FD" if key == "home" else "#FFFFFF",
-                color="#1D4FA3" if key == "home" else "#344B68",
-            ),
+            width=250, height=44,
+            style=square_button_style(active=key == "home"),
         )
 
     def nav_group(title, keys, *, expanded=False):
-        return ft.ExpansionTile(
+        tile = ft.ExpansionTile(
             title=localized_text(
                 title, weight="bold", size=12, color="#2755A1",
             ),
             expanded=expanded,
+            min_tile_height=42,
+            dense=True,
+            controls_padding=ft.Padding.symmetric(horizontal=4),
+            tile_padding=ft.Padding.symmetric(horizontal=10),
+            shape=ft.RoundedRectangleBorder(radius=corner_radius()),
+            collapsed_shape=ft.RoundedRectangleBorder(radius=corner_radius()),
             controls=[buttons[key] for key in keys],
         )
+        nav_groups.append(tile)
+        return tile
 
     def change_language(value):
         nonlocal language
@@ -1062,12 +1091,44 @@ def build_interface(
         compact_language.value = value
         compact_language.label = tr(language, "Language")
         refresh_statistical_guides()
+        for widget, label_key in menu_texts:
+            widget.value = shell_label(language, label_key)
+        appearance_picker.label = shell_label(language, "style")
+        compact_appearance.label = shell_label(language, "style")
+        appearance_picker.options = [
+            ft.DropdownOption(key=key, text=shell_label(language, label_key))
+            for key, label_key in (("windows", "windows"), ("macos", "macos"))
+        ]
+        compact_appearance.options = [
+            ft.DropdownOption(key=key, text=shell_label(language, label_key))
+            for key, label_key in (("windows", "windows"), ("macos", "macos"))
+        ]
         if on_language_change is not None:
             on_language_change(value)
         page.update()
 
+    def change_appearance(value):
+        nonlocal appearance
+        if value not in {"windows", "macos"}:
+            return
+        appearance = value
+        for control in cornered:
+            control.border_radius = corner_radius()
+        for tile in nav_groups:
+            tile.shape = ft.RoundedRectangleBorder(radius=corner_radius())
+            tile.collapsed_shape = ft.RoundedRectangleBorder(radius=corner_radius())
+        for key, button in buttons.items():
+            button.style = square_button_style(active=screens[key].visible)
+        if shell_root is not None:
+            style_buttons(shell_root, appearance)
+        appearance_picker.value = value
+        compact_appearance.value = value
+        if on_appearance_change is not None:
+            on_appearance_change(value)
+        page.update()
+
     language_picker = ft.Dropdown(
-        label=tr(language, "Language"), width=220,
+        label=tr(language, "Language"), width=252,
         value=language,
         options=[
             ft.DropdownOption(key=code, text=label)
@@ -1085,12 +1146,30 @@ def build_interface(
         on_select=lambda e: change_language(compact_language.value),
     )
 
+    appearance_picker = ft.Dropdown(
+        label=shell_label(language, "style"), width=252, value=appearance,
+        options=[
+            ft.DropdownOption(key=key, text=shell_label(language, key))
+            for key in ("windows", "macos")
+        ],
+        on_select=lambda e: change_appearance(appearance_picker.value),
+    )
+    compact_appearance = ft.Dropdown(
+        label=shell_label(language, "style"), width=208, value=appearance,
+        visible=False,
+        options=[
+            ft.DropdownOption(key=key, text=shell_label(language, key))
+            for key in ("windows", "macos")
+        ],
+        on_select=lambda e: change_appearance(compact_appearance.value),
+    )
+
     sidebar = ft.Container(
-        width=250,
+        width=288,
         bgcolor="#FFFFFF",
         border=ft.Border.all(1, "#E1E7F1"),
-        border_radius=16,
-        padding=12,
+        border_radius=corner_radius(),
+        padding=16,
         content=ft.Column(
             controls=[
                 localized_text("STATISTICAL", size=12, weight="bold", color="#2755A1"),
@@ -1101,6 +1180,7 @@ def build_interface(
                 ft.Divider(color="#E1E7F1"),
                 buttons["home"],
                 language_picker,
+                appearance_picker,
                 nav_group(
                     "DATA & MEASUREMENT",
                     ["dataset", "preparation", "survey", "descriptive",
@@ -1132,6 +1212,8 @@ def build_interface(
         ),
     )
 
+    cornered.append(sidebar)
+
     compact_navigation = ft.Dropdown(
         label=tr(language, "Go to workspace"),
         width=None,
@@ -1146,21 +1228,129 @@ def build_interface(
 
     def resize_navigation(e=None):
         page_width = getattr(page, "width", None) or 1280
-        compact = page_width < 980
+        compact = page_width < 1060
         sidebar.visible = not compact
         compact_navigation.visible = compact
         compact_language.visible = compact
+        compact_appearance.visible = compact
         page.update()
 
     if hasattr(page, "on_resize"):
         page.on_resize = resize_navigation
+
+    def command_text(key):
+        label = ft.Text(shell_label(language, key), size=13)
+        menu_texts.append((label, key))
+        return label
+
+    def item(key, callback):
+        return ft.MenuItemButton(
+            content=command_text(key), on_click=callback,
+        )
+
+    def group(label, entries):
+        return ft.SubmenuButton(
+            content=command_text(label),
+            controls=[item(key, callback) for key, callback in entries],
+        )
+
+    menu_notice_label = ft.Text(
+        "", size=12, selectable=True, color="#3C536F",
+    )
+    menu_notice = ft.Container(
+        visible=False, bgcolor="#EBF1FA", border_radius=corner_radius(),
+        padding=12, content=menu_notice_label,
+    )
+    cornered.append(menu_notice)
+
+    def explain(key):
+        menu_notice_label.value = shell_label(language, key)
+        menu_notice.visible = True
+        page.update()
+
+    def navigate_and_open(section, registered_action):
+        switch_screen(section)
+        if registered_action in a:
+            a[registered_action]()
+
+    def report_wizard(e):
+        # The shared report bar is displayed only on analysis workspaces.
+        current = next(
+            (key for key, screen in screens.items()
+             if screen.visible and key not in {
+                 "home", "dataset", "preparation", "survey",
+             }), None
+        )
+        if current is None:
+            switch_screen("reliability")
+        else:
+            switch_screen(current)
+        if "open_report_wizard" in a:
+            a["open_report_wizard"]()
+            page.update()
+
+    menu = ft.MenuBar(
+        controls=[
+            group("file", [
+                ("open_data", lambda e: switch_screen("dataset")),
+                ("import_questionnaire", lambda e: navigate_and_open(
+                    "survey", "open_survey_import",
+                )),
+                ("new_survey", lambda e: switch_screen("survey")),
+                ("recent", lambda e: switch_screen("dataset")),
+            ]),
+            group("data", [
+                ("recent", lambda e: switch_screen("dataset")),
+                ("prepare", lambda e: switch_screen("preparation")),
+            ]),
+            group("analysis", [
+                ("descriptive", lambda e: switch_screen("descriptive")),
+                ("reliability", lambda e: switch_screen("reliability")),
+                ("factor", lambda e: switch_screen("factor")),
+                ("correlation", lambda e: switch_screen("correlation")),
+                ("regression", lambda e: switch_screen("regression")),
+            ]),
+            group("reports", [
+                ("word", report_wizard),
+                ("method", lambda e: switch_screen("descriptive")),
+            ]),
+            group("database", [
+                ("survey_db", lambda e: navigate_and_open(
+                    "survey", "open_survey_responses",
+                )),
+            ]),
+            group("settings", [
+                ("windows", lambda e: change_appearance("windows")),
+                ("macos", lambda e: change_appearance("macos")),
+            ]),
+            group("ai", [
+                ("ai_status", lambda e: explain("ai_note")),
+                ("method", lambda e: switch_screen("descriptive")),
+            ]),
+            group("help", [
+                ("ai_status", lambda e: explain("ai_note")),
+                ("privacy", lambda e: explain("privacy_note")),
+            ]),
+        ],
+    )
+    menu_frame = ft.Container(
+        padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+        bgcolor="#FFFFFF",
+        border=ft.Border.all(1, "#E1E7F1"),
+        border_radius=corner_radius(),
+        content=ft.Row(
+            controls=[menu],
+            scroll=ft.ScrollMode.AUTO,
+        ),
+    )
+    cornered.append(menu_frame)
 
     # Keep export controls visible while long results scroll independently.
     dataset_header = ft.Container(
         visible=False,
         bgcolor="#FFFFFF",
         border=ft.Border.all(1, "#E1E7F1"),
-        border_radius=12,
+        border_radius=corner_radius(),
         padding=12,
         content=ft.Row(
             controls=[
@@ -1171,11 +1361,15 @@ def build_interface(
             spacing=16,
         ),
     )
+    cornered.append(dataset_header)
     c["output_toolbar"].visible = False
     workspace = ft.Column(
         controls=[
+            menu_frame,
+            menu_notice,
             compact_navigation,
             compact_language,
+            compact_appearance,
             dataset_header,
             c["output_toolbar"],
             ft.Column(
@@ -1189,13 +1383,15 @@ def build_interface(
         expand=True,
     )
 
-    resize_navigation()
-    return ft.Row(
+    shell_root = ft.Row(
         controls=[
             sidebar,
-            ft.Container(content=workspace, expand=True, padding=4),
+            ft.Container(content=workspace, expand=True, padding=8),
         ],
         vertical_alignment=ft.CrossAxisAlignment.STRETCH,
-        spacing=20,
+        spacing=14,
         expand=True,
     )
+    style_buttons(shell_root, appearance)
+    resize_navigation()
+    return shell_root

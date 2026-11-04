@@ -33,6 +33,23 @@ class DesktopPreferencesTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "en, lv or ru"):
                 save_preferences(AppPreferences(language="de"), location)
 
+    def test_windows_default_and_user_selected_mac_style_are_local(self):
+        with TemporaryDirectory() as folder:
+            file = Path(folder) / "appearance.json"
+            initial = load_preferences(file)
+            self.assertEqual(initial.appearance, "windows")
+            save_preferences(
+                AppPreferences(language="lv", appearance="macos"), file
+            )
+            self.assertEqual(load_preferences(file).appearance, "macos")
+            stored = json.loads(file.read_text(encoding="utf-8"))
+            self.assertEqual(stored["appearance"], "macos")
+            stored["appearance"] = "unrecognized-style"
+            file.write_text(json.dumps(stored), encoding="utf-8")
+            self.assertEqual(load_preferences(file).appearance, "windows")
+            with self.assertRaisesRegex(ValueError, "Appearance"):
+                save_preferences(AppPreferences(appearance="other"), file)
+
     def test_recent_files_are_deduplicated_bounded_and_local(self):
         with TemporaryDirectory() as folder:
             location = Path(folder) / "prefs.json"

@@ -8,11 +8,14 @@ researchers can clone a published form into a fresh editable draft.
 import asyncio
 import copy
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import flet as ft
 import pandas as pd
 
 from localization import tr
+from survey_document_import import read_survey_document
+from desktop_button_style import style_buttons
 from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
     submit_response, response_count, responses_dataframe, save_survey_csv,
@@ -168,7 +171,7 @@ def build_numeric_rating_selector(question, on_change=None):
         ft.Container(
             col={"xs": 12, "sm": 6, "xl": 4},
             padding=10,
-            border_radius=10,
+            border_radius=0,
             border=ft.Border.all(1, "#DAE3F0"),
             bgcolor="#F8FAFE",
             content=ft.Radio(
@@ -340,7 +343,8 @@ def _template_questions(template: str) -> list[dict]:
 def build_survey_workspace(
     page, load_dataframe, root: str | Path, *,
     language_getter=None, translate_view=None,
-    on_dataset_loaded=None,
+    on_dataset_loaded=None, register_survey_navigation=None,
+    appearance_getter=None,
 ):
     """Researcher workspace; UI language never alters published survey data."""
     def language():
@@ -348,6 +352,11 @@ def build_survey_workspace(
 
     def ui_label(english):
         return tr(language(), english)
+
+    def corner_radius():
+        return 10 if (
+            appearance_getter and appearance_getter() == "macos"
+        ) else 0
 
     root = Path(root)
     draft: list[dict] = []
@@ -363,7 +372,7 @@ def build_survey_workspace(
         return ft.Container(
             width=width, col=col, padding=16, bgcolor="#FFFFFF",
             border=ft.Border.all(1, "#E1E7F1"),
-            border_radius=14,
+            border_radius=corner_radius(),
             content=ft.Column(
                 controls=[
                     ft.Text(title_text, weight="bold", size=16),
@@ -392,6 +401,139 @@ def build_survey_workspace(
         ),
         width=None, multiline=True,
     )
+    document_import_status = ft.Text(
+        "Import text-based PDF or Word (.docx) questionnaires as a draft. "
+        "Scanned PDFs require OCR elsewhere. Check all questions before publishing.",
+        size=12, color="#5E6D82",
+    )
+    document_import_preview = ft.Column(spacing=5)
+    document_replace_confirm = ft.Checkbox(
+        label="Replace existing unsaved draft questions",
+        value=False,
+    )
+    document_commit_button = ft.Button(
+        "Use extracted questions as editable draft", disabled=True,
+    )
+    extracted_document = None
+
+    async def on_document_picker_result(event):
+        nonlocal extracted_document
+        files = getattr(event, "files", None) or []
+        if not files:
+            document_import_status.value = "Document selection cancelled."
+            page.update()
+            return
+        picked = files[0]
+        filename = Path(str(getattr(picked, "name", "questionnaire.docx"))).name
+        suffix = Path(filename).suffix.lower()
+        extracted_document = None
+        document_commit_button.disabled = True
+        document_import_preview.controls = []
+        try:
+            if suffix not in {".docx", ".pdf"}:
+                raise ValueError("Choose a .docx or .pdf document.")
+            if getattr(picked, "path", None):
+                parsed = await asyncio.to_thread(
+                    read_survey_document, picked.path,
+                )
+            else:
+                data = getattr(picked, "bytes", None)
+                if not isinstance(data, bytes) or len(data) > 20_000_000:
+                    raise ValueError(
+                        "No readable file bytes (or over 20 MB). "
+                        "Use the desktop application for local-only import."
+                    )
+                with TemporaryDirectory(prefix="questionnaire-draft-") as tmp:
+                    path = Path(tmp) / filename
+                    path.write_bytes(data)
+                    parsed = await asyncio.to_thread(
+                        read_survey_document, path,
+                    )
+            extracted_document = parsed
+            document_import_status.value = (
+                f"Read {len(parsed.questions)} candidate question(s) from "
+                f"{filename}. They are NOT published or validated."
+            )
+            document_import_preview.controls = [
+                ft.Text(f"{i}. {q['prompt']} [{q['kind']}]",
+                        selectable=True, size=12)
+                for i, q in enumerate(parsed.questions[:20], 1)
+            ] + [
+                ft.Text(note, size=11, color="#936022")
+                for note in parsed.notes
+            ]
+            if len(parsed.questions) > 20:
+                document_import_preview.controls.append(
+                    ft.Text(f"… plus {len(parsed.questions)-20} more questions")
+                )
+            document_commit_button.disabled = False
+        except Exception as error:
+            document_import_status.value = f"Document import failed: {error}"
+        page.update()
+
+    document_picker = ft.FilePicker(on_result=on_document_picker_result)
+    page.services.append(document_picker)
+    document_action = ft.PickFiles(
+        document_picker,
+        allow_multiple=False,
+        file_type=ft.FilePickerFileType.CUSTOM,
+        allowed_extensions=["docx", "pdf"],
+        with_data=bool(getattr(page, "web", False)),
+    )
+
+    def commit_document_draft(e=None):
+        if extracted_document is None:
+            document_import_status.value = "Select and review a document first."
+            page.update()
+            return
+        if draft and not document_replace_confirm.value:
+            document_import_status.value = (
+                "Your current draft has unsaved questions. Check the replace "
+                "confirmation to overwrite that draft. Published surveys are untouched."
+            )
+            page.update()
+            return
+        try:
+            # Imported documents never write to SQLite automatically.
+            draft[:] = validate_questions(
+                [copy.deepcopy(q) for q in extracted_document.questions]
+            )
+            title.value = Path(extracted_document.source_name).stem[:120]
+            new_editor()
+            update_draft()
+            document_import_status.value = (
+                f"Imported {len(draft)} editable questions. "
+                "Review each question, options and scoring before publishing."
+            )
+            document_commit_button.disabled = True
+            document_replace_confirm.value = False
+            page.update()
+        except Exception as error:
+            document_import_status.value = f"Cannot use draft: {error}"
+            page.update()
+
+    document_commit_button.on_click = commit_document_draft
+
+    document_import_tile = ft.ExpansionTile(
+        title=ft.Text("Import questionnaire from Word / PDF"),
+        expanded=False,
+        controls=[
+            ft.Text(
+                "Local text extraction only; a scanned PDF needs OCR. "
+                "Document structure, scoring and consent require "
+                "researcher review before publishing.",
+                size=12,
+            ),
+            ft.Button(
+                "Choose Word / PDF questionnaire", action=document_action,
+            ),
+            document_import_status,
+            document_import_preview,
+            document_replace_confirm,
+            document_commit_button,
+        ],
+    )
+
     template = ft.Dropdown(
         label="Starting template", width=270, value="psychology",
         options=[
@@ -667,7 +809,7 @@ def build_survey_workspace(
             section_drag_list.controls.append(
                 ft.Container(
                     key="section_" + block_items[0]["key"],
-                    padding=9, border_radius=8, bgcolor="#F5F8FD",
+                    padding=9, border_radius=corner_radius(), bgcolor="#F5F8FD",
                     content=ft.Column(controls=[
                         ft.Text(
                             f"{section_name} · {len(block_items)} question(s)",
@@ -718,7 +860,7 @@ def build_survey_workspace(
                     key=f"draft_{q['key']}",
                     bgcolor="#E7EFFD" if current else "#F5F8FD",
                     border=ft.Border.all(1, "#DAE3F0"),
-                    border_radius=10, padding=10,
+                    border_radius=corner_radius(), padding=10,
                     content=ft.Column(
                         controls=[
                             *(
@@ -739,6 +881,9 @@ def build_survey_workspace(
             )
             previous_page = page_num
         update_section_list()
+        style_buttons(draft_list, (
+            appearance_getter() if appearance_getter else "windows"
+        ))
         page.update()
 
     def on_question_reorder(e):
@@ -1083,7 +1228,7 @@ def build_survey_workspace(
                 field_controls = [field]
 
             container = ft.Container(
-                padding=16, border_radius=12, bgcolor="#FFFFFF",
+                padding=16, border_radius=corner_radius(), bgcolor="#FFFFFF",
                 border=ft.Border.all(1, "#DDE6F1"),
                 content=ft.Column(
                     controls=[
@@ -1112,6 +1257,9 @@ def build_survey_workspace(
         # trigger "Frozen controls cannot be updated" in Flet 1.x.
         update_visibility(refresh=False)
         render_current_page(refresh=False)
+        style_buttons(body, (
+            appearance_getter() if appearance_getter else "windows"
+        ))
         return body
 
     def show_preview(e=None):
@@ -1371,6 +1519,7 @@ def build_survey_workspace(
                     ],
                     wrap=True, spacing=12,
                 ),
+                document_import_tile,
             ]),
             ft.ResponsiveRow(
                 columns=12, spacing=12, run_spacing=12,
@@ -1575,7 +1724,7 @@ def build_survey_workspace(
     view = ft.Column(
         controls=[
             ft.Container(
-                width=None, padding=15, border_radius=12,
+                width=None, padding=15, border_radius=corner_radius(),
                 bgcolor="#EDF3FF",
                 content=ft.Column(controls=[
                     ft.Text(
@@ -1604,6 +1753,15 @@ def build_survey_workspace(
     update_draft()
     refresh_saved()
     select_view("build")
+    if register_survey_navigation is not None:
+        def open_document_import():
+            document_import_tile.expanded = True
+            select_view("build")
+
+        register_survey_navigation({
+            "import": open_document_import,
+            "responses": lambda: select_view("responses"),
+        })
     if translate_view is not None:
         translate_view(view)
     return view

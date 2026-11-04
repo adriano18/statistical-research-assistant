@@ -113,7 +113,14 @@ async def main(page: ft.Page):
         use_material3=True,
     )
     page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
-    preferences = load_preferences()  # Defaults to English on first launch.
+    preferences = load_preferences()  # English / Windows on first launch.
+    if preferences.appearance == "macos":
+        page.bgcolor = "#F6F6F8"
+        page.theme = ft.Theme(
+            color_scheme_seed="#2372B9",
+            font_family="Arial",
+            use_material3=True,
+        )
     ui_translator = UITranslator()
 
     # The source file stays on the user's computer; no cloud upload.
@@ -1584,7 +1591,9 @@ async def main(page: ft.Page):
 
     def clear_recent(e=None):
         nonlocal preferences
-        preferences = AppPreferences(preferences.language, ())
+        preferences = AppPreferences(
+            preferences.language, (), preferences.appearance,
+        )
         try:
             save_preferences(preferences)
             recent_picker.value = None
@@ -1596,7 +1605,9 @@ async def main(page: ft.Page):
 
     def store_language(code):
         nonlocal preferences
-        preferences = AppPreferences(code, preferences.recent_files)
+        preferences = AppPreferences(
+            code, preferences.recent_files, preferences.appearance,
+        )
         ui_translator.apply(ui, code)
         interpretation_wizard.update_language()
         refresh_output_buttons()
@@ -1604,6 +1615,25 @@ async def main(page: ft.Page):
             save_preferences(preferences)
         except OSError as error:
             status.value = f"Language changed for this session; save failed: {error}"
+        page.update()
+
+    def store_appearance(style):
+        nonlocal preferences
+        if style not in {"windows", "macos"}:
+            return
+        preferences = AppPreferences(
+            preferences.language, preferences.recent_files, style,
+        )
+        page.bgcolor = "#F6F6F8" if style == "macos" else "#F5F7FC"
+        page.theme = ft.Theme(
+            color_scheme_seed="#2372B9" if style == "macos" else "#2755A1",
+            font_family="Arial" if style == "macos" else "Segoe UI",
+            use_material3=True,
+        )
+        try:
+            save_preferences(preferences)
+        except OSError as error:
+            status.value = f"Appearance changed for this session; save failed: {error}"
         page.update()
 
     recent_picker.on_select = select_recent
@@ -2730,6 +2760,7 @@ async def main(page: ft.Page):
     preparation_panel, reset_preparation = build_preparation_workspace(
         page, load_dataframe=show_file
     )
+    survey_navigation = {}
     survey_panel = build_survey_workspace(
         page, load_dataframe=show_file,
         root=Path(__file__).resolve().parent / "data" / "surveys",
@@ -2741,6 +2772,8 @@ async def main(page: ft.Page):
             navigate_to_dataset("dataset")
             if navigate_to_dataset is not None else None
         ),
+        register_survey_navigation=survey_navigation.update,
+        appearance_getter=lambda: preferences.appearance,
     )
 
     # STEP 6: Present existing actions in separate, easier-to-navigate screens.
@@ -2748,6 +2781,8 @@ async def main(page: ft.Page):
         page,
         language=preferences.language,
         on_language_change=store_language,
+        appearance=preferences.appearance,
+        on_appearance_change=store_appearance,
         controls={
             "status": status,
             "home_import_feedback": home_import_feedback,
@@ -2906,6 +2941,11 @@ async def main(page: ft.Page):
             "choose_file": choose_file,
             "choose_file_action": import_file_action,
             "register_import_navigation": register_import_navigation,
+            "open_survey_import": lambda: survey_navigation["import"](),
+            "open_survey_responses": lambda: survey_navigation["responses"](),
+            "open_report_wizard": lambda: setattr(
+                interpretation_wizard.root, "expanded", True
+            ),
             "set_active_screen": set_active_screen,
             "load_sample": load_sample,
             "load_scale_example": load_scale_example,

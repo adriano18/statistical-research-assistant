@@ -12,12 +12,15 @@ import tempfile
 DEFAULT_LANGUAGE = "en"
 LANGUAGES = {"en", "lv", "ru"}
 MAX_RECENTS = 8
+APPEARANCES = {"windows", "macos"}
+DEFAULT_APPEARANCE = "windows"
 
 
 @dataclass(frozen=True)
 class AppPreferences:
     language: str = DEFAULT_LANGUAGE
     recent_files: tuple[str, ...] = ()
+    appearance: str = DEFAULT_APPEARANCE
 
 
 def preferences_path() -> Path:
@@ -40,7 +43,10 @@ def load_preferences(path: Path | None = None) -> AppPreferences:
             value for value in files[:MAX_RECENTS]
             if isinstance(value, str) and len(value) <= 4096
         )
-        return AppPreferences(language, recent)
+        appearance = raw.get("appearance", DEFAULT_APPEARANCE)
+        if appearance not in APPEARANCES:
+            appearance = DEFAULT_APPEARANCE
+        return AppPreferences(language, recent, appearance)
     except (FileNotFoundError, ValueError, OSError, TypeError):
         return AppPreferences()
 
@@ -50,12 +56,15 @@ def save_preferences(
 ) -> Path:
     if preferences.language not in LANGUAGES:
         raise ValueError("Language must be en, lv or ru.")
+    if preferences.appearance not in APPEARANCES:
+        raise ValueError("Appearance must be windows or macos.")
     destination = path or preferences_path()
     destination.parent.mkdir(parents=True, exist_ok=True)
     # Atomic update protects preferences from abrupt process termination.
     serialized = json.dumps({
         "language": preferences.language,
         "recent_files": list(preferences.recent_files[:MAX_RECENTS]),
+        "appearance": preferences.appearance,
     }, ensure_ascii=False, indent=2)
     temporary = None
     try:
@@ -86,4 +95,7 @@ def remember_file(
     unique = [location] + [
         old for old in preferences.recent_files if old != location
     ]
-    return AppPreferences(preferences.language, tuple(unique[:MAX_RECENTS]))
+    return AppPreferences(
+        preferences.language, tuple(unique[:MAX_RECENTS]),
+        preferences.appearance,
+    )
