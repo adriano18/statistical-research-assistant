@@ -116,10 +116,15 @@ async def main(page: ft.Page):
     ui_translator = UITranslator()
 
     # The source file stays on the user's computer; no cloud upload.
-    picker = ft.FilePicker()
+    async def file_picker_result_event(e):
+        # on_picked_file is defined later in main() before the page is mounted.
+        # Register the callback at service construction to avoid missing
+        # the first native picker event.
+        await on_picked_file(e)
+
+    picker = ft.FilePicker(on_result=file_picker_result_event)
     page.services.append(picker)
-    # The browser must open its file dialog during the original user gesture.
-    # on_result is wired below, after show_file() is defined.
+    # The client action opens the dialog during the original user gesture.
     import_file_action = ft.PickFiles(
         picker,
         allow_multiple=False,
@@ -1642,10 +1647,8 @@ async def main(page: ft.Page):
             status.value = home_import_feedback.value
             page.update()
 
-    # Flet's client gesture dispatches PickFiles and then this result event.
+    # Flet's client gesture dispatches PickFiles and then on_result above.
     # The Python-only chooser remains a fallback for older Flet clients.
-    picker.on_result = on_picked_file
-
     async def choose_file(e):
         try:
             files = await picker.pick_files(
