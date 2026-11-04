@@ -1232,6 +1232,106 @@ def build_interface(
     if hasattr(page, "on_resize"):
         page.on_resize = resize_navigation
 
+    def command_text(key):
+        label = ft.Text(shell_label(language, key), size=13)
+        menu_texts.append((label, key))
+        return label
+
+    def item(key, callback):
+        return ft.MenuItemButton(
+            content=command_text(key), on_click=callback,
+        )
+
+    def group(label, entries):
+        return ft.SubmenuButton(
+            content=command_text(label),
+            controls=[item(key, callback) for key, callback in entries],
+        )
+
+    menu_notice_label = ft.Text(
+        "", size=12, selectable=True, color="#3C536F",
+    )
+    menu_notice = ft.Container(
+        visible=False, bgcolor="#EBF1FA", border_radius=corner_radius(),
+        padding=12, content=menu_notice_label,
+    )
+    cornered.append(menu_notice)
+
+    def explain(key):
+        menu_notice_label.value = shell_label(language, key)
+        menu_notice.visible = True
+        page.update()
+
+    def navigate_and_open(section, registered_action):
+        switch_screen(section)
+        if registered_action in a:
+            a[registered_action]()
+
+    def report_wizard(e):
+        # The shared report bar is displayed only on analysis workspaces.
+        current = next(
+            (key for key, screen in screens.items()
+             if screen.visible and key not in {
+                 "home", "dataset", "preparation", "survey",
+             }), None
+        )
+        if current is None:
+            switch_screen("reliability")
+        else:
+            switch_screen(current)
+
+    menu = ft.MenuBar(
+        controls=[
+            group("file", [
+                ("open_data", lambda e: switch_screen("dataset")),
+                ("import_questionnaire", lambda e: navigate_and_open(
+                    "survey", "open_survey_import",
+                )),
+                ("new_survey", lambda e: switch_screen("survey")),
+                ("recent", lambda e: switch_screen("dataset")),
+            ]),
+            group("data", [
+                ("recent", lambda e: switch_screen("dataset")),
+                ("prepare", lambda e: switch_screen("preparation")),
+            ]),
+            group("analysis", [
+                ("descriptive", lambda e: switch_screen("descriptive")),
+                ("reliability", lambda e: switch_screen("reliability")),
+                ("factor", lambda e: switch_screen("factor")),
+                ("correlation", lambda e: switch_screen("correlation")),
+                ("regression", lambda e: switch_screen("regression")),
+            ]),
+            group("reports", [
+                ("word", report_wizard),
+                ("method", lambda e: switch_screen("descriptive")),
+            ]),
+            group("database", [
+                ("survey_db", lambda e: navigate_and_open(
+                    "survey", "open_survey_responses",
+                )),
+            ]),
+            group("settings", [
+                ("windows", lambda e: change_appearance("windows")),
+                ("macos", lambda e: change_appearance("macos")),
+            ]),
+            group("help", [
+                ("ai_status", lambda e: explain("ai_note")),
+                ("privacy", lambda e: explain("privacy_note")),
+            ]),
+        ],
+    )
+    menu_frame = ft.Container(
+        padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+        bgcolor="#FFFFFF",
+        border=ft.Border.all(1, "#E1E7F1"),
+        border_radius=corner_radius(),
+        content=ft.Row(
+            controls=[menu],
+            scroll=ft.ScrollMode.AUTO,
+        ),
+    )
+    cornered.append(menu_frame)
+
     # Keep export controls visible while long results scroll independently.
     dataset_header = ft.Container(
         visible=False,
@@ -1251,6 +1351,8 @@ def build_interface(
     c["output_toolbar"].visible = False
     workspace = ft.Column(
         controls=[
+            menu_frame,
+            menu_notice,
             compact_navigation,
             compact_language,
             compact_appearance,
