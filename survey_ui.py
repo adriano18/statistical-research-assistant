@@ -15,6 +15,7 @@ import pandas as pd
 
 from localization import tr
 from survey_document_import import read_survey_document
+from desktop_button_style import style_buttons
 from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
     submit_response, response_count, responses_dataframe, save_survey_csv,
@@ -880,6 +881,9 @@ def build_survey_workspace(
             )
             previous_page = page_num
         update_section_list()
+        style_buttons(draft_list, (
+            appearance_getter() if appearance_getter else "windows"
+        ))
         page.update()
 
     def on_question_reorder(e):
@@ -1253,6 +1257,9 @@ def build_survey_workspace(
         # trigger "Frozen controls cannot be updated" in Flet 1.x.
         update_visibility(refresh=False)
         render_current_page(refresh=False)
+        style_buttons(body, (
+            appearance_getter() if appearance_getter else "windows"
+        ))
         return body
 
     def show_preview(e=None):
