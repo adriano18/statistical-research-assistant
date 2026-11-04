@@ -342,7 +342,7 @@ def _template_questions(template: str) -> list[dict]:
 def build_survey_workspace(
     page, load_dataframe, root: str | Path, *,
     language_getter=None, translate_view=None,
-    on_dataset_loaded=None,
+    on_dataset_loaded=None, register_survey_navigation=None,
 ):
     """Researcher workspace; UI language never alters published survey data."""
     def language():
@@ -506,6 +506,26 @@ def build_survey_workspace(
             page.update()
 
     document_commit_button.on_click = commit_document_draft
+
+    document_import_tile = ft.ExpansionTile(
+        title=ft.Text("Import questionnaire from Word / PDF"),
+        expanded=False,
+        controls=[
+            ft.Text(
+                "Local text extraction only; a scanned PDF needs OCR. "
+                "Document structure, scoring and consent require "
+                "researcher review before publishing.",
+                size=12,
+            ),
+            ft.Button(
+                "Choose Word / PDF questionnaire", action=document_action,
+            ),
+            document_import_status,
+            document_import_preview,
+            document_replace_confirm,
+            document_commit_button,
+        ],
+    )
 
     template = ft.Dropdown(
         label="Starting template", width=270, value="psychology",
@@ -1486,25 +1506,7 @@ def build_survey_workspace(
                     ],
                     wrap=True, spacing=12,
                 ),
-                ft.ExpansionTile(
-                    title=ft.Text("Import questionnaire from Word / PDF"),
-                    expanded=False,
-                    controls=[
-                        ft.Text(
-                            "Local text extraction only; a scanned PDF needs OCR. "
-                            "Document structure, scoring and consent require "
-                            "researcher review before publishing.",
-                            size=12,
-                        ),
-                        ft.Button(
-                            "Choose Word / PDF questionnaire", action=document_action,
-                        ),
-                        document_import_status,
-                        document_import_preview,
-                        document_replace_confirm,
-                        document_commit_button,
-                    ],
-                ),
+                document_import_tile,
             ]),
             ft.ResponsiveRow(
                 columns=12, spacing=12, run_spacing=12,
@@ -1738,6 +1740,15 @@ def build_survey_workspace(
     update_draft()
     refresh_saved()
     select_view("build")
+    if register_survey_navigation is not None:
+        def open_document_import():
+            document_import_tile.expanded = True
+            select_view("build")
+
+        register_survey_navigation({
+            "import": open_document_import,
+            "responses": lambda: select_view("responses"),
+        })
     if translate_view is not None:
         translate_view(view)
     return view
