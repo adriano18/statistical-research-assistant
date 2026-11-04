@@ -13,6 +13,14 @@ A Python project for exploring research datasets and, later, selecting and inter
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
 5. **v0.5 Reports and localization** — TXT/PNG export and copying are available across analysis screens; next are structured APA tables, DOCX/PDF, and EN/LV/RU translations.
 
+## Stage 28 — reliable questionnaire → Dataset → statistics → APA Word workflow
+
+The **Load responses into Dataset** action on the Questionnaires → Responses & export tab now checks that the main data loader explicitly accepted the responses. A failed load stays in Questionnaires and displays a diagnostic; a successful load opens **Dataset** automatically. The current dataset banner identifies the real originating questionnaire by title. The origin is stored only as DataFrame metadata—not as a false analytical column or participant response. Existing response identifiers, missing answers and raw Likert ratings are unchanged.
+
+The automated end-to-end integration tests generate fictional data at runtime, not hard-coded production results. One scenario publishes a Marketing / Feedback questionnaire with conditional screening, saves Yes/No submissions into SQLite, verifies that skipped values remain missing, exports CSV plus a JSON codebook and reimports CSV through the actual loader. Another creates a four-item scale with 64 synthetic respondents, exports and imports their raw answers, non-destructively reverse-scores a keyed item, computes real Cronbach α with its confidence interval, renders the calculated plot, and exports an editable APA 7-style Word report. The test checks that the DOCX table matches the computed reliability result. No real participant records or fabricated statistics are included.
+
+The Windows CI now exercises the whole questionnaire-to-report sequence with the actual application dependencies and checks Flet preview regressions. For the remaining native-window and Microsoft Word visual validation, follow the [Windows desktop smoke-test checklist](docs/WINDOWS_SMOKE_TEST.md). Automated Python tests do **not** replace a human test of the actual Windows GUI, scaling, keyboard navigation, native file dialog or Word print layout.
+
 ## File import reliability fix — use real CSV/Excel research files
 
 **The statistical calculations are not hard-coded.** Automated unit tests use small synthetic datasets with known results as fixtures; production calculations always use the currently loaded DataFrame. For an end-to-end regression test, `tests/test_import_workflow.py` generates two different CSV questionnaire exports with the same column names but different participant responses; their calculated Pearson correlations have opposite signs.
