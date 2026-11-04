@@ -126,6 +126,19 @@ def _numbered(line: str, expected: int | None) -> tuple[int, str, bool] | None:
                 return num, text, cells[0].endswith("*")
     match = NUMBERED.match(line)
     if not match:
+        # Historical UCLA scans contain 4 How often... and 17, How
+        # often..., while DLS item labels sometimes use "1.*".
+        alternate = re.match(
+            r"^\s*(\d{1,3})(?:\.\*|,|\s)\s*"
+            r"(How often\b.{5,})$",
+            line, re.I,
+        )
+        if alternate and (
+            expected is None or int(alternate.group(1)) == expected
+        ):
+            return int(alternate.group(1)), alternate.group(2)[:300], (
+                ". *" in line or ".*" in line
+            )
         return None
     raw = match.group(2)
     n = 1 if raw in ("l", "I") and expected == 1 else (
