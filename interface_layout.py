@@ -7,6 +7,7 @@ existing controls are reused, so switching screens preserves user selections.
 import flet as ft
 from localization import LANGUAGES, tr
 from statistical_guide import GUIDE_LABELS, method_guide_items
+from desktop_shell_text import shell_label
 
 
 def build_interface(
@@ -21,6 +22,8 @@ def build_interface(
     translated_controls = []
     appearance = appearance if appearance in {"windows", "macos"} else "windows"
     cornered = []
+    nav_groups = []
+    menu_texts = []
 
     def corner_radius():
         return 10 if appearance == "macos" else 0
@@ -1048,7 +1051,7 @@ def build_interface(
         )
 
     def nav_group(title, keys, *, expanded=False):
-        return ft.ExpansionTile(
+        tile = ft.ExpansionTile(
             title=localized_text(
                 title, weight="bold", size=12, color="#2755A1",
             ),
@@ -1061,6 +1064,8 @@ def build_interface(
             collapsed_shape=ft.RoundedRectangleBorder(radius=corner_radius()),
             controls=[buttons[key] for key in keys],
         )
+        nav_groups.append(tile)
+        return tile
 
     def change_language(value):
         nonlocal language
@@ -1084,8 +1089,38 @@ def build_interface(
         compact_language.value = value
         compact_language.label = tr(language, "Language")
         refresh_statistical_guides()
+        for widget, label_key in menu_texts:
+            widget.value = shell_label(language, label_key)
+        appearance_picker.label = shell_label(language, "style")
+        compact_appearance.label = shell_label(language, "style")
+        appearance_picker.options = [
+            ft.DropdownOption(key=key, text=shell_label(language, label_key))
+            for key, label_key in (("windows", "windows"), ("macos", "macos"))
+        ]
+        compact_appearance.options = [
+            ft.DropdownOption(key=key, text=shell_label(language, label_key))
+            for key, label_key in (("windows", "windows"), ("macos", "macos"))
+        ]
         if on_language_change is not None:
             on_language_change(value)
+        page.update()
+
+    def change_appearance(value):
+        nonlocal appearance
+        if value not in {"windows", "macos"}:
+            return
+        appearance = value
+        for control in cornered:
+            control.border_radius = corner_radius()
+        for tile in nav_groups:
+            tile.shape = ft.RoundedRectangleBorder(radius=corner_radius())
+            tile.collapsed_shape = ft.RoundedRectangleBorder(radius=corner_radius())
+        for key, button in buttons.items():
+            button.style = square_button_style(active=screens[key].visible)
+        appearance_picker.value = value
+        compact_appearance.value = value
+        if on_appearance_change is not None:
+            on_appearance_change(value)
         page.update()
 
     language_picker = ft.Dropdown(
@@ -1107,6 +1142,24 @@ def build_interface(
         on_select=lambda e: change_language(compact_language.value),
     )
 
+    appearance_picker = ft.Dropdown(
+        label=shell_label(language, "style"), width=252, value=appearance,
+        options=[
+            ft.DropdownOption(key=key, text=shell_label(language, key))
+            for key in ("windows", "macos")
+        ],
+        on_select=lambda e: change_appearance(appearance_picker.value),
+    )
+    compact_appearance = ft.Dropdown(
+        label=shell_label(language, "style"), width=208, value=appearance,
+        visible=False,
+        options=[
+            ft.DropdownOption(key=key, text=shell_label(language, key))
+            for key in ("windows", "macos")
+        ],
+        on_select=lambda e: change_appearance(compact_appearance.value),
+    )
+
     sidebar = ft.Container(
         width=288,
         bgcolor="#FFFFFF",
@@ -1123,6 +1176,7 @@ def build_interface(
                 ft.Divider(color="#E1E7F1"),
                 buttons["home"],
                 language_picker,
+                appearance_picker,
                 nav_group(
                     "DATA & MEASUREMENT",
                     ["dataset", "preparation", "survey", "descriptive",
@@ -1172,6 +1226,7 @@ def build_interface(
         sidebar.visible = not compact
         compact_navigation.visible = compact
         compact_language.visible = compact
+        compact_appearance.visible = compact
         page.update()
 
     if hasattr(page, "on_resize"):
@@ -1198,6 +1253,7 @@ def build_interface(
         controls=[
             compact_navigation,
             compact_language,
+            compact_appearance,
             dataset_header,
             c["output_toolbar"],
             ft.Column(
