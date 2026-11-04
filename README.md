@@ -13,6 +13,16 @@ A Python project for exploring research datasets and, later, selecting and inter
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
 5. **v0.5 Reports and localization** — TXT/PNG export and copying are available across analysis screens; next are structured APA tables, DOCX/PDF, and EN/LV/RU translations.
 
+## File import reliability fix — use real CSV/Excel research files
+
+**The statistical calculations are not hard-coded.** Automated unit tests use small synthetic datasets with known results as fixtures; production calculations always use the currently loaded DataFrame. For an end-to-end regression test, `tests/test_import_workflow.py` generates two different CSV questionnaire exports with the same column names but different participant responses; their calculated Pearson correlations have opposite signs.
+
+**Open a file:** Select **Open CSV / Excel** from Home or Dataset. Both buttons now use Flet's client-side `PickFiles` action with one central `on_result` handler, so the native file selector runs as part of the original user gesture and file-selection errors are visible. Supported extensions: CSV, TSV, XLSX, XLSM. On success the app automatically opens **Dataset**, where you see the row count, column names, missingness, variable types and import diagnostics. Cancelling selection never reports a successful import; malformed inputs keep the previous DataFrame.
+
+**Desktop fallback:** If the OS dialog still fails, open **Dataset → Import settings**, paste the absolute path into **Full local file path**, and click **Open file by full path**. The path must point to a file on the computer running the desktop application. Files selected in a browser may have no file path; the app reads up to 25 MB of transferred file bytes via a temporary file and removes it after processing. Re-select the file to change browser import settings; browser uploads are not saved as local recent-file paths. **When running against a remote web server, participant data is transferred to that server**; only the desktop mode is suitable when a study requires strict local-only storage.
+
+**Validation:** Unit tests cover actual CSV/XLSX loading from temporary folders, bytes-only selections, cancellations, unsupported extensions, missing files, failure propagation, both UI button actions, successful Dataset navigation, and recomputing statistics from changed source data. A graphical Windows desktop file-dialog smoke test is still required in addition to GitHub Actions.
+
 ## Stage 26 — interpretation wizard and editable Word reports
 
 Run an analysis, then expand **Interpretation wizard · Editable APA 7 Word report** in the shared **OUTPUT** area. The four steps are: (1) inspect the actually selected method and its rationale, (2) manually review study assumptions, (3) review numerically verified effect sizes, estimates, confidence intervals and p-values, and (4) edit a draft interpretation and export a Word report.
