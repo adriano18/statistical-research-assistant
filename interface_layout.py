@@ -8,6 +8,7 @@ import flet as ft
 from localization import LANGUAGES, tr
 from statistical_guide import GUIDE_LABELS, method_guide_items
 from desktop_shell_text import shell_label
+from desktop_button_style import style_buttons
 
 
 def build_interface(
@@ -24,6 +25,7 @@ def build_interface(
     cornered = []
     nav_groups = []
     menu_texts = []
+    shell_root = None
 
     def corner_radius():
         return 10 if appearance == "macos" else 0
@@ -1117,6 +1119,8 @@ def build_interface(
             tile.collapsed_shape = ft.RoundedRectangleBorder(radius=corner_radius())
         for key, button in buttons.items():
             button.style = square_button_style(active=screens[key].visible)
+        if shell_root is not None:
+            style_buttons(shell_root, appearance)
         appearance_picker.value = value
         compact_appearance.value = value
         if on_appearance_change is not None:
@@ -1379,13 +1383,15 @@ def build_interface(
         expand=True,
     )
 
-    resize_navigation()
-    return ft.Row(
+    shell_root = ft.Row(
         controls=[
             sidebar,
-            ft.Container(content=workspace, expand=True, padding=4),
+            ft.Container(content=workspace, expand=True, padding=8),
         ],
         vertical_alignment=ft.CrossAxisAlignment.STRETCH,
-        spacing=20,
+        spacing=14,
         expand=True,
     )
+    style_buttons(shell_root, appearance)
+    resize_navigation()
+    return shell_root
