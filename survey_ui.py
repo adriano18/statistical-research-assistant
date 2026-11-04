@@ -636,6 +636,12 @@ def build_survey_workspace(
             )
             draft[:] = candidate_draft
             title.value = candidate.title[:120]
+            description.value = (
+                f"Imported draft from {extracted_document.source_name}; "
+                f"candidate method: {candidate.title}. "
+                "Confirm licensing, exact version, wording, scoring and "
+                "translation before using this instrument in research."
+            )[:500]
             new_editor()
             update_draft()
             document_import_status.value = (
