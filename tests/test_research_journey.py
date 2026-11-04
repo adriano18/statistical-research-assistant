@@ -74,7 +74,11 @@ class ResearchJourneyTests(unittest.TestCase):
         )
         metadata = json.loads(book_path.read_text(encoding="utf-8"))
         self.assertEqual(metadata["survey_id"], survey.survey_id)
-        self.assertIn("question", str(metadata).lower() + " question")
+        self.assertEqual(len(metadata["questions"]), 5)
+        self.assertEqual(
+            next(q for q in metadata["questions"] if q["key"] == "experience")["kind"],
+            "likert5",
+        )
         self.assertEqual(diagnostic.source, csv_path.name)
 
     def test_real_scale_answers_to_alpha_and_editable_apa7_docx(self):
