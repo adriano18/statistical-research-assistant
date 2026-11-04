@@ -124,6 +124,47 @@ class LayoutTests(unittest.TestCase):
         self.assertTrue(locale.visible)
         self.assertEqual(locale.value, "en")
 
+    def test_import_buttons_open_picker_during_client_click_and_navigate(self):
+        controls = {name: ft.Text(name) for name in CONTROL_NAMES}
+        controls["home_import_feedback"] = ft.Text("")
+        actions = {name: (lambda e: None) for name in ACTION_NAMES}
+        service = ft.FilePicker()
+        pick_action = ft.PickFiles(
+            service, allow_multiple=False,
+            file_type=ft.FilePickerFileType.CUSTOM,
+            allowed_extensions=["csv", "tsv", "xlsx", "xlsm"],
+        )
+        registered_navigation = []
+        actions["choose_file_action"] = pick_action
+        actions["register_import_navigation"] = registered_navigation.append
+        root = build_interface(DummyPage(), controls, actions)
+
+        seen = set()
+        picker_buttons = []
+        def walk(control):
+            if control is None or id(control) in seen:
+                return
+            seen.add(id(control))
+            if isinstance(control, ft.Button) and isinstance(
+                getattr(control, "action", None), ft.PickFiles
+            ):
+                picker_buttons.append(control)
+            for field in ("controls", "content", "title"):
+                value = getattr(control, field, None)
+                if isinstance(value, (list, tuple)):
+                    for child in value:
+                        walk(child)
+                else:
+                    walk(value)
+        walk(root)
+        self.assertEqual(len(picker_buttons), 2)
+        self.assertTrue(all(button.action is pick_action for button in picker_buttons))
+        self.assertEqual(len(registered_navigation), 1)
+        registered_navigation[0]("dataset")
+        workspace = root.controls[1].content.controls[4].controls
+        self.assertTrue(workspace[1].visible)
+        self.assertFalse(workspace[0].visible)
+
     def test_default_is_english_and_language_switch_is_live(self):
         controls = {name: ft.Text(name) for name in CONTROL_NAMES}
         actions = {name: (lambda e: None) for name in ACTION_NAMES}
