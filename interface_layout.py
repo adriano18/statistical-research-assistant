@@ -1208,6 +1208,8 @@ def build_interface(
         ),
     )
 
+    cornered.append(sidebar)
+
     compact_navigation = ft.Dropdown(
         label=tr(language, "Go to workspace"),
         width=None,
@@ -1348,6 +1350,7 @@ def build_interface(
             spacing=16,
         ),
     )
+    cornered.append(dataset_header)
     c["output_toolbar"].visible = False
     workspace = ft.Column(
         controls=[
