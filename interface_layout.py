@@ -1281,6 +1281,9 @@ def build_interface(
             switch_screen("reliability")
         else:
             switch_screen(current)
+        if "open_report_wizard" in a:
+            a["open_report_wizard"]()
+            page.update()
 
     menu = ft.MenuBar(
         controls=[
@@ -1315,6 +1318,10 @@ def build_interface(
             group("settings", [
                 ("windows", lambda e: change_appearance("windows")),
                 ("macos", lambda e: change_appearance("macos")),
+            ]),
+            group("ai", [
+                ("ai_status", lambda e: explain("ai_note")),
+                ("method", lambda e: switch_screen("descriptive")),
             ]),
             group("help", [
                 ("ai_status", lambda e: explain("ai_note")),
