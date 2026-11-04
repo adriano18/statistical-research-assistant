@@ -71,3 +71,7 @@ jobs:
         run: python -m unittest discover -s tests -p "test_survey_dataset_navigation.py" -v
       - name: Test Flet respondent preview navigation and Russian labels
         run: python -m unittest discover -s tests -p "test_survey_preview_ui.py" -v
+      - name: Test scientific questionnaire versions and scoring approvals
+        run: python -m unittest discover -s tests -p "test_scientific_survey_import.py" -v
+      - name: Test scientific Word/PDF draft review on Windows
+        run: python -m unittest discover -s tests -p "test_survey_document_import_ui.py" -v
