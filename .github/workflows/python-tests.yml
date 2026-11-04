@@ -75,3 +75,7 @@ jobs:
         run: python -m unittest discover -s tests -p "test_scientific_survey_import.py" -v
       - name: Test scientific Word/PDF draft review on Windows
         run: python -m unittest discover -s tests -p "test_survey_document_import_ui.py" -v
+      - name: Test local PDFium page rendering and OCR review logic
+        run: python -m unittest discover -s tests -p "test_visual_survey_review.py" -v
+      - name: Test visual Word/PDF Flet import, editing and scanned PDF recovery
+        run: python -m unittest discover -s tests -p "test_visual_survey_import_ui.py" -v
