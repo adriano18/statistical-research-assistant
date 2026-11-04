@@ -12,6 +12,7 @@ from data_loader import (
     variable_overview, ImportOptions,
 )
 from import_workflow import import_picked_files, SUPPORTED_EXTENSIONS
+from import_layout import manual_file_path_field, manual_file_path_row
 from app_preferences import (
     AppPreferences, load_preferences, save_preferences, remember_file,
 )
@@ -140,11 +141,7 @@ async def main(page: ft.Page):
     home_import_feedback = ft.Text(
         "", size=12, selectable=True, color="#9B4C32",
     )
-    local_import_path = ft.TextField(
-        label="Full local file path (fallback if dialog does not open)",
-        hint_text=r"C:\Users\you\Documents\research.xlsx",
-        width=510, height=52,
-    )
+    local_import_path = manual_file_path_field()
     open_local_path_button = ft.Button("Open file by full path")
     import_header_row = ft.TextField(
         label="Header row (1-based)", value="1", width=175,
@@ -234,10 +231,8 @@ async def main(page: ft.Page):
                 "path of your CSV/Excel file and open it directly.",
                 size=12, color="#526581",
             ),
-            ft.Row(
-                controls=[local_import_path, open_local_path_button],
-                wrap=True, spacing=10,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            manual_file_path_row(
+                local_import_path, open_local_path_button,
             ),
         ],
         spacing=10,
