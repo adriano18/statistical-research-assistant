@@ -88,9 +88,18 @@ class DocumentDraftUIRegressionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(commit.disabled)
         await self._import()
         self.assertFalse(commit.disabled)
-        self.assertTrue(any("Read 2 candidate question" in x
+        self.assertTrue(any("2 candidate questions" in x
                             for x in self._status()))
         self.assertEqual(list_surveys(self.path), [])
+        commit.on_click(None)
+        self.assertTrue(any("scientific review confirmation" in x
+                            for x in self._status()))
+        reviewed = next(
+            node for node in descendants(self.view)
+            if isinstance(node, ft.Checkbox)
+            and node.label.startswith("I verified the instrument version")
+        )
+        reviewed.value = True
         commit.on_click(None)
         self.assertTrue(any("Imported 2 editable questions" in x
                             for x in self._status()))
@@ -101,6 +110,12 @@ class DocumentDraftUIRegressionTests(unittest.IsolatedAsyncioTestCase):
         load_template = button(self.view, "Load template")
         load_template.on_click(None)
         await self._import()
+        reviewed = next(
+            node for node in descendants(self.view)
+            if isinstance(node, ft.Checkbox)
+            and node.label.startswith("I verified the instrument version")
+        )
+        reviewed.value = True
         commit = button(self.view, "Use extracted questions as editable draft")
         commit.on_click(None)
         self.assertTrue(any("unsaved questions" in x for x in self._status()))

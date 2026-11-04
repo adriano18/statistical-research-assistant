@@ -6,6 +6,24 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 **Next development sequence**: independently validate advanced psychometric estimates → polish stage-23 light desktop onboarding and respondent-scale UX → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX, packaging and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
+## Stage 30 — scientific questionnaire import and scoring review
+
+- [x] Isolate multiple UCLA-type instrument versions inside a multi-scale PDF booklet
+- [x] Parse DOCX text/tables, text-layer PDF and optional local antiword DOC
+- [x] Recognize common numbered rows, Yes/No columns, frequency anchors, simple answer options, headings and source excerpts
+- [x] Detect bibliography-only text on image-backed PDF pages; refuse to fabricate questionnaire items
+- [x] Ask researchers to select ONE instrument/version and review original/source lines beside proposed questions
+- [x] Require explicit consent to use extracted draft, with independent approvals for numeric codes and reverse-key flags
+- [x] Protect existing unsaved drafts with replacement confirmation; never overwrite published forms or response records
+- [x] Keep source filename/version provenance and unvalidated scientific warnings visible in drafts
+- [x] Add synthetic regressions for structures modeled on PSS-10, UCLA short/multiple versions, ISMA Stress, PSQ image table and legacy DOC conditional survey
+- [x] Add offline audit CLI for privately held source files, without uploading their question text or checking it into Git
+- [ ] Verify all six user-provided original documents in target Windows desktop environment using private local audit and manual page-by-page checklist
+- [ ] Add offline OCR for scans/image-only PSQ with source-pixel review and error indicators
+- [ ] Capture complex Word/PDF rating matrices and row/column semantics robustly
+- [ ] Add reviewed, version-specific composite scoring recipes, missingness rules, scholarly source/permissions registry and reproducible score provenance
+- [ ] Build full GUI preview with actual rendered document page (currently extracted text snippets only)
+
 ## Stage 29 — Windows/macOS-inspired desktop shell and Word/PDF questionnaire drafts
 
 - [x] Treat WindowsX and macOS UI kits as **visual reference material**, not copied executable controls or redistributable font assets

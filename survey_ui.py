@@ -14,7 +14,7 @@ import flet as ft
 import pandas as pd
 
 from localization import tr
-from survey_document_import import read_survey_document
+from scientific_survey_import import read_scientific_document, reviewed_draft
 from desktop_button_style import style_buttons
 from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
@@ -401,12 +401,29 @@ def build_survey_workspace(
         ),
         width=None, multiline=True,
     )
+    # Scientific import is a *review* step, not a one-click publication.
     document_import_status = ft.Text(
-        "Import text-based PDF or Word (.docx) questionnaires as a draft. "
-        "Scanned PDFs require OCR elsewhere. Check all questions before publishing.",
-        size=12, color="#5E6D82",
+        "Select a text-based PDF, Word DOCX, or legacy DOC (requires "
+        "antiword). Choose one instrument/version and verify its source.",
+        size=12, color="#5E6D82", selectable=True,
     )
-    document_import_preview = ft.Column(spacing=5)
+    document_import_preview = ft.Column(spacing=8)
+    document_instrument = ft.Dropdown(
+        label="Extracted instrument / version", width=520, options=[],
+    )
+    document_review_confirm = ft.Checkbox(
+        label="I verified the instrument version, wording, permissions "
+              "and extracted question list against the source",
+        value=False,
+    )
+    document_numeric_confirm = ft.Checkbox(
+        label="Use proposed numeric response codes (reviewed by researcher)",
+        value=False,
+    )
+    document_reverse_confirm = ft.Checkbox(
+        label="Also apply proposed reverse-key flags (reviewed by researcher)",
+        value=False,
+    )
     document_replace_confirm = ft.Checkbox(
         label="Replace existing unsaved draft questions",
         value=False,
@@ -416,6 +433,104 @@ def build_survey_workspace(
     )
     extracted_document = None
 
+    def selected_instrument():
+        if extracted_document is None or not document_instrument.value:
+            return None
+        index = int(document_instrument.value)
+        if not 0 <= index < len(extracted_document.instruments):
+            return None
+        return extracted_document.instruments[index]
+
+    def refresh_document_review(event=None):
+        candidate = selected_instrument()
+        document_import_preview.controls = []
+        document_commit_button.disabled = candidate is None
+        if candidate is None:
+            page.update()
+            return
+        document_review_confirm.value = False
+        document_numeric_confirm.value = False
+        document_reverse_confirm.value = False
+        sources = ft.Column(
+            controls=[
+                ft.Text("SOURCE · original extracted lines",
+                        weight="bold", size=13),
+                *[
+                    ft.Text(
+                        f"p. {item.page} · {item.excerpt}",
+                        size=12, selectable=True,
+                    )
+                    for item in candidate.questions[:25]
+                ],
+            ],
+            spacing=7, scroll=ft.ScrollMode.AUTO,
+            height=330,
+        )
+        proposals = ft.Column(
+            controls=[
+                ft.Text("DRAFT · editable response questions",
+                        weight="bold", size=13),
+                *[
+                    ft.Text(
+                        f"{item.number}. {item.question['prompt']}"
+                        f"  [{item.question['kind']}]"
+                        + (" · check wording" if item.confidence == "low"
+                           else ""),
+                        size=12, selectable=True,
+                    )
+                    for item in candidate.questions[:25]
+                ],
+            ],
+            spacing=7, scroll=ft.ScrollMode.AUTO,
+            height=330,
+        )
+        warnings = [
+            *extracted_document.warnings, *candidate.warnings,
+            *candidate.scoring.warnings,
+        ]
+        if len(candidate.questions) > 25:
+            warnings.append(
+                f"Preview shows 25 of {len(candidate.questions)}. "
+                "Inspect every item in the draft editor before publishing."
+            )
+        document_import_preview.controls = [
+            ft.Row(
+                controls=[
+                    ft.Container(
+                        width=360, padding=12, border=ft.Border.all(1, "#D7E1EE"),
+                        content=sources,
+                    ),
+                    ft.Container(
+                        width=440, padding=12, border=ft.Border.all(1, "#D7E1EE"),
+                        content=proposals,
+                    ),
+                ], wrap=True, spacing=10,
+            ),
+            ft.Text(
+                f"Proposed score codes: "
+                f"{dict(candidate.scoring.code_labels) or 'not detected'}",
+                size=12, selectable=True,
+            ),
+            ft.Text(
+                f"Proposed reverse items: "
+                f"{', '.join(map(str, candidate.scoring.reverse_numbers)) or 'none'}"
+                " — not applied unless individually approved",
+                size=12, selectable=True,
+            ),
+            *[
+                ft.Text("Review: " + warning,
+                        size=11, selectable=True, color="#936022")
+                for warning in warnings
+            ],
+        ]
+        document_import_status.value = (
+            f"Selected: {candidate.title} · {len(candidate.questions)} "
+            "candidate question(s); no data saved or published."
+        )
+        page.update()
+
+    document_instrument.on_select = refresh_document_review
+
     async def on_document_picker_result(event):
         nonlocal extracted_document
         files = getattr(event, "files", None) or []
@@ -424,51 +539,56 @@ def build_survey_workspace(
             page.update()
             return
         picked = files[0]
-        filename = Path(str(getattr(picked, "name", "questionnaire.docx"))).name
+        filename = Path(
+            str(getattr(picked, "name", "questionnaire.docx"))
+        ).name
         suffix = Path(filename).suffix.lower()
         extracted_document = None
         document_commit_button.disabled = True
         document_import_preview.controls = []
+        document_instrument.options = []
+        document_instrument.value = None
+        document_review_confirm.value = False
         try:
-            if suffix not in {".docx", ".pdf"}:
-                raise ValueError("Choose a .docx or .pdf document.")
+            if suffix not in {".docx", ".doc", ".pdf"}:
+                raise ValueError("Choose a .docx, .doc or .pdf document.")
             if getattr(picked, "path", None):
                 parsed = await asyncio.to_thread(
-                    read_survey_document, picked.path,
+                    read_scientific_document, picked.path,
                 )
             else:
                 data = getattr(picked, "bytes", None)
                 if not isinstance(data, bytes) or len(data) > 20_000_000:
                     raise ValueError(
-                        "No readable file bytes (or over 20 MB). "
+                        "No readable file bytes or file over 20 MB. "
                         "Use the desktop application for local-only import."
                     )
-                with TemporaryDirectory(prefix="questionnaire-draft-") as tmp:
+                with TemporaryDirectory(prefix="scientific-review-") as tmp:
                     path = Path(tmp) / filename
                     path.write_bytes(data)
                     parsed = await asyncio.to_thread(
-                        read_survey_document, path,
+                        read_scientific_document, path,
                     )
             extracted_document = parsed
-            document_import_status.value = (
-                f"Read {len(parsed.questions)} candidate question(s) from "
-                f"{filename}. They are NOT published or validated."
-            )
-            document_import_preview.controls = [
-                ft.Text(f"{i}. {q['prompt']} [{q['kind']}]",
-                        selectable=True, size=12)
-                for i, q in enumerate(parsed.questions[:20], 1)
-            ] + [
-                ft.Text(note, size=11, color="#936022")
-                for note in parsed.notes
-            ]
-            if len(parsed.questions) > 20:
-                document_import_preview.controls.append(
-                    ft.Text(f"… plus {len(parsed.questions)-20} more questions")
+            document_instrument.options = [
+                ft.DropdownOption(
+                    key=str(index),
+                    text=f"{item.title} ({len(item.questions)} items)",
                 )
-            document_commit_button.disabled = False
+                for index, item in enumerate(parsed.instruments)
+            ]
+            document_instrument.value = "0"
+            refresh_document_review()
+            document_import_status.value = (
+                f"Read {len(parsed.instruments)} instrument(s), "
+                f"{sum(len(x.questions) for x in parsed.instruments)} "
+                f"candidate questions from {filename}. "
+                "Choose a version, inspect source and confirm before using."
+            )
         except Exception as error:
-            document_import_status.value = f"Document import failed: {error}"
+            document_import_status.value = (
+                f"Document import failed: {error}"
+            )
         page.update()
 
     document_picker = ft.FilePicker(on_result=on_document_picker_result)
@@ -477,58 +597,88 @@ def build_survey_workspace(
         document_picker,
         allow_multiple=False,
         file_type=ft.FilePickerFileType.CUSTOM,
-        allowed_extensions=["docx", "pdf"],
+        allowed_extensions=["docx", "doc", "pdf"],
         with_data=bool(getattr(page, "web", False)),
     )
 
     def commit_document_draft(e=None):
-        if extracted_document is None:
-            document_import_status.value = "Select and review a document first."
+        candidate = selected_instrument()
+        if candidate is None:
+            document_import_status.value = "Choose an instrument first."
+            page.update()
+            return
+        if not document_review_confirm.value:
+            document_import_status.value = (
+                "Review the original, version and permissions, then "
+                "check the scientific review confirmation."
+            )
+            page.update()
+            return
+        if document_reverse_confirm.value and not document_numeric_confirm.value:
+            document_import_status.value = (
+                "Numeric scoring must be confirmed before reverse coding."
+            )
             page.update()
             return
         if draft and not document_replace_confirm.value:
             document_import_status.value = (
-                "Your current draft has unsaved questions. Check the replace "
-                "confirmation to overwrite that draft. Published surveys are untouched."
+                "Your current draft has unsaved questions. Check the "
+                "replace confirmation to overwrite it. Published surveys "
+                "and responses are not changed."
             )
             page.update()
             return
         try:
-            # Imported documents never write to SQLite automatically.
-            draft[:] = validate_questions(
-                [copy.deepcopy(q) for q in extracted_document.questions]
+            candidate_draft = reviewed_draft(
+                candidate,
+                accept_numeric=bool(document_numeric_confirm.value),
+                accept_reverse=bool(document_reverse_confirm.value),
             )
-            title.value = Path(extracted_document.source_name).stem[:120]
+            draft[:] = candidate_draft
+            title.value = candidate.title[:120]
+            description.value = (
+                f"Imported draft from {extracted_document.source_name}; "
+                f"candidate method: {candidate.title}. "
+                "Confirm licensing, exact version, wording, scoring and "
+                "translation before using this instrument in research."
+            )[:500]
             new_editor()
             update_draft()
             document_import_status.value = (
-                f"Imported {len(draft)} editable questions. "
-                "Review each question, options and scoring before publishing."
+                f"Imported {len(draft)} editable questions from "
+                f"{candidate.title}. Verify scoring, consent, omissions "
+                "and conditional logic before publishing."
             )
             document_commit_button.disabled = True
             document_replace_confirm.value = False
             page.update()
         except Exception as error:
-            document_import_status.value = f"Cannot use draft: {error}"
+            document_import_status.value = (
+                f"Cannot use proposed draft: {error}"
+            )
             page.update()
 
     document_commit_button.on_click = commit_document_draft
 
     document_import_tile = ft.ExpansionTile(
-        title=ft.Text("Import questionnaire from Word / PDF"),
+        title=ft.Text("Scientific importer · Word / PDF questionnaires"),
         expanded=False,
         controls=[
             ft.Text(
-                "Local text extraction only; a scanned PDF needs OCR. "
-                "Document structure, scoring and consent require "
-                "researcher review before publishing.",
+                "Review before use: select ONE instrument/version. "
+                "Pages, excerpts, response codes and reverse items are "
+                "unverified candidate data. Scans need local OCR separately.",
                 size=12,
             ),
             ft.Button(
                 "Choose Word / PDF questionnaire", action=document_action,
             ),
             document_import_status,
+            document_instrument,
             document_import_preview,
+            document_review_confirm,
+            document_numeric_confirm,
+            document_reverse_confirm,
             document_replace_confirm,
             document_commit_button,
         ],
