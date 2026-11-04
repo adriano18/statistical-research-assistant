@@ -968,7 +968,7 @@ def build_survey_workspace(
         back_button = ft.Button("← Previous")
         next_button = ft.Button("Next →")
 
-        def update_visibility(e=None):
+        def update_visibility(e=None, *, refresh=True):
             earlier = {}
             for entry in entries:
                 q = entry["question"]
@@ -977,9 +977,10 @@ def build_survey_workspace(
                 earlier[q["key"]] = (
                     context_value(q, read_widget(entry)) if visible else None
                 )
-            page.update()
+            if refresh:
+                page.update()
 
-        def render_current_page():
+        def render_current_page(*, refresh=True):
             current = state[f"{mode}_page"]
             for number, panel in page_panels.items():
                 panel.visible = number == current
@@ -993,7 +994,8 @@ def build_survey_workspace(
             next_button.visible = current != pages[-1]
             if mode == "fill":
                 fill_submit_button.visible = current == pages[-1]
-            page.update()
+            if refresh:
+                page.update()
 
         def change_page(direction):
             current = state[f"{mode}_page"]
@@ -1104,8 +1106,11 @@ def build_survey_workspace(
             ],
             spacing=12,
         )
-        update_visibility()
-        render_current_page()
+        # Build the complete control tree before asking Flet to repaint.
+        # Updating the Page while these controls are still unmounted can
+        # trigger "Frozen controls cannot be updated" in Flet 1.x.
+        update_visibility(refresh=False)
+        render_current_page(refresh=False)
         return body
 
     def show_preview(e=None):
@@ -1128,9 +1133,12 @@ def build_survey_workspace(
                 preview_note.value = "Create a draft or select a saved questionnaire."
                 preview_form.controls.clear()
                 return
-            preview_form.controls = [
-                make_form(questions, mode="preview")
-            ]
+            form = make_form(questions, mode="preview")
+            if translate_view is not None:
+                # Translate only freshly constructed, unmounted controls.
+                # Never retranslate a previously mounted Flet tree on each tab.
+                translate_view(form)
+            preview_form.controls = [form]
         except Exception as err:
             preview_note.value = f"Cannot preview: {err}"
             preview_form.controls.clear()
@@ -1174,9 +1182,10 @@ def build_survey_workspace(
             )
             fill_title.value = definition.title
             fill_info.value = definition.description
-            fill_form.controls = [
-                make_form(list(definition.questions), mode="fill")
-            ]
+            form = make_form(list(definition.questions), mode="fill")
+            if translate_view is not None:
+                translate_view(form)
+            fill_form.controls = [form]
             fill_status.value = ""
             update_response_table()
         except Exception as err:
@@ -1529,8 +1538,9 @@ def build_survey_workspace(
             show_preview()
         if which == "responses":
             update_response_table()
-        if translate_view is not None:
-            translate_view(view)
+        # The shell was translated when created or on explicit language
+        # change; updating all its mounted controls during every tab switch
+        # is unnecessary and unsafe under Flet 1.x's frozen-control model.
         page.update()
 
     tab_names = {
