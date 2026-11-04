@@ -1309,6 +1309,12 @@ def build_survey_workspace(
             frame = await asyncio.to_thread(responses_dataframe, root, sid)
             if frame.empty:
                 raise ValueError("No submitted responses to analyze.")
+            # Label the dataset in the main app without adding a fake
+            # respondent column or changing any of the numeric answers.
+            definition = await asyncio.to_thread(get_survey, root, sid)
+            frame.attrs["research_source_name"] = (
+                f"Questionnaire: {definition.title}"
+            )
             loaded = await load_dataframe(frame)
             if loaded is not True:
                 raise ValueError(
