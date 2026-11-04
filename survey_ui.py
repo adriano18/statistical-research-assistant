@@ -538,6 +538,185 @@ def build_survey_workspace(
             return None
         return extracted_document.instruments[index]
 
+    def show_editable_question():
+        candidate = selected_instrument()
+        value = document_question_picker.value
+        if candidate is None or value is None:
+            document_editor_panel.visible = False
+            document_edit_save.disabled = True
+            return
+        try:
+            index = int(value)
+            item = candidate.questions[index]
+        except (ValueError, IndexError):
+            document_editor_panel.visible = False
+            return
+        q = item.question
+        document_editor_panel.visible = True
+        document_edit_save.disabled = False
+        document_edit_prompt.value = q["prompt"]
+        document_edit_type.value = q["kind"]
+        document_edit_options.value = "\n".join(q.get("options", []))
+        document_edit_section.value = q.get("section", "")
+        document_edit_required.value = bool(q.get("required", False))
+        document_edit_source.value = (
+            f"Original item {item.number} · page {item.page} · "
+            f"{item.excerpt[:250]}. Corrections update the draft proposal, "
+            "not the original document."
+        )
+        if imported_source_name and Path(imported_source_name).suffix.lower() == ".pdf":
+            document_page_picker.value = str(item.page)
+
+    async def refresh_document_page(event=None):
+        if imported_source_bytes is None or not imported_source_name:
+            return
+        try:
+            number = int(document_page_picker.value or "1")
+            source = imported_source_bytes
+            filename = imported_source_name
+            image_bytes = await asyncio.to_thread(
+                render_document_page, source, filename, number,
+            )
+            document_page_image.src = image_bytes
+            document_page_image.visible = True
+            document_page_status.value = (
+                f"{filename} · preview page {number} · locally rendered. "
+                + (
+                    "Word view reconstructs text/table blocks; original "
+                    "Word pagination is not preserved."
+                    if Path(filename).suffix.lower() in {".doc", ".docx"}
+                    else "Compare every question against this page."
+                )
+            )
+        except Exception as error:
+            document_page_image.visible = False
+            document_page_status.value = f"Cannot render document page: {error}"
+        page.update()
+
+    document_page_picker.on_select = refresh_document_page
+
+    async def on_document_question_select(event):
+        show_editable_question()
+        await refresh_document_page()
+
+    document_question_picker.on_select = on_document_question_select
+
+    def save_document_question(event=None):
+        nonlocal extracted_document
+        candidate = selected_instrument()
+        if candidate is None or document_question_picker.value is None:
+            document_import_status.value = "Choose a question to correct first."
+            page.update()
+            return
+        try:
+            selected_version = int(document_instrument.value)
+            index = int(document_question_picker.value)
+            altered = edit_candidate_question(
+                candidate, index, prompt=document_edit_prompt.value or "",
+                kind=document_edit_type.value or "short_text",
+                options_text=document_edit_options.value or "",
+                section=document_edit_section.value or "",
+                required=bool(document_edit_required.value),
+            )
+            collection = list(extracted_document.instruments)
+            collection[selected_version] = altered
+            extracted_document = replace(
+                extracted_document, instruments=tuple(collection),
+            )
+            refresh_document_review()
+            document_question_picker.value = str(index)
+            show_editable_question()
+            document_import_status.value = (
+                f"Correction saved to question {index+1}. "
+                "Source file unchanged; verify the complete proposal "
+                "before approving the draft."
+            )
+        except (ValueError, IndexError, TypeError) as error:
+            document_import_status.value = f"Correction rejected: {error}"
+        page.update()
+
+    document_edit_save.on_click = save_document_question
+
+    async def run_document_ocr(event=None, *, batch=False):
+        nonlocal extracted_document
+        if not imported_source_bytes or not imported_source_name:
+            document_ocr_status.value = "Import a PDF document first."
+            page.update()
+            return
+        if Path(imported_source_name).suffix.lower() != ".pdf":
+            document_ocr_status.value = (
+                "OCR is available for PDF pages. Word content is reviewed "
+                "through its extracted paragraphs and tables."
+            )
+            page.update()
+            return
+        if bool(getattr(page, "web", False)):
+            document_ocr_status.value = (
+                "Local-only OCR is available in the desktop application. "
+                "Browser mode may send documents to a remote server."
+            )
+            page.update()
+            return
+        if not tesseract_available():
+            document_ocr_status.value = (
+                "Tesseract is missing. Install local Tesseract OCR and "
+                "language packs, restart the program, and retry."
+            )
+            page.update()
+            return
+        try:
+            count = pdf_page_count(imported_source_bytes)
+            target = (
+                list(range(1, min(count, 20) + 1))
+                if batch else [int(document_page_picker.value or "1")]
+            )
+            document_ocr_status.value = (
+                f"Running local OCR on {len(target)} PDF page(s). "
+                "The imported form is not saved or published."
+            )
+            page.update()
+            review = await asyncio.to_thread(
+                ocr_scientific_pdf,
+                imported_source_bytes, imported_source_name,
+                target, document_ocr_language.value or "eng",
+            )
+            extracted_document = review
+            document_instrument.options = [
+                ft.DropdownOption(
+                    key=str(i),
+                    text=f"{instrument.title} ({len(instrument.questions)} items)",
+                )
+                for i, instrument in enumerate(review.instruments)
+            ]
+            document_instrument.value = "0"
+            refresh_document_review()
+            document_ocr_status.value = (
+                f"Local OCR completed for {len(target)} page(s). "
+                "All corrections and scoring approvals were reset. "
+                + (
+                    "Only the first 20 pages were OCR-processed; "
+                    "review remaining pages individually."
+                    if count > 20 and batch else
+                    "Manually verify every recognized question."
+                )
+            )
+            await refresh_document_page()
+        except Exception as error:
+            document_ocr_status.value = (
+                f"OCR did not produce an importable questionnaire: {error}. "
+                "Existing extracted proposals were not changed."
+            )
+            page.update()
+
+    async def ocr_current_page(event):
+        await run_document_ocr(event, batch=False)
+
+    async def ocr_first_pages(event):
+        await run_document_ocr(event, batch=True)
+
+    document_ocr_button.on_click = ocr_current_page
+    document_ocr_all_button.on_click = ocr_first_pages
+
     def refresh_document_review(event=None):
         candidate = selected_instrument()
         document_import_preview.controls = []
