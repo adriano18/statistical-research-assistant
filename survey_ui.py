@@ -7,6 +7,7 @@ researchers can clone a published form into a fresh editable draft.
 
 import asyncio
 import copy
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -15,6 +16,10 @@ import pandas as pd
 
 from localization import tr
 from scientific_survey_import import read_scientific_document, reviewed_draft
+from visual_survey_review import (
+    load_document_bytes, render_document_page, pdf_page_count,
+    ocr_scientific_pdf, edit_candidate_question, tesseract_available,
+)
 from desktop_button_style import style_buttons
 from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
@@ -432,6 +437,98 @@ def build_survey_workspace(
         "Use extracted questions as editable draft", disabled=True,
     )
     extracted_document = None
+    imported_source_bytes = None
+    imported_source_name = None
+    document_page_picker = ft.Dropdown(
+        label="Source page · visual preview", width=240,
+        options=[], disabled=True,
+    )
+    document_page_image = ft.Image(
+        width=490, height=540, visible=False,
+        fit=ft.BoxFit.CONTAIN,
+        semantics_label="Locally rendered source document page",
+    )
+    document_page_status = ft.Text(
+        "Select a source document to preview the page locally.",
+        size=12, selectable=True,
+    )
+    document_ocr_language = ft.Dropdown(
+        label="Local OCR language packs", width=265, value="eng",
+        options=[
+            ft.DropdownOption(key=code, text=description)
+            for code, description in (
+                ("eng", "English"),
+                ("lav", "Latvian"),
+                ("rus", "Russian"),
+                ("eng+lav", "English + Latvian"),
+                ("eng+rus", "English + Russian"),
+                ("lav+rus", "Latvian + Russian"),
+                ("eng+lav+rus", "All three"),
+            )
+        ],
+    )
+    document_ocr_button = ft.Button(
+        "Run local OCR on this PDF page", disabled=True,
+    )
+    document_ocr_all_button = ft.Button(
+        "OCR first 20 PDF pages", disabled=True,
+    )
+    document_ocr_status = ft.Text(
+        "OCR requires a local Tesseract installation with the selected "
+        "language packs. No cloud services are used.",
+        size=12, selectable=True,
+    )
+    document_question_picker = ft.Dropdown(
+        label="Question to review / edit", width=520,
+        options=[], disabled=True,
+    )
+    document_edit_prompt = ft.TextField(
+        label="Correct question wording", width=510,
+        multiline=True, min_lines=2, max_lines=4,
+    )
+    document_edit_type = ft.Dropdown(
+        label="Response type", width=250,
+        options=[
+            ft.DropdownOption(key=key, text=title)
+            for key, title in (
+                ("short_text", "Short text"),
+                ("long_text", "Long text"),
+                ("single_choice", "Single choice"),
+                ("multiple_choice", "Multiple choices"),
+                ("yes_no", "Yes / No"),
+                ("number", "Number"),
+                ("rating_scale", "Numeric rating (proposed codes)"),
+            )
+        ],
+    )
+    document_edit_options = ft.TextField(
+        label="Choice labels · one per line", multiline=True,
+        width=510, min_lines=3, max_lines=6,
+    )
+    document_edit_section = ft.TextField(
+        label="Question section", width=250,
+    )
+    document_edit_required = ft.Checkbox(
+        label="Required answer (verify with source)", value=False,
+    )
+    document_edit_source = ft.Text(
+        "", color="#536781", selectable=True, size=12,
+    )
+    document_edit_save = ft.Button(
+        "Apply correction to extracted question", disabled=True,
+    )
+    document_editor_panel = ft.Column(
+        controls=[
+            document_question_picker, document_edit_source,
+            document_edit_prompt,
+            ft.Row(
+                [document_edit_type, document_edit_section],
+                wrap=True, spacing=12,
+            ),
+            document_edit_options, document_edit_required,
+            document_edit_save,
+        ], spacing=9, visible=False,
+    )
 
     def selected_instrument():
         if extracted_document is None or not document_instrument.value:
