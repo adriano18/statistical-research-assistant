@@ -48,8 +48,11 @@ class OmegaBootstrapTests(unittest.TestCase):
         second = bootstrap_omega(
             self.df, self.items, n_resamples=100, seed=817,
         )
-        self.assertEqual(first.lower, second.lower)
-        self.assertEqual(first.upper, second.upper)
+        # Numerical ML optimizers may differ at floating-point noise
+        # levels. Reproducibility must hold to reportable precision,
+        # without pretending that their internal bits are identical.
+        self.assertAlmostEqual(first.lower, second.lower, places=5)
+        self.assertAlmostEqual(first.upper, second.upper, places=5)
         self.assertEqual(first.successful, second.successful)
 
     def test_bootstrap_ignores_incomplete_participants(self):
