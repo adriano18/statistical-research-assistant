@@ -2943,6 +2943,9 @@ async def main(page: ft.Page):
             "register_import_navigation": register_import_navigation,
             "open_survey_import": lambda: survey_navigation["import"](),
             "open_survey_responses": lambda: survey_navigation["responses"](),
+            "open_report_wizard": lambda: setattr(
+                interpretation_wizard.root, "expanded", True
+            ),
             "set_active_screen": set_active_screen,
             "load_sample": load_sample,
             "load_scale_example": load_scale_example,
