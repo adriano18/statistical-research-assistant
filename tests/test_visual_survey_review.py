@@ -62,6 +62,26 @@ class VisualSourceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "page unavailable"):
             render_document_page(buffer.getvalue(), "staff.docx", 2)
 
+    def test_long_multilingual_word_preview_has_multiple_segments(self):
+        from visual_survey_review import word_structure_page_count
+        doc = Document()
+        for i in range(1, 70):
+            doc.add_paragraph(
+                f"{i}. Как Вы оцениваете качество услуги? "
+                "Это синтетический текст для проверки длинной анкеты."
+            )
+        output = BytesIO()
+        doc.save(output)
+        source = output.getvalue()
+        parts = word_structure_page_count(source, ".docx")
+        self.assertGreater(parts, 1)
+        first = render_word_structure(source, ".docx", page_number=1)
+        last = render_word_structure(source, ".docx", page_number=parts)
+        self.assertTrue(first.startswith(bytes((137, 80, 78, 71))))
+        self.assertNotEqual(first, last)
+        with self.assertRaisesRegex(ValueError, "page unavailable"):
+            render_word_structure(source, ".docx", page_number=parts+1)
+
     def test_local_ocr_overlays_selected_page_without_network(self):
         fixture = scanned_pdf()
         observed = []
