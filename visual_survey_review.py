@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import os
 import re
 import shutil
@@ -122,45 +123,88 @@ def _word_text(source: bytes, suffix: str) -> list[str]:
     tesseract_independent = shutil.which("antiword")
     if tesseract_independent is None:
         raise ValueError("For .doc visual review, install antiword or save as .docx.")
-    # Avoid writing a confidential temporary document: antiword reads stdin.
-    proc = subprocess.run(
-        [tesseract_independent, "-w", "110", "-"],
-        input=source, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        timeout=15, check=False,
-    )
+    # antiword is more reliable with a real filename, including on Windows.
+    # The local temporary source is removed immediately after extraction.
+    with TemporaryDirectory(prefix="word-review-") as folder:
+        target = Path(folder) / "source.doc"
+        target.write_bytes(source)
+        proc = subprocess.run(
+            [tesseract_independent, "-w", "110", str(target)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=15, check=False,
+        )
     if proc.returncode:
         raise ValueError("Could not decode this .doc; convert to .docx.")
     return proc.stdout.decode("utf-8", errors="replace").splitlines()
 
 
-def render_word_structure(source: bytes, suffix: str) -> bytes:
-    """Read-only visual reconstruction; physical Word pagination is unknown."""
+WORD_LINES_PER_SEGMENT = 42
+
+
+def _visual_word_lines(source: bytes, suffix: str) -> list[str]:
     if len(source) > MAX_BYTES:
         raise ValueError("Word file exceeds the import size limit.")
     lines = _word_text(source, suffix)
     if not lines:
         raise ValueError("Word document has no visible paragraphs or table cells.")
+    wrapped = []
+    for line in lines:
+        wrapped.extend(textwrap.wrap(line, width=87) or [""])
+        wrapped.append("")
+        if len(wrapped) > WORD_LINES_PER_SEGMENT * MAX_PAGES:
+            raise ValueError("Word document exceeds 80 visual preview segments.")
+    return wrapped
+
+
+def word_structure_page_count(source: bytes, suffix: str) -> int:
+    """Count synthetic visual segments; NOT physical pages in the Word file."""
+    length = len(_visual_word_lines(source, suffix))
+    return (length + WORD_LINES_PER_SEGMENT-1) // WORD_LINES_PER_SEGMENT
+
+
+def _word_font(size: int):
+    for name in (
+        "DejaVuSans.ttf", r"C:\Windows\Fonts\segoeui.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "LiberationSans-Regular.ttf",
+    ):
+        try:
+            return ImageFont.truetype(name, size=size)
+        except OSError:
+            continue
+    return ImageFont.load_default(size=size)
+
+
+def render_word_structure(
+    source: bytes, suffix: str, page_number: int = 1,
+) -> bytes:
+    """Render a Word text segment as PNG, with honest pagination labeling."""
+    lines = _visual_word_lines(source, suffix)
+    segments = (len(lines) + WORD_LINES_PER_SEGMENT-1) // WORD_LINES_PER_SEGMENT
+    if not 1 <= page_number <= segments:
+        raise ValueError("Document page unavailable.")
     width, height = 1100, 1520
     image = Image.new("RGB", (width, height), "white")
     canvas = ImageDraw.Draw(image)
-    font = ImageFont.load_default(size=19)
-    hint = ImageFont.load_default(size=16)
-    canvas.text((50, 28), "WORD STRUCTURE PREVIEW — not original page layout",
-                fill="#915E2C", font=hint)
+    font, hint = _word_font(19), _word_font(16)
+    canvas.text(
+        (50, 28),
+        f"WORD STRUCTURE · segment {page_number}/{segments} "
+        "— not original page layout",
+        fill="#915E2C", font=hint,
+    )
     canvas.line([(50, 65), (1050, 65)], fill="#CFD5DD", width=2)
     y = 100
-    for source_line in lines[:500]:
-        for line in textwrap.wrap(source_line, width=87) or [""]:
-            if y > height - 60:
-                break
+    begin = (page_number-1) * WORD_LINES_PER_SEGMENT
+    for line in lines[begin:begin+WORD_LINES_PER_SEGMENT]:
+        if line.strip():
             canvas.text((54, y), line[:110], fill="#263748", font=font)
-            y += 26
-        y += 10
-        if y > height - 60:
-            break
-    if y > height - 100 or len(lines) > 55:
-        canvas.text((54, height-46), "Additional content is in the editable question list.",
-                    fill="#9B4C32", font=hint)
+        y += 32
+    if segments > 1:
+        canvas.text(
+            (54, height-45), "Use the segment selector for more source text.",
+            fill="#915E2C", font=hint,
+        )
     out = BytesIO()
     image.save(out, format="PNG", optimize=True)
     return out.getvalue()
@@ -170,8 +214,8 @@ def render_document_page(source: bytes, filename: str, page_number: int) -> byte
     ext = Path(filename).suffix.lower()
     if ext == ".pdf":
         return render_pdf_page(source, page_number)
-    if ext in {".docx", ".doc"} and page_number == 1:
-        return render_word_structure(source, ext)
+    if ext in {".docx", ".doc"}:
+        return render_word_structure(source, ext, page_number)
     raise ValueError("Document page unavailable.")
 
 
