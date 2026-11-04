@@ -38,6 +38,20 @@ class OmegaBootstrapTests(unittest.TestCase):
         self.assertEqual(a.level, .95)
         pd.testing.assert_frame_equal(prior, self.df)
 
+    def test_interleaved_factor_analysis_does_not_change_seeded_ci(self):
+        first = bootstrap_omega(
+            self.df, self.items, n_resamples=100, seed=817,
+        )
+        # Replicate the factor model between two identical bootstrap runs,
+        # as happens when users open and close different analysis screens.
+        analyze_omega(self.df, self.items)
+        second = bootstrap_omega(
+            self.df, self.items, n_resamples=100, seed=817,
+        )
+        self.assertEqual(first.lower, second.lower)
+        self.assertEqual(first.upper, second.upper)
+        self.assertEqual(first.successful, second.successful)
+
     def test_bootstrap_ignores_incomplete_participants(self):
         incomplete = self.df.copy()
         incomplete.loc[0, self.items[0]] = np.nan
