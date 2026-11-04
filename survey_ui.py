@@ -8,11 +8,13 @@ researchers can clone a published form into a fresh editable draft.
 import asyncio
 import copy
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import flet as ft
 import pandas as pd
 
 from localization import tr
+from survey_document_import import read_survey_document
 from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
     submit_response, response_count, responses_dataframe, save_survey_csv,
@@ -392,6 +394,119 @@ def build_survey_workspace(
         ),
         width=None, multiline=True,
     )
+    document_import_status = ft.Text(
+        "Import text-based PDF or Word (.docx) questionnaires as a draft. "
+        "Scanned PDFs require OCR elsewhere. Check all questions before publishing.",
+        size=12, color="#5E6D82",
+    )
+    document_import_preview = ft.Column(spacing=5)
+    document_replace_confirm = ft.Checkbox(
+        label="Replace existing unsaved draft questions",
+        value=False,
+    )
+    document_commit_button = ft.Button(
+        "Use extracted questions as editable draft", disabled=True,
+    )
+    extracted_document = None
+
+    async def on_document_picker_result(event):
+        nonlocal extracted_document
+        files = getattr(event, "files", None) or []
+        if not files:
+            document_import_status.value = "Document selection cancelled."
+            page.update()
+            return
+        picked = files[0]
+        filename = Path(str(getattr(picked, "name", "questionnaire.docx"))).name
+        suffix = Path(filename).suffix.lower()
+        extracted_document = None
+        document_commit_button.disabled = True
+        document_import_preview.controls = []
+        try:
+            if suffix not in {".docx", ".pdf"}:
+                raise ValueError("Choose a .docx or .pdf document.")
+            if getattr(picked, "path", None):
+                parsed = await asyncio.to_thread(
+                    read_survey_document, picked.path,
+                )
+            else:
+                data = getattr(picked, "bytes", None)
+                if not isinstance(data, bytes) or len(data) > 20_000_000:
+                    raise ValueError(
+                        "No readable file bytes (or over 20 MB). "
+                        "Use the desktop application for local-only import."
+                    )
+                with TemporaryDirectory(prefix="questionnaire-draft-") as tmp:
+                    path = Path(tmp) / filename
+                    path.write_bytes(data)
+                    parsed = await asyncio.to_thread(
+                        read_survey_document, path,
+                    )
+            extracted_document = parsed
+            document_import_status.value = (
+                f"Read {len(parsed.questions)} candidate question(s) from "
+                f"{filename}. They are NOT published or validated."
+            )
+            document_import_preview.controls = [
+                ft.Text(f"{i}. {q['prompt']} [{q['kind']}]",
+                        selectable=True, size=12)
+                for i, q in enumerate(parsed.questions[:20], 1)
+            ] + [
+                ft.Text(note, size=11, color="#936022")
+                for note in parsed.notes
+            ]
+            if len(parsed.questions) > 20:
+                document_import_preview.controls.append(
+                    ft.Text(f"… plus {len(parsed.questions)-20} more questions")
+                )
+            document_commit_button.disabled = False
+        except Exception as error:
+            document_import_status.value = f"Document import failed: {error}"
+        page.update()
+
+    document_picker = ft.FilePicker(on_result=on_document_picker_result)
+    page.services.append(document_picker)
+    document_action = ft.PickFiles(
+        document_picker,
+        allow_multiple=False,
+        file_type=ft.FilePickerFileType.CUSTOM,
+        allowed_extensions=["docx", "pdf"],
+        with_data=bool(getattr(page, "web", False)),
+    )
+
+    def commit_document_draft(e=None):
+        if extracted_document is None:
+            document_import_status.value = "Select and review a document first."
+            page.update()
+            return
+        if draft and not document_replace_confirm.value:
+            document_import_status.value = (
+                "Your current draft has unsaved questions. Check the replace "
+                "confirmation to overwrite that draft. Published surveys are untouched."
+            )
+            page.update()
+            return
+        try:
+            # Imported documents never write to SQLite automatically.
+            draft[:] = validate_questions(
+                [copy.deepcopy(q) for q in extracted_document.questions]
+            )
+            title.value = Path(extracted_document.source_name).stem[:120]
+            new_editor()
+            update_draft()
+            document_import_status.value = (
+                f"Imported {len(draft)} editable questions. "
+                "Review each question, options and scoring before publishing."
+            )
+            document_commit_button.disabled = True
+            document_replace_confirm.value = False
+            page.update()
+        except Exception as error:
+            document_import_status.value = f"Cannot use draft: {error}"
+            page.update()
+
+    document_commit_button.on_click = commit_document_draft
+
     template = ft.Dropdown(
         label="Starting template", width=270, value="psychology",
         options=[
@@ -1370,6 +1485,25 @@ def build_survey_workspace(
                         ft.Button("Load template", on_click=apply_template),
                     ],
                     wrap=True, spacing=12,
+                ),
+                ft.ExpansionTile(
+                    title=ft.Text("Import questionnaire from Word / PDF"),
+                    expanded=False,
+                    controls=[
+                        ft.Text(
+                            "Local text extraction only; a scanned PDF needs OCR. "
+                            "Document structure, scoring and consent require "
+                            "researcher review before publishing.",
+                            size=12,
+                        ),
+                        ft.Button(
+                            "Choose Word / PDF questionnaire", action=document_action,
+                        ),
+                        document_import_status,
+                        document_import_preview,
+                        document_replace_confirm,
+                        document_commit_button,
+                    ],
                 ),
             ]),
             ft.ResponsiveRow(
