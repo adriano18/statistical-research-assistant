@@ -2773,6 +2773,7 @@ async def main(page: ft.Page):
             if navigate_to_dataset is not None else None
         ),
         register_survey_navigation=survey_navigation.update,
+        appearance_getter=lambda: preferences.appearance,
     )
 
     # STEP 6: Present existing actions in separate, easier-to-navigate screens.
