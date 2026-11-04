@@ -2,6 +2,7 @@
 
 import asyncio
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import flet as ft
 import pandas as pd
@@ -10,6 +11,7 @@ from data_loader import (
     load_dataset, load_dataset_with_report, workbook_sheets,
     variable_overview, ImportOptions,
 )
+from import_workflow import import_picked_files, SUPPORTED_EXTENSIONS
 from app_preferences import (
     AppPreferences, load_preferences, save_preferences, remember_file,
 )
@@ -116,10 +118,29 @@ async def main(page: ft.Page):
     # The source file stays on the user's computer; no cloud upload.
     picker = ft.FilePicker()
     page.services.append(picker)
+    # The browser must open its file dialog during the original user gesture.
+    # on_result is wired below, after show_file() is defined.
+    import_file_action = ft.PickFiles(
+        picker,
+        allow_multiple=False,
+        file_type=ft.FilePickerFileType.CUSTOM,
+        allowed_extensions=["csv", "tsv", "xlsx", "xlsm"],
+        with_data=bool(getattr(page, "web", False)),
+    )
     export_picker = ft.FilePicker()
     page.services.append(export_picker)
     dataframe = None
     source_file = None
+    navigate_to_dataset = None
+    home_import_feedback = ft.Text(
+        "", size=12, selectable=True, color="#9B4C32",
+    )
+    local_import_path = ft.TextField(
+        label="Full local file path (fallback if dialog does not open)",
+        hint_text=r"C:\Users\you\Documents\research.xlsx",
+        width=530, expand=True,
+    )
+    open_local_path_button = ft.Button("Open file by full path")
     import_header_row = ft.TextField(
         label="Header row (1-based)", value="1", width=175,
     )
@@ -200,6 +221,16 @@ async def main(page: ft.Page):
             ft.Divider(color="#E1E7F1"),
             ft.Row(
                 controls=[recent_picker, recent_open, recent_clear],
+                wrap=True, spacing=10,
+            ),
+            ft.Divider(color="#E1E7F1"),
+            ft.Text(
+                "File dialog not opening? In the desktop app, paste the full "
+                "path of your CSV/Excel file and open it directly.",
+                size=12, color="#526581",
+            ),
+            ft.Row(
+                controls=[local_import_path, open_local_path_button],
                 wrap=True, spacing=10,
             ),
         ],
@@ -1019,7 +1050,9 @@ async def main(page: ft.Page):
     variable.on_select = reset_scale
 
     # The same data loader is shared by this GUI and inspect_data.py.
-    async def show_file(path, *, use_import_settings=False):
+    async def show_file(
+        path, *, use_import_settings=False, display_name=None, transient=False,
+    ):
         nonlocal dataframe, source_file, preferences
         nonlocal paired_report_text, paired_png_data, chi_report_text
         nonlocal chi_png_data, omnibus_report_text, omnibus_png_data
@@ -1065,7 +1098,7 @@ async def main(page: ft.Page):
                     load_dataset_with_report, path, options
                 )
                 sheets = await asyncio.to_thread(workbook_sheets, path)
-                source_name = Path(path).name
+                source_name = display_name or Path(path).name
             if df.columns.empty:
                 raise ValueError("No variables found in this file.")
             overview = variable_overview(df)
@@ -1074,27 +1107,38 @@ async def main(page: ft.Page):
             import_diagnostics.value = (
                 f"Import error: {error}\nExisting dataset remains unchanged."
             )
+            home_import_feedback.value = (
+                f"Could not import {display_name or Path(path).name}: {error}"
+                if not from_memory else f"Could not load prepared data: {error}"
+            )
             page.update()
-            return
+            return False
 
         dataframe = df
         if report is not None:
-            source_file = Path(path)
+            source_file = None if transient else Path(path)
             import_diagnostics.value = report.as_text()
-            import_apply.disabled = False
+            if transient:
+                import_diagnostics.value += (
+                    "\nBrowser-selected data were processed temporarily. "
+                    "To adjust import settings, select the file again; "
+                    "its original source was not stored."
+                )
+            import_apply.disabled = bool(transient)
             import_sheet.options = [
                 ft.DropdownOption(key=name, text=name) for name in sheets
             ]
             import_sheet.disabled = not bool(sheets)
             import_sheet.value = report.sheet if sheets else None
-            try:
-                preferences = remember_file(preferences, path)
-                save_preferences(preferences)
-            except OSError:
-                import_diagnostics.value += (
-                    "\nReview: Could not update the local recent-files list."
-                )
-            refresh_recent_files()
+            if not transient:
+                try:
+                    preferences = remember_file(preferences, path)
+                    save_preferences(preferences)
+                except OSError:
+                    import_diagnostics.value += (
+                        "\nReview: Could not update the local recent-files list."
+                    )
+                refresh_recent_files()
         elif from_memory:
             source_file = None
             import_apply.disabled = True
@@ -1502,9 +1546,14 @@ async def main(page: ft.Page):
         omnibus_export_txt_button.disabled = True
         # The source CSV/XLSX stays on disk unchanged. Preparation starts from a copy.
         reset_preparation(
-            df, source_path=None if from_memory else path
+            df, source_path=None if from_memory or transient else path
+        )
+        home_import_feedback.value = (
+            f"Loaded {source_name}: {len(df)} rows and "
+            f"{len(df.columns)} variables."
         )
         page.update()
+        return True
 
     def refresh_recent_files():
         paths = [path for path in preferences.recent_files if Path(path).is_file()]
