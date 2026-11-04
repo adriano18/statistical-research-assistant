@@ -2733,6 +2733,10 @@ async def main(page: ft.Page):
         translate_view=lambda widget: ui_translator.apply(
             widget, preferences.language
         ),
+        on_dataset_loaded=lambda: (
+            navigate_to_dataset("dataset")
+            if navigate_to_dataset is not None else None
+        ),
     )
 
     # STEP 6: Present existing actions in separate, easier-to-navigate screens.
