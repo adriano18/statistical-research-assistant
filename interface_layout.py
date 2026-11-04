@@ -62,7 +62,14 @@ def build_interface(
                     ft.Icon(icon, size=30, color="#2755A1"),
                     localized_text(title, size=18, weight="bold", color="#172A43"),
                     localized_text(description, size=13, color="#607087"),
-                    ft.Button(content=localized_text(action_label), on_click=action),
+                    ft.Button(
+                        content=localized_text(action_label),
+                        **(
+                            {"action": action}
+                            if isinstance(action, ft.PickFiles)
+                            else {"on_click": action}
+                        ),
+                    ),
                 ],
                 spacing=12,
             ),
@@ -103,7 +110,8 @@ def build_interface(
                         "Open research data",
                         "Import a CSV or Excel file, check variables and "
                         "missing responses, then choose an analysis.",
-                        a["choose_file"], "Open CSV / Excel", ft.Icons.UPLOAD_FILE,
+                        a.get("choose_file_action", a["choose_file"]),
+                        "Open CSV / Excel", ft.Icons.UPLOAD_FILE,
                     ),
                     start_card(
                         "Design a questionnaire",
@@ -120,6 +128,12 @@ def build_interface(
                         "Explore sample data", ft.Icons.SCIENCE_OUTLINED,
                     ),
                 ],
+            ),
+            c.get("home_import_feedback", ft.Text("")),
+            localized_text(
+                "File chooser not opening? Open Dataset and paste the "
+                "full local file path under Import settings.",
+                size=12, color="#6B7280",
             ),
             panel("A simple research workflow", [
                 localized_text(
@@ -162,7 +176,12 @@ def build_interface(
             panel("Choose a data source", [
                 ft.Button(
                     content=localized_text("Open CSV / Excel"),
-                    on_click=a["choose_file"], icon=ft.Icons.FOLDER_OPEN,
+                    icon=ft.Icons.FOLDER_OPEN,
+                    **(
+                        {"action": a["choose_file_action"]}
+                        if "choose_file_action" in a
+                        else {"on_click": a["choose_file"]}
+                    ),
                 ),
                 ft.ExpansionTile(
                     title="Try a fictional example dataset",
@@ -994,6 +1013,9 @@ def build_interface(
                 color="#1D4FA3" if name == key else "#344B68",
             )
         page.update()
+
+    if a.get("register_import_navigation"):
+        a["register_import_navigation"](switch_screen)
 
     for key, label in labels.items():
         buttons[key] = ft.Button(
