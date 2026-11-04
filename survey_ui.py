@@ -1142,7 +1142,8 @@ def build_survey_workspace(
         except Exception as err:
             preview_note.value = f"Cannot preview: {err}"
             preview_form.controls.clear()
-        page.update()
+        # select_view() publishes the completed pane and updates the page once.
+        # Do not flush the partially attached form here.
 
     def refresh_saved(selected=None):
         published = list_surveys(root)
