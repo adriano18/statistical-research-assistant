@@ -997,7 +997,9 @@ def build_survey_workspace(
             ft.Text(
                 "Review before use: select ONE instrument/version. "
                 "Pages, excerpts, response codes and reverse items are "
-                "unverified candidate data. Scans need local OCR separately.",
+                "unverified candidate data. Preview each source page, then "
+                "correct the question text, type, options and section. "
+                "Scanned PDF pages can be recognized with local Tesseract.",
                 size=12,
             ),
             ft.Button(
@@ -1005,6 +1007,45 @@ def build_survey_workspace(
             ),
             document_import_status,
             document_instrument,
+            ft.Row(
+                controls=[
+                    ft.Container(
+                        width=515, padding=12,
+                        border=ft.Border.all(1, "#D7E1EE"),
+                        content=ft.Column(
+                            controls=[
+                                ft.Text("SOURCE · rendered PDF page / Word text",
+                                        weight="bold", size=13),
+                                document_page_picker,
+                                document_page_status,
+                                document_page_image,
+                                document_ocr_language,
+                                ft.Row(
+                                    controls=[
+                                        document_ocr_button,
+                                        document_ocr_all_button,
+                                    ],
+                                    wrap=True, spacing=10,
+                                ),
+                                document_ocr_status,
+                            ],
+                            spacing=9, scroll=ft.ScrollMode.AUTO,
+                        ),
+                    ),
+                    ft.Container(
+                        width=540, padding=12,
+                        border=ft.Border.all(1, "#D7E1EE"),
+                        content=ft.Column(
+                            controls=[
+                                ft.Text("EDIT · recognized questions",
+                                        weight="bold", size=13),
+                                document_editor_panel,
+                            ], spacing=9,
+                        ),
+                    ),
+                ],
+                wrap=True, spacing=12,
+            ),
             document_import_preview,
             document_review_confirm,
             document_numeric_confirm,
