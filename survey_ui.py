@@ -18,7 +18,8 @@ from localization import tr
 from scientific_survey_import import read_scientific_document, reviewed_draft
 from visual_survey_review import (
     load_document_bytes, render_document_page, pdf_page_count,
-    ocr_scientific_pdf, edit_candidate_question, tesseract_available,
+    word_structure_page_count, ocr_scientific_pdf,
+    edit_candidate_question, tesseract_available,
 )
 from desktop_button_style import style_buttons
 from survey_storage import (
@@ -873,9 +874,16 @@ def build_survey_workspace(
             if suffix == ".pdf":
                 pages = await asyncio.to_thread(pdf_page_count, binary)
             else:
-                pages = 1
+                pages = await asyncio.to_thread(
+                    word_structure_page_count, binary, suffix,
+                )
             document_page_picker.options = [
-                ft.DropdownOption(key=str(i), text=f"Page {i}")
+                ft.DropdownOption(
+                    key=str(i), text=(
+                        f"Page {i}" if suffix == ".pdf"
+                        else f"Word preview segment {i}"
+                    ),
+                )
                 for i in range(1, pages+1)
             ]
             document_page_picker.value = "1"
