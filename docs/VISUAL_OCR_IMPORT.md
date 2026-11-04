@@ -2,7 +2,7 @@
 
 ## What happens inside the desktop program
 
-Go to **Questionnaires → 1. Build → Scientific importer · Word / PDF questionnaires** and select your own PDF, DOCX or legacy DOC. The application now keeps the selected source in memory while you review it. PDF pages are actually rendered inside the desktop window using PDFium; the left side has a **Source page** selector and image. For DOCX/DOC, the preview is a visual reconstruction of paragraphs and table cells — it is not an exact layout/page number match to Microsoft Word.
+Go to **Questionnaires → 1. Build → Scientific importer · Word / PDF questionnaires** and select your own PDF, DOCX or legacy DOC. The application now keeps the selected source in memory while you review it. PDF pages are actually rendered inside the desktop window using PDFium; the left side has a **Source page** selector and image. For DOCX/DOC, the preview is a visual reconstruction of paragraphs and table cells — it is not an exact layout/page number match to Microsoft Word. Longer Word documents can be browsed as multiple **preview segments**, each labeled distinctly from physical pages. The source itself is not modified.
 
 On the right, select an extracted question. You can edit its wording, response type, options (one per line), section and required-answer flag, and click **Apply correction to extracted question**. You can choose other questions or source pages; each correction updates only the current in-memory proposal and keeps its original source excerpt. It is **not published** or saved to the SQLite answer database. Invalid questions are rejected without replacing the earlier proposal.
 
