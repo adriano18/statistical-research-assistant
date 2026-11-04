@@ -6,6 +6,24 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 **Next development sequence**: independently validate advanced psychometric estimates → polish stage-23 light desktop onboarding and respondent-scale UX → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX, packaging and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
+## Stage 29 — Windows/macOS-inspired desktop shell and Word/PDF questionnaire drafts
+
+- [x] Treat WindowsX and macOS UI kits as **visual reference material**, not copied executable controls or redistributable font assets
+- [x] Keep the tested Flet statistical engine; reshape the desktop shell instead of migrating to a different GUI framework mid-release
+- [x] Widen the navigation rail, increase hit target height and prevent long LV/RU labels being compressed in the old narrow sidebar
+- [x] Default Windows-inspired square panels/buttons/navigation; optional persisted macOS-inspired softer corners, with English default / LV-RU choice intact
+- [x] Add a desktop top menu for File, Data, Analysis, Reports, Database, Settings and Help; link to actual workspaces and existing dataset/questionnaire actions
+- [x] Make AI assistant state explicit: **planned / not connected**. Existing offline statistical guides and APA wizard are not an LLM assistant; never upload datasets implicitly
+- [x] Import DOCX/text-layer PDF questionnaire structure into **editable, unvalidated drafts**; conservative extraction with options, no automatic numeric coding or consent assumptions
+- [x] Show extracted draft summary and warnings; explicitly confirm before replacing an existing draft; preserve published survey schemas and responses
+- [x] Reject scanned PDFs without text, encrypted PDFs, oversized files and ambiguous unnumbered documents; do not silently invent questions
+- [x] Test PDF/DOCX extraction and top menu/appearance preferences offline
+- [ ] Manually smoke-test Windows desktop at 100%/125%/150% scaling, full LV/RU labels, screenshot regression and native MacOS renderer
+- [ ] Implement secure local .sra project save/open, project list, backup/restore and database maintenance screen (beyond current survey SQLite view)
+- [ ] Add scanned-document OCR with explicit local processing and review; preserve complex Word tables/rating scale matrices and branching rules where safely parsable
+- [ ] Define opt-in AI architecture: deterministic method selection, strict calculation facts, citations, per-project consent and configurable **local-only** model vs optional external provider
+- [ ] Build Windows packaged .exe/installer and signed-release QA; assess native macOS distribution separately
+
 ## Stage 28 — end-to-end reliability and research journey
 
 - [x] Verify response import success explicitly before reporting completion or changing workspaces
