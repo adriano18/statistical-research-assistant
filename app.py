@@ -2,6 +2,7 @@
 
 import asyncio
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import flet as ft
 import pandas as pd
@@ -10,6 +11,7 @@ from data_loader import (
     load_dataset, load_dataset_with_report, workbook_sheets,
     variable_overview, ImportOptions,
 )
+from import_workflow import import_picked_files, SUPPORTED_EXTENSIONS
 from app_preferences import (
     AppPreferences, load_preferences, save_preferences, remember_file,
 )
@@ -114,12 +116,36 @@ async def main(page: ft.Page):
     ui_translator = UITranslator()
 
     # The source file stays on the user's computer; no cloud upload.
-    picker = ft.FilePicker()
+    async def file_picker_result_event(e):
+        # on_picked_file is defined later in main() before the page is mounted.
+        # Register the callback at service construction to avoid missing
+        # the first native picker event.
+        await on_picked_file(e)
+
+    picker = ft.FilePicker(on_result=file_picker_result_event)
     page.services.append(picker)
+    # The client action opens the dialog during the original user gesture.
+    import_file_action = ft.PickFiles(
+        picker,
+        allow_multiple=False,
+        file_type=ft.FilePickerFileType.CUSTOM,
+        allowed_extensions=["csv", "tsv", "xlsx", "xlsm"],
+        with_data=bool(getattr(page, "web", False)),
+    )
     export_picker = ft.FilePicker()
     page.services.append(export_picker)
     dataframe = None
     source_file = None
+    navigate_to_dataset = None
+    home_import_feedback = ft.Text(
+        "", size=12, selectable=True, color="#9B4C32",
+    )
+    local_import_path = ft.TextField(
+        label="Full local file path (fallback if dialog does not open)",
+        hint_text=r"C:\Users\you\Documents\research.xlsx",
+        width=530, expand=True,
+    )
+    open_local_path_button = ft.Button("Open file by full path")
     import_header_row = ft.TextField(
         label="Header row (1-based)", value="1", width=175,
     )
@@ -200,6 +226,16 @@ async def main(page: ft.Page):
             ft.Divider(color="#E1E7F1"),
             ft.Row(
                 controls=[recent_picker, recent_open, recent_clear],
+                wrap=True, spacing=10,
+            ),
+            ft.Divider(color="#E1E7F1"),
+            ft.Text(
+                "File dialog not opening? In the desktop app, paste the full "
+                "path of your CSV/Excel file and open it directly.",
+                size=12, color="#526581",
+            ),
+            ft.Row(
+                controls=[local_import_path, open_local_path_button],
                 wrap=True, spacing=10,
             ),
         ],
@@ -1019,7 +1055,9 @@ async def main(page: ft.Page):
     variable.on_select = reset_scale
 
     # The same data loader is shared by this GUI and inspect_data.py.
-    async def show_file(path, *, use_import_settings=False):
+    async def show_file(
+        path, *, use_import_settings=False, display_name=None, transient=False,
+    ):
         nonlocal dataframe, source_file, preferences
         nonlocal paired_report_text, paired_png_data, chi_report_text
         nonlocal chi_png_data, omnibus_report_text, omnibus_png_data
@@ -1065,7 +1103,7 @@ async def main(page: ft.Page):
                     load_dataset_with_report, path, options
                 )
                 sheets = await asyncio.to_thread(workbook_sheets, path)
-                source_name = Path(path).name
+                source_name = display_name or Path(path).name
             if df.columns.empty:
                 raise ValueError("No variables found in this file.")
             overview = variable_overview(df)
@@ -1074,27 +1112,38 @@ async def main(page: ft.Page):
             import_diagnostics.value = (
                 f"Import error: {error}\nExisting dataset remains unchanged."
             )
+            home_import_feedback.value = (
+                f"Could not import {display_name or Path(path).name}: {error}"
+                if not from_memory else f"Could not load prepared data: {error}"
+            )
             page.update()
-            return
+            return False
 
         dataframe = df
         if report is not None:
-            source_file = Path(path)
+            source_file = None if transient else Path(path)
             import_diagnostics.value = report.as_text()
-            import_apply.disabled = False
+            if transient:
+                import_diagnostics.value += (
+                    "\nBrowser-selected data were processed temporarily. "
+                    "To adjust import settings, select the file again; "
+                    "its original source was not stored."
+                )
+            import_apply.disabled = bool(transient)
             import_sheet.options = [
                 ft.DropdownOption(key=name, text=name) for name in sheets
             ]
             import_sheet.disabled = not bool(sheets)
             import_sheet.value = report.sheet if sheets else None
-            try:
-                preferences = remember_file(preferences, path)
-                save_preferences(preferences)
-            except OSError:
-                import_diagnostics.value += (
-                    "\nReview: Could not update the local recent-files list."
-                )
-            refresh_recent_files()
+            if not transient:
+                try:
+                    preferences = remember_file(preferences, path)
+                    save_preferences(preferences)
+                except OSError:
+                    import_diagnostics.value += (
+                        "\nReview: Could not update the local recent-files list."
+                    )
+                refresh_recent_files()
         elif from_memory:
             source_file = None
             import_apply.disabled = True
@@ -1502,9 +1551,14 @@ async def main(page: ft.Page):
         omnibus_export_txt_button.disabled = True
         # The source CSV/XLSX stays on disk unchanged. Preparation starts from a copy.
         reset_preparation(
-            df, source_path=None if from_memory else path
+            df, source_path=None if from_memory or transient else path
+        )
+        home_import_feedback.value = (
+            f"Loaded {source_name}: {len(df)} rows and "
+            f"{len(df.columns)} variables."
         )
         page.update()
+        return True
 
     def refresh_recent_files():
         paths = [path for path in preferences.recent_files if Path(path).is_file()]
@@ -1558,22 +1612,70 @@ async def main(page: ft.Page):
     import_apply.on_click = apply_import
     refresh_recent_files()
 
+    def register_import_navigation(callback):
+        nonlocal navigate_to_dataset
+        navigate_to_dataset = callback
+
+    async def load_picked_bytes(data: bytes, filename: str) -> bool:
+        # In browser mode file.path can be absent; parse the bytes using
+        # the same audited loader. The temporary source is always removed,
+        # and it is not added to the desktop recent-file history.
+        with TemporaryDirectory(prefix="research-import-") as temporary:
+            path = Path(temporary) / Path(filename).name
+            path.write_bytes(data)
+            return await show_file(path, display_name=filename, transient=True)
+
+    async def process_file_selection(files):
+        result = await import_picked_files(
+            files, import_path=show_file, import_bytes=load_picked_bytes,
+        )
+        if not result.successful:
+            home_import_feedback.value = result.message
+            if not result.cancelled:
+                status.value = result.message
+        elif navigate_to_dataset is not None:
+            # After loading from Home, display the actual data and warnings.
+            navigate_to_dataset("dataset")
+        page.update()
+        return result.successful
+
+    async def on_picked_file(e):
+        try:
+            await process_file_selection(getattr(e, "files", None))
+        except Exception as error:
+            home_import_feedback.value = f"File selection error: {error}"
+            status.value = home_import_feedback.value
+            page.update()
+
+    # Flet's client gesture dispatches PickFiles and then on_result above.
+    # The Python-only chooser remains a fallback for older Flet clients.
     async def choose_file(e):
         try:
             files = await picker.pick_files(
                 allow_multiple=False,
                 file_type=ft.FilePickerFileType.CUSTOM,
-                allowed_extensions=["csv", "xlsx", "xlsm"],
+                allowed_extensions=["csv", "tsv", "xlsx", "xlsm"],
+                with_data=bool(getattr(page, "web", False)),
             )
-            if files:
-                if files[0].path:
-                    await show_file(files[0].path)
-                else:
-                    status.value = "A local file path is required. Run as a desktop app."
-                    page.update()
+            await process_file_selection(files)
         except Exception as error:
-            status.value = f"File selection error: {error}"
+            home_import_feedback.value = f"File picker error: {error}"
+            status.value = home_import_feedback.value
             page.update()
+
+    async def open_path_fallback(e):
+        raw_path = (local_import_path.value or "").strip().strip('"')
+        if not raw_path:
+            status.value = "Enter a full CSV/Excel file path first."
+            home_import_feedback.value = status.value
+            page.update()
+            return
+        from types import SimpleNamespace
+        await process_file_selection([
+            SimpleNamespace(name=Path(raw_path).name, path=raw_path)
+        ])
+
+    open_local_path_button.on_click = open_path_fallback
 
     async def load_sample(e):
         await show_file(SAMPLE)
@@ -2644,6 +2746,7 @@ async def main(page: ft.Page):
         on_language_change=store_language,
         controls={
             "status": status,
+            "home_import_feedback": home_import_feedback,
             "output_toolbar": output_toolbar,
             "overview_area": overview_area,
             "preparation_panel": preparation_panel,
@@ -2797,6 +2900,8 @@ async def main(page: ft.Page):
         },
         actions={
             "choose_file": choose_file,
+            "choose_file_action": import_file_action,
+            "register_import_navigation": register_import_navigation,
             "set_active_screen": set_active_screen,
             "load_sample": load_sample,
             "load_scale_example": load_scale_example,

@@ -6,6 +6,16 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 **Next development sequence**: independently validate advanced psychometric estimates → polish stage-23 light desktop onboarding and respondent-scale UX → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX, packaging and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
+## FilePicker and dynamic-dataset reliability fix
+
+- [x] Open Home/Dataset file dialogs using a client-side `PickFiles` gesture instead of only a Python `on_click`
+- [x] Route `on_result` to the existing validated CSV/TSV/XLSX/XLSM importer
+- [x] Show import failures and cancellations clearly, and automatically navigate to Dataset on success
+- [x] Provide manual full-path fallback for local desktop systems with blocked file dialogs
+- [x] Accept bytes-only browser selections in a bounded temporary file (no recent-file persistence)
+- [x] Add true end-to-end synthetic import tests proving changed external CSV content changes statistical results
+- [ ] Manually test native dialog behavior on target Windows desktop versions and DPI configurations
+
 ## Stage 26 — guided interpretation and editable APA 7 Word reports
 
 - [x] Add a four-step wizard for method selection, researcher assumption review, estimates and Word export
