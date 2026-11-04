@@ -143,7 +143,7 @@ async def main(page: ft.Page):
     local_import_path = ft.TextField(
         label="Full local file path (fallback if dialog does not open)",
         hint_text=r"C:\Users\you\Documents\research.xlsx",
-        width=530, expand=True,
+        width=510, height=52,
     )
     open_local_path_button = ft.Button("Open file by full path")
     import_header_row = ft.TextField(
@@ -237,6 +237,7 @@ async def main(page: ft.Page):
             ft.Row(
                 controls=[local_import_path, open_local_path_button],
                 wrap=True, spacing=10,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         ],
         spacing=10,
