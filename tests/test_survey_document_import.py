@@ -52,17 +52,22 @@ class DocumentImportTests(unittest.TestCase):
             self.assertEqual(parsed.questions[1]["kind"], "short_text")
 
     def test_reads_text_pdf_without_ocr(self):
-        # pypdf does not provide text drawing APIs; reportlab builds a tiny
-        # text-based synthetic fixture, which pypdf extracts.
-        from reportlab.pdfgen import canvas
+        # Matplotlib already ships with this app; it can produce a normal
+        # text-selectable PDF without adding a production-only test package.
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "survey.pdf"
-            page = canvas.Canvas(str(path))
-            page.drawString(80, 750, "1. How would you describe this service?")
-            page.drawString(80, 728, "A) Positive")
-            page.drawString(80, 708, "B) Negative")
-            page.drawString(80, 680, "2. Other comments?")
-            page.save()
+            figure = plt.figure(figsize=(7, 4))
+            for y, label in [
+                (.90, "1. How would you describe this service?"),
+                (.80, "A) Positive"), (.70, "B) Negative"),
+                (.60, "2. Other comments?"),
+            ]:
+                figure.text(.07, y, label, fontsize=12)
+            figure.savefig(path, format="pdf")
+            plt.close(figure)
             parsed = read_survey_document(path)
             self.assertEqual(len(parsed.questions), 2)
             self.assertEqual(parsed.questions[0]["options"], ["Positive", "Negative"])
