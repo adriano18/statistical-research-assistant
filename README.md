@@ -13,6 +13,14 @@ A Python project for exploring research datasets and, later, selecting and inter
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
 5. **v0.5 Reports and localization** — TXT/PNG export and copying are available across analysis screens; next are structured APA tables, DOCX/PDF, and EN/LV/RU translations.
 
+## Stage 30 — Scientific Questionnaire Importer
+
+The questionnaire builder can now review existing PDF/DOCX questionnaires and optional legacy DOC sources (local antiword required, otherwise convert DOC to DOCX). Rather than blindly scanning for all numbers, it separates recognized instruments/versions in multi-scale collections, shows extracted source lines next to proposed items, warns about invisible image-based pages, and never treats a bibliography as an instrument. The imported form is **a draft**, not a validated instrument.
+
+Numeric response anchors and reverse-scoring directions are **untrusted proposals**. Every import requires the researcher to confirm the exact version, source, license, wording and candidate list. Numeric labels and reverse-item flags require separate approvals, and published survey versions/answers are unchanged. Complex matrix tables, scanned PSQ pages, incomplete scoring, consent and skip logic still need manual reconstruction or future local OCR. Source filenames are retained as candidate-provenance descriptions without copying source documents to the repository.
+
+Synthetic tests cover structures from the six privately uploaded examples, but **do not include copyrighted question banks** in public CI. To run your own private documents locally and inspect just candidate counts/warnings, see the [Scientific Importer guide](docs/SCIENTIFIC_IMPORTER.md) and local audit script. Published scoring validity, diagnostic thresholds, native-window behavior and clinical interpretations remain outside this importer's remit.
+
 ## Stage 29 — desktop redesign, local document questionnaires and AI roadmap
 
 The interface uses a **Windows-style desktop shell by default**: squared panels and command buttons, a wider 288-pixel navigation area, greater vertical space for sidebar items, and a horizontal **File / Data / Analysis / Reports / Database / Settings / AI assistant / Help** menu. In **Appearance** select Windows (square corners) or a softer macOS-inspired treatment. The preference is saved locally; language selection remains English by default, with Latvian and Russian available. These are visual treatments of the same Flet app, not native WinUI/AppKit renderers. Some forms retained within statistical modules still require a second design pass.
