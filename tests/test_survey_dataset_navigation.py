@@ -88,6 +88,11 @@ class SurveyDatasetNavigationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.seen[0]["experience"].iloc[0], 4)
         self.assertEqual(self.seen[0]["customer"].iloc[0], "Yes")
         self.assertIn("response_id", self.seen[0].columns)
+        self.assertEqual(
+            self.seen[0].attrs["research_source_name"],
+            "Questionnaire: Fictional marketing responses",
+        )
+        self.assertNotIn("research_source_name", self.seen[0].columns)
 
     async def test_failed_import_does_not_navigate_or_claim_success(self):
         view = self._build(accept=False)
