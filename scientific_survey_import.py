@@ -567,6 +567,10 @@ def reviewed_draft(
 ) -> list[dict]:
     """Only apply a scoring proposal with explicit confirmation."""
     from copy import deepcopy
+    if accept_reverse and not accept_numeric:
+        raise ValueError(
+            "Confirm numeric response codes before applying reverse keys."
+        )
     raw = [deepcopy(row.question) for row in candidate.questions]
     if not accept_numeric:
         for q in raw:
