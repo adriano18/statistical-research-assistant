@@ -444,7 +444,7 @@ def build_survey_workspace(
         options=[], disabled=True,
     )
     document_page_image = ft.Image(
-        width=490, height=540, visible=False,
+        src=b"", width=490, height=540, visible=False,
         fit=ft.BoxFit.CONTAIN,
         semantics_label="Locally rendered source document page",
     )
