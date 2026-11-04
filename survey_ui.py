@@ -170,7 +170,7 @@ def build_numeric_rating_selector(question, on_change=None):
         ft.Container(
             col={"xs": 12, "sm": 6, "xl": 4},
             padding=10,
-            border_radius=10,
+            border_radius=corner_radius(),
             border=ft.Border.all(1, "#DAE3F0"),
             bgcolor="#F8FAFE",
             content=ft.Radio(
@@ -343,6 +343,7 @@ def build_survey_workspace(
     page, load_dataframe, root: str | Path, *,
     language_getter=None, translate_view=None,
     on_dataset_loaded=None, register_survey_navigation=None,
+    appearance_getter=None,
 ):
     """Researcher workspace; UI language never alters published survey data."""
     def language():
@@ -350,6 +351,11 @@ def build_survey_workspace(
 
     def ui_label(english):
         return tr(language(), english)
+
+    def corner_radius():
+        return 10 if (
+            appearance_getter and appearance_getter() == "macos"
+        ) else 0
 
     root = Path(root)
     draft: list[dict] = []
@@ -365,7 +371,7 @@ def build_survey_workspace(
         return ft.Container(
             width=width, col=col, padding=16, bgcolor="#FFFFFF",
             border=ft.Border.all(1, "#E1E7F1"),
-            border_radius=14,
+            border_radius=corner_radius(),
             content=ft.Column(
                 controls=[
                     ft.Text(title_text, weight="bold", size=16),
@@ -802,7 +808,7 @@ def build_survey_workspace(
             section_drag_list.controls.append(
                 ft.Container(
                     key="section_" + block_items[0]["key"],
-                    padding=9, border_radius=8, bgcolor="#F5F8FD",
+                    padding=9, border_radius=corner_radius(), bgcolor="#F5F8FD",
                     content=ft.Column(controls=[
                         ft.Text(
                             f"{section_name} · {len(block_items)} question(s)",
@@ -853,7 +859,7 @@ def build_survey_workspace(
                     key=f"draft_{q['key']}",
                     bgcolor="#E7EFFD" if current else "#F5F8FD",
                     border=ft.Border.all(1, "#DAE3F0"),
-                    border_radius=10, padding=10,
+                    border_radius=corner_radius(), padding=10,
                     content=ft.Column(
                         controls=[
                             *(
@@ -1218,7 +1224,7 @@ def build_survey_workspace(
                 field_controls = [field]
 
             container = ft.Container(
-                padding=16, border_radius=12, bgcolor="#FFFFFF",
+                padding=16, border_radius=corner_radius(), bgcolor="#FFFFFF",
                 border=ft.Border.all(1, "#DDE6F1"),
                 content=ft.Column(
                     controls=[
@@ -1711,7 +1717,7 @@ def build_survey_workspace(
     view = ft.Column(
         controls=[
             ft.Container(
-                width=None, padding=15, border_radius=12,
+                width=None, padding=15, border_radius=corner_radius(),
                 bgcolor="#EDF3FF",
                 content=ft.Column(controls=[
                     ft.Text(
