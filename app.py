@@ -1063,7 +1063,11 @@ async def main(page: ft.Page):
             from_memory = isinstance(path, pd.DataFrame)
             if from_memory:
                 df = path.copy(deep=True)
-                source_name = "Prepared / local survey responses"
+                source_name = (
+                    display_name or
+                    path.attrs.get("research_source_name") or
+                    "Prepared / local survey responses"
+                )
                 sheets = []
             else:
                 if not use_import_settings:
