@@ -45,7 +45,11 @@ class LocalWorkspaceTests(unittest.TestCase):
                 page, load_frame, Path(tmp) / "surveys"
             )
             self.assertIsInstance(view, ft.Column)
-            self.assertEqual(len(page.services), 1)
+            # Respondent CSV exporter and Word/PDF draft picker are separate
+            # local FilePicker services.
+            self.assertEqual(len(page.services), 2)
+            self.assertTrue(all(isinstance(service, ft.FilePicker)
+                                for service in page.services))
             self.assertGreater(page.updates, 0)
 
 
