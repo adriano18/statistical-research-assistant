@@ -342,9 +342,23 @@ def parse_scientific_lines(
                 current["reverse"], set(), len(current["rows"]),
             )
             rows = []
+            safe_homogeneous_scale = (
+                len(current["rows"]) >= 3
+                and all(q.question["kind"] == "short_text"
+                        for q in current["rows"])
+            )
+            if scoring.code_labels and not safe_homogeneous_scale:
+                current["warnings"].append(
+                    "Numeric anchors were found in a mixed or short "
+                    "questionnaire; automatic rating conversion disabled."
+                )
             for row in current["rows"]:
                 question = dict(row.question)
-                if len(scoring.code_labels) >= 2 and question["kind"] == "short_text":
+                if (
+                    safe_homogeneous_scale
+                    and len(scoring.code_labels) >= 2
+                    and question["kind"] == "short_text"
+                ):
                     # Numeric rating is a *candidate* in the review.
                     question["kind"] = "rating_scale"
                     question["value_labels"] = dict(scoring.code_labels)
