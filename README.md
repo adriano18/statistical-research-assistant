@@ -13,6 +13,14 @@ A Python project for exploring research datasets and, later, selecting and inter
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
 5. **v0.5 Reports and localization** — TXT/PNG export and copying are available across analysis screens; next are structured APA tables, DOCX/PDF, and EN/LV/RU translations.
 
+## Stage 31 — local OCR and in-app visual editing
+
+The Scientific Questionnaire Importer now displays actual **PDF pages in-app** and a clearly labeled **Word paragraph/table reconstruction** alongside editable extracted questions. A researcher can change wording, response type, choice labels, section and requiredness **before** accepting the source into the editable questionnaire draft. Corrections never alter the source document, published schema or respondent data. Separate source/version and scoring approvals remain mandatory.
+
+For image-only PDFs, use local Tesseract OCR (installed separately, with the appropriate ENG/LAV/RUS languages), either one page at a time or for the first 20 pages in a bounded batch. PDFium is included as a Python dependency and renders the visual page from bytes. If text extraction fails, the scanned source still opens for preview and the user may run OCR. The selected file stays in memory during review. OCR runs locally in the **desktop** application; browser/server mode is disabled for this local-only OCR workflow. See the [Stage 31 setup and operating guide](docs/VISUAL_OCR_IMPORT.md).
+
+Scientific caution: OCR mistakes and complex rating matrices require visual verification; the importer never guesses psychometric validity, test norms or consent. Automated tests use synthetic scans and mocked Tesseract output, not the user's private copyrighted test files.
+
 ## Stage 30 — Scientific Questionnaire Importer
 
 The questionnaire builder can now review existing PDF/DOCX questionnaires and optional legacy DOC sources (local antiword required, otherwise convert DOC to DOCX). Rather than blindly scanning for all numbers, it separates recognized instruments/versions in multi-scale collections, shows extracted source lines next to proposed items, warns about invisible image-based pages, and never treats a bibliography as an instrument. The imported form is **a draft**, not a validated instrument.
