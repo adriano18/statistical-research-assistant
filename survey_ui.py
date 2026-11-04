@@ -170,7 +170,7 @@ def build_numeric_rating_selector(question, on_change=None):
         ft.Container(
             col={"xs": 12, "sm": 6, "xl": 4},
             padding=10,
-            border_radius=corner_radius(),
+            border_radius=0,
             border=ft.Border.all(1, "#DAE3F0"),
             bgcolor="#F8FAFE",
             content=ft.Radio(
