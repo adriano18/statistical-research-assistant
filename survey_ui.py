@@ -727,6 +727,18 @@ def build_survey_workspace(
         document_review_confirm.value = False
         document_numeric_confirm.value = False
         document_reverse_confirm.value = False
+        document_question_picker.options = [
+            ft.DropdownOption(
+                key=str(i),
+                text=f"{item.number}. {item.question['prompt'][:58]}",
+            )
+            for i, item in enumerate(candidate.questions)
+        ]
+        document_question_picker.value = (
+            "0" if candidate.questions else None
+        )
+        document_question_picker.disabled = not candidate.questions
+        show_editable_question()
         sources = ft.Column(
             controls=[
                 ft.Text("SOURCE · original extracted lines",
@@ -805,10 +817,14 @@ def build_survey_workspace(
         )
         page.update()
 
-    document_instrument.on_select = refresh_document_review
+    async def on_instrument_select(event):
+        refresh_document_review()
+        await refresh_document_page()
+
+    document_instrument.on_select = on_instrument_select
 
     async def on_document_picker_result(event):
-        nonlocal extracted_document
+        nonlocal extracted_document, imported_source_bytes, imported_source_name
         files = getattr(event, "files", None) or []
         if not files:
             document_import_status.value = "Document selection cancelled."
@@ -820,51 +836,89 @@ def build_survey_workspace(
         ).name
         suffix = Path(filename).suffix.lower()
         extracted_document = None
+        imported_source_bytes = None
+        imported_source_name = None
         document_commit_button.disabled = True
         document_import_preview.controls = []
         document_instrument.options = []
         document_instrument.value = None
+        document_question_picker.options = []
+        document_question_picker.value = None
+        document_editor_panel.visible = False
+        document_page_image.visible = False
+        document_page_picker.options = []
+        document_page_picker.disabled = True
+        document_ocr_button.disabled = True
+        document_ocr_all_button.disabled = True
         document_review_confirm.value = False
+        document_numeric_confirm.value = False
+        document_reverse_confirm.value = False
         try:
             if suffix not in {".docx", ".doc", ".pdf"}:
-                raise ValueError("Choose a .docx, .doc or .pdf document.")
+                raise ValueError("Choose a DOCX, DOC or PDF document.")
             if getattr(picked, "path", None):
-                parsed = await asyncio.to_thread(
-                    read_scientific_document, picked.path,
+                binary = await asyncio.to_thread(
+                    load_document_bytes, picked.path,
                 )
             else:
-                data = getattr(picked, "bytes", None)
-                if not isinstance(data, bytes) or len(data) > 20_000_000:
+                binary = getattr(picked, "bytes", None)
+                if not isinstance(binary, bytes) or not 0 < len(binary) <= 20_000_000:
                     raise ValueError(
                         "No readable file bytes or file over 20 MB. "
-                        "Use the desktop application for local-only import."
+                        "In desktop mode select a local document."
                     )
-                with TemporaryDirectory(prefix="scientific-review-") as tmp:
+            imported_source_bytes = binary
+            imported_source_name = filename
+
+            if suffix == ".pdf":
+                pages = await asyncio.to_thread(pdf_page_count, binary)
+            else:
+                pages = 1
+            document_page_picker.options = [
+                ft.DropdownOption(key=str(i), text=f"Page {i}")
+                for i in range(1, pages+1)
+            ]
+            document_page_picker.value = "1"
+            document_page_picker.disabled = False
+            document_ocr_button.disabled = suffix != ".pdf"
+            document_ocr_all_button.disabled = suffix != ".pdf"
+
+            # Existing scientific extractor works on a bounded private temp
+            # file; it is deleted on exit and never uploaded for processing.
+            try:
+                with TemporaryDirectory(prefix="visual-survey-import-") as tmp:
                     path = Path(tmp) / filename
-                    path.write_bytes(data)
+                    path.write_bytes(binary)
                     parsed = await asyncio.to_thread(
                         read_scientific_document, path,
                     )
-            extracted_document = parsed
-            document_instrument.options = [
-                ft.DropdownOption(
-                    key=str(index),
-                    text=f"{item.title} ({len(item.questions)} items)",
+            except ValueError as extraction:
+                document_import_status.value = (
+                    f"No text-based questionnaire extracted: {extraction}. "
+                    "The source remains available in the visual viewer. "
+                    "For scanned PDF pages use the local OCR buttons."
                 )
-                for index, item in enumerate(parsed.instruments)
-            ]
-            document_instrument.value = "0"
-            refresh_document_review()
-            document_import_status.value = (
-                f"Read {len(parsed.instruments)} instrument(s), "
-                f"{sum(len(x.questions) for x in parsed.instruments)} "
-                f"candidate questions from {filename}. "
-                "Choose a version, inspect source and confirm before using."
-            )
+            else:
+                extracted_document = parsed
+                document_instrument.options = [
+                    ft.DropdownOption(
+                        key=str(index),
+                        text=f"{item.title} ({len(item.questions)} items)",
+                    )
+                    for index, item in enumerate(parsed.instruments)
+                ]
+                document_instrument.value = "0"
+                refresh_document_review()
+                document_import_status.value = (
+                    f"Read {len(parsed.instruments)} instrument(s), "
+                    f"{sum(len(x.questions) for x in parsed.instruments)} "
+                    f"candidate questions from {filename}. "
+                    "Review the original page and correct items before use."
+                )
+            await refresh_document_page()
         except Exception as error:
-            document_import_status.value = (
-                f"Document import failed: {error}"
-            )
+            document_import_status.value = f"Document import failed: {error}"
+            document_page_status.value = "Preview unavailable."
         page.update()
 
     document_picker = ft.FilePicker(on_result=on_document_picker_result)
