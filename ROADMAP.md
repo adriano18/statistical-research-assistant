@@ -6,6 +6,19 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 **Next development sequence**: independently validate advanced psychometric estimates → polish stage-23 light desktop onboarding and respondent-scale UX → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX, packaging and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
+## Stage 28 — end-to-end reliability and research journey
+
+- [x] Verify response import success explicitly before reporting completion or changing workspaces
+- [x] Navigate to Dataset automatically after accepted saved questionnaire answers
+- [x] Keep the originating questionnaire name as metadata, never as a numeric or respondent column
+- [x] Test branching marketing responses through SQLite, CSV + codebook and reimport
+- [x] Test synthetic multi-item scale through reverse coding, real α/CI, PNG and editable APA Word output
+- [x] Add Windows CI coverage of full questionnaire-to-report dependencies and Flet preview cases
+- [x] Publish a manual Windows GUI and Word smoke-test checklist
+- [ ] Perform manual high-DPI desktop, keyboard/screen-reader and Microsoft Word page-break tests
+- [ ] Offer automatic questionnaire scoring recipes only after validated keys/codebooks and scale-structure checks
+- [ ] Extend dynamic end-to-end tests to more study designs and statistical methods
+
 ## FilePicker and dynamic-dataset reliability fix
 
 - [x] Open Home/Dataset file dialogs using a client-side `PickFiles` gesture instead of only a Python `on_click`
