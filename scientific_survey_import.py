@@ -135,7 +135,9 @@ def _numbered(line: str, expected: int | None) -> tuple[int, str, bool] | None:
         return None
     # Avoid references, page numbers, scale-option keys (1- Never).
     label = match.group(4).strip()
-    if len(label) < 5 or len(label.split()) < 3:
+    if len(label) < 5 or (
+        len(label.split()) < 3 and not label.endswith("?")
+    ):
         return None
     if expected is not None and n != expected:
         return None
@@ -280,6 +282,7 @@ def parse_scientific_lines(
             + " may include unseen table questions. OCR is not automatic."
         )
     current = None
+    bibliography_zone = False
 
     def begin(title: str, page: int, collection=False):
         return {
@@ -395,7 +398,15 @@ def parse_scientific_lines(
             current = begin(title, page, collection=collection)
             continue
         if current is None:
-            if re.match(r"^\s*(?:\d{1,3}[.):]\s+.+|\d{1,3}\s{2,}.+)", raw):
+            if re.match(r"^references\s*:?\s*$", line, re.I):
+                bibliography_zone = True
+            if (
+                not bibliography_zone
+                and re.match(
+                    r"^\s*(?:\d{1,3}[.):]\s+.+|\d{1,3}\s{2,}.+)",
+                    raw,
+                )
+            ):
                 current = begin(
                     Path(source_name).stem[:75], page,
                 )
