@@ -1607,22 +1607,72 @@ async def main(page: ft.Page):
     import_apply.on_click = apply_import
     refresh_recent_files()
 
+    def register_import_navigation(callback):
+        nonlocal navigate_to_dataset
+        navigate_to_dataset = callback
+
+    async def load_picked_bytes(data: bytes, filename: str) -> bool:
+        # In browser mode file.path can be absent; parse the bytes using
+        # the same audited loader. The temporary source is always removed,
+        # and it is not added to the desktop recent-file history.
+        with TemporaryDirectory(prefix="research-import-") as temporary:
+            path = Path(temporary) / Path(filename).name
+            path.write_bytes(data)
+            return await show_file(path, display_name=filename, transient=True)
+
+    async def process_file_selection(files):
+        result = await import_picked_files(
+            files, import_path=show_file, import_bytes=load_picked_bytes,
+        )
+        if not result.successful:
+            home_import_feedback.value = result.message
+            if not result.cancelled:
+                status.value = result.message
+        elif navigate_to_dataset is not None:
+            # After loading from Home, display the actual data and warnings.
+            navigate_to_dataset("dataset")
+        page.update()
+        return result.successful
+
+    async def on_picked_file(e):
+        try:
+            await process_file_selection(getattr(e, "files", None))
+        except Exception as error:
+            home_import_feedback.value = f"File selection error: {error}"
+            status.value = home_import_feedback.value
+            page.update()
+
+    # Flet's client gesture dispatches PickFiles and then this result event.
+    # The Python-only chooser remains a fallback for older Flet clients.
+    picker.on_result = on_picked_file
+
     async def choose_file(e):
         try:
             files = await picker.pick_files(
                 allow_multiple=False,
                 file_type=ft.FilePickerFileType.CUSTOM,
-                allowed_extensions=["csv", "xlsx", "xlsm"],
+                allowed_extensions=["csv", "tsv", "xlsx", "xlsm"],
+                with_data=bool(getattr(page, "web", False)),
             )
-            if files:
-                if files[0].path:
-                    await show_file(files[0].path)
-                else:
-                    status.value = "A local file path is required. Run as a desktop app."
-                    page.update()
+            await process_file_selection(files)
         except Exception as error:
-            status.value = f"File selection error: {error}"
+            home_import_feedback.value = f"File picker error: {error}"
+            status.value = home_import_feedback.value
             page.update()
+
+    async def open_path_fallback(e):
+        raw_path = (local_import_path.value or "").strip().strip('"')
+        if not raw_path:
+            status.value = "Enter a full CSV/Excel file path first."
+            home_import_feedback.value = status.value
+            page.update()
+            return
+        from types import SimpleNamespace
+        await process_file_selection([
+            SimpleNamespace(name=Path(raw_path).name, path=raw_path)
+        ])
+
+    open_local_path_button.on_click = open_path_fallback
 
     async def load_sample(e):
         await show_file(SAMPLE)
@@ -2693,6 +2743,7 @@ async def main(page: ft.Page):
         on_language_change=store_language,
         controls={
             "status": status,
+            "home_import_feedback": home_import_feedback,
             "output_toolbar": output_toolbar,
             "overview_area": overview_area,
             "preparation_panel": preparation_panel,
@@ -2846,6 +2897,8 @@ async def main(page: ft.Page):
         },
         actions={
             "choose_file": choose_file,
+            "choose_file_action": import_file_action,
+            "register_import_navigation": register_import_navigation,
             "set_active_screen": set_active_screen,
             "load_sample": load_sample,
             "load_scale_example": load_scale_example,
