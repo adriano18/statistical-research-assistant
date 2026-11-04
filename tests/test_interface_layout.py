@@ -198,7 +198,7 @@ class LayoutTests(unittest.TestCase):
         titles = [x.content.value for x in menu.controls]
         self.assertEqual(titles, [
             "File", "Data", "Analysis", "Reports",
-            "Database", "Settings", "Help",
+            "Database", "Settings", "AI assistant", "Help",
         ])
         # Direct action labels must not be inert decorations.
         self.assertTrue(all(
