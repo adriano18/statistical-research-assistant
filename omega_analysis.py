@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from statsmodels.multivariate.factor import Factor
+from threadpoolctl import threadpool_limits
 
 from variable_rules import looks_like_identifier
 
@@ -82,11 +83,18 @@ def analyze_omega(df: pd.DataFrame, item_names: list[str]) -> OmegaResult:
         )
 
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            fit = Factor(
-                corr=correlation, n_factor=1, method="ml", nobs=n,
-            ).fit()
+        # Some native BLAS backends reduce floating-point products in a
+        # different order with multiple threads. ML factor fits can amplify
+        # those tiny changes, making fixed-seed percentile bootstrap
+        # intervals differ across otherwise identical repeated runs.
+        # A one-thread BLAS scope stabilizes the fit while preserving the
+        # same ML model, scoring direction, and participant resamples.
+        with threadpool_limits(limits=1, user_api="blas"):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                fit = Factor(
+                    corr=correlation, n_factor=1, method="ml", nobs=n,
+                ).fit()
         loadings = np.asarray(fit.loadings, dtype=float).reshape(-1)
         uniqueness = np.asarray(fit.uniqueness, dtype=float).reshape(-1)
     except (ValueError, np.linalg.LinAlgError, RuntimeError, OverflowError) as error:
