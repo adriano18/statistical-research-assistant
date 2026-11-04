@@ -12,12 +12,26 @@ from statistical_guide import GUIDE_LABELS, method_guide_items
 def build_interface(
     page: ft.Page, controls: dict, actions: dict, *,
     language: str = "en", on_language_change=None,
+    appearance: str = "windows", on_appearance_change=None,
 ):
     """Create a navigation shell. English is the fresh-install default."""
     c = controls
     a = actions
     language = language if language in LANGUAGES else "en"
     translated_controls = []
+    appearance = appearance if appearance in {"windows", "macos"} else "windows"
+    cornered = []
+
+    def corner_radius():
+        return 10 if appearance == "macos" else 0
+
+    def square_button_style(*, active=False):
+        return ft.ButtonStyle(
+            shape=ft.RoundedRectangleBorder(radius=corner_radius()),
+            bgcolor="#E5EFFC" if active else "#FFFFFF",
+            color="#164C96" if active else "#283C58",
+            elevation=0,
+        )
 
     def localized_text(value="", *args, **kwargs):
         translated = tr(language, value) if isinstance(value, str) else value
@@ -36,9 +50,9 @@ def build_interface(
         )
 
     def panel(title, content):
-        return ft.Container(
+        container = ft.Container(
             bgcolor="#FFFFFF",
-            border_radius=16,
+            border_radius=corner_radius(),
             border=ft.Border.all(1, "#E1E7F1"),
             padding=20,
             content=ft.Column(
@@ -49,13 +63,15 @@ def build_interface(
                 spacing=13,
             ),
         )
+        cornered.append(container)
+        return container
 
     def start_card(title, description, action, action_label, icon):
-        return ft.Container(
+        container = ft.Container(
             col={"xs": 12, "md": 6, "lg": 4},
             padding=20,
             bgcolor="#FFFFFF",
-            border_radius=16,
+            border_radius=corner_radius(),
             border=ft.Border.all(1, "#DBE4F0"),
             content=ft.Column(
                 controls=[
@@ -64,6 +80,7 @@ def build_interface(
                     localized_text(description, size=13, color="#607087"),
                     ft.Button(
                         content=localized_text(action_label),
+                        style=square_button_style(),
                         **(
                             {"action": action}
                             if isinstance(action, ft.PickFiles)
@@ -74,33 +91,38 @@ def build_interface(
                 spacing=12,
             ),
         )
+        cornered.append(container)
+        return container
 
     async def open_sample_from_home(e):
         await a["load_sample"](e)
         switch_screen("dataset")
 
+    home_banner = ft.Container(
+        padding=24,
+        bgcolor="#EAF1FD",
+        border_radius=corner_radius(),
+        content=ft.Column(
+            controls=[
+                localized_text("YOUR RESEARCH WORKSPACE", size=12,
+                        weight="bold", color="#2755A1"),
+                localized_text("Start with a question. We'll help with the data.",
+                        size=28, weight="bold", color="#172A43"),
+                localized_text(
+                    "Create questionnaires, prepare datasets and run "
+                    "statistical analyses on this computer. Choose a "
+                    "starting point below; no previous SPSS experience is needed.",
+                    size=14, color="#415570",
+                ),
+            ],
+            spacing=9,
+        ),
+    )
+    cornered.append(home_banner)
+
     home_screen = ft.Column(
         controls=[
-            ft.Container(
-                padding=24,
-                bgcolor="#EAF1FD",
-                border_radius=18,
-                content=ft.Column(
-                    controls=[
-                        localized_text("YOUR RESEARCH WORKSPACE", size=12,
-                                weight="bold", color="#2755A1"),
-                        localized_text("Start with a question. We'll help with the data.",
-                                size=28, weight="bold", color="#172A43"),
-                        localized_text(
-                            "Create questionnaires, prepare datasets and run "
-                            "statistical analyses on this computer. Choose a "
-                            "starting point below; no previous SPSS experience is needed.",
-                            size=14, color="#415570",
-                        ),
-                    ],
-                    spacing=9,
-                ),
-            ),
+            home_banner,
             localized_text("What would you like to do?", size=20,
                     weight="bold", color="#172A43"),
             ft.ResponsiveRow(
@@ -1008,10 +1030,7 @@ def build_interface(
                 f"●  {tr(language, labels[name])}" if name == key
                 else f"    {tr(language, labels[name])}"
             )
-            buttons[name].style = ft.ButtonStyle(
-                bgcolor="#EAF1FD" if name == key else "#FFFFFF",
-                color="#1D4FA3" if name == key else "#344B68",
-            )
+            buttons[name].style = square_button_style(active=name == key)
         page.update()
 
     if a.get("register_import_navigation"):
@@ -1024,11 +1043,8 @@ def build_interface(
                 else f"    {tr(language, label)}"
             ),
             on_click=lambda e, section=key: switch_screen(section),
-            width=210,
-            style=ft.ButtonStyle(
-                bgcolor="#EAF1FD" if key == "home" else "#FFFFFF",
-                color="#1D4FA3" if key == "home" else "#344B68",
-            ),
+            width=250, height=44,
+            style=square_button_style(active=key == "home"),
         )
 
     def nav_group(title, keys, *, expanded=False):
@@ -1037,6 +1053,12 @@ def build_interface(
                 title, weight="bold", size=12, color="#2755A1",
             ),
             expanded=expanded,
+            min_tile_height=42,
+            dense=True,
+            controls_padding=ft.Padding.symmetric(horizontal=4),
+            tile_padding=ft.Padding.symmetric(horizontal=10),
+            shape=ft.RoundedRectangleBorder(radius=corner_radius()),
+            collapsed_shape=ft.RoundedRectangleBorder(radius=corner_radius()),
             controls=[buttons[key] for key in keys],
         )
 
@@ -1067,7 +1089,7 @@ def build_interface(
         page.update()
 
     language_picker = ft.Dropdown(
-        label=tr(language, "Language"), width=220,
+        label=tr(language, "Language"), width=252,
         value=language,
         options=[
             ft.DropdownOption(key=code, text=label)
@@ -1086,11 +1108,11 @@ def build_interface(
     )
 
     sidebar = ft.Container(
-        width=250,
+        width=288,
         bgcolor="#FFFFFF",
         border=ft.Border.all(1, "#E1E7F1"),
-        border_radius=16,
-        padding=12,
+        border_radius=corner_radius(),
+        padding=16,
         content=ft.Column(
             controls=[
                 localized_text("STATISTICAL", size=12, weight="bold", color="#2755A1"),
@@ -1146,7 +1168,7 @@ def build_interface(
 
     def resize_navigation(e=None):
         page_width = getattr(page, "width", None) or 1280
-        compact = page_width < 980
+        compact = page_width < 1060
         sidebar.visible = not compact
         compact_navigation.visible = compact
         compact_language.visible = compact
@@ -1160,7 +1182,7 @@ def build_interface(
         visible=False,
         bgcolor="#FFFFFF",
         border=ft.Border.all(1, "#E1E7F1"),
-        border_radius=12,
+        border_radius=corner_radius(),
         padding=12,
         content=ft.Row(
             controls=[
