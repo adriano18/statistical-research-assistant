@@ -1,4 +1,4 @@
-"""Offline diagnostic for privately held research questionnaire documents.
+r"""Offline diagnostic for privately held research questionnaire documents.
 
 Usage:
   python tools/audit_local_survey_docs.py "C:\...\UCLA.pdf" "C:\...\Stress.doc"
