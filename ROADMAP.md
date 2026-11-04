@@ -6,6 +6,22 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 **Next development sequence**: independently validate advanced psychometric estimates → polish stage-23 light desktop onboarding and respondent-scale UX → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX, packaging and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
+## Stage 31 — local OCR and visual PDF/Word questionnaire editing
+
+- [x] Render actual PDF source pages as PNG using local PDFium, with selectable page number and bounded render dimensions
+- [x] Show Word DOCX text/table structures in-app as a labeled visual reconstruction, without claiming true physical Word pagination
+- [x] Keep uploaded/private source bytes in memory for preview, including scanned PDFs without selectable text
+- [x] Add local Tesseract OCR for selected pages or a bounded first-20-page batch, with ENG/LAV/RUS configurations
+- [x] Disable local-only OCR in browser/server mode to avoid accidentally claiming remote processing is private
+- [x] Reparse OCR text with original source page provenance, reset scoring/source confirmations and flag OCR uncertainty
+- [x] Edit candidate question wording, response type, options, section and requiredness before entering the existing builder
+- [x] Validate edits atomically, preserve original excerpts, require separate source/scoring/draft-overwrite confirmations
+- [x] Add real image-only PDF and Word page-rendering tests, simulated OCR + in-app Flet integration regressions
+- [ ] Manually test actual Tesseract binaries and language packs with all six private example files on Windows
+- [ ] Add reliable spatial bounding boxes and OCR confidence overlays directly on page images
+- [ ] Reconstruct multi-column/scoring matrix tables and complex conditional rules after deliberate review
+- [ ] Bundle/configure Tesseract in a distributable offline Windows installer and run high-DPI GUI QA
+
 ## Stage 30 — scientific questionnaire import and scoring review
 
 - [x] Isolate multiple UCLA-type instrument versions inside a multi-scale PDF booklet
