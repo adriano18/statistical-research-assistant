@@ -289,7 +289,7 @@ def parse_scientific_lines(
             "title": title, "page": page, "rows": [], "codes": {},
             "reverse": set(), "context": [], "pending": None,
             "section": "Imported questions", "capture": not collection,
-            "collection": collection, "warnings": [],
+            "collection": collection, "warnings": [], "yes_no": False,
         }
 
     def finish_question():
@@ -304,6 +304,8 @@ def parse_scientific_lines(
             current["pending"] = None
             return
         opts = list(dict.fromkeys(pending["options"]))[:12]
+        if len(opts) < 2 and current["yes_no"]:
+            opts = ["Yes", "No"]
         kind = (
             "multiple_choice" if MULTIPLE.search(prompt)
             else "single_choice"
@@ -451,13 +453,22 @@ def parse_scientific_lines(
             current["codes"][single_code.group(1)] = single_code.group(2)
             continue
         if line.lower() in ("yes no", "yes / no", "yes  no"):
+            current["yes_no"] = True
             current["warnings"].append(
-                "Yes/No column headers found; answer semantics require review."
+                "Yes/No columns converted to *textual* choices; "
+                "any 1/0 scoring is NOT applied automatically."
             )
             continue
         if re.search(r"copyright|for researchers only|purchase only", line, re.I):
             current["warnings"].append(
                 "Review copyright/licensing before reproducing this scale."
+            )
+        if re.search(
+            r"\bif\s+yes\s+to\s+question\s+\d+", line, re.I
+        ):
+            current["warnings"].append(
+                "A conditional instruction was detected. "
+                "Its skip logic must be configured manually."
             )
         if "reverse" in line.lower() or re.search(
             r"\bitems?\s+\d+(?:\s*,\s*\d+)+\s+are", line, re.I
