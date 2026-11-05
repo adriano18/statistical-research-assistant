@@ -38,7 +38,7 @@ After copying those original documents to your research computer, run this comma
 python tools/audit_local_survey_docs.py "C:\Research\UCLA-Questionnaire.pdf" "C:\Research\Stress-Questionnaire-F2.pdf" "C:\Research\percieved stress scale.pdf" "C:\Research\Perceived Stress Questionnaire (PSQ).pdf" "C:\Research\Self_Measures_for_Love_and_Compassion_Research_LONELINESS_AND_INTERPERSONAL_PROBLEMS.pdf" "C:\Research\QUESTIONNAIREEdited1.doc"
 ~~~
 
-The audit prints instrument titles, question counts and warnings only, not item wording. An explicit refusal for the image-backed PSQ is currently a safe outcome. Always compare all extracted pages with the original source/manual and verify license rights.
+The audit prints document structure only — pages, item numbers found and missing, question types, shared scales (codes, evidence, linked items), the repeated answer block of coping-inventory layouts, letter-spacing repairs, documented scoring groups, item flags and what still blocks the draft. Titles, labels and names appear only as a hash prefix and a length, never as wording; `--show-titles` adds titles and warnings (which may quote the source), `--items` adds one line per item and `--ocr eng` (or `lav+eng`, `rus+eng`) also reports a local Tesseract reading of the first 20 PDF pages for comparison with the text layer. An explicit refusal for the image-backed PSQ text layer is currently a safe outcome. Always compare all extracted pages with the original source/manual and verify license rights.
 
 ## Engineering follow-ups
 
