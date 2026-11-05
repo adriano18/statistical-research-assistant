@@ -620,3 +620,63 @@ def edit_candidate_question(
     )
     validate_questions([item.question for item in proposal])
     return replace(candidate, questions=tuple(proposal))
+
+
+def apply_response_format(
+    candidate: InstrumentCandidate, format_index: int,
+    labels: tuple[str, str] | list[str],
+) -> InstrumentCandidate:
+    """Reviewed bulk action: give one evidenced binary format explicit choices.
+
+    Applies to the format's text items awaiting review and to the items it
+    already converted (so ``T / F`` can be renamed ``True / False`` for all
+    60 items at once). Only items still plain text, or still carrying the
+    format's previous labels, are changed; manual edits are never
+    overwritten. No numeric codes, answer key or reverse scoring are set.
+    """
+    if not 0 <= format_index < len(candidate.response_formats):
+        raise IndexError("Select a detected answer format.")
+    fmt = candidate.response_formats[format_index]
+    clean = tuple(" ".join(str(x).split()) for x in labels)
+    if len(clean) != 2 or not all(1 <= len(x) <= 120 for x in clean) or clean[0] == clean[1]:
+        raise ValueError("Enter two different answer labels (1–120 characters).")
+    targets = set(fmt.candidates) | set(fmt.applied_to)
+    old = list(fmt.labels)
+    proposal, changed = [], []
+    for row in candidate.questions:
+        q = row.question
+        eligible = row.number in targets and (
+            q["kind"] == "short_text"
+            or (q["kind"] == "single_choice" and q.get("options") == old)
+        )
+        if not eligible:
+            proposal.append(row)
+            continue
+        question = dict(q)
+        question.update({"kind": "single_choice", "options": list(clean),
+                         "reverse_scored": False})
+        for name in ("value_labels", "scale_id"):
+            question.pop(name, None)
+        proposal.append(replace(
+            row, question=question, confidence="review",
+            notes=(*row.notes, f"Binary answers {clean[0]} / {clean[1]} applied "
+                   "after review; no numeric codes assigned."),
+        ))
+        changed.append(row.number)
+    if not changed:
+        raise ValueError("No matching text or binary items are left to update.")
+    validate_questions([item.question for item in proposal])
+    formats = list(candidate.response_formats)
+    formats[format_index] = replace(
+        fmt, labels=clean, applied_to=tuple(sorted(set(fmt.applied_to) | set(changed))),
+        candidates=(),
+    )
+    note = (
+        f"Binary answers {clean[0]} / {clean[1]} were applied to {len(changed)} item(s) "
+        "after researcher review. Numeric 1/0 codes, answer keys and reverse "
+        "scoring are NOT applied automatically."
+    )
+    return replace(
+        candidate, questions=tuple(proposal), response_formats=tuple(formats),
+        warnings=(*candidate.warnings, note),
+    )

@@ -23,8 +23,9 @@ from visual_survey_review import (
     load_document_bytes, render_document_page, pdf_page_count,
     word_structure_page_count, ocr_scientific_pdf,
     edit_candidate_question, tesseract_available,
-    attach_text_layer_geometry, attach_docx_matrices,
+    attach_text_layer_geometry, attach_docx_matrices, apply_response_format,
 )
+from binary_responses import FORMAT_LABELS
 from ocr_runtime import OCRCancelled, ocr_readiness
 from spatial_review_ui import SpatialReviewController
 from desktop_button_style import style_buttons
@@ -545,6 +546,108 @@ def build_survey_workspace(
         ], spacing=9, visible=False,
     )
 
+    # Shared binary answer formats (True/False, Yes/No) found in the source.
+    binary_format_picker = ft.Dropdown(
+        label="Detected binary answer format", width=420, options=[],
+    )
+    binary_format_info = ft.Text("", size=12, selectable=True, color="#536781")
+    binary_label_first = ft.TextField(label="First answer label", width=200, dense=True)
+    binary_label_second = ft.TextField(label="Second answer label", width=200, dense=True)
+    binary_review_confirm = ft.Checkbox(
+        label="I checked the source: these items share this answer format",
+        value=False,
+    )
+    binary_apply_button = ft.Button("Apply binary answers to matching items")
+    binary_panel = ft.Column(
+        visible=False, spacing=8,
+        controls=[
+            ft.Text("BINARY ANSWERS · shared response format", weight="bold", size=13),
+            binary_format_picker, binary_format_info,
+            ft.Row([binary_label_first, binary_label_second], wrap=True, spacing=10),
+            ft.Text(
+                "Labels stay as printed unless you change them. No numeric "
+                "codes, answer key or reverse scoring are assigned.",
+                size=11, color="#936022",
+            ),
+            binary_review_confirm, binary_apply_button,
+        ],
+    )
+
+    def show_binary_formats():
+        candidate = selected_instrument()
+        formats = candidate.response_formats if candidate is not None else ()
+        binary_panel.visible = bool(formats)
+        if not formats:
+            return
+        binary_format_picker.options = [
+            ft.DropdownOption(
+                key=str(i),
+                text=f"{FORMAT_LABELS.get(f.kind, f.kind)} · {' / '.join(f.labels)} · "
+                     f"{f.evidence} evidence, page {f.page}",
+            )
+            for i, f in enumerate(formats)
+        ]
+        if binary_format_picker.value not in {str(i) for i in range(len(formats))}:
+            binary_format_picker.value = "0"
+        fmt = formats[int(binary_format_picker.value)]
+        evidence = {
+            "row": "printed on each item's own row",
+            "header": "a shared column header",
+            "instruction": "the instructions only (weak evidence)",
+        }.get(fmt.evidence, fmt.evidence)
+        binary_format_info.value = (
+            f"Source: “{fmt.printed[:80]}” — {evidence}, page {fmt.page}. "
+            f"Applied to {len(fmt.applied_to)} item(s); "
+            f"{len(fmt.candidates)} text item(s) await review."
+        )
+        binary_label_first.value, binary_label_second.value = fmt.labels
+        binary_review_confirm.value = False
+
+    async def on_binary_format_select(event=None):
+        show_binary_formats()
+        page.update()
+
+    binary_format_picker.on_select = on_binary_format_select
+
+    def apply_binary_format(event=None):
+        nonlocal extracted_document
+        candidate = selected_instrument()
+        if candidate is None or not candidate.response_formats:
+            return
+        if not binary_review_confirm.value:
+            document_import_status.value = (
+                "Check the source first and confirm that these items share "
+                "the binary answer format."
+            )
+            page.update()
+            return
+        try:
+            index = int(binary_format_picker.value or "0")
+            updated = apply_response_format(
+                candidate, index,
+                (binary_label_first.value or "", binary_label_second.value or ""),
+            )
+        except (ValueError, IndexError) as error:
+            document_import_status.value = f"Binary answers not applied: {error}"
+            page.update()
+            return
+        changed = sum(1 for a, b in zip(candidate.questions, updated.questions) if a != b)
+        collection = list(extracted_document.instruments)
+        collection[int(document_instrument.value)] = updated
+        extracted_document = replace(extracted_document, instruments=tuple(collection))
+        selected = document_question_picker.value
+        refresh_document_review()  # also resets every approval
+        if selected is not None:
+            document_question_picker.value = selected
+            show_editable_question()
+        document_import_status.value = (
+            f"Binary answers {binary_label_first.value} / {binary_label_second.value} "
+            f"applied to {changed} item(s). Source unchanged; approvals were reset."
+        )
+        page.update()
+
+    binary_apply_button.on_click = apply_binary_format
+
     def selected_instrument():
         if extracted_document is None or not document_instrument.value:
             return None
@@ -800,6 +903,7 @@ def build_survey_workspace(
         document_import_preview.controls = []
         document_commit_button.disabled = candidate is None
         if candidate is None:
+            binary_panel.visible = False
             page.update()
             return
         document_review_confirm.value = False
@@ -817,6 +921,7 @@ def build_survey_workspace(
         )
         document_question_picker.disabled = not candidate.questions
         show_editable_question()
+        show_binary_formats()
         sources = ft.Column(
             controls=[
                 ft.Text("SOURCE · original extracted lines",
@@ -924,6 +1029,7 @@ def build_survey_workspace(
         document_question_picker.options = []
         document_question_picker.value = None
         document_editor_panel.visible = False
+        binary_panel.visible = False
         document_page_image.visible = False
         document_page_picker.options = []
         document_page_picker.disabled = True
@@ -1249,6 +1355,7 @@ def build_survey_workspace(
                                 ft.Text("EDIT · recognized questions",
                                         weight="bold", size=13),
                                 document_editor_panel,
+                                binary_panel,
                                 spatial.question_panel,
                                 spatial.queue_panel,
                                 spatial.matrix.panel,

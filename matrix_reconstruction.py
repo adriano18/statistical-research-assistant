@@ -134,9 +134,19 @@ def _clean(text: str) -> str:
     return " ".join(str(text).replace("\x00", " ").split())
 
 
+# Printed binary answer labels that act as per-row response cells.
+BINARY_TOKENS = {
+    "T", "F", "Y", "N", "True", "False", "TRUE", "FALSE", "Yes", "No", "YES",
+    "NO", "Да", "Нет", "ДА", "НЕТ", "Верно", "Неверно", "Jā", "Nē", "JĀ", "NĒ",
+}
+
+
 def _is_marker_or_code(text: str) -> bool:
     t = text.strip()
-    return bool(t) and (INTEGER.fullmatch(t) is not None or all(ch in MARKERS for ch in t))
+    return bool(t) and (
+        INTEGER.fullmatch(t) is not None or all(ch in MARKERS for ch in t)
+        or t in BINARY_TOKENS
+    )
 
 
 def _split_code_label(text: str) -> tuple[str | None, str]:
@@ -146,10 +156,16 @@ def _split_code_label(text: str) -> tuple[str | None, str]:
     return None, text.strip()
 
 
-def _cell_state(text: str, column_code: str | None) -> str:
+def _cell_state(text: str, column_code: str | None, column_label: str = "") -> str:
     t = text.strip()
     if not t:
         return "empty"
+    if t in BINARY_TOKENS:
+        label = column_label.strip().casefold()
+        same = not label or t.casefold() == label or (
+            len(t) == 1 and label[:1] == t.casefold()
+        )
+        return "filled" if same else "ambiguous"
     if INTEGER.fullmatch(t):
         return "filled" if column_code in (None, t) else "ambiguous"
     if all(ch in MARKERS for ch in t.replace(" ", "")):
@@ -233,12 +249,23 @@ def _grid(columns, rows) -> tuple[tuple[str, ...], ...]:
     return (header, *body)
 
 
+def _label_from_cells(rows: list[MatrixRow], columns: list[MatrixColumn]) -> list[MatrixColumn]:
+    """An unlabeled column printed as 'T' in every row is labeled 'T'."""
+    out = []
+    for c, column in enumerate(columns):
+        values = {row.cells[c].text.strip() for row in rows if row.cells[c].text.strip()}
+        if not column.label and len(values) == 1 and next(iter(values)) in BINARY_TOKENS:
+            column = replace(column, label=next(iter(values)))
+        out.append(column)
+    return out
+
+
 def _build(pid, title, kind, pages, columns, rows, extra_issues=()) -> MatrixProposal:
     rows = _finalize_cells(rows, columns)
-    columns = _infer_codes(rows, columns)
+    columns = _label_from_cells(rows, _infer_codes(rows, columns))
     rows = [
         replace(row, cells=tuple(
-            replace(cell, state=_cell_state(cell.text, columns[c].code))
+            replace(cell, state=_cell_state(cell.text, columns[c].code, columns[c].label))
             if cell.state in {"filled", "ambiguous"} else cell
             for c, cell in enumerate(row.cells)
         ))
@@ -459,11 +486,16 @@ def _page_layout(page: OCRPage):
 
 def _header_columns(lines, first_row_top: float, prompt_left: float, unit: float):
     """Header labels above the first row: clusters of words right of prompts."""
+    from binary_responses import match_header
+
     above = [l for l in lines if l.box[3] <= first_row_top + unit * 0.2]
-    candidates = [l for l in above[-3:] if l.box[0] > prompt_left + 0.25 or (
-        len(l.words) >= 2 and sum(1 for w in l.words if w.box[0] > prompt_left + 0.3) >= 2
-    )]
-    return candidates
+    # Header lines start in the response area ("Never Rarely …", "T F") or
+    # are a binary header row ("Statement  True  False"). A left-aligned
+    # instruction sentence is never a column header.
+    return [
+        l for l in above[-3:]
+        if l.box[0] > prompt_left + 0.25 or match_header(l.text) is not None
+    ]
 
 
 def _assign_header(header_lines, centers: list[float], bounds: list[tuple[float, float]], unit):
@@ -663,7 +695,8 @@ def set_cell(proposal: MatrixProposal, row: int, column: int, text: str) -> Matr
     cells = list(target.cells)
     cells[column] = replace(
         cells[column], text=clean,
-        state=_cell_state(clean, proposal.columns[column].code) if clean else "empty",
+        state=_cell_state(clean, proposal.columns[column].code,
+                          proposal.columns[column].label) if clean else "empty",
         provenance="manual",
     )
     rows = list(proposal.rows)

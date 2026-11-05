@@ -8,12 +8,16 @@ scoring key that requires explicit researcher approval before draft use.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import re
 import shutil
 import subprocess
 
+from binary_responses import (
+    BinaryScale, expand_with_legend, legend_labels, match_header,
+    match_instruction, split_row, strip_noisy_row_pair,
+)
 from survey_storage import validate_questions
 
 MAX_BYTES = 20_000_000
@@ -87,12 +91,25 @@ class ProposedScoring:
 
 
 @dataclass(frozen=True)
+class ResponseFormat:
+    """Source evidence for a shared binary answer format (no scoring)."""
+    kind: str                       # "true_false" | "yes_no"
+    labels: tuple[str, str]         # as printed, e.g. ("T", "F")
+    printed: str                    # source text, e.g. "T / F"
+    evidence: str                   # "row" | "header" | "instruction"
+    page: int
+    applied_to: tuple[int, ...] = ()    # item numbers converted on import
+    candidates: tuple[int, ...] = ()    # text items a reviewer may convert
+
+
+@dataclass(frozen=True)
 class InstrumentCandidate:
     title: str
     questions: tuple[Candidate, ...]
     scoring: ProposedScoring
     warnings: tuple[str, ...]
     first_page: int
+    response_formats: tuple[ResponseFormat, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -233,6 +250,22 @@ def _read_docx(path: Path) -> tuple[list[tuple[int, str]], int, tuple[int, ...]]
         elif isinstance(part, Table):
             for row in part.rows:
                 values = [cell.text.strip() for cell in row.cells]
+                nonempty = [v for v in values if v]
+                # Native table structure: a header row "No. | Statement |
+                # T | F" or an item row ending in its own T / F cells.
+                joined = " ".join(nonempty)
+                if nonempty and match_header(joined):
+                    lines.append((1, joined))
+                    continue
+                if len(nonempty) >= 3 and match_header(" ".join(nonempty[-2:])):
+                    head = nonempty[:-2]
+                    if len(head) >= 2 and re.fullmatch(r"\d{1,3}", head[0]):
+                        lines.append((1, f"{head[0]}. {head[1]}"))
+                        lines.extend((1, v) for v in head[2:])
+                    else:
+                        lines.extend((1, v) for v in head)
+                    lines.append((1, " ".join(nonempty[-2:])))
+                    continue
                 if len(values) >= 2 and re.fullmatch(r"\d{1,3}", values[0]):
                     lines.append((1, f"{values[0]}. {values[1]}"))
                     for value in values[2:]:
@@ -301,14 +334,49 @@ def parse_scientific_lines(
         )
     current = None
     bibliography_zone = False
+    # Binary answer evidence seen before the first numbered item (headers,
+    # instructions and legends usually precede the items).
+    preamble = {"binary": None, "hint": None, "legend": {}}
 
     def begin(title: str, page: int, collection=False):
-        return {
+        state = {
             "title": title, "page": page, "rows": [], "codes": {},
             "reverse": set(), "context": [], "pending": None,
             "section": "Imported questions", "capture": not collection,
-            "collection": collection, "warnings": [], "yes_no": False,
+            "collection": collection, "warnings": [],
+            "binary": preamble["binary"], "hint": preamble["hint"],
+            "legend": dict(preamble["legend"]), "formats": {},
         }
+        preamble.update({"binary": None, "hint": None, "legend": {}})
+        return state
+
+    def record_format(scale: BinaryScale, evidence: str, page: int, number=None):
+        key = (scale.kind, scale.labels, evidence)
+        entry = current["formats"].setdefault(key, {
+            "scale": scale, "page": page, "applied": [], "candidates": [],
+        })
+        if number is not None:
+            entry["applied"].append(number)
+        return entry
+
+    def binary_options(pending):
+        """Options from row/shared evidence, or None. Never numeric codes."""
+        scale = pending.get("binary")
+        evidence = "row"
+        if scale is None and current["binary"] is not None:
+            scale, evidence = current["binary"]["scale"], "header"
+        if scale is None:
+            return None
+        scale = expand_with_legend(scale, current["legend"])
+        page = pending["page"] if evidence == "row" else current["binary"]["page"]
+        record_format(scale, evidence, page, pending["number"])
+        pending["notes"].append(
+            f"Binary answers {scale.description} from "
+            + ("this item's own row" if evidence == "row" else
+               f"the shared header “{current['binary']['scale'].printed}” on page {page}")
+            + "; labels kept as printed, no codes assigned."
+        )
+        return list(scale.labels)
 
     def finish_question():
         if current is None or current["pending"] is None:
@@ -322,8 +390,10 @@ def parse_scientific_lines(
             current["pending"] = None
             return
         opts = list(dict.fromkeys(pending["options"]))[:12]
-        if len(opts) < 2 and current["yes_no"]:
-            opts = ["Yes", "No"]
+        if len(opts) < 2:
+            binary = binary_options(pending)
+            if binary:
+                opts = binary
         kind = (
             "multiple_choice" if MULTIPLE.search(prompt)
             else "single_choice"
@@ -364,6 +434,49 @@ def parse_scientific_lines(
                 current["context"], current["codes"],
                 current["reverse"], set(), len(current["rows"]),
             )
+            formats = []
+            for (kind, labels, evidence), entry in current["formats"].items():
+                formats.append(ResponseFormat(
+                    kind, labels, entry["scale"].printed, evidence,
+                    entry["page"], tuple(entry["applied"]),
+                ))
+            converted = {n for f in formats for n in f.applied_to}
+            if converted:
+                described = "; ".join(
+                    f"{len(f.applied_to)} item(s) {f.labels[0]} / {f.labels[1]} "
+                    f"from {'their own rows' if f.evidence == 'row' else 'a shared header'}"
+                    for f in formats
+                )
+                current["warnings"].append(
+                    f"Binary answer columns converted to labelled choices ({described}). "
+                    "Labels are kept as printed; numeric 1/0 codes, answer keys "
+                    "and reverse scoring are NOT applied automatically."
+                )
+                keyed = set(scoring.reverse_numbers) & converted
+                if keyed:
+                    scoring = replace(
+                        scoring,
+                        reverse_numbers=tuple(sorted(set(scoring.reverse_numbers) - converted)),
+                        warnings=(*scoring.warnings,
+                                  "Marked binary items may indicate keyed answers; "
+                                  "keying is not applied — use the official manual."),
+                    )
+            text_items = tuple(
+                r.number for r in current["rows"]
+                if r.question["kind"] == "short_text"
+            )
+            if current["hint"] is not None and text_items and not converted:
+                hint = current["hint"]["scale"]
+                formats.append(ResponseFormat(
+                    hint.kind, expand_with_legend(hint, current["legend"]).labels,
+                    hint.printed, "instruction", current["hint"]["page"],
+                    (), text_items,
+                ))
+                current["warnings"].append(
+                    f"The instructions mention {hint.description} answers, but no "
+                    f"answer columns were found. {len(text_items)} item(s) stay text "
+                    "until you review and apply the binary format."
+                )
             rows = []
             safe_homogeneous_scale = (
                 len(current["rows"]) >= 3
@@ -399,7 +512,7 @@ def parse_scientific_lines(
                 )
             instruments.append(InstrumentCandidate(
                 current["title"], tuple(rows), scoring,
-                tuple(current["warnings"]), current["page"],
+                tuple(current["warnings"]), current["page"], tuple(formats),
             ))
         current = None
 
@@ -417,14 +530,27 @@ def parse_scientific_lines(
             )
             current = begin(title, page, collection=collection)
             continue
+        row_text, row_scale = split_row(raw)
+        if row_scale is None:
+            row_text, row_scale = strip_noisy_row_pair(raw)
+        numbered_text = row_text if row_scale is not None else raw
         if current is None:
             if re.match(r"^references\s*:?\s*$", line, re.I):
                 bibliography_zone = True
+            if not bibliography_zone:
+                header = match_header(line)
+                if header is not None:
+                    preamble["binary"] = {"scale": header, "page": page}
+                    continue
+                hint = match_instruction(line)
+                if hint is not None:
+                    preamble["hint"] = {"scale": hint, "page": page}
+                preamble["legend"].update(legend_labels(line))
             if (
                 not bibliography_zone
                 and re.match(
                     r"^\s*(?:\d{1,3}[.):]\s+.+|\d{1,3}\s{2,}.+)",
-                    raw,
+                    numbered_text,
                 )
             ):
                 current = begin(
@@ -462,6 +588,7 @@ def parse_scientific_lines(
             nums = sorted(map(int, maybe))
             if nums == list(range(nums[0], nums[-1]+1)) and 2 <= len(nums) <= 11:
                 current["codes"] = maybe
+                current["binary"] = None  # a numeric scale replaces it
                 continue
         # A short UCLA form writes anchors one per line: 1- Never.
         single_code = re.fullmatch(
@@ -470,13 +597,26 @@ def parse_scientific_lines(
         if single_code:
             current["codes"][single_code.group(1)] = single_code.group(2)
             continue
-        if line.lower() in ("yes no", "yes / no", "yes  no"):
-            current["yes_no"] = True
-            current["warnings"].append(
-                "Yes/No columns converted to *textual* choices; "
-                "any 1/0 scoring is NOT applied automatically."
+        header = match_header(line)
+        if header is not None:
+            pending = current["pending"]
+            repeated = (
+                current["binary"] is not None
+                and current["binary"]["scale"].labels == header.labels
             )
+            if repeated:
+                continue  # the same header printed again on a new page
+            if pending is not None and not pending["options"] and not pending["lines"]:
+                # Directly under its item (a table row's own answer cells).
+                pending["binary"] = header
+            else:
+                finish_question()  # earlier items never inherit a later header
+            current["binary"] = {"scale": header, "page": page}
             continue
+        hint = match_instruction(line)
+        if hint is not None and current["hint"] is None:
+            current["hint"] = {"scale": hint, "page": page}
+        current["legend"].update(legend_labels(line))
         if re.search(r"copyright|for researchers only|purchase only", line, re.I):
             current["warnings"].append(
                 "Review copyright/licensing before reproducing this scale."
@@ -499,7 +639,7 @@ def parse_scientific_lines(
             current["rows"][-1].number + 1
             if current["rows"] else 1
         )
-        detected = _numbered(raw, expected)
+        detected = _numbered(numbered_text, expected)
         if detected:
             finish_question()
             n, prompt, starred = detected
@@ -508,7 +648,7 @@ def parse_scientific_lines(
             current["pending"] = {
                 "number": n, "prompt": prompt, "page": page,
                 "excerpt": line[:300], "confidence": "review",
-                "options": [], "notes": [],
+                "options": [], "notes": [], "binary": row_scale, "lines": 0,
             }
             # Inline checkbox on antiword table row.
             if "|" in raw and "[ " in raw:
@@ -519,6 +659,7 @@ def parse_scientific_lines(
             continue
         if current["pending"] is None:
             continue
+        current["pending"]["lines"] += 1
         answer = CHOICE.match(line)
         if answer:
             if len(current["pending"]["options"]) < 12:

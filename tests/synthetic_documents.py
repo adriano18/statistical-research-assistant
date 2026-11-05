@@ -182,3 +182,107 @@ def docx_matrix(*, merged_header=True, missing_cell=False, multiline=False,
     stream = BytesIO()
     document.save(stream)
     return stream.getvalue()
+
+
+# ------------------------------------------------------------ True / False
+_TF_SUBJECTS = ("I", "My colleagues", "Our fictional team", "My neighbours", "People around me")
+_TF_VERBS = ("enjoy", "avoid", "remember", "plan", "discuss", "postpone")
+_TF_OBJECTS = (
+    "synthetic weekend trips", "imaginary board games", "invented garden chores",
+    "fictional evening walks", "made-up cooking contests", "pretend museum visits",
+)
+
+
+def true_false_statements(count: int = 60) -> list[str]:
+    """Deterministic invented statements (no published inventory content)."""
+    items = []
+    for n in range(count):
+        subject = _TF_SUBJECTS[n % len(_TF_SUBJECTS)]
+        verb = _TF_VERBS[(n // len(_TF_SUBJECTS)) % len(_TF_VERBS)]
+        obj = _TF_OBJECTS[(n // 3) % len(_TF_OBJECTS)]
+        verb = verb if subject == "I" or subject.endswith("s") or subject == "People around me" else verb + "s"
+        items.append(f"{subject} {verb} {obj} number {n + 1}.")
+    return items
+
+
+def true_false_scan_pages(count: int = 60, per_page: int = 20, *, labels=("T", "F"),
+                          row_labels: bool = True, header: bool = True,
+                          title="Synthetic Everyday Habits Inventory") -> list[Image.Image]:
+    """Scanned-looking pages: item text left, T / F answer columns right."""
+    statements = true_false_statements(count)
+    pages = []
+    normal, big = font(32), font(42)
+    for start in range(0, count, per_page):
+        image = Image.new("L", (1700, 2200), 255)
+        draw = ImageDraw.Draw(image)
+        y = 120
+        if start == 0:
+            draw.text((110, y), title, font=big, fill=0)
+            y += 80
+            draw.text((110, y), "Read each statement and circle T or F.", font=normal, fill=0)
+            y += 70
+        if header:
+            for x, label in zip((1390, 1510), labels):
+                draw.text((x, y), label, font=normal, fill=0)
+            y += 60
+        for n in range(start, min(start + per_page, count)):
+            draw.text((110, y), f"{n + 1}. {statements[n]}", font=normal, fill=0)
+            if row_labels:
+                for x, label in zip((1390, 1510), labels):
+                    draw.text((x, y), label, font=normal, fill=0)
+            y += 86
+        rng = random.Random(start + 3)
+        pixels = image.load()
+        for _ in range(5000):
+            pixels[rng.randrange(1700), rng.randrange(2200)] = rng.choice((0, 210))
+        pages.append(image.filter(ImageFilter.GaussianBlur(0.5)).convert("RGB"))
+    return pages
+
+
+def true_false_text_pdf(count: int = 60, per_page: int = 30, *, labels=("T", "F"),
+                        row_labels: bool = True, header: bool = True) -> bytes:
+    statements = true_false_statements(count)
+    pages = []
+    for start in range(0, count, per_page):
+        entries = [(0.08, 0.95, "Synthetic Everyday Habits Inventory")] if start == 0 else []
+        y = 0.91
+        if header:
+            entries += [(0.80, y, labels[0]), (0.88, y, labels[1])]
+            y -= 0.028
+        for n in range(start, min(start + per_page, count)):
+            entries.append((0.08, y, f"{n + 1}. {statements[n]}", 8))
+            if row_labels:
+                entries += [(0.80, y, labels[0], 8), (0.88, y, labels[1], 8)]
+            y -= 0.028
+        pages.append(entries)
+    return text_pdf(pages)
+
+
+def true_false_docx(count: int = 60, *, labels=("True", "False"), number_column=True,
+                    row_labels=False, paragraphs=False, header_line="T F") -> bytes:
+    from docx import Document
+
+    document = Document()
+    document.add_paragraph("Synthetic Everyday Habits Inventory")
+    statements = true_false_statements(count)
+    if paragraphs:
+        document.add_paragraph(header_line)
+        for n, text in enumerate(statements, 1):
+            document.add_paragraph(f"{n}. {text}")
+    else:
+        columns = (["No."] if number_column else []) + ["Statement", *labels]
+        table = document.add_table(rows=count + 1, cols=len(columns))
+        for c, value in enumerate(columns):
+            table.cell(0, c).text = value
+        for n, text in enumerate(statements, 1):
+            c = 0
+            if number_column:
+                table.cell(n, 0).text = str(n)
+                c = 1
+            table.cell(n, c).text = text if number_column else f"{n}. {text}"
+            if row_labels:
+                table.cell(n, c + 1).text = labels[0]
+                table.cell(n, c + 2).text = labels[1]
+    stream = BytesIO()
+    document.save(stream)
+    return stream.getvalue()
