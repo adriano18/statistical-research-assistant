@@ -1,0 +1,21 @@
+# Flet desktop build settings only.
+#
+# Python dependencies intentionally stay in requirements.txt: this file has no
+# [project].dependencies, so `flet build` keeps installing requirements.txt.
+
+# Native boot screen shown by the Flutter shell while the embedded Python
+# interpreter starts (before app.py can draw its own startup screen). Flet's
+# default boot screen has no spinner or text and follows the OS theme, which
+# looked like an empty black window on dark-mode Windows PCs.
+[tool.flet.boot_screen]
+name = "flet"
+
+[tool.flet.boot_screen.flet]
+theme_mode = "light"
+bgcolor_light = "#F5F7FC"
+spinner_size = 34
+spinner_color_light = "#2755A1"
+text_color_light = "#415570"
+startup_message = "Starting Statistical Research Assistant…"
+prepare_message = "Preparing Statistical Research Assistant for first use…"
+fade_out_duration = 150
