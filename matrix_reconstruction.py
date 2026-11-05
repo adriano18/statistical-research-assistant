@@ -141,11 +141,14 @@ BINARY_TOKENS = {
 }
 
 
+ABBREVIATION = re.compile(r"^[A-ZА-ЯĀČĒĢĪĶĻŅŠŪŽ]{1,3}$")
+
+
 def _is_marker_or_code(text: str) -> bool:
     t = text.strip()
     return bool(t) and (
         INTEGER.fullmatch(t) is not None or all(ch in MARKERS for ch in t)
-        or t in BINARY_TOKENS
+        or t in BINARY_TOKENS or ABBREVIATION.fullmatch(t) is not None
     )
 
 
@@ -160,7 +163,7 @@ def _cell_state(text: str, column_code: str | None, column_label: str = "") -> s
     t = text.strip()
     if not t:
         return "empty"
-    if t in BINARY_TOKENS:
+    if t in BINARY_TOKENS or ABBREVIATION.fullmatch(t):
         label = column_label.strip().casefold()
         same = not label or t.casefold() == label or (
             len(t) == 1 and label[:1] == t.casefold()
@@ -254,7 +257,9 @@ def _label_from_cells(rows: list[MatrixRow], columns: list[MatrixColumn]) -> lis
     out = []
     for c, column in enumerate(columns):
         values = {row.cells[c].text.strip() for row in rows if row.cells[c].text.strip()}
-        if not column.label and len(values) == 1 and next(iter(values)) in BINARY_TOKENS:
+        if not column.label and len(values) == 1 and (
+            next(iter(values)) in BINARY_TOKENS or ABBREVIATION.fullmatch(next(iter(values)))
+        ):
             column = replace(column, label=next(iter(values)))
         out.append(column)
     return out

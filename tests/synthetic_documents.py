@@ -286,3 +286,147 @@ def true_false_docx(count: int = 60, *, labels=("True", "False"), number_column=
     stream = BytesIO()
     document.save(stream)
     return stream.getvalue()
+
+
+# ------------------------------------------- shared 4-category frequency scales
+_CONNECT_FEELINGS = ("connected", "left out", "close", "isolated", "understood")
+_CONNECT_TOPICS = ("neighbours", "club members", "coworkers", "classmates")
+
+
+def connectedness_statements(count: int = 20, *, revised: bool = False) -> list[str]:
+    """Invented 'connectedness' statements; not items of any published scale."""
+    lead = "I feel" if not revised else "How often do I feel"
+    items = []
+    for n in range(count):
+        feeling = _CONNECT_FEELINGS[n % len(_CONNECT_FEELINGS)]
+        topic = _CONNECT_TOPICS[(n // len(_CONNECT_FEELINGS)) % len(_CONNECT_TOPICS)]
+        end = "?" if revised else "."
+        items.append(f"{lead} {feeling} among fictional {topic} {n + 1}{end}")
+    return items
+
+
+ORIGINAL_ABBREVIATIONS = ("O", "S", "R", "N")
+ORIGINAL_LABELS = ("Often", "Sometimes", "Rarely", "Never")
+REVISED_LABELS = ("Never", "Rarely", "Sometimes", "Often")
+REVISED_REVERSE = (1, 5, 6, 9, 10, 15, 16, 19, 20)
+
+
+def _scale_page(title, instruction, legend, header, statements, row_tokens, *,
+                start=1, footer=(), columns=(0.62, 0.70, 0.78, 0.86), size=8):
+    entries = [(0.08, 0.95, title, 11)]
+    y = 0.92
+    for text in (instruction, legend):
+        if text:
+            entries.append((0.08, y, text, 8))
+            y -= 0.025
+    if header:
+        entries += [(x, y, label, 7) for x, label in zip(columns, header)]
+        y -= 0.03
+    for offset, text in enumerate(statements):
+        entries.append((0.08, y, f"{start + offset}. {text}", size))
+        if row_tokens:
+            entries += [(x + 0.01, y, token, size) for x, token in zip(columns, row_tokens)]
+        y -= 0.032
+    for text in footer:
+        y -= 0.01
+        entries.append((0.08, y, text, 8))
+        y -= 0.025
+    return entries
+
+
+def connectedness_text_pdf(*, coded: bool = True, reverse_note: bool = True,
+                           legend: bool = True, split_revised: bool = False) -> bytes:
+    """Two instruments in ONE PDF: an O/S/R/N original form and a revised
+    Never/Rarely/Sometimes/Often form (optionally 1-4 coded), 20 items each."""
+    original = _scale_page(
+        "SYNTHETIC CONNECTEDNESS INVENTORY", "Indicate how often each statement describes you.",
+        "O = Often   S = Sometimes   R = Rarely   N = Never" if legend else "",
+        ORIGINAL_ABBREVIATIONS, connectedness_statements(), ORIGINAL_ABBREVIATIONS,
+    )
+    revised_items = connectedness_statements(revised=True)
+    footer = (
+        ("Items 1, 5, 6, 9, 10, 15, 16, 19 and 20 are reverse scored.",)
+        if reverse_note else ()
+    )
+    tokens = ("1", "2", "3", "4") if coded else ()
+    title = "REVISED SYNTHETIC CONNECTEDNESS INVENTORY"
+    instruction = "Indicate how often you feel the way described in each statement."
+    if split_revised:
+        pages = [
+            original,
+            _scale_page(title, instruction, "", REVISED_LABELS, revised_items[:10], tokens),
+            _scale_page("Revised form (continued)", "", "", REVISED_LABELS,
+                        revised_items[10:], tokens, start=11, footer=footer),
+        ]
+    else:
+        pages = [original, _scale_page(title, instruction, "", REVISED_LABELS,
+                                       revised_items, tokens, footer=footer)]
+    return text_pdf(pages)
+
+
+def connectedness_scan_pages(*, coded: bool = True) -> list[Image.Image]:
+    """Scanned look-alike of the two-instrument PDF (one page each)."""
+    pages = []
+    specs = (
+        ("SYNTHETIC CONNECTEDNESS INVENTORY", "O = Often   S = Sometimes   R = Rarely   N = Never",
+         ORIGINAL_ABBREVIATIONS, connectedness_statements(), ORIGINAL_ABBREVIATIONS, ()),
+        ("REVISED SYNTHETIC CONNECTEDNESS INVENTORY", "",
+         REVISED_LABELS, connectedness_statements(revised=True),
+         ("1", "2", "3", "4") if coded else (),
+         ("Items 1, 5, 6, 9, 10, 15, 16, 19 and 20 are reverse scored.",)),
+    )
+    normal, big, small = font(28), font(38), font(24)
+    for title, legend, header, statements, tokens, footer in specs:
+        image = Image.new("L", (1700, 2300), 255)
+        draw = ImageDraw.Draw(image)
+        draw.text((100, 100), title, font=big, fill=0)
+        y = 170
+        if legend:
+            draw.text((100, y), legend, font=normal, fill=0)
+            y += 60
+        columns = (1080, 1230, 1380, 1530)
+        for x, label in zip(columns, header):
+            draw.text((x, y), label, font=small, fill=0)
+        y += 60
+        for n, text in enumerate(statements, 1):
+            draw.text((100, y), f"{n}. {text}", font=normal, fill=0)
+            for x, token in zip(columns, tokens):
+                draw.text((x + 20, y), token, font=normal, fill=0)
+            y += 88
+        for text in footer:
+            draw.text((100, y + 20), text, font=normal, fill=0)
+        rng = random.Random(len(title))
+        pixels = image.load()
+        for _ in range(4000):
+            pixels[rng.randrange(1700), rng.randrange(2300)] = rng.choice((0, 210))
+        pages.append(image.filter(ImageFilter.GaussianBlur(0.5)).convert("RGB"))
+    return pages
+
+
+def connectedness_docx(*, abbreviations: bool = True, coded_row: bool = False) -> bytes:
+    """Native Word table: Statement | 4 frequency columns (+ optional code row)."""
+    from docx import Document
+
+    document = Document()
+    document.add_paragraph("SYNTHETIC CONNECTEDNESS INVENTORY")
+    if abbreviations:
+        document.add_paragraph("O = Often   S = Sometimes   R = Rarely   N = Never")
+    header = ORIGINAL_ABBREVIATIONS if abbreviations else REVISED_LABELS
+    statements = connectedness_statements()
+    table = document.add_table(rows=len(statements) + 1 + int(coded_row), cols=5)
+    table.cell(0, 0).text = "Statement"
+    for c, label in enumerate(header, 1):
+        table.cell(0, c).text = label
+    r = 1
+    if coded_row:
+        for c in range(4):
+            table.cell(1, c + 1).text = str(c + 1)
+        r = 2
+    for n, text in enumerate(statements, 1):
+        table.cell(r, 0).text = f"{n}. {text}"
+        for c in range(4):
+            table.cell(r, c + 1).text = "○"
+        r += 1
+    stream = BytesIO()
+    document.save(stream)
+    return stream.getvalue()
