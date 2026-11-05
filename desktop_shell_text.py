@@ -2,6 +2,9 @@
 
 SHELL_TEXT = {
     "en": {
+        "ocr_status": "Offline OCR engine…",
+        "ocr_note": "Local OCR (no uploads): ",
+        "ocr_checking": "Checking the local OCR engine…",
         "file": "File", "data": "Data", "analysis": "Analysis",
         "reports": "Reports", "database": "Database",
         "settings": "Settings", "help": "Help", "ai": "AI assistant",
@@ -30,6 +33,9 @@ SHELL_TEXT = {
                         "server with identifiable participant data.",
     },
     "lv": {
+        "ocr_status": "Bezsaistes OCR dzinējs…",
+        "ocr_note": "Lokālais OCR (bez augšupielādes): ",
+        "ocr_checking": "Pārbauda lokālo OCR dzinēju…",
         "file": "Fails", "data": "Dati", "analysis": "Analīze",
         "reports": "Pārskati", "database": "Datu bāze",
         "settings": "Iestatījumi", "help": "Palīdzība", "ai": "AI asistents",
@@ -58,6 +64,9 @@ SHELL_TEXT = {
                         "identificējamu dalībnieku informāciju.",
     },
     "ru": {
+        "ocr_status": "Офлайн-движок OCR…",
+        "ocr_note": "Локальное OCR (без загрузки в сеть): ",
+        "ocr_checking": "Проверка локального движка OCR…",
         "file": "Файл", "data": "Данные", "analysis": "Анализ",
         "reports": "Отчёты", "database": "База данных",
         "settings": "Настройки", "help": "Справка", "ai": "AI-помощник",

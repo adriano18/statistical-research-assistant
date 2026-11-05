@@ -1268,6 +1268,18 @@ def build_interface(
         menu_notice.visible = True
         page.update()
 
+    async def show_ocr_status(e=None):
+        """Settings/About: bundled OCR version, languages and integrity."""
+        import asyncio
+        from ocr_runtime import ocr_readiness
+
+        menu_notice_label.value = shell_label(language, "ocr_checking")
+        menu_notice.visible = True
+        page.update()
+        ready = await asyncio.to_thread(ocr_readiness, full_hash=True, use_cache=False)
+        menu_notice_label.value = shell_label(language, "ocr_note") + ready.summary()
+        page.update()
+
     def navigate_and_open(section, registered_action):
         switch_screen(section)
         if registered_action in a:
@@ -1322,6 +1334,7 @@ def build_interface(
             group("settings", [
                 ("windows", lambda e: change_appearance("windows")),
                 ("macos", lambda e: change_appearance("macos")),
+                ("ocr_status", show_ocr_status),
             ]),
             group("ai", [
                 ("ai_status", lambda e: explain("ai_note")),
@@ -1330,6 +1343,7 @@ def build_interface(
             group("help", [
                 ("ai_status", lambda e: explain("ai_note")),
                 ("privacy", lambda e: explain("privacy_note")),
+                ("ocr_status", show_ocr_status),
             ]),
         ],
     )
