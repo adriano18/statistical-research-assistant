@@ -32,6 +32,7 @@ BASE_VIEW_WIDTH = 560
 CATEGORY_COLORS = {
     "high": "#2E7D32", "review": "#B26A00", "low": "#C62828", "unknown": "#607087",
 }
+TEXT_LAYER_COLOR = "#00796B"
 SELECTED_COLOR = "#1565C0"
 UNLINKED_COLOR = "#7B1FA2"
 CELL_COLORS = {"missing": "#C62828", "ambiguous": "#B26A00"}
@@ -112,7 +113,8 @@ class SpatialReviewController:
             controls=[self._chip(SELECTED_COLOR, "Selected question")] + [
                 self._chip(CATEGORY_COLORS[k], OCR_CATEGORY_LABELS[k])
                 for k in ("high", "review", "low", "unknown")
-            ] + [self._chip(UNLINKED_COLOR, "Unlinked text (never auto-converted)")],
+            ] + [self._chip(TEXT_LAYER_COLOR, "PDF text layer (read directly, no OCR)"),
+                 self._chip(UNLINKED_COLOR, "Unlinked text (never auto-converted)")],
         )
         # Right side: confidence + structure + region tools.
         self.ocr_confidence = ft.Text("", size=12, selectable=True)
@@ -270,16 +272,20 @@ class SpatialReviewController:
         controls = []
         selected = self._ref()
         regions = evidence.regions_on_page(self.current_page)
+        text_layer = layout.source == "pdf_text_layer"
         for ref, region in regions:
             conf = evidence.confidence(ref)
             is_selected = ref == selected
-            color = SELECTED_COLOR if is_selected else CATEGORY_COLORS[conf.category]
+            color = SELECTED_COLOR if is_selected else (
+                TEXT_LAYER_COLOR if text_layer else CATEGORY_COLORS[conf.category])
             left, top, w, h = to_pixels(region.box, width, height)
             controls.append(ft.Container(
                 left=left, top=top, width=max(w, 2), height=max(h, 2),
                 border=ft.Border.all(3 if region.id == self.selected_region else (2 if is_selected else 1), color),
                 bgcolor=_alpha(color, "30" if is_selected else "18"),
-                tooltip=f"Question {ref.split(':')[1]}: {conf.label} · region {region.id} ({region.origin})",
+                tooltip=f"Question {ref.split(':')[1]}: "
+                        + ("PDF text layer" if text_layer else conf.label)
+                        + f" · region {region.id} ({region.origin})",
                 data=("region", ref, region.id),
                 on_click=self._region_click_handler(ref, region.id),
             ))
@@ -415,6 +421,15 @@ class SpatialReviewController:
             self.ocr_confidence.value = (
                 "OCR confidence: unknown — no OCR word scores (text-based source or no OCR run)."
             )
+        elif regions and all(
+            (evidence.page(r.page) is not None and evidence.page(r.page).source == "pdf_text_layer")
+            for r in regions
+        ):
+            self.ocr_confidence.value = (
+                "Source: PDF text layer — characters are read directly from the "
+                "file, so OCR confidence does not apply. Check structure and wording."
+            )
+            self.ocr_confidence.color = TEXT_LAYER_COLOR
         else:
             conf = evidence.confidence(ref)
             self.ocr_confidence.value = "OCR confidence (raw Tesseract word scores): " + conf.describe()

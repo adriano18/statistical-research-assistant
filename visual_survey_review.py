@@ -442,10 +442,12 @@ def attach_text_layer_geometry(
             pages.append(layer)
     if not pages:
         return review
-    return replace(
+    from shared_scales import link_matrices
+
+    return link_matrices(replace(
         review, spatial=link_candidates(review, pages),
         matrices=geometric_matrices(pages),
-    )
+    ))
 
 
 def attach_docx_matrices(
@@ -456,7 +458,9 @@ def attach_docx_matrices(
         found = docx_matrices(source)
     except Exception:  # damaged tables must not block ordinary import
         return review
-    return replace(review, matrices=found) if found else review
+    from shared_scales import link_matrices
+
+    return link_matrices(replace(review, matrices=found)) if found else review
 
 
 def ocr_confidence_warning(review: ScientificDocumentReview) -> str | None:
@@ -553,9 +557,11 @@ def ocr_scientific_pdf(
                 "matrix proposals are available. Verify them manually.",
             ), count,
         )
-    review = replace(
+    from shared_scales import link_matrices
+
+    review = link_matrices(replace(
         review, spatial=link_candidates(review, geometry), matrices=matrices,
-    )
+    ))
     confidence_note = ocr_confidence_warning(review)
     return replace(
         review,
@@ -619,7 +625,12 @@ def edit_candidate_question(
         notes=(*row.notes, "Edited manually; verify against source."),
     )
     validate_questions([item.question for item in proposal])
-    return replace(candidate, questions=tuple(proposal))
+    edited = replace(candidate, questions=tuple(proposal))
+    old = candidate.questions[index].question
+    if row.scheme_id and (kind != old.get("kind") or q.get("options") != old.get("options")):
+        from shared_scales import detach_question
+        edited = detach_question(edited, index)
+    return edited
 
 
 def apply_response_format(

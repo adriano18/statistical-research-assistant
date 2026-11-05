@@ -10,6 +10,7 @@ import copy
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import re
 import threading
 
 import flet as ft
@@ -26,6 +27,8 @@ from visual_survey_review import (
     attach_text_layer_geometry, attach_docx_matrices, apply_response_format,
 )
 from binary_responses import FORMAT_LABELS
+from scientific_survey_import import linked_questions, scheme_banner
+from shared_scales import review_scheme, scheme_summary, unlink_scheme
 from ocr_runtime import OCRCancelled, ocr_readiness
 from spatial_review_ui import SpatialReviewController
 from desktop_button_style import style_buttons
@@ -546,6 +549,195 @@ def build_survey_workspace(
         ], spacing=9, visible=False,
     )
 
+    # Shared response scales (rows × columns such as O/S/R/N or Never…Often).
+    scale_banner = ft.Container(
+        visible=False, padding=10, bgcolor="#FFF4E5",
+        border=ft.Border.all(1, "#E0A04B"),
+        content=ft.Text("", size=13, weight="bold", color="#7A4A00", selectable=True),
+    )
+    scale_picker = ft.Dropdown(label="Shared response scale", width=420, options=[])
+    scale_summary = ft.Text("", size=12, selectable=True, color="#3C536F")
+    scale_issues = ft.Column(spacing=3)
+    scale_fields = ft.Column(spacing=6)
+    scale_reverse = ft.TextField(
+        label="Reverse-keyed items (as documented)", width=420, dense=True,
+        hint_text="e.g. 1, 5, 6, 9",
+    )
+    scale_reverse_source = ft.Text("", size=11, color="#536781", selectable=True)
+    scale_confirm_structure = ft.Checkbox(
+        label="Confirm structure: all linked questions share these categories and labels",
+        value=False,
+    )
+    scale_confirm_codes = ft.Checkbox(
+        label="Confirm numeric coding exactly as printed in the source", value=False,
+    )
+    scale_confirm_reverse = ft.Checkbox(
+        label="Confirm reverse scoring of the listed items (checked in the manual)",
+        value=False,
+    )
+    scale_apply_button = ft.Button("Apply scale review to all linked questions")
+    scale_show_button = ft.Button("Show this scale on the source page")
+    scale_unlink_button = ft.Button("Not a shared scale — keep these questions as text")
+    scale_status = ft.Text("", size=12, selectable=True)
+    scale_panel = ft.Container(
+        visible=False, padding=12, bgcolor="#F7FAFF",
+        border=ft.Border.all(1, "#9DB7E0"),
+        content=ft.Column(spacing=8, controls=[
+            ft.Text("RESPONSE SCALE REVIEW · shared answer categories", weight="bold", size=13),
+            ft.Text(
+                "Rows of a response table share one scale. Check the labels "
+                "against the source, then confirm the structure. Numeric codes "
+                "and reverse-keyed items are applied only with their own "
+                "confirmation. Nothing is published.",
+                size=12, color="#536781",
+            ),
+            scale_picker, scale_summary, scale_issues, scale_fields,
+            scale_reverse, scale_reverse_source,
+            scale_confirm_structure, scale_confirm_codes, scale_confirm_reverse,
+            ft.Row([scale_apply_button, scale_show_button], wrap=True, spacing=8),
+            scale_unlink_button, scale_status,
+        ]),
+    )
+
+    def current_scheme():
+        candidate = selected_instrument()
+        if candidate is None or not candidate.schemes:
+            return candidate, None
+        ids = [s.id for s in candidate.schemes]
+        if scale_picker.value not in ids:
+            scale_picker.value = ids[0]
+        return candidate, next(s for s in candidate.schemes if s.id == scale_picker.value)
+
+    def show_scale_review():
+        candidate, scheme = current_scheme()
+        banner = scheme_banner(candidate) if candidate is not None else None
+        scale_banner.visible = bool(banner)
+        scale_banner.content.value = ("⚠ " + banner) if banner else ""
+        scale_panel.visible = scheme is not None
+        if scheme is None:
+            return
+        scale_picker.options = [
+            ft.DropdownOption(
+                key=s.id,
+                text=f"{s.id} · {s.size} categories · "
+                     f"{len(linked_questions(candidate, s.id))} questions"
+                     + (" · confirmed" if s.structure_confirmed else " · NOT verified"),
+            )
+            for s in candidate.schemes
+        ]
+        scale_summary.value = scheme_summary(candidate, scheme)
+        problems = [*scheme.label_problems(), *scheme.issues]
+        scale_issues.controls = [
+            ft.Text("Check: " + text, size=11, color="#936022", selectable=True)
+            for text in problems[:30]
+        ]
+        rows = []
+        for k, label in enumerate(scheme.labels):
+            printed = scheme.printed[k] if k < len(scheme.printed) else ""
+            rows.append(ft.Row(wrap=True, spacing=8, controls=[
+                ft.TextField(label=f"Category {k + 1} label", value=label, width=250,
+                             dense=True, tooltip=f"Printed: {printed}" if printed else None),
+                ft.TextField(label=f"Category {k + 1} code", value=scheme.codes[k] or "",
+                             width=120, dense=True, hint_text="as printed"),
+            ]))
+        scale_fields.controls = rows
+        scale_reverse.value = ", ".join(map(str, scheme.reverse_items))
+        scale_reverse_source.value = (
+            f"Source: “{scheme.reverse_evidence[:160]}”" if scheme.reverse_evidence
+            else "No reverse-scoring statement was found for this scale."
+        )
+        scale_confirm_structure.value = scheme.structure_confirmed
+        scale_confirm_codes.value = scheme.codes_confirmed
+        scale_confirm_reverse.value = scheme.reverse_confirmed
+
+    def scale_field_values():
+        labels, codes = [], []
+        for row in scale_fields.controls:
+            label_field, code_field = row.controls
+            labels.append(label_field.value or "")
+            codes.append(code_field.value or "")
+        return labels, codes
+
+    def store_instrument(updated):
+        nonlocal extracted_document
+        collection = list(extracted_document.instruments)
+        collection[int(document_instrument.value)] = updated
+        extracted_document = replace(extracted_document, instruments=tuple(collection))
+        selected = document_question_picker.value
+        refresh_document_review()  # resets every document approval
+        if selected is not None and int(selected) < len(updated.questions):
+            document_question_picker.value = selected
+            show_editable_question()
+
+    def apply_scale_review(event=None):
+        candidate, scheme = current_scheme()
+        if scheme is None:
+            return
+        labels, codes = scale_field_values()
+        try:
+            reverse_items = [int(x) for x in re.findall(r"\d+", scale_reverse.value or "")]
+            updated = review_scheme(
+                candidate, scheme.id, labels=labels, codes=codes,
+                reverse_items=reverse_items,
+                structure=bool(scale_confirm_structure.value),
+                numeric=bool(scale_confirm_codes.value),
+                reverse=bool(scale_confirm_reverse.value),
+            )
+        except (ValueError, KeyError) as error:
+            scale_status.value = f"Scale review not applied: {error}"
+            page.update()
+            return
+        chosen = scheme.id
+        store_instrument(updated)
+        scale_picker.value = chosen
+        show_scale_review()
+        _, applied = current_scheme()
+        count = len(linked_questions(updated, chosen))
+        scale_status.value = (
+            f"Applied to {count} linked questions: "
+            + ("structure confirmed" if applied.structure_confirmed else "structure NOT confirmed")
+            + (", numeric codes confirmed" if applied.codes_confirmed else ", no numeric codes")
+            + (", reverse scoring confirmed" if applied.reverse_confirmed else "")
+            + ". Source unchanged; other approvals were reset."
+        )
+        page.update()
+
+    async def show_scale_on_page(event=None):
+        candidate, scheme = current_scheme()
+        if scheme is None:
+            return
+        linked = linked_questions(candidate, scheme.id)
+        if not linked:
+            return
+        document_question_picker.value = str(linked[0])
+        show_editable_question()
+        if scheme.matrix_id:
+            for k, matrix in enumerate(extracted_document.matrices):
+                if matrix.id == scheme.matrix_id:
+                    spatial.matrix_index = k
+        await spatial.on_question_selected(linked[0])
+        page.update()
+
+    def unlink_current_scale(event=None):
+        candidate, scheme = current_scheme()
+        if scheme is None:
+            return
+        updated = unlink_scheme(candidate, scheme.id)
+        store_instrument(updated)
+        scale_status.value = (
+            f"{scheme.id} removed: its questions stay as free text by your decision."
+        )
+        page.update()
+
+    async def on_scale_select(event=None):
+        show_scale_review()
+        page.update()
+
+    scale_picker.on_select = on_scale_select
+    scale_apply_button.on_click = apply_scale_review
+    scale_show_button.on_click = show_scale_on_page
+    scale_unlink_button.on_click = unlink_current_scale
+
     # Shared binary answer formats (True/False, Yes/No) found in the source.
     binary_format_picker = ft.Dropdown(
         label="Detected binary answer format", width=420, options=[],
@@ -904,6 +1096,8 @@ def build_survey_workspace(
         document_commit_button.disabled = candidate is None
         if candidate is None:
             binary_panel.visible = False
+            scale_panel.visible = False
+            scale_banner.visible = False
             page.update()
             return
         document_review_confirm.value = False
@@ -922,6 +1116,7 @@ def build_survey_workspace(
         document_question_picker.disabled = not candidate.questions
         show_editable_question()
         show_binary_formats()
+        show_scale_review()
         sources = ft.Column(
             controls=[
                 ft.Text("SOURCE · original extracted lines",
@@ -1030,6 +1225,8 @@ def build_survey_workspace(
         document_question_picker.value = None
         document_editor_panel.visible = False
         binary_panel.visible = False
+        scale_panel.visible = False
+        scale_banner.visible = False
         document_page_image.visible = False
         document_page_picker.options = []
         document_page_picker.disabled = True
@@ -1313,6 +1510,7 @@ def build_survey_workspace(
                 "Choose Word / PDF questionnaire", action=document_action,
             ),
             document_import_status,
+            scale_banner,
             document_instrument,
             # Responsive split screen: source left, review/editing right.
             ft.ResponsiveRow(
@@ -1354,6 +1552,7 @@ def build_survey_workspace(
                             controls=[
                                 ft.Text("EDIT · recognized questions",
                                         weight="bold", size=13),
+                                scale_panel,
                                 document_editor_panel,
                                 binary_panel,
                                 spatial.question_panel,

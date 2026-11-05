@@ -91,8 +91,9 @@ class SpatialReviewUITests(unittest.IsolatedAsyncioTestCase):
         prompt = find(self.view, ft.TextField, label="Correct question wording")
         self.assertIn("rely on fictional colleagues", prompt.value)
         status = texts(self.view)
-        self.assertIn("OCR confidence (raw Tesseract word scores)", status)
-        self.assertIn("unknown", status)  # text layer: no OCR scores
+        # Text-layer input is never reported as an OCR result.
+        self.assertIn("PDF text layer", status)
+        self.assertIn("OCR confidence does not apply", status)
         self.assertIn("not a percentage", status)
         # Matrix proposal from text geometry is offered for review.
         tile = next(c for c in children(self.view) if isinstance(c, ft.ExpansionTile)
