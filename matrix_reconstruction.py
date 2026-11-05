@@ -750,8 +750,10 @@ def choice_cell_grid(page: OCRPage) -> ChoiceGrid | None:
         common = max(set(keys), key=keys.count)
         agreeing = [text for text, key in zip(present, keys)
                     if key == common or _label_similarity(key, common) >= 0.8]
+        from repeated_choices import preferred_spelling
+
         spellings = [text for text in agreeing if _label_key(text) == common]
-        consensus = max(set(spellings), key=spellings.count)
+        consensus = preferred_spelling(spellings)
         labels.append(consensus)
         if len(agreeing) >= 0.6 * len(grid_rows):
             labelled += 1

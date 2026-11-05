@@ -648,7 +648,7 @@ def coping_scan_pages(*, labels=COPING_LABELS, count: int = 28, per_page: int = 
                       seed: int = 11) -> list[Image.Image]:
     """Scanned look-alike (about 200 dpi): the same item rows and labelled cells."""
     statements = coping_statements(count)
-    number_font, prompt_font, code_font, label_font = font(28), font(27), font(38), font(20)
+    number_font, prompt_font, code_font, label_font = font(28), font(27), font(38), font(22)
     columns = (1080, 1260, 1440, 1620)
     pages = []
     for start in range(0, count, per_page):

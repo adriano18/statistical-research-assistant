@@ -118,6 +118,20 @@ def _label_like(line: str) -> bool:
     )
 
 
+def preferred_spelling(spellings) -> str:
+    """Most frequent spelling; OCR drops spaces far more often than it adds
+    them, so a variant with more words wins when it repeats ("A FAIR" over
+    "AFAIR" when both occur at least twice or a quarter as often)."""
+    spellings = list(spellings)
+    best = max(set(spellings), key=spellings.count)
+    compact = re.sub(r"\s+", "", best).casefold()
+    floor = max(2, 0.25 * spellings.count(best))
+    spaced = [s for s in set(spellings)
+              if re.sub(r"\s+", "", s).casefold() == compact
+              and len(s.split()) > len(best.split()) and spellings.count(s) >= floor]
+    return max(spaced, key=lambda s: (len(s.split()), spellings.count(s))) if spaced else best
+
+
 def _join_label(parts) -> str:
     out = ""
     for part in parts:
@@ -268,8 +282,13 @@ def _template(reader: _Reader, fuzzy: bool) -> ChoiceBlock | None:
                 common = max(support, key=lambda key: (support[key], keys.count(key)))
             else:
                 common = max(set(keys), key=keys.count)
-            spellings = [t for t, key in zip(texts, keys) if key == common]
-            consensus.append(max(set(spellings), key=spellings.count))
+            if fuzzy:
+                compact = re.sub(r"\s+", "", common)
+                spellings = [t for t, key in zip(texts, keys) if re.sub(r"\s+", "", key) == compact]
+                consensus.append(preferred_spelling(spellings))
+            else:
+                spellings = [t for t, key in zip(texts, keys) if key == common]
+                consensus.append(max(set(spellings), key=spellings.count))
 
         def agrees(cats) -> bool:
             matches = sum(
