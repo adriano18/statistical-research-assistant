@@ -6,6 +6,25 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 **Next development sequence**: independently validate advanced psychometric estimates → polish stage-23 light desktop onboarding and respondent-scale UX → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX, packaging and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
+## Stage 32 — spatial OCR, confidence, matrices and bundled Windows OCR
+
+- [x] Typed immutable OCR word/line/block/page models with normalized boxes, pixel dimensions, stable IDs and `None` for unavailable confidence
+- [x] Parse Tesseract TSV; keep plain-text recognizers working; PDF text-layer geometry via PDFium
+- [x] Conservative question ↔ region linking; zoom/page/rotation-safe overlays; click-to-focus; unlinked text never fabricates questions
+- [x] Manual region adjust, split, merge, link, unlink and revert (source untouched); edits reset approvals
+- [x] Raw OCR confidence categories (≥ 85 / 60–84 / < 60 / unknown) separated from a categorical structural heuristic; psychometric disclaimer
+- [x] Review queue for low/unknown confidence, unlinked questions, structural flags and unresolved matrix cells
+- [x] `MatrixProposal` from DOCX tables, PDF geometry and OCR boxes: merged headers, code rows, multi-line prompts, missing/ambiguous cells, page breaks, descending codes
+- [x] Editable matrix grid (cells, rows, columns, reorder, accept, verify) with explicit numeric-code and reverse-key confirmation
+- [x] Pinned Tesseract 5.5.4 + eng/lav/rus/osd runtime with SHA-256 lock, licences and notices; resolver order `TESSERACT_CMD` → bundled → PATH; readiness in Settings/Help
+- [x] Linux CI with real Tesseract; Windows CI verifies the bundle with an isolated PATH and runs real OCR tests against it
+- [ ] Windows CI: `flet build`, in-package runtime check and OCR self-test inside the packaged executable passing on the PR head
+- [x] Synthetic regression fixtures: PSS-like/UCLA-like layouts, 0–4 and 1–4 scales, EN/LV/RU, skewed and sideways scans, multi-page and merged-header tables, missing cells
+- [ ] Clean-machine manual test of the ZIP on Windows 10/11 (no Python/Tesseract), high-DPI and Narrator QA
+- [ ] Transposed matrices (items as columns), rotated header text and filled-in answer marks
+- [ ] Dedicated respondent-facing matrix/grid control and persisting region corrections with the draft
+- [ ] Signed installer and legal review of the redistributed GPL/LGPL components before a public release
+
 ## Stage 31 — local OCR and visual PDF/Word questionnaire editing
 
 - [x] Render actual PDF source pages as PNG using local PDFium, with selectable page number and bounded render dimensions
@@ -18,9 +37,9 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [x] Validate edits atomically, preserve original excerpts, require separate source/scoring/draft-overwrite confirmations
 - [x] Add real image-only PDF and Word page-rendering tests, simulated OCR + in-app Flet integration regressions
 - [ ] Manually test actual Tesseract binaries and language packs with all six private example files on Windows
-- [ ] Add reliable spatial bounding boxes and OCR confidence overlays directly on page images
-- [ ] Reconstruct multi-column/scoring matrix tables and complex conditional rules after deliberate review
-- [ ] Bundle/configure Tesseract in a distributable offline Windows installer and run high-DPI GUI QA
+- [x] Add reliable spatial bounding boxes and OCR confidence overlays directly on page images (Stage 32)
+- [x] Reconstruct multi-column/scoring matrix tables after deliberate review (Stage 32); complex conditional rules remain manual
+- [x] Bundle Tesseract in the offline Windows build pipeline (Stage 32); packaged-app verification, signed installer and high-DPI GUI QA remain open
 
 ## Stage 30 — scientific questionnaire import and scoring review
 
@@ -292,7 +311,7 @@ Alternatives to evaluate later:
 - [ ] Validate exported copy/TXT/PNG and Windows save dialogs manually
 - [ ] Cross-check named datasets and extreme cases against trusted scientific tools
 - [ ] Confirm that repeated, nested and missing-data structures are not silently misclassified
-- [ ] Package an offline Windows executable
+- [ ] Package an offline Windows executable (Stage 32 CI builds an unsigned ZIP with bundled OCR; mark done once the packaged self-test passes and a clean-machine check is recorded)
 - [ ] Clear privacy and limitation documentation; never put participant data in public GitHub
 
 ## Limitations

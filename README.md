@@ -13,13 +13,31 @@ A Python project for exploring research datasets and, later, selecting and inter
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
 5. **v0.5 Reports and localization** — TXT/PNG export and copying are available across analysis screens; next are structured APA tables, DOCX/PDF, and EN/LV/RU translations.
 
+## Stage 32 — spatial OCR review, OCR confidence, questionnaire matrices and bundled Windows OCR
+
+The scientific importer is now a **split-screen review**: the rendered source page on the left with highlighted question regions, and the question editor, confidence panel, region tools, review queue and **matrix editor** on the right. See the [Stage 31–32 user guide](docs/VISUAL_OCR_IMPORT.md) and the [bundled OCR developer guide](docs/BUNDLED_OCR.md).
+
+* **Spatial OCR:** local Tesseract TSV output keeps every word's box and raw confidence (typed `OCRWord/OCRLine/OCRBlock/OCRPage`, normalized page coordinates). Text-based PDFs get the same positions from the PDF text layer. Boxes stay aligned through zoom (50–300 %), page switching and view rotation; click a box to open its question. Unlinked text is shown but never turned into a question. Regions can be adjusted, split, merged, linked, unlinked and reverted; the source file is never modified.
+* **OCR confidence ≠ structure ≠ validity:** OCR confidence is the mean raw Tesseract word score (≥ 85 high, 60–84 or any word < 60 review, < 60 low, unknown without scores). Reconstruction problems are reported by a separate rule-based *structure* status, never as a percentage. Neither is evidence of reliability or validity.
+* **Matrices:** Likert-type row × column grids are reconstructed from native Word tables (merged group headers, numeric code rows, multi-line cells, missing cells), PDF text geometry and OCR boxes (printed codes, page-break continuation, descending codes, overlapping headers). The original grid is preserved; the editable grid must be verified, and numeric codes and reverse-keyed rows apply only after separate confirmation. Every edit resets approvals.
+* **Offline OCR included on Windows:** the Windows build bundles Tesseract 5.5.4 (MSYS2 UCRT64) with `eng`, `lav`, `rus` and `osd` data, its exact DLL closure, licence texts and pinned SHA-256 hashes. No Tesseract, Python or language pack installation is needed. `TESSERACT_CMD` still overrides the bundled engine for development. **Settings → Offline OCR engine…** shows version, languages and integrity.
+
+### Installing the Windows desktop preview
+
+1. Open the latest successful run of **Windows desktop bundle with offline OCR** under the repository's *Actions* tab (it runs on pull requests touching the importer/OCR and can be started manually).
+2. Download the `StatisticalResearchAssistant-Windows-x64-unsigned-preview` artifact and extract `StatisticalResearchAssistant-Windows-x64.zip` to a folder you can write to (for example `C:\Users\<you>\Apps\StatisticalResearchAssistant`).
+3. Run `StatisticalResearchAssistant.exe`. The build is **unsigned**, so Windows SmartScreen may ask you to confirm ("More info → Run anyway").
+4. Optional check: **Settings → Offline OCR engine…** should say "bundled with this application", list `eng, lav, osd, rus` and "bundle integrity verified".
+
+From source on any OS, install Tesseract 5 with `eng`/`lav`/`rus` data (or set `TESSERACT_CMD`) — see the user guide.
+
 ## Stage 31 — local OCR and in-app visual editing
 
 The Scientific Questionnaire Importer now displays actual **PDF pages in-app** and a clearly labeled **Word paragraph/table reconstruction** alongside editable extracted questions. A researcher can change wording, response type, choice labels, section and requiredness **before** accepting the source into the editable questionnaire draft. Corrections never alter the source document, published schema or respondent data. Separate source/version and scoring approvals remain mandatory.
 
-For image-only PDFs, use local Tesseract OCR (installed separately, with the appropriate ENG/LAV/RUS languages), either one page at a time or for the first 20 pages in a bounded batch. PDFium is included as a Python dependency and renders the visual page from bytes. If text extraction fails, the scanned source still opens for preview and the user may run OCR. The selected file stays in memory during review. OCR runs locally in the **desktop** application; browser/server mode is disabled for this local-only OCR workflow. See the [Stage 31 setup and operating guide](docs/VISUAL_OCR_IMPORT.md).
+For image-only PDFs, use local Tesseract OCR (bundled in the Windows package since Stage 32; installed separately when running from source, with the appropriate ENG/LAV/RUS languages), either one page at a time or for the first 20 pages in a bounded batch. PDFium is included as a Python dependency and renders the visual page from bytes. If text extraction fails, the scanned source still opens for preview and the user may run OCR. The selected file stays in memory during review. OCR runs locally in the **desktop** application; browser/server mode is disabled for this local-only OCR workflow. See the [Stage 31 setup and operating guide](docs/VISUAL_OCR_IMPORT.md).
 
-Scientific caution: OCR mistakes and complex rating matrices require visual verification; the importer never guesses psychometric validity, test norms or consent. Automated tests use synthetic scans and mocked Tesseract output, not the user's private copyrighted test files.
+Scientific caution: OCR mistakes and complex rating matrices require visual verification; the importer never guesses psychometric validity, test norms or consent. Automated tests use synthetic scans with real local Tesseract (and mocked output for edge cases), not the user's private copyrighted test files.
 
 ## Stage 30 — Scientific Questionnaire Importer
 
