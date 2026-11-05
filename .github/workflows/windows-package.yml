@@ -5,6 +5,10 @@ on:
   pull_request:
     paths:
       - "app.py"
+      - "research_app.py"
+      - "startup_diagnostics.py"
+      - "binary_responses.py"
+      - "pyproject.toml"
       - "ocr_*.py"
       - "visual_survey_review.py"
       - "matrix_reconstruction.py"
@@ -14,6 +18,9 @@ on:
       - "requirements.txt"
       - "packaging/**"
       - "tools/prepare_windows_ocr_runtime.py"
+      - "tools/check_gui_startup.py"
+      - "tests/test_true_false_import.py"
+      - "tests/test_app_startup.py"
       - "tests/test_real_tesseract_ocr.py"
       - ".github/workflows/windows-package.yml"
 
@@ -79,6 +86,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "matrix tests failed" }
           & $python -m unittest discover -s tests -p "test_spatial_review_ui.py" -v
           if ($LASTEXITCODE -ne 0) { throw "spatial UI tests failed" }
+          & $python -m unittest discover -s tests -p "test_true_false_import.py" -v
+          if ($LASTEXITCODE -ne 0) { throw "True/False import tests failed" }
+          & $python -m unittest discover -s tests -p "test_app_startup.py" -v
+          if ($LASTEXITCODE -ne 0) { throw "startup tests failed" }
 
       - name: Build unsigned Windows desktop bundle
         run: >-
@@ -124,6 +135,15 @@ jobs:
           if ($json.origin -ne "bundled") { throw "Packaged app did not use the bundled engine: $($json.origin)" }
           Copy-Item $result build/windows/ocr-selftest-result.json
 
+      - name: Normal GUI startup (no Python/Tesseract on PATH, screenshots)
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          # Ordinary launch path, not the OCR self-test: fails on a failed or
+          # missing Home screen, a black window > 3 s or a dark final frame.
+          python tools/check_gui_startup.py "$env:EXE_PATH" gui-startup
+          if ($LASTEXITCODE -ne 0) { throw "Packaged GUI startup check failed" }
+
       - name: Create distributable ZIP
         shell: pwsh
         run: |
@@ -137,5 +157,6 @@ jobs:
           path: |
             StatisticalResearchAssistant-Windows-x64.zip
             build/windows/ocr-selftest-result.json
+            gui-startup/
           if-no-files-found: error
           retention-days: 14

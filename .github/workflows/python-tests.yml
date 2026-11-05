@@ -95,3 +95,7 @@ jobs:
           python -m unittest discover -s tests -p "test_ocr_layout.py" -v
           python -m unittest discover -s tests -p "test_matrix_reconstruction.py" -v
           python -m unittest discover -s tests -p "test_spatial_review_ui.py" -v
+      - name: Test True/False answer formats and desktop launcher on Windows
+        run: |
+          python -m unittest discover -s tests -p "test_true_false_import.py" -v
+          python -m unittest discover -s tests -p "test_app_startup.py" -v

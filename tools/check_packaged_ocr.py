@@ -63,7 +63,8 @@ def main() -> int:
             if not (bundle / required).is_file():
                 raise SystemExit(f"Packaged runtime lacks {required}")
         modules = {p.stem.split(".")[0] for p in root.iterdir() if p.suffix in {".py", ".pyc"}}
-        for module in ("app", "ocr_runtime", "ocr_selftest", "visual_survey_review"):
+        for module in ("app", "research_app", "startup_diagnostics", "binary_responses",
+                       "ocr_runtime", "ocr_selftest", "visual_survey_review"):
             if module not in modules:
                 raise SystemExit(f"Packaged application lacks module {module}")
         manifest = json.loads((bundle / "MANIFEST.json").read_text(encoding="utf-8"))
