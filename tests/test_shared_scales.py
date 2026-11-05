@@ -286,6 +286,8 @@ class FullWorkflowUITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(instrument.options), 2)
         instrument.value = "1"  # the revised form
         await instrument.on_select(None)
+        # The viewer follows the selected version to its own page.
+        self.assertEqual(self.find(ft.Dropdown, "Source page · visual preview").value, "2")
         self.assertIn("20 questions use an unverified 4-choice scale (Never / Rarely / "
                       "Sometimes / Often)", self.texts())
         confirm = self.find(ft.Checkbox, "I verified the instrument version, wording, "

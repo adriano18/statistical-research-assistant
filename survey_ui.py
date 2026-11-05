@@ -638,7 +638,7 @@ def build_survey_workspace(
                 ft.TextField(label=f"Category {k + 1} label", value=label, width=250,
                              dense=True, tooltip=f"Printed: {printed}" if printed else None),
                 ft.TextField(label=f"Category {k + 1} code", value=scheme.codes[k] or "",
-                             width=120, dense=True, hint_text="as printed"),
+                             width=170, dense=True, hint_text="as printed"),
             ]))
         scale_fields.controls = rows
         scale_reverse.value = ", ".join(map(str, scheme.reverse_items))
@@ -1197,7 +1197,12 @@ def build_survey_workspace(
 
     async def on_instrument_select(event):
         refresh_document_review()
-        spatial.selected_index = 0 if selected_instrument() and selected_instrument().questions else None
+        chosen = selected_instrument()
+        spatial.selected_index = 0 if chosen and chosen.questions else None
+        if chosen is not None and is_pdf_source():
+            # Show the selected version's own page, never another version's.
+            document_page_picker.value = str(chosen.questions[0].page if chosen.questions
+                                             else chosen.first_page)
         await refresh_document_page()
 
     document_instrument.on_select = on_instrument_select
