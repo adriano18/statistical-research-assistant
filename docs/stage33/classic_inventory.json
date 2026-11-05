@@ -1,0 +1,3214 @@
+{
+ "generated_by": "tools/ux_inventory.py",
+ "screens": [
+  {
+   "key": "home",
+   "label": "Home",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "YOUR RESEARCH WORKSPACE"
+    },
+    {
+     "control": "Text",
+     "label": "Start with a question. We'll help with the data."
+    },
+    {
+     "control": "Text",
+     "label": "What would you like to do?"
+    },
+    {
+     "control": "Text",
+     "label": "Open research data"
+    },
+    {
+     "control": "Text",
+     "label": "Design a questionnaire"
+    },
+    {
+     "control": "Text",
+     "label": "Try a guided example"
+    },
+    {
+     "control": "Text",
+     "label": "A simple research workflow"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "N"
+    },
+    {
+     "control": "Text",
+     "label": "Missing"
+    },
+    {
+     "control": "Text",
+     "label": "Effect size"
+    },
+    {
+     "control": "Text",
+     "label": "p"
+    },
+    {
+     "control": "Text",
+     "label": "95% CI"
+    }
+   ],
+   "import": [
+    {
+     "control": "Button",
+     "label": "Open CSV / Excel"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Create questionnaire"
+    },
+    {
+     "control": "Button",
+     "label": "Explore sample data"
+    },
+    {
+     "control": "Button",
+     "label": "Browse statistical methods"
+    },
+    {
+     "control": "Button",
+     "label": "See loaded dataset"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "dataset",
+   "label": "Dataset",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Dataset"
+    },
+    {
+     "control": "Text",
+     "label": "Choose a data source"
+    },
+    {
+     "control": "Text",
+     "label": "Import settings"
+    },
+    {
+     "control": "Text",
+     "label": "Import diagnostics"
+    },
+    {
+     "control": "Text",
+     "label": "Variable overview"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "N"
+    },
+    {
+     "control": "Text",
+     "label": "Missing"
+    },
+    {
+     "control": "Text",
+     "label": "M"
+    },
+    {
+     "control": "Text",
+     "label": "SD"
+    }
+   ],
+   "import": [
+    {
+     "control": "Button",
+     "label": "Open CSV / Excel"
+    },
+    {
+     "control": "Button",
+     "label": "Load survey example"
+    },
+    {
+     "control": "Button",
+     "label": "Load scale example"
+    },
+    {
+     "control": "Button",
+     "label": "Load factor example"
+    },
+    {
+     "control": "Button",
+     "label": "Load paired example"
+    },
+    {
+     "control": "Button",
+     "label": "Load categorical example"
+    },
+    {
+     "control": "Button",
+     "label": "Load three-group example"
+    },
+    {
+     "control": "Button",
+     "label": "Load regression example"
+    },
+    {
+     "control": "Button",
+     "label": "Load logistic example"
+    },
+    {
+     "control": "Button",
+     "label": "Load ANCOVA example"
+    },
+    {
+     "control": "Button",
+     "label": "Load interaction example"
+    },
+    {
+     "control": "Button",
+     "label": "Load repeated example"
+    },
+    {
+     "control": "Button",
+     "label": "Open recent file"
+    },
+    {
+     "control": "Button",
+     "label": "Open file by full path"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Try a fictional example dataset"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Excel worksheet",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "CSV separator",
+     "options": [
+      "Auto detect",
+      "Comma ,",
+      "Semicolon ;",
+      "Tab",
+      "Pipe |"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Decimal notation",
+     "options": [
+      "Auto (conservative)",
+      "Dot decimal / 1,234.5",
+      "Comma decimal / 1.234,5"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Text encoding",
+     "options": [
+      "Auto detect / UTF-8",
+      "UTF-8",
+      "UTF-16",
+      "Windows Baltic (CP1257)",
+      "Windows Cyrillic (CP1251)",
+      "Windows Western (CP1252)"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Recent files (stored only on this computer)",
+     "options": []
+    }
+   ],
+   "input": [
+    {
+     "control": "TextField",
+     "label": "Header row (1-based)"
+    },
+    {
+     "control": "TextField",
+     "label": "Data begins at row (optional)"
+    },
+    {
+     "control": "TextField",
+     "label": "Missing text markers (semicolon-separated)"
+    },
+    {
+     "control": "TextField",
+     "label": "Full local file path (fallback if dialog does not open)"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Apply import settings"
+    },
+    {
+     "control": "Button",
+     "label": "Clear recent history"
+    }
+   ]
+  },
+  {
+   "key": "preparation",
+   "label": "Data preparation",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Data preparation"
+    },
+    {
+     "control": "Text",
+     "label": "Non-destructive transformation workspace"
+    },
+    {
+     "control": "Text",
+     "label": "Transformation history"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "Missing"
+    },
+    {
+     "control": "Text",
+     "label": "M"
+    },
+    {
+     "control": "Text",
+     "label": "SD"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Transformation",
+     "options": [
+      "Mark missing-value codes",
+      "Recode values",
+      "Reverse-score an item",
+      "Create mean/sum scale score"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Source variable",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Other values",
+     "options": [
+      "Retain unchanged",
+      "Mark missing"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Scale score",
+     "options": [
+      "Mean of answered items",
+      "Sum (complete cases only)"
+     ]
+    }
+   ],
+   "input": [
+    {
+     "control": "TextField",
+     "label": "New variable name"
+    },
+    {
+     "control": "TextField",
+     "label": "Missing codes, comma-separated"
+    },
+    {
+     "control": "TextField",
+     "label": "Recode pairs, e.g. No=0;Yes=1"
+    },
+    {
+     "control": "TextField",
+     "label": "Minimum"
+    },
+    {
+     "control": "TextField",
+     "label": "Maximum"
+    },
+    {
+     "control": "TextField",
+     "label": "Minimum answered items"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Apply transformation"
+    }
+   ],
+   "export": [
+    {
+     "control": "Button",
+     "label": "Use working copy in analysis"
+    },
+    {
+     "control": "Button",
+     "label": "Save prepared CSV + steps JSON"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "survey",
+   "label": "Questionnaires",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Questionnaire builder"
+    },
+    {
+     "control": "Text",
+     "label": "Local forms and collected responses"
+    },
+    {
+     "control": "Text",
+     "label": "LOCAL QUESTIONNAIRE WORKSPACE"
+    },
+    {
+     "control": "Text",
+     "label": "1. Survey details"
+    },
+    {
+     "control": "Text",
+     "label": "SOURCE · rendered PDF page / Word text"
+    },
+    {
+     "control": "Text",
+     "label": "EDIT · recognized questions"
+    },
+    {
+     "control": "Text",
+     "label": "RESPONSE SCALE REVIEW · shared answer categories"
+    },
+    {
+     "control": "Text",
+     "label": "BINARY ANSWERS · shared response format"
+    },
+    {
+     "control": "Text",
+     "label": "CONFIDENCE · selected question"
+    },
+    {
+     "control": "Text",
+     "label": "SOURCE REGIONS · manual corrections"
+    },
+    {
+     "control": "Text",
+     "label": "REVIEW QUEUE · suspicious or unresolved items"
+    },
+    {
+     "control": "Text",
+     "label": "2. Questions"
+    },
+    {
+     "control": "Text",
+     "label": "3. Question editor"
+    },
+    {
+     "control": "Text",
+     "label": "New question"
+    },
+    {
+     "control": "Text",
+     "label": "4. Reorder entire topic sections"
+    },
+    {
+     "control": "Text",
+     "label": "5. Finish the draft"
+    },
+    {
+     "control": "Text",
+     "label": "Respondent preview"
+    },
+    {
+     "control": "Text",
+     "label": "Select a saved questionnaire"
+    },
+    {
+     "control": "Text",
+     "label": "Enter a participant response on this computer"
+    },
+    {
+     "control": "Text",
+     "label": "Collected responses"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "Missing"
+    },
+    {
+     "control": "Text",
+     "label": "Cronbach’s α"
+    },
+    {
+     "control": "Text",
+     "label": "McDonald’s ω"
+    },
+    {
+     "control": "Text",
+     "label": "Item–rest r / ρ"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "1. Build"
+    },
+    {
+     "control": "Button",
+     "label": "2. Preview"
+    },
+    {
+     "control": "Button",
+     "label": "3. Fill survey"
+    },
+    {
+     "control": "Button",
+     "label": "Choose Word / PDF questionnaire"
+    },
+    {
+     "control": "Button",
+     "label": "Run local OCR on this PDF page"
+    },
+    {
+     "control": "Button",
+     "label": "OCR first 20 PDF pages"
+    },
+    {
+     "control": "Button",
+     "label": "Cancel OCR"
+    },
+    {
+     "control": "Button",
+     "label": "Check OCR engine"
+    },
+    {
+     "control": "Button",
+     "label": "Apply scale review to all linked questions"
+    },
+    {
+     "control": "Button",
+     "label": "Show this scale on the source page"
+    },
+    {
+     "control": "Button",
+     "label": "Not a shared scale — keep these questions as text"
+    },
+    {
+     "control": "Button",
+     "label": "Apply correction to extracted question"
+    },
+    {
+     "control": "Button",
+     "label": "Apply binary answers to matching items"
+    },
+    {
+     "control": "Button",
+     "label": "Apply region box"
+    },
+    {
+     "control": "Button",
+     "label": "Split region"
+    },
+    {
+     "control": "Button",
+     "label": "Merge this question's regions"
+    },
+    {
+     "control": "Button",
+     "label": "Unlink region"
+    },
+    {
+     "control": "Button",
+     "label": "Revert this question's regions"
+    },
+    {
+     "control": "Button",
+     "label": "Revert all regions"
+    },
+    {
+     "control": "Button",
+     "label": "Apply grid edits"
+    },
+    {
+     "control": "Button",
+     "label": "Add row"
+    },
+    {
+     "control": "Button",
+     "label": "Add column"
+    },
+    {
+     "control": "Button",
+     "label": "Accept flagged cells as shown"
+    },
+    {
+     "control": "Button",
+     "label": "Verify grid against source"
+    },
+    {
+     "control": "Button",
+     "label": "Use verified matrix rows as editable draft"
+    },
+    {
+     "control": "Button",
+     "label": "Use extracted questions as editable draft"
+    },
+    {
+     "control": "Button",
+     "label": "+ New question"
+    },
+    {
+     "control": "Button",
+     "label": "+ New page"
+    },
+    {
+     "control": "Button",
+     "label": "Use preset labels"
+    },
+    {
+     "control": "Button",
+     "label": "Use bipolar example −3…3"
+    },
+    {
+     "control": "Button",
+     "label": "Duplicate"
+    },
+    {
+     "control": "Button",
+     "label": "Move up"
+    },
+    {
+     "control": "Button",
+     "label": "Move down"
+    },
+    {
+     "control": "Button",
+     "label": "Remove"
+    },
+    {
+     "control": "Button",
+     "label": "Preview draft"
+    },
+    {
+     "control": "Button",
+     "label": "Create local questionnaire"
+    },
+    {
+     "control": "Button",
+     "label": "Clone published survey into editable draft"
+    },
+    {
+     "control": "Button",
+     "label": "Submit response locally"
+    },
+    {
+     "control": "Button",
+     "label": "Refresh response table"
+    }
+   ],
+   "export": [
+    {
+     "control": "Button",
+     "label": "4. Responses & export"
+    },
+    {
+     "control": "Button",
+     "label": "Save question"
+    },
+    {
+     "control": "Button",
+     "label": "Export CSV + codebook"
+    }
+   ],
+   "input": [
+    {
+     "control": "TextField",
+     "label": "Survey title"
+    },
+    {
+     "control": "TextField",
+     "label": "Participant instructions / research information"
+    },
+    {
+     "control": "TextField",
+     "label": "Reverse-keyed items (as documented)"
+    },
+    {
+     "control": "TextField",
+     "label": "Correct question wording"
+    },
+    {
+     "control": "TextField",
+     "label": "Question section"
+    },
+    {
+     "control": "TextField",
+     "label": "Choice labels · one per line"
+    },
+    {
+     "control": "TextField",
+     "label": "First answer label"
+    },
+    {
+     "control": "TextField",
+     "label": "Second answer label"
+    },
+    {
+     "control": "TextField",
+     "label": "Left %"
+    },
+    {
+     "control": "TextField",
+     "label": "Top %"
+    },
+    {
+     "control": "TextField",
+     "label": "Right %"
+    },
+    {
+     "control": "TextField",
+     "label": "Bottom %"
+    },
+    {
+     "control": "TextField",
+     "label": "Variable ID, e.g. stress_q1"
+    },
+    {
+     "control": "TextField",
+     "label": "Question text"
+    },
+    {
+     "control": "TextField",
+     "label": "Topic / section, e.g. Demographics"
+    },
+    {
+     "control": "TextField",
+     "label": "Page number (1–20)"
+    },
+    {
+     "control": "TextField",
+     "label": "Page title, e.g. Background"
+    },
+    {
+     "control": "TextField",
+     "label": "Options separated by semicolons"
+    },
+    {
+     "control": "TextField",
+     "label": "Scale / subscale ID, e.g. stress"
+    },
+    {
+     "control": "TextField",
+     "label": "Respondent labels: one numeric code = text per line"
+    },
+    {
+     "control": "TextField",
+     "label": "Don't know: respondent label"
+    },
+    {
+     "control": "TextField",
+     "label": "Prefer not: respondent label"
+    },
+    {
+     "control": "TextField",
+     "label": "Low anchor (e.g. Never)"
+    },
+    {
+     "control": "TextField",
+     "label": "High anchor (legacy forms)"
+    },
+    {
+     "control": "TextField",
+     "label": "Answer value (e.g. Yes)"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Starting template",
+     "options": [
+      "Psychology / Likert",
+      "Demographics",
+      "HR / Workplace",
+      "Marketing / Feedback"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Extracted instrument / version",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Source page · visual preview",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Page view rotation",
+     "options": [
+      "0° clockwise",
+      "90° clockwise",
+      "180° clockwise",
+      "270° clockwise"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Local OCR language packs",
+     "options": [
+      "English",
+      "Latvian",
+      "Russian",
+      "Latvian (main) + English",
+      "Russian (main) + English",
+      "Latvian (main) + Russian",
+      "Russian (main) + Latvian",
+      "All three · Latvian main",
+      "All three · Russian main"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Shared response scale",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Question to review / edit",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Response type",
+     "options": [
+      "Short text",
+      "Long text",
+      "Single choice",
+      "Multiple choices",
+      "Yes / No",
+      "Number",
+      "Numeric rating (proposed codes)"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Detected binary answer format",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Linked source region",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Review queue filter",
+     "options": [
+      "Needs attention (all flags)",
+      "Low or unknown OCR confidence",
+      "No source region linked",
+      "Structural heuristic flags"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Detected response matrix",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Response type",
+     "options": [
+      "Likert scale 1–5",
+      "Likert scale 1–7",
+      "Custom numeric / semantic differential",
+      "One choice",
+      "Multiple choices",
+      "Yes / No",
+      "Number",
+      "Short text",
+      "Long text",
+      "Date",
+      "Required consent"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Text scale preset",
+     "options": [
+      "Agreement",
+      "Quality: poor → good",
+      "Frequency"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Show conditionally when…",
+     "options": [
+      "Always show"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Condition operator",
+     "options": [
+      "Equals",
+      "Not equal",
+      "Greater than",
+      "Less than"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Page for section reorder",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Published questionnaires on this computer",
+     "options": []
+    }
+   ],
+   "import": [
+    {
+     "control": "Button",
+     "label": "Load template"
+    },
+    {
+     "control": "Button",
+     "label": "Load responses into Dataset"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Scientific importer · Word / PDF questionnaires"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "MATRIX EDITOR · row/column rating scales"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Original detected grid (read-only provenance)"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ],
+   "toggle": [
+    {
+     "control": "Checkbox",
+     "label": "Show unlinked text lines"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Required answer (verify with source)"
+    },
+    {
+     "control": "Checkbox",
+     "label": "I checked the source: these items share this answer format"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Link mode: clicking unlinked text attaches it to the selected question"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Highlight missing/ambiguous matrix cells on the page"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Apply printed numeric codes as scale values (reviewed by researcher)"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Apply marked reverse-keyed rows (reviewed by researcher)"
+    },
+    {
+     "control": "Checkbox",
+     "label": "I verified the instrument version, wording, permissions and extracted question list against the source"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Use proposed numeric response codes (reviewed by researcher)"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Also apply proposed reverse-key flags (reviewed by researcher)"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Replace existing unsaved draft questions"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Required answer"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Reverse-scored item (metadata only)"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Offer 'Don't know' as missing"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Offer 'Prefer not to answer' as missing"
+    }
+   ],
+   "confirmation": [
+    {
+     "control": "Checkbox",
+     "label": "Confirm structure: all linked questions share these categories and labels"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Confirm numeric coding exactly as printed in the source"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Confirm reverse scoring of the listed items (checked in the manual)"
+    }
+   ]
+  },
+  {
+   "key": "descriptive",
+   "label": "Descriptive",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Descriptive statistics"
+    },
+    {
+     "control": "Text",
+     "label": "Choose a variable"
+    },
+    {
+     "control": "Text",
+     "label": "Results and distribution"
+    },
+    {
+     "control": "Text",
+     "label": "Explore: boxplot and assumption checks"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "N"
+    },
+    {
+     "control": "Text",
+     "label": "Missing"
+    },
+    {
+     "control": "Text",
+     "label": "M"
+    },
+    {
+     "control": "Text",
+     "label": "Mdn"
+    },
+    {
+     "control": "Text",
+     "label": "SD"
+    },
+    {
+     "control": "Text",
+     "label": "Shapiro–Wilk W"
+    },
+    {
+     "control": "Text",
+     "label": "Levene / Brown–Forsythe"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Variable",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Measurement scale (confirm manually)",
+     "options": [
+      "Not confirmed",
+      "Identifier",
+      "Nominal",
+      "Ordinal",
+      "Quantitative"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Quantitative variable",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Group (optional)",
+     "options": [
+      "No grouping"
+     ]
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Analyze selected variable"
+    },
+    {
+     "control": "Button",
+     "label": "Explore distributions"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "reliability",
+   "label": "Scale reliability",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Scale reliability"
+    },
+    {
+     "control": "Text",
+     "label": "Select questionnaire items"
+    },
+    {
+     "control": "Text",
+     "label": "Cronbach’s α: APA-style result"
+    },
+    {
+     "control": "Text",
+     "label": "Cronbach α figure"
+    },
+    {
+     "control": "Text",
+     "label": "McDonald’s ω: one-factor estimate"
+    },
+    {
+     "control": "Text",
+     "label": "Item diagnostics"
+    },
+    {
+     "control": "Text",
+     "label": "Omega figure: item–rest correlations and loadings"
+    },
+    {
+     "control": "Text",
+     "label": "Omega report and methodological cautions"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "Cronbach’s α"
+    },
+    {
+     "control": "Text",
+     "label": "McDonald’s ω"
+    },
+    {
+     "control": "Text",
+     "label": "95% CI"
+    },
+    {
+     "control": "Text",
+     "label": "Item–rest r / ρ"
+    },
+    {
+     "control": "Text",
+     "label": "α if deleted"
+    }
+   ],
+   "toggle": [
+    {
+     "control": "Checkbox",
+     "label": "I checked that the items measure one construct and reversed items are recoded"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Omega 95% bootstrap CI",
+     "options": [
+      "Off (fast)",
+      "200 resamples (exploratory)",
+      "500 resamples (more stable)"
+     ]
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Calculate Cronbach’s α"
+    },
+    {
+     "control": "Button",
+     "label": "Calculate McDonald’s ω + item analysis"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Show full one-factor reliability report"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Review omega assumptions and limitations"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "factor",
+   "label": "EFA / PCA",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Exploratory EFA / PCA"
+    },
+    {
+     "control": "Text",
+     "label": "Select questionnaire or measurement variables"
+    },
+    {
+     "control": "Text",
+     "label": "Factorability and retention summary"
+    },
+    {
+     "control": "Text",
+     "label": "Scree, parallel analysis and item loadings"
+    },
+    {
+     "control": "Text",
+     "label": "Component / factor loading matrix"
+    },
+    {
+     "control": "Text",
+     "label": "APA-style report and methodological limitations"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "Factor loading"
+    },
+    {
+     "control": "Text",
+     "label": "Eigenvalue"
+    },
+    {
+     "control": "Text",
+     "label": "Parallel analysis"
+    },
+    {
+     "control": "Text",
+     "label": "95% CI"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Exploratory method",
+     "options": [
+      "Principal components (PCA)",
+      "Principal-axis factors (EFA)"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Number of factors/components",
+     "options": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Factor rotation",
+     "options": [
+      "None",
+      "Varimax (orthogonal EFA)",
+      "Oblimin (correlated factors)"
+     ]
+    }
+   ],
+   "toggle": [
+    {
+     "control": "Checkbox",
+     "label": "I checked the study design, measurement scales, independence and suitability"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Run exploratory factor / component analysis"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Show full exploration report"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Review factor-analysis cautions"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "correlation",
+   "label": "Correlations",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Correlations"
+    },
+    {
+     "control": "Text",
+     "label": "Select two variables"
+    },
+    {
+     "control": "Text",
+     "label": "Statistical result"
+    },
+    {
+     "control": "Text",
+     "label": "Scatterplot"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "Pearson r"
+    },
+    {
+     "control": "Text",
+     "label": "Spearman ρ"
+    },
+    {
+     "control": "Text",
+     "label": "p"
+    },
+    {
+     "control": "Text",
+     "label": "95% CI"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Variable X",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Variable Y",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "X measurement scale",
+     "options": [
+      "Not confirmed",
+      "Nominal (not supported)",
+      "Ordinal",
+      "Quantitative"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Y measurement scale",
+     "options": [
+      "Not confirmed",
+      "Nominal (not supported)",
+      "Ordinal",
+      "Quantitative"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Correlation method",
+     "options": [
+      "Spearman’s ρ",
+      "Pearson’s r"
+     ]
+    }
+   ],
+   "confirmation": [
+    {
+     "control": "Checkbox",
+     "label": "For Pearson only: I reviewed linearity, outliers, independence and suitability of the variables"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Calculate correlation"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "matrix",
+   "label": "Correlation matrix",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Correlation matrix"
+    },
+    {
+     "control": "Text",
+     "label": "Select variables and method"
+    },
+    {
+     "control": "Text",
+     "label": "Matrix summary"
+    },
+    {
+     "control": "Text",
+     "label": "Correlation heatmap"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "Pearson r"
+    },
+    {
+     "control": "Text",
+     "label": "Spearman ρ"
+    },
+    {
+     "control": "Text",
+     "label": "p"
+    },
+    {
+     "control": "Text",
+     "label": "Holm adjusted p"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Matrix method",
+     "options": [
+      "Spearman’s ρ",
+      "Pearson’s r"
+     ]
+    }
+   ],
+   "confirmation": [
+    {
+     "control": "Checkbox",
+     "label": "I confirmed the measurement scales and study assumptions (Pearson: quantitative and linear; Spearman: ordinal or quantitative)"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Calculate correlation matrix"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "groups",
+   "label": "Compare groups",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Compare two groups"
+    },
+    {
+     "control": "Text",
+     "label": "Study design and variables"
+    },
+    {
+     "control": "Text",
+     "label": "APA 7-style statistical result"
+    },
+    {
+     "control": "Text",
+     "label": "Group distributions"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "t"
+    },
+    {
+     "control": "Text",
+     "label": "Cohen’s d / Hedges’ g"
+    },
+    {
+     "control": "Text",
+     "label": "Mann–Whitney U"
+    },
+    {
+     "control": "Text",
+     "label": "p"
+    },
+    {
+     "control": "Text",
+     "label": "95% CI"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Grouping variable (two categories)",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Outcome variable",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Outcome measurement scale",
+     "options": [
+      "Not confirmed",
+      "Ordinal",
+      "Quantitative",
+      "Nominal (not supported)"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Statistical method",
+     "options": [
+      "Mann–Whitney U",
+      "Welch’s independent t"
+     ]
+    }
+   ],
+   "confirmation": [
+    {
+     "control": "Checkbox",
+     "label": "I confirm that the two groups contain independent observations"
+    },
+    {
+     "control": "Checkbox",
+     "label": "For Welch only: I reviewed outcome distributions, outliers and suitability of mean comparisons"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Compare groups"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "paired",
+   "label": "Paired measures",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Paired measurements"
+    },
+    {
+     "control": "Text",
+     "label": "Select repeated measurements"
+    },
+    {
+     "control": "Text",
+     "label": "A. Main result"
+    },
+    {
+     "control": "Text",
+     "label": "B. Descriptives"
+    },
+    {
+     "control": "Text",
+     "label": "C. Notes / assumptions"
+    },
+    {
+     "control": "Text",
+     "label": "APA 7 report and local export"
+    },
+    {
+     "control": "Text",
+     "label": "Individual changes"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "t"
+    },
+    {
+     "control": "Text",
+     "label": "Cohen’s d / Hedges’ g"
+    },
+    {
+     "control": "Text",
+     "label": "p"
+    },
+    {
+     "control": "Text",
+     "label": "95% CI"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Before variable",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "After variable",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Measurement scale",
+     "options": [
+      "Not confirmed",
+      "Ordinal",
+      "Quantitative"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Paired test",
+     "options": [
+      "Wilcoxon signed-rank",
+      "Paired-samples t-test"
+     ]
+    }
+   ],
+   "toggle": [
+    {
+     "control": "Checkbox",
+     "label": "Each row contains two measurements from the SAME participant"
+    }
+   ],
+   "confirmation": [
+    {
+     "control": "Checkbox",
+     "label": "I reviewed difference scores, their symmetry/normality as appropriate, outliers and independence between participants"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Compare paired scores"
+    }
+   ],
+   "export": [
+    {
+     "control": "Button",
+     "label": "Save figure PNG"
+    },
+    {
+     "control": "Button",
+     "label": "Save APA report TXT"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "chi",
+   "label": "Chi-square",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Chi-square association"
+    },
+    {
+     "control": "Text",
+     "label": "Select categorical variables"
+    },
+    {
+     "control": "Text",
+     "label": "A. Main result and interpretation"
+    },
+    {
+     "control": "Text",
+     "label": "B. Observed and expected counts / APA text"
+    },
+    {
+     "control": "Text",
+     "label": "C. Notes / assumptions"
+    },
+    {
+     "control": "Text",
+     "label": "Contingency table figure"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "χ²"
+    },
+    {
+     "control": "Text",
+     "label": "Cramér’s V"
+    },
+    {
+     "control": "Text",
+     "label": "p"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Categorical variable A",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Categorical variable B",
+     "options": []
+    }
+   ],
+   "confirmation": [
+    {
+     "control": "Checkbox",
+     "label": "I confirmed two categorical scales and independent observations"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Calculate χ²"
+    }
+   ],
+   "export": [
+    {
+     "control": "Button",
+     "label": "Save figure PNG"
+    },
+    {
+     "control": "Button",
+     "label": "Save APA report TXT"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "omnibus",
+   "label": "ANOVA / Kruskal",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "ANOVA & Kruskal–Wallis"
+    },
+    {
+     "control": "Text",
+     "label": "Choose groups, outcome and method"
+    },
+    {
+     "control": "Text",
+     "label": "Main result and interpretation"
+    },
+    {
+     "control": "Text",
+     "label": "Group distributions"
+    },
+    {
+     "control": "Text",
+     "label": "Post-hoc pairwise comparisons"
+    },
+    {
+     "control": "Text",
+     "label": "Full APA report and exports"
+    },
+    {
+     "control": "Text",
+     "label": "Assumptions and cautions"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "F"
+    },
+    {
+     "control": "Text",
+     "label": "η² / partial η²"
+    },
+    {
+     "control": "Text",
+     "label": "Holm adjusted p"
+    },
+    {
+     "control": "Text",
+     "label": "p"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Grouping variable (3–8 groups)",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Outcome variable",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Outcome measurement scale",
+     "options": [
+      "Not confirmed",
+      "Ordinal",
+      "Quantitative"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Omnibus method",
+     "options": [
+      "Kruskal–Wallis H",
+      "Welch ANOVA",
+      "One-way ANOVA"
+     ]
+    }
+   ],
+   "confirmation": [
+    {
+     "control": "Checkbox",
+     "label": "I confirm the groups contain independent participants"
+    },
+    {
+     "control": "Checkbox",
+     "label": "I reviewed distributions, outliers and assumptions of the chosen test"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Run group comparison"
+    },
+    {
+     "control": "Button",
+     "label": "Run post-hoc comparisons"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Pairwise assumptions and cautions"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Show full statistical report"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "View methodological notes"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ],
+   "export": [
+    {
+     "control": "Button",
+     "label": "Save figure PNG"
+    },
+    {
+     "control": "Button",
+     "label": "Save APA report TXT"
+    }
+   ]
+  },
+  {
+   "key": "regression",
+   "label": "Linear regression",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Linear regression"
+    },
+    {
+     "control": "Text",
+     "label": "Study variables and design"
+    },
+    {
+     "control": "Text",
+     "label": "Predictors"
+    },
+    {
+     "control": "Text",
+     "label": "Main model result"
+    },
+    {
+     "control": "Text",
+     "label": "Model diagnostics"
+    },
+    {
+     "control": "Text",
+     "label": "Coefficients and APA-style report"
+    },
+    {
+     "control": "Text",
+     "label": "Assumptions and cautions"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "B / β"
+    },
+    {
+     "control": "Text",
+     "label": "R² / adjusted R²"
+    },
+    {
+     "control": "Text",
+     "label": "VIF"
+    },
+    {
+     "control": "Text",
+     "label": "SE"
+    },
+    {
+     "control": "Text",
+     "label": "95% CI"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Quantitative outcome (Y)",
+     "options": []
+    }
+   ],
+   "toggle": [
+    {
+     "control": "Checkbox",
+     "label": "Use HC3 heteroskedasticity-robust coefficient standard errors"
+    }
+   ],
+   "confirmation": [
+    {
+     "control": "Checkbox",
+     "label": "I reviewed linearity, independence, outliers and predictor scales"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Fit linear model"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Show detailed regression report"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Review regression limitations"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "logistic",
+   "label": "Logistic regression",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Binary logistic regression"
+    },
+    {
+     "control": "Text",
+     "label": "Outcome, predictors and design"
+    },
+    {
+     "control": "Text",
+     "label": "Quantitative predictors"
+    },
+    {
+     "control": "Text",
+     "label": "Main result and interpretation"
+    },
+    {
+     "control": "Text",
+     "label": "Odds ratios and 95% confidence intervals"
+    },
+    {
+     "control": "Text",
+     "label": "ROC, predicted probabilities and calibration"
+    },
+    {
+     "control": "Text",
+     "label": "Complete APA-style report"
+    },
+    {
+     "control": "Text",
+     "label": "Assumptions and cautions"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "B / β"
+    },
+    {
+     "control": "Text",
+     "label": "Odds ratio (OR)"
+    },
+    {
+     "control": "Text",
+     "label": "ROC / AUC"
+    },
+    {
+     "control": "Text",
+     "label": "95% CI"
+    },
+    {
+     "control": "Text",
+     "label": "p"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Binary outcome (0 / 1)",
+     "options": []
+    }
+   ],
+   "confirmation": [
+    {
+     "control": "Checkbox",
+     "label": "I confirmed independent observations, outcome coding, quantitative predictors and logit-linearity assumptions"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Fit logistic model"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Show logistic regression report"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Review interpretation and model limitations"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "ancova",
+   "label": "ANCOVA / GLM",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "ANCOVA / General Linear Model"
+    },
+    {
+     "control": "Text",
+     "label": "Study design and model"
+    },
+    {
+     "control": "Text",
+     "label": "Quantitative covariates"
+    },
+    {
+     "control": "Text",
+     "label": "Main result and interpretation"
+    },
+    {
+     "control": "Text",
+     "label": "Group fits and adjusted means"
+    },
+    {
+     "control": "Text",
+     "label": "Adjusted group means at covariate reference"
+    },
+    {
+     "control": "Text",
+     "label": "Holm-adjusted group comparisons"
+    },
+    {
+     "control": "Text",
+     "label": "Complete APA-style report"
+    },
+    {
+     "control": "Text",
+     "label": "Assumptions and cautions"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "F"
+    },
+    {
+     "control": "Text",
+     "label": "η² / partial η²"
+    },
+    {
+     "control": "Text",
+     "label": "Adjusted means"
+    },
+    {
+     "control": "Text",
+     "label": "p"
+    },
+    {
+     "control": "Text",
+     "label": "95% CI"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Quantitative outcome",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Group factor (2–6 groups)",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Model",
+     "options": [
+      "ANCOVA (common slopes)",
+      "GLM (group × covariate interactions)"
+     ]
+    }
+   ],
+   "confirmation": [
+    {
+     "control": "Checkbox",
+     "label": "I reviewed independent observations, quantitative covariates, group design, covariate timing, linearity and outliers"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Run ANCOVA / GLM"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Show detailed ANCOVA / GLM report"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Review methodological limitations"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  },
+  {
+   "key": "repeated",
+   "label": "Repeated measures",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Repeated measurements"
+    },
+    {
+     "control": "Text",
+     "label": "Study design and occasions"
+    },
+    {
+     "control": "Text",
+     "label": "Repeated measurement columns"
+    },
+    {
+     "control": "Text",
+     "label": "Main result and interpretation"
+    },
+    {
+     "control": "Text",
+     "label": "Individual trajectories"
+    },
+    {
+     "control": "Text",
+     "label": "Holm-adjusted pairwise comparisons"
+    },
+    {
+     "control": "Text",
+     "label": "APA 7-style report"
+    },
+    {
+     "control": "Text",
+     "label": "Assumptions and cautions"
+    },
+    {
+     "control": "Text",
+     "label": "Understanding the statistics · Sources"
+    },
+    {
+     "control": "Text",
+     "label": "F"
+    },
+    {
+     "control": "Text",
+     "label": "Kendall’s W"
+    },
+    {
+     "control": "Text",
+     "label": "Greenhouse–Geisser ε"
+    },
+    {
+     "control": "Text",
+     "label": "η² / partial η²"
+    },
+    {
+     "control": "Text",
+     "label": "Holm adjusted p"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Measurement scale",
+     "options": [
+      "Not confirmed",
+      "Ordinal",
+      "Quantitative"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Repeated-measures method",
+     "options": [
+      "Friedman test",
+      "Repeated-measures ANOVA"
+     ]
+    }
+   ],
+   "toggle": [
+    {
+     "control": "Checkbox",
+     "label": "Selected columns measure the same construct in the SAME participants"
+    }
+   ],
+   "confirmation": [
+    {
+     "control": "Checkbox",
+     "label": "I reviewed measurement scales, difference scores, outliers and design assumptions"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Analyze repeated scores"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Show full repeated-measures report"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "View repeated-measures limitations"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Understanding the statistics · Sources"
+    }
+   ]
+  }
+ ],
+ "menu": [
+  {
+   "group": "File",
+   "commands": [
+    "Import CSV / Excel…",
+    "Import Word / PDF questionnaire…",
+    "New questionnaire",
+    "Recent files / Dataset"
+   ]
+  },
+  {
+   "group": "Data",
+   "commands": [
+    "Recent files / Dataset",
+    "Prepare data"
+   ]
+  },
+  {
+   "group": "Analysis",
+   "commands": [
+    "Descriptive statistics",
+    "Scale reliability",
+    "EFA / PCA",
+    "Correlations",
+    "Regression"
+   ]
+  },
+  {
+   "group": "Reports",
+   "commands": [
+    "APA report wizard",
+    "Methodology and references"
+   ]
+  },
+  {
+   "group": "Database",
+   "commands": [
+    "Saved questionnaires and responses"
+   ]
+  },
+  {
+   "group": "Settings",
+   "commands": [
+    "Windows · square corners",
+    "macOS · soft corners",
+    "Offline OCR engine…"
+   ]
+  },
+  {
+   "group": "AI assistant",
+   "commands": [
+    "AI assistant status",
+    "Methodology and references"
+   ]
+  },
+  {
+   "group": "Help",
+   "commands": [
+    "AI assistant status",
+    "Data privacy",
+    "Offline OCR engine…"
+   ]
+  }
+ ],
+ "actions": [
+  "analyze_variable",
+  "calculate_alpha",
+  "calculate_chi_square",
+  "calculate_correlation",
+  "calculate_factor_exploration",
+  "calculate_groups",
+  "calculate_matrix",
+  "calculate_omega",
+  "calculate_omnibus",
+  "calculate_paired",
+  "choose_file",
+  "choose_file_action",
+  "load_ancova_example",
+  "load_ancova_interaction_example",
+  "load_categorical_example",
+  "load_factor_example",
+  "load_logistic_example",
+  "load_paired_example",
+  "load_regression_example",
+  "load_repeated_example",
+  "load_sample",
+  "load_scale_example",
+  "load_three_groups_example",
+  "open_report_wizard",
+  "open_survey_import",
+  "open_survey_responses",
+  "register_import_navigation",
+  "run_ancova",
+  "run_explore",
+  "run_logistic",
+  "run_regression",
+  "run_repeated",
+  "set_active_screen"
+ ],
+ "controls": [
+  "ac_brief",
+  "ac_chart",
+  "ac_confirm",
+  "ac_covariates",
+  "ac_group",
+  "ac_main",
+  "ac_means_table",
+  "ac_mode",
+  "ac_outcome",
+  "ac_pairs_table",
+  "ac_report",
+  "ac_warnings",
+  "chart_area",
+  "chi_a",
+  "chi_b",
+  "chi_brief",
+  "chi_chart",
+  "chi_confirm",
+  "chi_export_png_button",
+  "chi_export_status",
+  "chi_export_txt_button",
+  "chi_main",
+  "chi_output",
+  "chi_warnings",
+  "corr_advice",
+  "corr_chart",
+  "corr_confirm",
+  "corr_method",
+  "corr_output",
+  "corr_scale_x",
+  "corr_scale_y",
+  "corr_warnings",
+  "corr_x",
+  "corr_y",
+  "explore_chart",
+  "explore_group",
+  "explore_output",
+  "explore_variable",
+  "factor_chart_area",
+  "factor_confirm",
+  "factor_correlation_text",
+  "factor_count",
+  "factor_items",
+  "factor_loading_table",
+  "factor_main_text",
+  "factor_method",
+  "factor_report",
+  "factor_rotation",
+  "factor_warnings",
+  "group_advice",
+  "group_assumptions",
+  "group_chart",
+  "group_independent",
+  "group_method",
+  "group_outcome",
+  "group_outcome_scale",
+  "group_output",
+  "group_variable",
+  "group_warnings",
+  "guidance",
+  "home_import_feedback",
+  "import_panel",
+  "log_brief",
+  "log_chart",
+  "log_confirm",
+  "log_main",
+  "log_odds_table",
+  "log_outcome",
+  "log_predictors",
+  "log_report",
+  "log_warnings",
+  "matrix_chart",
+  "matrix_confirm",
+  "matrix_items",
+  "matrix_method",
+  "matrix_output",
+  "matrix_warnings",
+  "omega_chart_area",
+  "omega_ci_reps",
+  "omega_item_table",
+  "omega_report",
+  "omega_summary_text",
+  "omega_warnings",
+  "omnibus_advice",
+  "omnibus_assumptions",
+  "omnibus_brief",
+  "omnibus_chart",
+  "omnibus_export_png_button",
+  "omnibus_export_status",
+  "omnibus_export_txt_button",
+  "omnibus_group",
+  "omnibus_independent",
+  "omnibus_main",
+  "omnibus_method",
+  "omnibus_outcome",
+  "omnibus_output",
+  "omnibus_scale",
+  "omnibus_warnings",
+  "output_toolbar",
+  "overview_area",
+  "paired_advice",
+  "paired_after",
+  "paired_assumptions",
+  "paired_before",
+  "paired_brief",
+  "paired_chart",
+  "paired_confirm",
+  "paired_descriptive",
+  "paired_export_png_button",
+  "paired_export_status",
+  "paired_export_txt_button",
+  "paired_main",
+  "paired_method",
+  "paired_output",
+  "paired_scale",
+  "paired_warnings",
+  "posthoc_button",
+  "posthoc_output",
+  "posthoc_table",
+  "posthoc_warnings",
+  "preparation_panel",
+  "reg_brief",
+  "reg_chart",
+  "reg_confirm",
+  "reg_hc3",
+  "reg_main",
+  "reg_outcome",
+  "reg_predictors",
+  "reg_report",
+  "reg_warnings",
+  "reliability_chart_area",
+  "reliability_confirm",
+  "reliability_guide",
+  "reliability_items",
+  "reliability_output",
+  "reliability_warnings",
+  "rep_assumptions",
+  "rep_brief",
+  "rep_chart",
+  "rep_items",
+  "rep_main",
+  "rep_method",
+  "rep_pair_table",
+  "rep_report",
+  "rep_same_people",
+  "rep_scale",
+  "rep_warnings",
+  "results",
+  "scale",
+  "status",
+  "survey_panel",
+  "variable"
+ ],
+ "survey_views": [
+  {
+   "key": "build",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "1. Survey details"
+    },
+    {
+     "control": "Text",
+     "label": "SOURCE · rendered PDF page / Word text"
+    },
+    {
+     "control": "Text",
+     "label": "EDIT · recognized questions"
+    },
+    {
+     "control": "Text",
+     "label": "RESPONSE SCALE REVIEW · shared answer categories"
+    },
+    {
+     "control": "Text",
+     "label": "BINARY ANSWERS · shared response format"
+    },
+    {
+     "control": "Text",
+     "label": "CONFIDENCE · selected question"
+    },
+    {
+     "control": "Text",
+     "label": "SOURCE REGIONS · manual corrections"
+    },
+    {
+     "control": "Text",
+     "label": "REVIEW QUEUE · suspicious or unresolved items"
+    },
+    {
+     "control": "Text",
+     "label": "2. Questions"
+    },
+    {
+     "control": "Text",
+     "label": "3. Question editor"
+    },
+    {
+     "control": "Text",
+     "label": "New question"
+    },
+    {
+     "control": "Text",
+     "label": "4. Reorder entire topic sections"
+    },
+    {
+     "control": "Text",
+     "label": "5. Finish the draft"
+    }
+   ],
+   "input": [
+    {
+     "control": "TextField",
+     "label": "Survey title"
+    },
+    {
+     "control": "TextField",
+     "label": "Participant instructions / research information"
+    },
+    {
+     "control": "TextField",
+     "label": "Reverse-keyed items (as documented)"
+    },
+    {
+     "control": "TextField",
+     "label": "Correct question wording"
+    },
+    {
+     "control": "TextField",
+     "label": "Question section"
+    },
+    {
+     "control": "TextField",
+     "label": "Choice labels · one per line"
+    },
+    {
+     "control": "TextField",
+     "label": "First answer label"
+    },
+    {
+     "control": "TextField",
+     "label": "Second answer label"
+    },
+    {
+     "control": "TextField",
+     "label": "Left %"
+    },
+    {
+     "control": "TextField",
+     "label": "Top %"
+    },
+    {
+     "control": "TextField",
+     "label": "Right %"
+    },
+    {
+     "control": "TextField",
+     "label": "Bottom %"
+    },
+    {
+     "control": "TextField",
+     "label": "Variable ID, e.g. stress_q1"
+    },
+    {
+     "control": "TextField",
+     "label": "Question text"
+    },
+    {
+     "control": "TextField",
+     "label": "Topic / section, e.g. Demographics"
+    },
+    {
+     "control": "TextField",
+     "label": "Page number (1–20)"
+    },
+    {
+     "control": "TextField",
+     "label": "Page title, e.g. Background"
+    },
+    {
+     "control": "TextField",
+     "label": "Options separated by semicolons"
+    },
+    {
+     "control": "TextField",
+     "label": "Scale / subscale ID, e.g. stress"
+    },
+    {
+     "control": "TextField",
+     "label": "Respondent labels: one numeric code = text per line"
+    },
+    {
+     "control": "TextField",
+     "label": "Don't know: respondent label"
+    },
+    {
+     "control": "TextField",
+     "label": "Prefer not: respondent label"
+    },
+    {
+     "control": "TextField",
+     "label": "Low anchor (e.g. Never)"
+    },
+    {
+     "control": "TextField",
+     "label": "High anchor (legacy forms)"
+    },
+    {
+     "control": "TextField",
+     "label": "Answer value (e.g. Yes)"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Starting template",
+     "options": [
+      "Psychology / Likert",
+      "Demographics",
+      "HR / Workplace",
+      "Marketing / Feedback"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Extracted instrument / version",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Source page · visual preview",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Page view rotation",
+     "options": [
+      "0° clockwise",
+      "90° clockwise",
+      "180° clockwise",
+      "270° clockwise"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Local OCR language packs",
+     "options": [
+      "English",
+      "Latvian",
+      "Russian",
+      "Latvian (main) + English",
+      "Russian (main) + English",
+      "Latvian (main) + Russian",
+      "Russian (main) + Latvian",
+      "All three · Latvian main",
+      "All three · Russian main"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Shared response scale",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Question to review / edit",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Response type",
+     "options": [
+      "Short text",
+      "Long text",
+      "Single choice",
+      "Multiple choices",
+      "Yes / No",
+      "Number",
+      "Numeric rating (proposed codes)"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Detected binary answer format",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Linked source region",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Review queue filter",
+     "options": [
+      "Needs attention (all flags)",
+      "Low or unknown OCR confidence",
+      "No source region linked",
+      "Structural heuristic flags"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Detected response matrix",
+     "options": []
+    },
+    {
+     "control": "Dropdown",
+     "label": "Response type",
+     "options": [
+      "Likert scale 1–5",
+      "Likert scale 1–7",
+      "Custom numeric / semantic differential",
+      "One choice",
+      "Multiple choices",
+      "Yes / No",
+      "Number",
+      "Short text",
+      "Long text",
+      "Date",
+      "Required consent"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Text scale preset",
+     "options": [
+      "Agreement",
+      "Quality: poor → good",
+      "Frequency"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Show conditionally when…",
+     "options": [
+      "Always show"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Condition operator",
+     "options": [
+      "Equals",
+      "Not equal",
+      "Greater than",
+      "Less than"
+     ]
+    },
+    {
+     "control": "Dropdown",
+     "label": "Page for section reorder",
+     "options": []
+    }
+   ],
+   "import": [
+    {
+     "control": "Button",
+     "label": "Load template"
+    }
+   ],
+   "section": [
+    {
+     "control": "ExpansionTile",
+     "label": "Scientific importer · Word / PDF questionnaires"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "MATRIX EDITOR · row/column rating scales"
+    },
+    {
+     "control": "ExpansionTile",
+     "label": "Original detected grid (read-only provenance)"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Choose Word / PDF questionnaire"
+    },
+    {
+     "control": "Button",
+     "label": "Run local OCR on this PDF page"
+    },
+    {
+     "control": "Button",
+     "label": "OCR first 20 PDF pages"
+    },
+    {
+     "control": "Button",
+     "label": "Cancel OCR"
+    },
+    {
+     "control": "Button",
+     "label": "Check OCR engine"
+    },
+    {
+     "control": "Button",
+     "label": "Apply scale review to all linked questions"
+    },
+    {
+     "control": "Button",
+     "label": "Show this scale on the source page"
+    },
+    {
+     "control": "Button",
+     "label": "Not a shared scale — keep these questions as text"
+    },
+    {
+     "control": "Button",
+     "label": "Apply correction to extracted question"
+    },
+    {
+     "control": "Button",
+     "label": "Apply binary answers to matching items"
+    },
+    {
+     "control": "Button",
+     "label": "Apply region box"
+    },
+    {
+     "control": "Button",
+     "label": "Split region"
+    },
+    {
+     "control": "Button",
+     "label": "Merge this question's regions"
+    },
+    {
+     "control": "Button",
+     "label": "Unlink region"
+    },
+    {
+     "control": "Button",
+     "label": "Revert this question's regions"
+    },
+    {
+     "control": "Button",
+     "label": "Revert all regions"
+    },
+    {
+     "control": "Button",
+     "label": "Apply grid edits"
+    },
+    {
+     "control": "Button",
+     "label": "Add row"
+    },
+    {
+     "control": "Button",
+     "label": "Add column"
+    },
+    {
+     "control": "Button",
+     "label": "Accept flagged cells as shown"
+    },
+    {
+     "control": "Button",
+     "label": "Verify grid against source"
+    },
+    {
+     "control": "Button",
+     "label": "Use verified matrix rows as editable draft"
+    },
+    {
+     "control": "Button",
+     "label": "Use extracted questions as editable draft"
+    },
+    {
+     "control": "Button",
+     "label": "+ New question"
+    },
+    {
+     "control": "Button",
+     "label": "+ New page"
+    },
+    {
+     "control": "Button",
+     "label": "Use preset labels"
+    },
+    {
+     "control": "Button",
+     "label": "Use bipolar example −3…3"
+    },
+    {
+     "control": "Button",
+     "label": "Duplicate"
+    },
+    {
+     "control": "Button",
+     "label": "Move up"
+    },
+    {
+     "control": "Button",
+     "label": "Move down"
+    },
+    {
+     "control": "Button",
+     "label": "Remove"
+    },
+    {
+     "control": "Button",
+     "label": "Preview draft"
+    },
+    {
+     "control": "Button",
+     "label": "Create local questionnaire"
+    }
+   ],
+   "toggle": [
+    {
+     "control": "Checkbox",
+     "label": "Show unlinked text lines"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Required answer (verify with source)"
+    },
+    {
+     "control": "Checkbox",
+     "label": "I checked the source: these items share this answer format"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Link mode: clicking unlinked text attaches it to the selected question"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Highlight missing/ambiguous matrix cells on the page"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Apply printed numeric codes as scale values (reviewed by researcher)"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Apply marked reverse-keyed rows (reviewed by researcher)"
+    },
+    {
+     "control": "Checkbox",
+     "label": "I verified the instrument version, wording, permissions and extracted question list against the source"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Use proposed numeric response codes (reviewed by researcher)"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Also apply proposed reverse-key flags (reviewed by researcher)"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Replace existing unsaved draft questions"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Required answer"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Reverse-scored item (metadata only)"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Offer 'Don't know' as missing"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Offer 'Prefer not to answer' as missing"
+    }
+   ],
+   "confirmation": [
+    {
+     "control": "Checkbox",
+     "label": "Confirm structure: all linked questions share these categories and labels"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Confirm numeric coding exactly as printed in the source"
+    },
+    {
+     "control": "Checkbox",
+     "label": "Confirm reverse scoring of the listed items (checked in the manual)"
+    }
+   ],
+   "export": [
+    {
+     "control": "Button",
+     "label": "Save question"
+    }
+   ]
+  },
+  {
+   "key": "preview",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Respondent preview"
+    }
+   ]
+  },
+  {
+   "key": "fill",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Select a saved questionnaire"
+    },
+    {
+     "control": "Text",
+     "label": "Enter a participant response on this computer"
+    }
+   ],
+   "choice": [
+    {
+     "control": "Dropdown",
+     "label": "Published questionnaires on this computer",
+     "options": []
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Clone published survey into editable draft"
+    },
+    {
+     "control": "Button",
+     "label": "Submit response locally"
+    }
+   ]
+  },
+  {
+   "key": "responses",
+   "heading": [
+    {
+     "control": "Text",
+     "label": "Collected responses"
+    }
+   ],
+   "command": [
+    {
+     "control": "Button",
+     "label": "Refresh response table"
+    }
+   ],
+   "import": [
+    {
+     "control": "Button",
+     "label": "Load responses into Dataset"
+    }
+   ],
+   "export": [
+    {
+     "control": "Button",
+     "label": "Export CSV + codebook"
+    }
+   ]
+  }
+ ]
+}

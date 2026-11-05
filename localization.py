@@ -104,6 +104,18 @@ TEXT = {
     "Recent files": ("Nesenie faili", "Недавние файлы"),
     "Import diagnostics": ("Importa diagnostika", "Проверка импорта"),
     "No file imported yet.": ("Fails vēl nav importēts.", "Файл пока не импортирован."),
+    "Try the new research workspace (Stage 33 preview)": (
+        "Izmēģiniet jauno pētījumu darba vidi (33. posma priekšskatījums)",
+        "Попробуйте новое рабочее пространство (предпросмотр этапа 33)",
+    ),
+    "Guided analysis, a results log, a three-pane questionnaire builder and a focused "
+    "scientific import. Same engine, same data; this classic interface stays available.": (
+        "Vadīta analīze, rezultātu žurnāls, trīs paneļu anketu veidotājs un mērķtiecīgs "
+        "zinātniskais imports. Tas pats dzinējs un dati; klasiskā saskarne paliek pieejama.",
+        "Пошаговый анализ, журнал результатов, конструктор анкет в три панели и отдельный "
+        "научный импорт. Тот же движок и данные; классический интерфейс остаётся доступным.",
+    ),
+    "Open the preview": ("Atvērt priekšskatījumu", "Открыть предпросмотр"),
 }
 
 
