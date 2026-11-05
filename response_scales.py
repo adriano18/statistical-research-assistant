@@ -221,7 +221,8 @@ def normalize_tokens(tokens: tuple[str, ...]) -> tuple[str, ...]:
     digits = sum(1 for t in tokens if re.fullmatch(r"-?\d{1,2}", t))
     if digits < max(2, len(tokens) - 1):
         return tokens
-    fixes = {"I": "1", "l": "1", "|": "1", "O": "0", "o": "0"}
+    fixes = {"I": "1", "l": "1", "|": "1", "L": "1", "i": "1", "]": "1", "!": "1",
+             "O": "0", "o": "0"}
     return tuple(fixes.get(t, t) for t in tokens)
 
 

@@ -237,10 +237,18 @@ class ScannedTwoVersionTests(unittest.TestCase):
     def test_scanned_original_and_revised_forms(self):
         pdf = image_pdf(*connectedness_scan_pages())
         review = ocr_scientific_pdf(pdf, "scan.pdf", [1, 2], "eng")
-        self.assertEqual(len(review.instruments), 2)
+        seen = "\n".join(
+            f"p{page.page_number}: {line.text}"
+            for page in review.spatial.pages for line in page.lines[:5]
+        )
+        self.assertEqual(len(review.instruments), 2, seen)
         original, revised = review.instruments
-        self.assertEqual(original.schemes[0].labels, ORIGINAL_LABELS)
-        self.assertEqual(revised.schemes[0].labels, REVISED_LABELS)
+        report = seen + "\n" + "\n".join(
+            f"{i.title}: {[(s.labels, s.codes, s.evidence, s.issues[:2]) for s in i.schemes]}"
+            for i in review.instruments
+        )
+        self.assertEqual(original.schemes[0].labels, ORIGINAL_LABELS, report)
+        self.assertEqual(revised.schemes[0].labels, REVISED_LABELS, report)
         for instrument in review.instruments:
             self.assertGreaterEqual(len(linked_questions(instrument, instrument.schemes[0].id)), 18)
         self.assertEqual(original.schemes[0].reverse_items, ())
