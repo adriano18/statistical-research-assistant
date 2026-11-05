@@ -65,7 +65,11 @@ def main() -> int:
         modules = {p.stem.split(".")[0] for p in root.iterdir() if p.suffix in {".py", ".pyc"}}
         for module in ("app", "research_app", "startup_diagnostics", "binary_responses",
                        "response_scales", "shared_scales",
-                       "ocr_runtime", "ocr_selftest", "visual_survey_review"):
+                       "ocr_runtime", "ocr_selftest", "visual_survey_review",
+                       "analysis_runs", "import_session", "workspace_shell",
+                       "workspace_analyze", "workspace_questionnaires", "workspace_methods",
+                       "workspace_components", "workspace_tokens", "workspace_text",
+                       "workspace_state", "workspace_routes"):
             if module not in modules:
                 raise SystemExit(f"Packaged application lacks module {module}")
         manifest = json.loads((bundle / "MANIFEST.json").read_text(encoding="utf-8"))

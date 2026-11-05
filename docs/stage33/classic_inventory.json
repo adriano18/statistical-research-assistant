@@ -15,6 +15,10 @@
     },
     {
      "control": "Text",
+     "label": "Try the new research workspace (Stage 33 preview)"
+    },
+    {
+     "control": "Text",
      "label": "What would you like to do?"
     },
     {
@@ -59,6 +63,10 @@
     }
    ],
    "import": [
+    {
+     "control": "Button",
+     "label": "Open the preview"
+    },
     {
      "control": "Button",
      "label": "Open CSV / Excel"
@@ -243,7 +251,16 @@
     {
      "control": "Dropdown",
      "label": "Recent files (stored only on this computer)",
-     "options": []
+     "options": [
+      "sample_scale.csv — /home/user/statistical-research-assistant/examples/sample_scale.csv",
+      "sample_repeated.csv — /home/user/statistical-research-assistant/examples/sample_repeated.csv",
+      "sample_paired.csv — /home/user/statistical-research-assistant/examples/sample_paired.csv",
+      "sample_ancova.csv — /home/user/statistical-research-assistant/examples/sample_ancova.csv",
+      "sample_logistic.csv — /home/user/statistical-research-assistant/examples/sample_logistic.csv",
+      "sample_factor.csv — /home/user/statistical-research-assistant/examples/sample_factor.csv",
+      "sample_regression.csv — /home/user/statistical-research-assistant/examples/sample_regression.csv",
+      "sample_three_groups.csv — /home/user/statistical-research-assistant/examples/sample_three_groups.csv"
+     ]
     }
    ],
    "input": [
@@ -2443,6 +2460,7 @@
   "open_report_wizard",
   "open_survey_import",
   "open_survey_responses",
+  "open_workspace_preview",
   "register_import_navigation",
   "run_ancova",
   "run_explore",

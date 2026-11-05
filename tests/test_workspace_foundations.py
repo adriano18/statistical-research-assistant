@@ -77,6 +77,16 @@ class TextTests(unittest.TestCase):
             self.assertEqual(len(forms["lv"]), 3)
             self.assertEqual(len(forms["ru"]), 3)
 
+    def test_every_engine_confirmation_and_option_label_is_translated(self):
+        from workspace_methods import METHODS
+        from workspace_text import LABELS
+
+        for spec in METHODS.values():
+            for confirmation in spec.confirmations:
+                self.assertIn(confirmation.label, LABELS, confirmation.label)
+            for option in spec.options:
+                self.assertIn(option.label, LABELS, option.label)
+
     def test_unknown_key_is_visible_and_values_format(self):
         self.assertEqual(t("en", "missing.key"), "missing.key")
         self.assertIn("5", t("lv", "context.levels_pending", count=5))
@@ -214,7 +224,7 @@ class RouteMapTests(unittest.TestCase):
         known = set(AREAS) | {"settings", "help", "questionnaires/import", "data#prepare"}
         for mapping in (routes.SCREENS, routes.MENU, routes.ACTIONS):
             for route, status, _ in mapping.values():
-                self.assertIn(status, {"workspace", "hosted", "classic", "retired"})
+                self.assertIn(status, {"workspace", "hosted", "partial", "classic", "retired"})
                 if route.startswith("analyze/all/"):
                     self.assertIn(route.rsplit("/", 1)[1], METHODS, route)
                 else:

@@ -20,6 +20,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from typing import Awaitable, Callable
+import weakref
 
 import flet as ft
 import pandas as pd
@@ -46,6 +47,12 @@ SAMPLES = (
     ("sample_factor.csv", "Factor analysis"),
 )
 AREAS = ("home", "data", "questionnaires", "analyze", "results", "reports")
+_ACTIVE: "weakref.ReferenceType[WorkspaceApp] | None" = None
+
+
+def active_app() -> "WorkspaceApp | None":
+    """The workspace most recently mounted in this process (tests, diagnostics)."""
+    return _ACTIVE() if _ACTIVE is not None else None
 DATA_EXTENSIONS = ["csv", "tsv", "xlsx", "xlsm"]
 DOCUMENT_EXTENSIONS = ["pdf", "docx", "doc"]
 
@@ -85,11 +92,11 @@ class WorkspaceApp:
         self.page = page
         self.bridge = bridge or ClassicBridge()
         self.session = session or ResearchSession(language=language, corners=corners)
-        self.session.language = language if self.session.language == "en" else self.session.language
         self.survey_root = Path(survey_root or self.bridge.survey_root or (ROOT / "data" / "surveys"))
         self.area = "home"
         self.route = "home"          # sub-route (e.g. "import" under questionnaires)
-        self.sidebar_expanded = True
+        # Narrow windows start with the icon rail; the user's toggle wins afterwards.
+        self.sidebar_expanded = int(getattr(page, "width", None) or 1280) >= tk.BREAKPOINT_NARROW
         self.pages: dict[str, object] = {}
         self.root: ft.Control | None = None
         self.status_text: ft.Text | None = None
@@ -97,8 +104,9 @@ class WorkspaceApp:
         self.content_host = ft.Container(expand=True)
         self.sidebar_host = ft.Container()
         self.context_host = ft.Container()
-        self._dataset_signature = None
-        self._picker_handlers: dict[str, Callable] = {}
+        self._classic_seen = None      # id() of the classic dataframe last exchanged
+        self._handed_over = None       # id() of the workspace dataframe last handed over
+        self._rendered_width = None
         self._install_services()
         from workspace_analyze import AnalyzePage, ReportsPage, ResultsPage
         from workspace_questionnaires import ImportPage, QuestionnairesPage
@@ -230,22 +238,27 @@ class WorkspaceApp:
             return []
 
     def adopt_classic_dataset(self):
-        """When opened from the classic UI, start with its current dataset."""
-        if self.bridge.current_dataset is None or self.session.has_data:
+        """On entry, take the classic dataset if it changed since last time."""
+        if self.bridge.current_dataset is None:
             return
         df, name = self.bridge.current_dataset()
-        if df is not None and not df.columns.empty:
-            self.session.set_dataset(df.copy(deep=True), name or "Classic dataset")
-            self._dataset_signature = (id(self.session.df), self.session.source_name)
+        if df is None or df.columns.empty or id(df) == self._classic_seen:
+            return
+        self._classic_seen = id(df)
+        self.session.set_dataset(df.copy(deep=True), name or "Classic dataset")
+        self._handed_over = id(self.session.df)
 
     async def hand_dataset_to_classic(self):
+        """On exit, give the classic interface a dataset loaded here."""
         if self.bridge.adopt_dataset is None or not self.session.has_data:
             return
-        signature = (id(self.session.df), self.session.source_name)
-        if signature != self._dataset_signature:
-            await self.bridge.adopt_dataset(self.session.df.copy(deep=True),
-                                            self.session.source_name)
-            self._dataset_signature = signature
+        if id(self.session.df) == self._handed_over:
+            return
+        await self.bridge.adopt_dataset(self.session.df.copy(deep=True),
+                                        self.session.source_name)
+        self._handed_over = id(self.session.df)
+        if self.bridge.current_dataset is not None:
+            self._classic_seen = id(self.bridge.current_dataset()[0])
 
     # --------------------------------------------------------- navigation
     def navigate(self, route: str, *, refresh: bool = True):
@@ -275,6 +288,7 @@ class WorkspaceApp:
         )
         self.content_host.bgcolor = self.ui.p.canvas
         self.root.bgcolor = self.ui.p.canvas
+        self._rendered_width = int(getattr(self.page, "width", None) or 1280)
         self.page.update()
 
     def _render_chrome(self):
@@ -332,14 +346,25 @@ class WorkspaceApp:
 
     def mount(self):
         """Replace the page content with the workspace (one update)."""
+        global _ACTIVE
+        _ACTIVE = weakref.ref(self)
         root = self.build()
         self.page.controls.clear()
         self.page.add(root)
         self.page.on_keyboard_event = self.on_keyboard
         if hasattr(self.page, "on_resize"):
-            self.page.on_resize = lambda e: self.render()
+            self.page.on_resize = self._on_resize
         self.adopt_classic_dataset()
         self.render()
+
+    def _on_resize(self, e=None):
+        """Re-layout only when the width changes enough to matter."""
+        width = int(getattr(self.page, "width", None) or 1280)
+        last = self._rendered_width or 0
+        crossed = any((last < b) != (width < b) for b in
+                      (tk.BREAKPOINT_NARROW, tk.BREAKPOINT_COMPACT, 1600))
+        if crossed or abs(width - last) >= 96:
+            self.render()
 
     def _nav_item(self, key: str, icon, label: str, *, selected: bool, on_click,
                   badge: str | None = None) -> ft.Control:
@@ -629,7 +654,7 @@ class HomePage:
             wc.heading(ui, ui.t("home.continue"), tk.TYPE_TITLE_M),
             ft.ResponsiveRow(continue_cards, spacing=tk.SPACE_4, run_spacing=tk.SPACE_4),
             wc.notice(ui, ui.t("home.privacy"), "neutral", data="home-privacy"),
-        ], spacing=tk.SPACE_5)
+        ], spacing=tk.SPACE_5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
         return app.constrained(body)
 
     def _equalize(self, tiles: ft.ResponsiveRow) -> None:
@@ -719,7 +744,7 @@ class DataPage:
 
     # ------------------------------------------------------------ dictionary
     def _dictionary(self) -> ft.Control:
-        app, ui, s = self.app, self.app.ui, self.app.session
+        ui, s = self.app.ui, self.app.session
         columns = [ui.t("data.col.variable"), ui.t("data.col.storage"),
                    ui.t("data.col.suggested"), ui.t("data.col.level"),
                    ui.t("data.col.missing"), ui.t("data.col.distinct")]
@@ -879,7 +904,7 @@ class DataPage:
 
     # --------------------------------------------------------- preparation
     def _preparation_card(self) -> ft.Control:
-        app, ui = self.app, self.app.ui
+        ui = self.app.ui
         content: list[ft.Control] = []
         if self.show_preparation:
             panel = self._preparation_panel()
@@ -984,7 +1009,9 @@ class SettingsPage:
                                                 app.return_to_classic, icon=ft.Icons.SWAP_HORIZ)],
                                  title=ui.t("nav.classic")))
         return app.constrained(ft.Column([wc.page_header(ui, ui.t("settings.title")), *cards],
-                                         spacing=tk.SPACE_5), tk.READING_MAX_WIDTH + 200)
+                                         spacing=tk.SPACE_5,
+                                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+                               tk.READING_MAX_WIDTH + 200)
 
     async def _check_ocr(self, e=None):
         from ocr_runtime import ocr_readiness
@@ -1015,4 +1042,5 @@ class HelpPage:
             wc.card(ui, [wc.text(ui, ui.t("help.ai.body"), tk.TYPE_BODY_L)],
                     title=ui.t("help.ai")),
             wc.notice(ui, ui.t("preview.note"), "info"),
-        ], spacing=tk.SPACE_5), tk.READING_MAX_WIDTH + 200)
+        ], spacing=tk.SPACE_5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+            tk.READING_MAX_WIDTH + 200)

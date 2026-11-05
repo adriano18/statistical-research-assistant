@@ -1,0 +1,223 @@
+[
+ {
+  "name": "home_light",
+  "scenario": "home",
+  "size": [
+   1440,
+   900
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "home_dark",
+  "scenario": "home",
+  "size": [
+   1440,
+   900
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "dark",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "home_ru_150",
+  "scenario": "home",
+  "size": [
+   1280,
+   800
+  ],
+  "scale": 1.5,
+  "language": "ru",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "data_dictionary",
+  "scenario": "data",
+  "size": [
+   1440,
+   1100
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "analyze_guided",
+  "scenario": "guided",
+  "size": [
+   1440,
+   1300
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "analyze_guided_lv_125",
+  "scenario": "guided",
+  "size": [
+   1280,
+   1300
+  ],
+  "scale": 1.25,
+  "language": "lv",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "analyze_catalog",
+  "scenario": "catalog",
+  "size": [
+   1440,
+   1200
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "results_detail",
+  "scenario": "results",
+  "size": [
+   1440,
+   2600
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "results_dark_compact",
+  "scenario": "results",
+  "size": [
+   1100,
+   1200
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "dark",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "reports",
+  "scenario": "reports",
+  "size": [
+   1440,
+   900
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "questionnaires_builder",
+  "scenario": "questionnaires",
+  "size": [
+   1440,
+   1100
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "questionnaires_phone_preview",
+  "scenario": "phone-preview",
+  "size": [
+   1440,
+   1100
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "questionnaires_narrow",
+  "scenario": "questionnaires",
+  "size": [
+   960,
+   1000
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "scientific_import",
+  "scenario": "import",
+  "size": [
+   1600,
+   1500
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "help_shortcuts",
+  "scenario": "help",
+  "size": [
+   1280,
+   800
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "classic_home",
+  "scenario": "classic-home",
+  "size": [
+   1440,
+   900
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "classic_groups",
+  "scenario": "classic-groups",
+  "size": [
+   1440,
+   2200
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ }
+]

@@ -13,7 +13,6 @@ the same data: the workspace must not change validated results.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import unittest
 import zipfile
 

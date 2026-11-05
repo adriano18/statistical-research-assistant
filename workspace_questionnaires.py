@@ -175,7 +175,9 @@ class QuestionnairesPage:
         if self.feedback:
             body.append(wc.notice(ui, self.feedback[0], self.feedback[1], data="q-feedback"))
         body.append(self._published())
-        return app.constrained(ft.Column(body, spacing=tk.SPACE_4), tk.CONTENT_MAX_WIDTH + 280)
+        return app.constrained(ft.Column(body, spacing=tk.SPACE_4,
+                                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+                               tk.CONTENT_MAX_WIDTH + 280)
 
     def _set_pane(self, pane: str):
         self.pane = pane
@@ -184,8 +186,6 @@ class QuestionnairesPage:
     # -------------------------------------------------------------- list
     def _list_pane(self) -> ft.Control:
         ui = self.app.ui
-        from survey_ui import _template_questions  # noqa: F401  (template source)
-
         items = []
         for index, q in enumerate(self.draft):
             selected = index == self.selected
@@ -732,7 +732,9 @@ class ImportPage:
         else:
             panes = ft.Column([source, review, preview], spacing=tk.SPACE_4)
         body += [panes, self._checklist()]
-        return app.constrained(ft.Column(body, spacing=tk.SPACE_4), tk.CONTENT_MAX_WIDTH + 400)
+        return app.constrained(ft.Column(body, spacing=tk.SPACE_4,
+                                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+                               tk.CONTENT_MAX_WIDTH + 400)
 
     # ------------------------------------------------------------ source
     def _source_pane(self) -> ft.Control:

@@ -19,7 +19,7 @@ from workspace_methods import (
     required_confirmations, run_method,
 )
 from workspace_state import LEVELS
-from workspace_text import count_text
+from workspace_text import count_text, label as engine_label
 
 GOAL_ICONS = {
     "compare": ft.Icons.COMPARE_ARROWS, "change": ft.Icons.TIMELINE,
@@ -87,7 +87,8 @@ class AnalyzePage:
             body = self._catalog()
         if self.message:
             body.append(wc.notice(ui, self.message[0], self.message[1], data="analyze-message"))
-        return app.constrained(ft.Column([header, *body], spacing=tk.SPACE_5))
+        return app.constrained(ft.Column([header, *body], spacing=tk.SPACE_5,
+                                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 
     def _set_mode(self, mode: str):
         self.mode = mode
@@ -237,7 +238,8 @@ class AnalyzePage:
             spec = METHODS[chosen[0]]
             for confirmation in required_confirmations(spec, chosen[1]):
                 controls.append(wc.checkbox(
-                    ui, confirmation.label, bool(self.confirms.get(confirmation.key)),
+                    ui, engine_label(ui.language, confirmation.label),
+                    bool(self.confirms.get(confirmation.key)),
                     on_change=lambda e, k=confirmation.key: self._confirm(k, e.control.value),
                     data=f"design-confirm-{confirmation.key}"))
         return controls
@@ -419,12 +421,13 @@ class AnalyzePage:
                     on_select=lambda e, r=role.key: self._form_pick(r, e.control.value),
                     width=340, data=f"form-{role.key}"))
         option_controls = [wc.dropdown(
-            ui, option.label, list(option.choices), self.form_options.get(option.key,
-                                                                          option.default),
+            ui, engine_label(ui.language, option.label),
+            [(k, engine_label(ui.language, v)) for k, v in option.choices],
+            self.form_options.get(option.key, option.default),
             on_select=lambda e, k=option.key: self._form_option(k, e.control.value),
             width=320, data=f"form-option-{option.key}") for option in spec.options]
         confirmations = [wc.checkbox(
-            ui, c.label, bool(self.form_confirms.get(c.key)),
+            ui, engine_label(ui.language, c.label), bool(self.form_confirms.get(c.key)),
             on_change=lambda e, k=c.key: self._form_confirm(k, e.control.value),
             data=f"form-confirm-{c.key}")
             for c in required_confirmations(spec, self.form_options)]
@@ -556,7 +559,7 @@ class ResultsPage:
 
     # ------------------------------------------------------------- detail
     def _detail(self, entry) -> ft.Control:
-        app, ui = self.app, self.app.ui
+        ui = self.app.ui
         run = entry.run
         evidence = run.evidence()
         reviewed = self.reviewed.setdefault(entry.id, set())
@@ -839,7 +842,8 @@ class ReportsPage:
         if self.feedback:
             body.append(wc.notice(ui, self.feedback[0], self.feedback[1], data="reports-feedback"))
         return app.constrained(ft.Column([header, *body, wc.caption(
-            ui, ui.t("results.session_note"))], spacing=tk.SPACE_4), tk.READING_MAX_WIDTH + 240)
+            ui, ui.t("results.session_note"))], spacing=tk.SPACE_4,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH), tk.READING_MAX_WIDTH + 240)
 
     def _move(self, entry_id: int, step: int):
         self.app.session.move_in_report(entry_id, step)

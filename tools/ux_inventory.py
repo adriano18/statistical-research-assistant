@@ -229,8 +229,6 @@ def collect_inventory() -> dict:
         raise RuntimeError(
             f"Expected {len(CLASSIC_SCREENS)} classic screens, found {len(screens)}"
         )
-    from interface_layout import build_interface  # noqa: F401  (documentation)
-
     labels = _screen_labels(workspace)
     inventory = {
         "generated_by": "tools/ux_inventory.py",

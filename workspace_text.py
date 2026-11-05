@@ -25,7 +25,7 @@ T: dict[str, tuple[str, str, str]] = {
     "nav.results": ("Results", "Rezultāti", "Результаты"),
     "nav.reports": ("Reports", "Atskaites", "Отчёты"),
     "nav.settings": ("Settings", "Iestatījumi", "Настройки"),
-    "nav.help": ("Help & privacy", "Palīdzība un privātums", "Справка и приватность"),
+    "nav.help": ("Help & privacy", "Palīdzība", "Справка"),
     "nav.classic": ("Classic interface", "Klasiskā saskarne", "Классический интерфейс"),
     "nav.collapse": ("Collapse sidebar (Ctrl+B)", "Sakļaut sānjoslu (Ctrl+B)",
                      "Свернуть боковую панель (Ctrl+B)"),
@@ -854,6 +854,99 @@ T.update({
     "kind.date": ("Date", "Datums", "Дата"),
     "kind.consent": ("Consent", "Piekrišana", "Согласие"),
 })
+
+
+# Engine-facing confirmation and option labels: canonical English (kept in
+# provenance) → displayed LV/RU. Method names stay international.
+LABELS: dict[str, tuple[str, str]] = {
+    "I checked that the items measure one construct and reversed items are recoded": (
+        "Es pārbaudīju, ka jautājumi mēra vienu konstruktu un apgrieztie jautājumi ir pārkodēti",
+        "Я проверил(а), что пункты измеряют один конструкт и обратные пункты перекодированы"),
+    "I checked the study design, measurement scales, independence and suitability": (
+        "Es pārbaudīju pētījuma plānu, mērījumu skalas, neatkarību un piemērotību",
+        "Я проверил(а) дизайн исследования, шкалы измерения, независимость и пригодность"),
+    "For Pearson only: I reviewed linearity, outliers, independence and suitability of the variables": (
+        "Tikai Pīrsonam: es pārskatīju linearitāti, izlēcējus, neatkarību un mainīgo piemērotību",
+        "Только для Пирсона: я проверил(а) линейность, выбросы, независимость и пригодность переменных"),
+    "I confirmed the measurement scales and study assumptions (Pearson: quantitative and linear; Spearman: ordinal or quantitative)": (
+        "Es apstiprināju mērījumu skalas un pētījuma pieņēmumus (Pīrsons: kvantitatīvi un lineāri; Spīrmens: ordināli vai kvantitatīvi)",
+        "Я подтвердил(а) шкалы измерения и допущения (Пирсон: количественные и линейные; Спирмен: порядковые или количественные)"),
+    "I confirmed two categorical scales and independent observations": (
+        "Es apstiprināju divas kategoriālas skalas un neatkarīgus novērojumus",
+        "Я подтвердил(а) две категориальные шкалы и независимые наблюдения"),
+    "I confirm that the two groups contain independent observations": (
+        "Es apstiprinu, ka abās grupās ir neatkarīgi novērojumi",
+        "Я подтверждаю, что две группы содержат независимые наблюдения"),
+    "For Welch only: I reviewed outcome distributions, outliers and suitability of mean comparisons": (
+        "Tikai Velčam: es pārskatīju rezultāta sadalījumus, izlēcējus un vidējo salīdzināšanas piemērotību",
+        "Только для Уэлча: я проверил(а) распределения, выбросы и уместность сравнения средних"),
+    "I confirm the groups contain independent participants": (
+        "Es apstiprinu, ka grupās ir neatkarīgi dalībnieki",
+        "Я подтверждаю, что в группах независимые участники"),
+    "I reviewed distributions, outliers and assumptions of the chosen test": (
+        "Es pārskatīju sadalījumus, izlēcējus un izvēlētā testa pieņēmumus",
+        "Я проверил(а) распределения, выбросы и допущения выбранного теста"),
+    "Each row contains two measurements from the SAME participant": (
+        "Katrā rindā ir divi TĀ PAŠA dalībnieka mērījumi",
+        "Каждая строка содержит два измерения ОДНОГО участника"),
+    "I reviewed difference scores, their symmetry/normality as appropriate, outliers and independence between participants": (
+        "Es pārskatīju starpību rādītājus, to simetriju/normalitāti, izlēcējus un dalībnieku neatkarību",
+        "Я проверил(а) разности, их симметрию/нормальность, выбросы и независимость участников"),
+    "Selected columns measure the same construct in the SAME participants": (
+        "Izvēlētās kolonnas mēra to pašu konstruktu TIEM PAŠIEM dalībniekiem",
+        "Выбранные столбцы измеряют один конструкт у ОДНИХ И ТЕХ ЖЕ участников"),
+    "I reviewed measurement scales, difference scores, outliers and design assumptions": (
+        "Es pārskatīju mērījumu skalas, starpību rādītājus, izlēcējus un plāna pieņēmumus",
+        "Я проверил(а) шкалы измерения, разности, выбросы и допущения дизайна"),
+    "I reviewed linearity, independence, outliers and predictor scales": (
+        "Es pārskatīju linearitāti, neatkarību, izlēcējus un prognozētāju skalas",
+        "Я проверил(а) линейность, независимость, выбросы и шкалы предикторов"),
+    "I confirmed independent observations, outcome coding, quantitative predictors and logit-linearity assumptions": (
+        "Es apstiprināju neatkarīgus novērojumus, iznākuma kodējumu, kvantitatīvus prognozētājus un logit linearitāti",
+        "Я подтвердил(а) независимость наблюдений, кодирование исхода, количественные предикторы и линейность логита"),
+    "I reviewed independent observations, quantitative covariates, group design, covariate timing, linearity and outliers": (
+        "Es pārskatīju novērojumu neatkarību, kvantitatīvos kovariātus, grupu plānu, kovariātu laiku, linearitāti un izlēcējus",
+        "Я проверил(а) независимость наблюдений, количественные ковариаты, групповой дизайн, время измерения ковариат, линейность и выбросы"),
+    "Omega 95% bootstrap CI": ("Omega 95% bootstrap TI", "95% бутстреп-ДИ для омеги"),
+    "Off (fast)": ("Izslēgts (ātri)", "Выключено (быстро)"),
+    "200 resamples (exploratory)": ("200 atkārtojumi (izpētei)", "200 повторов (разведочно)"),
+    "500 resamples (more stable)": ("500 atkārtojumi (stabilāk)", "500 повторов (стабильнее)"),
+    "Exploratory method": ("Izpētes metode", "Метод"),
+    "Principal-axis factors (EFA)": ("Galveno asu faktori (EFA)", "Факторы главных осей (EFA)"),
+    "Principal components (PCA)": ("Galvenās komponentes (PCA)", "Главные компоненты (PCA)"),
+    "Number of factors/components": ("Faktoru/komponentu skaits", "Число факторов/компонент"),
+    "Factor rotation": ("Faktoru rotācija", "Вращение факторов"),
+    "None": ("Nav", "Нет"),
+    "Varimax (orthogonal EFA)": ("Varimax (ortogonāla EFA)", "Varimax (ортогональная EFA)"),
+    "Oblimin (correlated factors)": ("Oblimin (korelēti faktori)", "Oblimin (коррелированные факторы)"),
+    "Correlation method": ("Korelācijas metode", "Метод корреляции"),
+    "Matrix method": ("Matricas metode", "Метод матрицы"),
+    "Statistical method": ("Statistiskā metode", "Статистический метод"),
+    "Omnibus method": ("Kopējā testa metode", "Общий тест"),
+    "Paired test": ("Pāru tests", "Парный тест"),
+    "Repeated-measures method": ("Atkārtoto mērījumu metode", "Метод повторных измерений"),
+    "Use HC3 heteroskedasticity-robust coefficient standard errors": (
+        "Izmantot HC3 heteroskedasticitātei robustas standartkļūdas",
+        "Использовать робастные к гетероскедастичности стандартные ошибки HC3"),
+    "No": ("Nē", "Нет"),
+    "Yes": ("Jā", "Да"),
+    "Model": ("Modelis", "Модель"),
+    "ANCOVA (common slopes)": ("ANCOVA (kopīgi slīpumi)", "ANCOVA (общие наклоны)"),
+    "GLM (group × covariate interactions)": ("GLM (grupa × kovariāts mijiedarbības)",
+                                              "GLM (взаимодействия группа × ковариата)"),
+}
+
+
+def label(language: str, english: str) -> str:
+    """Display text for a canonical engine label (falls back to English)."""
+    if language == "en":
+        return english
+    row = LABELS.get(english)
+    if row is None:
+        from localization import tr
+
+        return tr(language, english)
+    return row[0] if language == "lv" else row[1]
 
 # Plural forms: en (one, other); lv (one, other, zero); ru (one, few, many).
 PLURALS: dict[str, dict[str, tuple[str, ...]]] = {

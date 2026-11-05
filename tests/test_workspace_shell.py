@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import unittest
 
 os.environ.setdefault("MPLBACKEND", "Agg")
@@ -149,12 +148,23 @@ class ClassicIntegrationTests(unittest.TestCase):
             ux_inventory.walk(page.controls[0], lambda c, d: texts.append(c.value)
                               if isinstance(c, ft.Text) and isinstance(c.value, str) else None)
             self.assertTrue(any("sample_scale.csv" in t for t in texts))
-            # Return to classic: the very same classic root is shown again.
+            # A dataset opened in the workspace goes back to the classic screens.
+            from workspace_shell import EXAMPLES, active_app
+
+            workspace = active_app()
+            self.assertIs(workspace.root, page.controls[0])
+            asyncio.run(workspace.load_path(str(EXAMPLES / "sample_paired.csv")))
             back = []
             ux_inventory.walk(page.controls[0], lambda c, d: back.append(c)
                               if getattr(c, "data", None) == "nav-classic" else None)
             asyncio.run(back[0].on_click(SimpleNamespace(control=back[0])))
+            # Return to classic: the very same classic root is shown again.
             self.assertIs(page.controls[0], classic)
+            self.assertIn("sample_paired.csv", captured["controls"]["status"].value)
+            # Re-entering after a classic import adopts the classic dataset again.
+            asyncio.run(actions["load_three_groups_example"](None))
+            entry[0].on_click(SimpleNamespace(control=entry[0]))
+            self.assertEqual(workspace.session.source_name, "sample_three_groups.csv")
         finally:
             _context_page.reset(token)
 

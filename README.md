@@ -13,6 +13,19 @@ A Python project for exploring research datasets and, later, selecting and inter
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
 5. **v0.5 Reports and localization** — TXT/PNG export and copying are available across analysis screens; next are structured APA tables, DOCX/PDF, and EN/LV/RU translations.
 
+## Stage 33 preview — research workspace (prototype, not final)
+
+A new **research workspace** runs next to the unchanged classic interface. Open it from the classic Home screen (**Open the preview**), or start in it with `SRA_UI=workspace`; `python workspace_app.py` runs it standalone. It uses the same validated engine, the same local survey storage and the same dataset.
+
+* **Six areas** in a collapsible sidebar — Home, Data, Questionnaires, Analyze, Results, Reports — plus a context bar (dataset, levels to confirm, *Local only*, theme, EN/LV/RU). No duplicated top menu.
+* **Analyze** in two modes: *Guided* (goal → variables → design check → recommended method with reasons and alternatives; never chosen by a normality p value) and *All methods* (all 15 classic analysis areas with their options and confirmations).
+* **One variable dictionary** with researcher-confirmed measurement levels used by every analysis.
+* **Results log**: summary, verified estimates, APA-style tables without "Sig." columns, figure, assumption review, conservative interpretation, provenance and TXT/PNG/Word exports through save dialogs. **Reports** collects results (session only — project saving is not implemented).
+* **Questionnaires**: list / editor / live respondent preview (desktop and phone width), reusable answer scales, conditions, drag-and-drop; **Scientific import** as a source / review / preview workspace with a blocking checklist.
+* Light and dark themes from WCAG-checked tokens, keyboard shortcuts (Ctrl+1…6, Ctrl+B, Ctrl+O, Ctrl+Enter, F1), 125/150 % scaling.
+
+Design rationale, audit, concepts, tokens, components and the web-respondent proposal: [docs/UX_STAGE33_SPEC.md](docs/UX_STAGE33_SPEC.md). Parity is enforced by `tests/test_analysis_runs.py` (identical engine results) and the route-map tests.
+
 ## Stage 32 — spatial OCR review, OCR confidence, questionnaire matrices and bundled Windows OCR
 
 The scientific importer is now a **split-screen review**: the rendered source page on the left with highlighted question regions, and the question editor, confidence panel, region tools, review queue and **matrix editor** on the right. See the [Stage 31–32 user guide](docs/VISUAL_OCR_IMPORT.md) and the [bundled OCR developer guide](docs/BUNDLED_OCR.md).

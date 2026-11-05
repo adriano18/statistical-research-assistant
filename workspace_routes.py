@@ -6,6 +6,9 @@ exactly one destination in the research workspace. ``status`` is honest:
 * ``workspace`` — available in the new workspace (same engine/storage);
 * ``hosted``    — the validated classic component is shown inside the new
                   workspace unchanged (e.g. data preparation tools);
+* ``partial``   — the main workflow is in the workspace; the listed
+                  remaining controls are still reached through the classic
+                  interface (one click: "Classic interface");
 * ``classic``   — reachable from the workspace through the classic
                   interface until its replacement passes tests;
 * ``retired``   — replaced by a better mechanism (reason given).
@@ -22,7 +25,13 @@ SCREENS: dict[str, tuple[str, str, str]] = {
     "home": ("home", "workspace", "Start actions, current dataset, recent files, saved questionnaires"),
     "dataset": ("data", "workspace", "Import, diagnostics, variable dictionary, preview, import options"),
     "preparation": ("data#prepare", "hosted", "Classic non-destructive preparation tools inside Data"),
-    "survey": ("questionnaires", "workspace", "Three-pane builder, publish, collect, export; full classic builder via Scientific import → classic review"),
+    "survey": ("questionnaires", "partial",
+               "In the workspace: three-pane builder, templates, reusable scales, conditions, "
+               "drag-and-drop, live preview, publish, collect, CSV + codebook, analyze, "
+               "scientific import with scale review. Still classic: page titles and page-wise "
+               "section reordering, DK/PNA missing options, free-form value-label editing, "
+               "clone a published survey, multi-page respondent navigation, response table, "
+               "matrix grid editor, region edits, 20-page OCR batch, binary-format bulk action"),
     "descriptive": ("analyze/all/descriptive", "workspace", "Also Explore distributions"),
     "reliability": ("analyze/all/omega", "workspace", "Cronbach α and McDonald ω (+ item analysis)"),
     "factor": ("analyze/all/factor", "workspace", "EFA / PCA"),

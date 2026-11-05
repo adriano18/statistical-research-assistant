@@ -12,7 +12,6 @@ drift apart.
 from __future__ import annotations
 
 import argparse
-import asyncio
 import os
 from pathlib import Path
 import sys
@@ -26,7 +25,8 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 
 SCENARIOS = (
     "home", "data", "guided", "results", "catalog", "form", "reports",
-    "questionnaires", "import", "help", "settings",
+    "questionnaires", "phone-preview", "import", "help", "settings",
+    "classic-home", "classic-groups",
 )
 
 
@@ -74,8 +74,9 @@ async def apply(app, name: str) -> None:
         page._open_method("omnibus")
         app.navigate("analyze")
         return
-    if name == "questionnaires":
+    if name in {"questionnaires", "phone-preview"}:
         builder = app.pages["questionnaires"]
+        builder.preview_width = "phone" if name == "phone-preview" else "desktop"
         builder.template = "psychology"
         builder._load_template()
         builder.title = "Fictional wellbeing pilot"
@@ -95,6 +96,40 @@ async def apply(app, name: str) -> None:
     raise ValueError(f"Unknown scenario: {name}")
 
 
+async def classic(page, name: str) -> None:
+    """The unchanged classic interface, for before/after comparisons."""
+    import research_app
+
+    captured = {}
+    original = research_app.build_interface
+
+    def spy(page_, controls, actions, **kwargs):
+        captured.update(controls=controls, actions=actions)
+        return original(page_, controls, actions, **kwargs)
+
+    research_app.build_interface = spy
+    try:
+        await research_app.main(page)
+    finally:
+        research_app.build_interface = original
+    if name == "classic-groups":
+        controls, actions = captured["controls"], captured["actions"]
+        await actions["load_scale_example"](None)
+        controls["group_variable"].value = "group"
+        controls["group_outcome"].value = "stress_q1"
+        controls["group_outcome_scale"].value = "ordinal"
+        controls["group_method"].value = "mannwhitney"
+        controls["group_independent"].value = True
+        await actions["calculate_groups"](None)
+        # The classic switcher is registered through the import navigation.
+        for control in page.controls[0].controls[0].content.controls:
+            for button in getattr(control, "controls", []) or []:
+                text = getattr(getattr(button, "content", None), "value", "") or ""
+                if "Compare groups" in str(text):
+                    button.on_click(None)
+        page.update()
+
+
 def serve(scenario: str, port: int, language: str, theme: str) -> None:
     import flet as ft
 
@@ -103,6 +138,9 @@ def serve(scenario: str, port: int, language: str, theme: str) -> None:
     storage = Path(mkdtemp(prefix="workspace-scenario-"))
 
     async def main(page: ft.Page):
+        if scenario.startswith("classic"):
+            await classic(page, scenario)
+            return
         page.title = "Statistical Research Assistant — workspace preview"
         page.padding = 0
         app = WorkspaceApp(page, bridge=ClassicBridge(survey_root=storage / "surveys"),
