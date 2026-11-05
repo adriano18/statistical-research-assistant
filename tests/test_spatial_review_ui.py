@@ -25,6 +25,11 @@ from test_ocr_layout import SAMPLE
 from test_visual_survey_import_ui import DummyPage, children, find
 from dataclasses import replace
 
+def docx_matrices_for_test():
+    from matrix_reconstruction import docx_matrices
+    return docx_matrices(docx_matrix())
+
+
 CONFIRM = ("I verified the instrument version, wording, permissions "
            "and extracted question list against the source")
 
@@ -197,6 +202,58 @@ class SpatialReviewUITests(unittest.IsolatedAsyncioTestCase):
         commit.on_click(None)
         self.assertIn("Imported 4 editable matrix questions", texts(self.view))
         self.assertEqual(list_surveys(self.root), [])
+
+    async def test_view_refresh_keeps_unapplied_grid_edits(self):
+        path = self.root / "synthetic_matrix.pdf"
+        path.write_bytes(matrix_text_pdf())
+        await self.pick(path)
+        label = next(c for c in children(self.view) if isinstance(c, ft.TextField)
+                     and c.hint_text == "label" and c.value == "Never")
+        label.value = "Not at all"
+        zoom = next(c for c in children(self.view) if isinstance(c, ft.Slider))
+        zoom.value = 150
+        zoom.on_change(None)  # view-only refresh must not rebuild the grid
+        await overlays(self.view)[1].on_click(None)
+        self.assertEqual(label.value, "Not at all")
+        find(self.view, ft.Button, label="Apply grid edits").on_click(None)
+        self.assertTrue(any(isinstance(c, ft.TextField) and c.hint_text == "label"
+                            and c.value == "Not at all" for c in children(self.view)))
+
+    async def test_scoring_confirmations_never_carry_over_to_a_new_document(self):
+        codes_label = "Apply printed numeric codes as scale values (reviewed by researcher)"
+        reverse_label = "Apply marked reverse-keyed rows (reviewed by researcher)"
+        first = self.root / "first.docx"
+        first.write_bytes(docx_matrix())
+        await self.pick(first)
+        codes = find(self.view, ft.Checkbox, label=codes_label)
+        reverse = find(self.view, ft.Checkbox, label=reverse_label)
+        codes.value = reverse.value = True
+        zoom = next(c for c in children(self.view) if isinstance(c, ft.Slider))
+        zoom.on_change(None)  # a view refresh keeps the researcher's choice
+        self.assertTrue(codes.value)
+        second = self.root / "second.docx"
+        second.write_bytes(docx_matrix())
+        await self.pick(second)
+        self.assertFalse(find(self.view, ft.Checkbox, label=codes_label).value)
+        self.assertFalse(find(self.view, ft.Checkbox, label=reverse_label).value)
+        # A fresh OCR result on the same document also clears them.
+        scan = self.root / "scan.pdf"
+        scan.write_bytes(image_pdf(questionnaire_image(noise=False)))
+        await self.pick(scan)
+        layout = parse_tesseract_tsv(SAMPLE, 1, language="eng")
+        review = parse_scientific_lines([(1, l.text) for l in layout.lines], "scan.pdf")
+        (matrix,) = docx_matrices_for_test()
+        review = replace(review, spatial=link_candidates(review, [layout]), matrices=(matrix,))
+        with patch("survey_ui.tesseract_available", return_value=True):
+            with patch("survey_ui.ocr_scientific_pdf", return_value=review):
+                await find(self.view, ft.Button, label="Run local OCR on this PDF page").on_click(None)
+        codes = find(self.view, ft.Checkbox, label=codes_label)
+        codes.value = True
+        again = replace(review, matrices=(replace(matrix),))
+        with patch("survey_ui.tesseract_available", return_value=True):
+            with patch("survey_ui.ocr_scientific_pdf", return_value=again):
+                await find(self.view, ft.Button, label="Run local OCR on this PDF page").on_click(None)
+        self.assertFalse(find(self.view, ft.Checkbox, label=codes_label).value)
 
     @unittest.skipUnless(tesseract_available(), "No local Tesseract engine installed")
     async def test_real_ocr_produces_overlays_in_the_app(self):

@@ -591,6 +591,11 @@ class MatrixEditor:
             on_change=lambda e: (self.owner.relayout(), self.owner._update()),
         )
         self.fields: dict = {}
+        # The proposal object the grid fields and scoring confirmations
+        # belong to. View-only refreshes (zoom, page, selection) keep both;
+        # any other proposal (new document, OCR run, edit, verify, another
+        # matrix) rebuilds the grid and clears the scoring confirmations.
+        self._rendered: MatrixProposal | None = None
         self.panel = ft.ExpansionTile(
             title=ft.Text("MATRIX EDITOR · row/column rating scales"),
             expanded=False, visible=False,
@@ -635,17 +640,26 @@ class MatrixEditor:
         self.reverse_confirm.value = False
         self.owner.on_invalidate(message)
 
+    def clear_confirmations(self):
+        self.codes_confirm.value = False
+        self.reverse_confirm.value = False
+
     def reset(self):
         self.owner.matrix_index = None
         self.panel.visible = False
         self.grid.controls = []
         self.fields = {}
+        self._rendered = None
+        self.clear_confirmations()
 
     def refresh(self):
         found = self.matrices()
         self.panel.visible = bool(found)
         if not found:
             self.owner.matrix_index = None
+            if self._rendered is not None:
+                self._rendered = None
+                self.clear_confirmations()
             return
         if self.owner.matrix_index is None or self.owner.matrix_index >= len(found):
             self.owner.matrix_index = 0
@@ -657,7 +671,12 @@ class MatrixEditor:
             ) for k, m in enumerate(found)
         ]
         self.picker.value = str(self.owner.matrix_index)
-        self._render(self.current())
+        matrix = self.current()
+        if matrix is self._rendered:
+            return  # view-only refresh: keep typed-but-unapplied edits
+        self.clear_confirmations()
+        self._rendered = matrix
+        self._render(matrix)
 
     def _render(self, matrix: MatrixProposal):
         problems = matrix.blocking_problems()
