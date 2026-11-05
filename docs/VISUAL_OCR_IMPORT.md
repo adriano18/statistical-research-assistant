@@ -104,7 +104,11 @@ numbers. The importer handles this layout as follows:
   each followed by 0–4 label lines is accepted as the answer block only when
   the same codes and labels follow at least three items. Every copy is
   removed from the item text; the codes and labels may also share a line
-  (`1 NOT AT ALL`) or use circled digits (`①`).
+  (`1 NOT AT ALL`) or use circled digits (`①`). Each choice's label is the
+  spelling most copies print; on OCR pages near-identical spellings are
+  grouped first and the group's most frequent spelling wins, so a garbled
+  copy (`NOT AT An`) cannot outvote the printed label just because it
+  resembles several other garbles.
 * **Numbers joined with their prompts.** A standalone number line (`1`), a
   number on the prompt's first line (`17 During …`), a circled number (`①`)
   or a number drawn inside a circle (text-layer `1`) is joined with the
@@ -167,7 +171,15 @@ whitespace, conservatively, from PDFium character boxes:
   small — below 0.16 of the line's median advance width, or below 70 % of
   the real word spaces of the same line when that line has space
   characters; a gap of ≥ 0.45 advance widths is never closed, nor is a
-  line or column change;
+  line or column change. This holds whether PDFium or another extractor
+  put the space there (their space thresholds differ);
+* when an extractor glues text across a real line change without any
+  whitespace (pypdf 6.21 groups text at nearby baselines into one line:
+  `inventedgarden`, `1NOT ATALL`), the line is cut at PDFium's line
+  changes. On `/Rotate` pages PDFium lists the lines in another order, so
+  the line is matched piece by piece; a piece that runs on into another
+  line and stops inside it is cut back to that line change, because
+  wording repeated on every item would otherwise match a neighbouring item;
 * for an extractor line with a space between every glyph, single spaces
   join and runs of two spaces separate words, but a wide gap in the glyph
   geometry (an item number before its prompt, form-field columns) always

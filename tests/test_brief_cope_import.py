@@ -138,6 +138,28 @@ class SpacingRepairTests(unittest.TestCase):
         self.assertEqual(len(review.spatial.links), 28)
         self.assertGreaterEqual(sum(1 for _, regions in review.spatial.links if regions), 26)
 
+    def test_letter_spaced_fixture_does_not_depend_on_matplotlib_settings(self):
+        """Under matplotlib's default hinting the drawn gap once became a full
+        word space on CI; the fixture pins its font and metrics instead."""
+        import matplotlib
+        import pypdfium2 as pdfium
+
+        boxes = []
+        for style in ({"text.hinting": "force_autohint"},
+                      {"text.hinting": "no_hinting", "font.family": ["DejaVu Serif"]}):
+            with matplotlib.rc_context(style):
+                data = coping_text_pdf(letter_spaced=True)
+            pdf = pdfium.PdfDocument(data)
+            try:
+                lines = pdf_page_glyph_lines(pdf, 1)
+            finally:
+                pdf.close()
+            boxes.append([glyph.box for line in lines for glyph in line.glyphs])
+            # Every split word on the page is a letter gap, not a word space.
+            self.assertEqual(sum(kind == "split" for line in lines for kind in line.classes),
+                             14, style)
+        self.assertEqual(boxes[0], boxes[1])
+
     def test_letter_spaced_extractor_output_is_repaired_with_geometry_or_text(self):
         data = coping_text_pdf(scoring=False)
         from pypdf import PdfReader
@@ -190,6 +212,27 @@ class SpacingRepairTests(unittest.TestCase):
         # A line that only looks merged but keeps its spaces stays untouched.
         spaced = first + " " + second.lstrip()
         self.assertEqual(repair_page_lines(1, [spaced], geometry)[0], [spaced])
+        # Rotated pages list the glyph lines in another order, and every item
+        # repeats "During the invented week I kept": no prompt line may be cut
+        # where a neighbouring item's line happens to continue the same words.
+        from pypdf import PdfReader, PdfWriter
+
+        writer = PdfWriter()
+        writer.add_page(PdfReader(BytesIO(data)).pages[0].rotate(90))
+        stream = BytesIO()
+        writer.write(stream)
+        restored = []
+        for blob in (data, stream.getvalue()):
+            pdf = pdfium.PdfDocument(blob)
+            try:
+                page_geometry = pdf_page_glyph_lines(pdf, 1)
+            finally:
+                pdf.close()
+            lines = PdfReader(BytesIO(blob)).pages[0].extract_text().splitlines()
+            fixed = repair_page_lines(1, lines, page_geometry)[0]
+            restored.append([re.sub(r"^\d+ ", "", line) for line in fixed if "During" in line])
+        self.assertEqual(len(restored[0]), 16)
+        self.assertEqual(restored[1], restored[0])
 
     def test_ordinary_text_layers_are_not_changed(self):
         data = connectedness_text_pdf()
@@ -275,6 +318,19 @@ class RepeatedChoiceLineTests(unittest.TestCase):
         self.assertIn("answer choices differ from the common scale",
                       instrument.evidence.flags_for(7))
         self.assertIn("RATHER OFTEN", instrument.questions[6].notes[-2])
+
+    def test_ocr_label_consensus_takes_the_spelling_most_copies_print(self):
+        # A Windows OCR engine read one copy as "NOT AT An" and another as
+        # "NOT AT AUT.": "An" resembles both other spellings, yet the scale
+        # label is the one that most copies print.
+        rest = COPING_LABELS[1:]
+        garbled = {1: ("NOT AT An", *rest), 16: ("NOT AT AUT.", *rest)}
+        instrument = self.parse(coping_text_lines(overrides=garbled), "scan.pdf",
+                                page_count=2, ocr_pages=(1, 2))
+        (scheme,) = instrument.schemes
+        self.assertEqual(scheme.labels, COPING_LABELS)
+        self.assertTrue(any("item(s) 1, 16" in issue and "NOT AT An" in issue
+                            for issue in scheme.issues), scheme.issues)
 
     def test_a_different_repeated_block_is_a_separate_scale(self):
         other = ("NEVER TRUE", "RARELY TRUE", "OFTEN TRUE", "ALWAYS TRUE")
@@ -409,7 +465,7 @@ class DocumentImportTests(unittest.TestCase):
         page = review.spatial.page(1)
         self.assertGreater(page.pixel_width, page.pixel_height)  # displayed as rotated
         linked = sum(1 for _, regions in review.spatial.links if regions)
-        if linked < 26:
+        if linked < 28:
             unlinked = [key for key, regions in review.spatial.links if not regions]
             self.fail(f"{linked} of 28 rotated items linked; unlinked {unlinked}\n"
                       + spacing_diagnostics(stream.getvalue()))

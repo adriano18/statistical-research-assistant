@@ -69,6 +69,8 @@ class Glyph:
 # Boundary classes (between a glyph and its predecessor on the same line):
 #   start  – first glyph of a line
 #   join   – no whitespace in the text layer
+#   tight  – no whitespace and a narrow gap between two letters: whitespace
+#            another extractor puts there is spurious (joined by the repair)
 #   split  – spurious whitespace inside a word (joined by the repair)
 #   space  – whitespace kept, but the gap is narrow (punctuation, tracking)
 #   word   – a real word / column gap (never joined)
@@ -201,7 +203,10 @@ def classify_lines(lines: list[list[Glyph]]) -> list[GlyphLine]:
             elif ratio >= wide:
                 classes.append("word" if glyph.before or ratio >= 1.5 else "join")
             elif not glyph.before:
-                classes.append("join")
+                # PDFium's own space threshold differs from other extractors':
+                # a letter gap it keeps closed may still get a space from pypdf.
+                letters = prev.char.isalpha() and glyph.char.isalpha()
+                classes.append("tight" if letters and -0.3 <= ratio <= limit else "join")
             elif prev.char.isalpha() and glyph.char.isalpha() and -0.3 <= ratio <= limit:
                 classes.append("split")
             else:
@@ -355,6 +360,16 @@ class _PageGeometry:
             if best is None or runs > 40:  # not this page's text: leave it alone
                 return None
             length, found = best
+            end = found + length
+            if (offset + length < len(key) and end < len(self.classes)
+                    and self.classes[end] != "break"):
+                # The run ran on into another glyph line and stopped inside
+                # it: repeated wording ("During the invented week I kept")
+                # matched there by coincidence. Keep it to its last complete
+                # line, so the remainder is matched where it really continues.
+                starts = [i for i in range(1, length) if self.classes[found + i] == "break"]
+                if starts:
+                    length = starts[-1]
             run = list(self.classes[found:found + length])
             if classes:
                 run[0] = "break"
@@ -436,7 +451,7 @@ def _repair_piece(chars: str, runs: list[int], classes: list[str],
                     splits += int(gap == 0)
                 else:
                     joins += int(gap == 1)
-            elif gap == 1 and kind == "split":
+            elif gap == 1 and kind in ("split", "tight"):
                 joins += 1
             else:
                 out.append(" " * gap)

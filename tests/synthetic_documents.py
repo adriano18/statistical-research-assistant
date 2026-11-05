@@ -576,7 +576,12 @@ def coping_text_pdf(*, labels=COPING_LABELS, language: str = "en", count: int = 
     numbers = [n for n in range(1, count + 1) if n not in set(missing)]
     columns = (0.555, 0.665, 0.775, 0.885)
     stream = BytesIO()
-    with PdfPages(stream) as pdf:
+    # The same geometry on every machine: a matplotlibrc may choose another
+    # font, and hinted Agg extents (matplotlib's default) are wider than the
+    # PDF's own glyph advances, which made the "letter-spaced" gap as wide
+    # as a word space on CI.
+    style = {"font.family": ["DejaVu Sans"], "text.hinting": "no_hinting", "pdf.fonttype": 3}
+    with matplotlib.rc_context(style), PdfPages(stream) as pdf:
         for start in range(0, len(numbers), per_page):
             figure = plt.figure(figsize=(8.27, 11.69))
             renderer = figure.canvas.get_renderer()

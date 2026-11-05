@@ -279,7 +279,13 @@ def _template(reader: _Reader, fuzzy: bool) -> ChoiceBlock | None:
             if fuzzy:
                 support = {key: sum(1 for other in keys if other == key or _similar(other, key) >= 0.8)
                            for key in dict.fromkeys(keys)}
-                common = max(support, key=lambda key: (support[key], keys.count(key)))
+                # The widest group of near-identical spellings, then the
+                # spelling most copies of that group print: a garbled reading
+                # can resemble more variants than the printed label does
+                # ("NOT AT An" is close to both "ALL" and "AUT.").
+                center = max(support, key=lambda key: (support[key], keys.count(key)))
+                group = [key for key in support if key == center or _similar(key, center) >= 0.8]
+                common = max(group, key=lambda key: (keys.count(key), support[key]))
             else:
                 common = max(keys, key=keys.count)
             if fuzzy:
