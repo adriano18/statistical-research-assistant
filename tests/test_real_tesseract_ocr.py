@@ -98,10 +98,19 @@ class RealTesseractTests(unittest.TestCase):
             "3. How often did invented plans change?",
         ])
         pdf = image_pdf(image)
+        png, dpi = _render_pdf_page(pdf, 1, scale=2.0, max_width=1800)
+        seen = {}
+        for language in ("lav", "lav+rus", "eng+lav+rus"):
+            page = recognize_page_layout(png, language, dpi=dpi)
+            seen[language] = " / ".join(line.text for line in page.lines)
+        report = "; ".join(f"{k}: {v}" for k, v in seen.items())
+        print("\nMultilingual OCR:", report)
+        # The Latvian model alone must recover Latvian diacritics.
+        self.assertIn("nedēļa", seen["lav"], report)
         review = ocr_scientific_pdf(pdf, "multilingual.pdf", [1], "eng+lav+rus")
         text = " ".join(q.question["prompt"] for q in review.instruments[0].questions)
-        self.assertIn("nedēļa", text)
-        self.assertIn("вымышленные", text)
+        self.assertIn("вымышленные", text, report)
+        self.assertIn("nedēļa", text, report)
 
 
 if __name__ == "__main__":
