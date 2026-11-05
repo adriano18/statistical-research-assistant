@@ -69,6 +69,38 @@ def confirm(instrument, *, numeric=False):
     )
 
 
+def spacing_diagnostics(data: bytes, page: int = 1, limit: int = 8) -> str:
+    """Geometry facts for a failing spacing test (engine versions, gap ratios)."""
+    from statistics import median
+    import importlib.metadata as metadata
+    import pypdfium2 as pdfium
+    import letter_spacing as ls
+
+    out = [f"pypdfium2 {metadata.version('pypdfium2')}, pypdf {metadata.version('pypdf')}"]
+    pdf = pdfium.PdfDocument(data)
+    try:
+        lines = ls.pdfium_glyph_lines(pdf[page - 1].get_textpage())
+    finally:
+        pdf.close()
+    for glyphs in lines:
+        scale = ls._advance_scale(glyphs)
+        if not scale:
+            continue
+        ratios = [None] + [(g.box[0] - p.box[2]) / scale for p, g in zip(glyphs, glyphs[1:])]
+        real = [r for g, r in zip(glyphs, ratios) if g.before == "real" and r is not None]
+        gap = median(real) if real else None
+        for k in range(1, len(glyphs)):
+            g, p = glyphs[k], glyphs[k - 1]
+            if g.before == "generated" and p.char.isalpha() and g.char.isalpha():
+                word = "".join(x.char for x in glyphs[max(0, k - 5):k + 5])
+                out.append(f"{word!r}: ratio {ratios[k]:.3f}, line word gap "
+                           f"{gap if gap is None else round(gap, 3)}, scale {scale:.3f}, "
+                           f"box {tuple(round(v, 2) for v in g.box)}")
+                if len(out) > limit:
+                    return "\n".join(out)
+    return "\n".join(out)
+
+
 class SpacingRepairTests(unittest.TestCase):
     def test_text_only_rule_for_letter_spaced_lines(self):
         line = "W e  k e p t  s o r t i n g  1 0  i n v e n t e d  c h o r e s ."
@@ -95,7 +127,11 @@ class SpacingRepairTests(unittest.TestCase):
         review = read(data, "spaced.pdf")
         (instrument,) = review.instruments
         # … and the imported prompts are exactly the printed statements.
-        self.assertEqual([row.question["prompt"] for row in instrument.questions], statements)
+        prompts = [row.question["prompt"] for row in instrument.questions]
+        if prompts != statements:
+            self.fail("Prompts differ:\n" + "\n".join(
+                f"{a!r} != {b!r}" for a, b in zip(prompts, statements) if a != b
+            )[:1500] + "\n" + spacing_diagnostics(data))
         words = {word.text for word in pdf_text_layer_page(data, 1).words}
         self.assertIn("postponing", words)
         self.assertNotIn("postp", words)
@@ -372,7 +408,11 @@ class DocumentImportTests(unittest.TestCase):
         self.assertEqual(instrument.schemes[0].labels, COPING_LABELS)
         page = review.spatial.page(1)
         self.assertGreater(page.pixel_width, page.pixel_height)  # displayed as rotated
-        self.assertGreaterEqual(sum(1 for _, regions in review.spatial.links if regions), 26)
+        linked = sum(1 for _, regions in review.spatial.links if regions)
+        if linked < 26:
+            unlinked = [key for key, regions in review.spatial.links if not regions]
+            self.fail(f"{linked} of 28 rotated items linked; unlinked {unlinked}\n"
+                      + spacing_diagnostics(stream.getvalue()))
 
     def test_latvian_and_russian_labels_stay_as_printed(self):
         for language, labels in (("lv", COPING_LABELS_LV), ("ru", COPING_LABELS_RU)):
