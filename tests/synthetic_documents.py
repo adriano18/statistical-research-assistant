@@ -11,8 +11,16 @@ import random
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+def _matplotlib_font() -> str:
+    """DejaVu Sans shipped with matplotlib: identical glyphs on every OS."""
+    import os
+    import matplotlib
+
+    return os.path.join(matplotlib.get_data_path(), "fonts", "ttf", "DejaVuSans.ttf")
+
+
 FONT_NAMES = (
-    "DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    _matplotlib_font(), "DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\segoeui.ttf",
     "/System/Library/Fonts/Supplemental/Arial.ttf",
 )

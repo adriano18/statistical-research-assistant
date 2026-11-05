@@ -32,8 +32,16 @@ SAMPLE_LABELS = ("Never", "Rarely", "Sometimes", "Often", "Always")
 def _font(size: int):
     from PIL import ImageFont
 
+    candidates = []
+    try:  # DejaVu Sans ships with matplotlib, a bundled dependency.
+        import matplotlib
+        candidates.append(os.path.join(
+            matplotlib.get_data_path(), "fonts", "ttf", "DejaVuSans.ttf",
+        ))
+    except Exception:
+        pass
     for name in (
-        r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\segoeui.ttf",
+        *candidates, r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\segoeui.ttf",
         "DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/System/Library/Fonts/Supplemental/Arial.ttf",
     ):
