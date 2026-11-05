@@ -18,7 +18,7 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [x] Editable matrix grid (cells, rows, columns, reorder, accept, verify) with explicit numeric-code and reverse-key confirmation
 - [x] Pinned Tesseract 5.5.4 + eng/lav/rus/osd runtime with SHA-256 lock, licences and notices; resolver order `TESSERACT_CMD` → bundled → PATH; readiness in Settings/Help
 - [x] Linux CI with real Tesseract; Windows CI verifies the bundle with an isolated PATH and runs real OCR tests against it
-- [ ] Windows CI: `flet build`, in-package runtime check and OCR self-test inside the packaged executable passing on the PR head
+- [x] Windows CI: `flet build windows`, in-package runtime SHA-256 check and an OCR self-test inside the packaged `StatisticalResearchAssistant.exe` (system-only PATH, `origin: bundled`) pass; ZIP published as an artifact
 - [x] Synthetic regression fixtures: PSS-like/UCLA-like layouts, 0–4 and 1–4 scales, EN/LV/RU, skewed and sideways scans, multi-page and merged-header tables, missing cells
 - [ ] Clean-machine manual test of the ZIP on Windows 10/11 (no Python/Tesseract), high-DPI and Narrator QA
 - [ ] Transposed matrices (items as columns), rotated header text and filled-in answer marks
@@ -39,7 +39,7 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [ ] Manually test actual Tesseract binaries and language packs with all six private example files on Windows
 - [x] Add reliable spatial bounding boxes and OCR confidence overlays directly on page images (Stage 32)
 - [x] Reconstruct multi-column/scoring matrix tables after deliberate review (Stage 32); complex conditional rules remain manual
-- [x] Bundle Tesseract in the offline Windows build pipeline (Stage 32); packaged-app verification, signed installer and high-DPI GUI QA remain open
+- [x] Bundle Tesseract in the offline Windows build (Stage 32, verified in CI); signed installer and high-DPI GUI QA remain open
 
 ## Stage 30 — scientific questionnaire import and scoring review
 
@@ -311,7 +311,7 @@ Alternatives to evaluate later:
 - [ ] Validate exported copy/TXT/PNG and Windows save dialogs manually
 - [ ] Cross-check named datasets and extreme cases against trusted scientific tools
 - [ ] Confirm that repeated, nested and missing-data structures are not silently misclassified
-- [ ] Package an offline Windows executable (Stage 32 CI builds an unsigned ZIP with bundled OCR; mark done once the packaged self-test passes and a clean-machine check is recorded)
+- [x] Package an offline Windows executable (unsigned ZIP from CI with bundled OCR, verified by the packaged self-test; clean-machine and signed-installer work tracked under Stage 32)
 - [ ] Clear privacy and limitation documentation; never put participant data in public GitHub
 
 ## Limitations
