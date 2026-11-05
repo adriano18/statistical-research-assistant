@@ -123,10 +123,10 @@ def preferred_spelling(spellings) -> str:
     them, so a variant with more words wins when it repeats ("A FAIR" over
     "AFAIR" when both occur at least twice or a quarter as often)."""
     spellings = list(spellings)
-    best = max(set(spellings), key=spellings.count)
+    best = max(spellings, key=spellings.count)  # ties: first occurrence
     compact = re.sub(r"\s+", "", best).casefold()
     floor = max(2, 0.25 * spellings.count(best))
-    spaced = [s for s in set(spellings)
+    spaced = [s for s in dict.fromkeys(spellings)
               if re.sub(r"\s+", "", s).casefold() == compact
               and len(s.split()) > len(best.split()) and spellings.count(s) >= floor]
     return max(spaced, key=lambda s: (len(s.split()), spellings.count(s))) if spaced else best
@@ -278,17 +278,17 @@ def _template(reader: _Reader, fuzzy: bool) -> ChoiceBlock | None:
             keys = [_key(t) for t in texts]
             if fuzzy:
                 support = {key: sum(1 for other in keys if other == key or _similar(other, key) >= 0.8)
-                           for key in set(keys)}
+                           for key in dict.fromkeys(keys)}
                 common = max(support, key=lambda key: (support[key], keys.count(key)))
             else:
-                common = max(set(keys), key=keys.count)
+                common = max(keys, key=keys.count)
             if fuzzy:
                 compact = re.sub(r"\s+", "", common)
                 spellings = [t for t, key in zip(texts, keys) if re.sub(r"\s+", "", key) == compact]
                 consensus.append(preferred_spelling(spellings))
             else:
                 spellings = [t for t, key in zip(texts, keys) if key == common]
-                consensus.append(max(set(spellings), key=spellings.count))
+                consensus.append(max(spellings, key=spellings.count))
 
         def agrees(cats) -> bool:
             matches = sum(
@@ -303,7 +303,7 @@ def _template(reader: _Reader, fuzzy: bool) -> ChoiceBlock | None:
         if len(best) >= MIN_REPEATS and len(best) >= 0.6 * len(long_enough):
             codes = tuple(str(cat[0]) for cat in best[0][1])
             counts = tuple(
-                max(set(c), key=c.count)
+                max(c, key=c.count)
                 for c in ([cats[k][3] for _, cats in best] for k in range(size))
             )
             return ChoiceBlock(codes, tuple(consensus), reader.pages[best[0][0]],

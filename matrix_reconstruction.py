@@ -672,7 +672,7 @@ def choice_cell_grid(page: OCRPage) -> ChoiceGrid | None:
     if len(rows) < 3:
         return None
     signatures = [tuple(v for v, _ in row) for row in rows]
-    dominant = max(set(signatures), key=signatures.count)
+    dominant = max(signatures, key=signatures.count)  # ties: first row wins
     rows = [row for row, sig in zip(rows, signatures) if sig == dominant]
     if len(rows) < 3:
         return None
@@ -747,7 +747,7 @@ def choice_cell_grid(page: OCRPage) -> ChoiceGrid | None:
         # OCR may drop a space ("AFAIR") or misread a letter: group spellings
         # that agree without whitespace or are very similar.
         keys = [_label_key(text) for text in present]
-        common = max(set(keys), key=keys.count)
+        common = max(keys, key=keys.count)
         agreeing = [text for text, key in zip(present, keys)
                     if key == common or _label_similarity(key, common) >= 0.8]
         from repeated_choices import preferred_spelling
