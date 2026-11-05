@@ -322,6 +322,47 @@ class _PageGeometry:
         self.cursor = found + len(key)
         return found
 
+    def _find(self, key: str) -> int:
+        found = self.text.find(key, self.cursor)
+        return found if found >= 0 else self.text.find(key)
+
+    def classes_for(self, needle: str) -> list[str] | None:
+        """Geometry class of every character of an extractor line, or None.
+
+        Normally the line is one contiguous run of the page's glyph order.
+        When an extractor merged physical lines in a different order (e.g.
+        on rotated pages), the line is covered by the longest matching runs
+        instead, and the start of every further run counts as a line change.
+        """
+        start = self.align(needle)
+        if start is not None:
+            return list(self.classes[start:start + len(needle)])
+        if len(needle) < 2:
+            return None
+        key = "".join(_norm_char(c) for c in needle)
+        classes: list[str] = []
+        offset = runs = 0
+        while offset < len(key):
+            low, high, best = 1, len(key) - offset, None
+            while low <= high:  # longest prefix of the remainder on this page
+                middle = (low + high) // 2
+                found = self._find(key[offset:offset + middle])
+                if found >= 0:
+                    best, low = (middle, found), middle + 1
+                else:
+                    high = middle - 1
+            runs += 1
+            if best is None or runs > 40:  # not this page's text: leave it alone
+                return None
+            length, found = best
+            run = list(self.classes[found:found + length])
+            if classes:
+                run[0] = "break"
+            classes += run
+            offset += length
+            self.cursor = found + length
+        return classes
+
 
 def repair_page_lines(
     page: int, lines: list[str], geometry: list[GlyphLine] | None,
@@ -340,8 +381,8 @@ def repair_page_lines(
             repaired.append(line)
             continue
         chars, runs = _segments(line)
-        start = reference.align(chars) if reference is not None else None
-        if start is None:
+        classes = reference.classes_for(chars) if reference is not None else None
+        if classes is None:
             if spaced_page and letter_spaced_line(line):
                 text, joins, kept = repair_letter_spaced_line(line)
                 if joins:
@@ -350,33 +391,60 @@ def repair_page_lines(
                     continue
             repaired.append(line)
             continue
-        out, joins, splits = [], 0, 0
-        for k, char in enumerate(chars):
-            if k:
-                kind = reference.classes[start + k]
-                gap = runs[k]
-                if spaced_page:
-                    # Real word gaps: two spaces from the extractor, or a wide
-                    # gap / line change in the glyph geometry.
-                    if gap >= 2 or kind in ("word", "break"):
-                        out.append(" ")
-                        splits += int(gap == 0)
-                    else:
-                        joins += int(gap == 1)
-                elif gap == 1 and kind == "split":
-                    joins += 1
-                else:
-                    out.append(" " * gap)
-            out.append(char)
-        text = "".join(out)
-        if spaced_page:
-            text = " ".join(text.split())
+        # Some extractor versions merge physically separate lines (wrapped
+        # prompt lines, answer cells beside a prompt) without ANY whitespace,
+        # e.g. "invented" + "garden" -> "inventedgarden". PDFium's glyph lines
+        # show where the baseline really changes; when the extractor glued
+        # text across such a change, restore every line change of that line.
+        # On a letter-spaced page a single space is only a letter gap, so it
+        # counts as "no word gap" there as well.
+        breaks = [k for k in range(1, len(chars)) if classes[k] == "break"]
+        glued = any(runs[k] == 0 or (spaced_page and runs[k] == 1) for k in breaks)
+        cuts = breaks if glued else []
+        bounds = [0, *cuts, len(chars)]
+        pieces = [_repair_piece(chars[a:b], runs[a:b], classes[a:b], spaced_page)
+                  for a, b in zip(bounds, bounds[1:])]
+        if cuts:
+            for index, (text, joins, splits) in enumerate(pieces):
+                repairs.append(SpacingRepair(page, line, text, joins,
+                                             splits + (len(cuts) if index == 0 else 0),
+                                             "geometry"))
+                repaired.append(text)
+            continue
+        text, joins, splits = pieces[0]
         if joins or splits:
             repairs.append(SpacingRepair(page, line, text, joins, splits, "geometry"))
             repaired.append(text)
         else:
             repaired.append(line)
     return repaired, repairs
+
+
+def _repair_piece(chars: str, runs: list[int], classes: list[str],
+                  spaced_page: bool) -> tuple[str, int, int]:
+    """Whitespace of one physical line: (text, spaces removed, gaps restored)."""
+    out, joins, splits = [], 0, 0
+    for k, char in enumerate(chars):
+        if k:
+            kind = classes[k]
+            gap = runs[k]
+            if spaced_page:
+                # Real word gaps: two spaces from the extractor, or a wide
+                # gap / line change in the glyph geometry.
+                if gap >= 2 or kind in ("word", "break"):
+                    out.append(" ")
+                    splits += int(gap == 0)
+                else:
+                    joins += int(gap == 1)
+            elif gap == 1 and kind == "split":
+                joins += 1
+            else:
+                out.append(" " * gap)
+        out.append(char)
+    text = "".join(out)
+    if spaced_page:
+        text = " ".join(text.split())
+    return text, joins, splits
 
 
 def repair_pdf_text(source, pages: list[tuple[int, list[str]]]) -> tuple[

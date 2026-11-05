@@ -9,6 +9,7 @@ invented; nothing is taken from a published inventory.
 
 from io import BytesIO
 import json
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -113,16 +114,46 @@ class SpacingRepairTests(unittest.TestCase):
             geometry = pdf_page_glyph_lines(pdf, 1)
         finally:
             pdf.close()
-        expected = [" ".join(line.split()) for line in original]
+        # Extractor versions group physical lines differently; the geometry
+        # restores the same physical lines from the unspaced output.
+        physical, _ = repair_page_lines(1, original, geometry)
+        expected = [" ".join(line.split()) for line in physical]
         fixed, repairs = repair_page_lines(1, spaced, geometry)
         self.assertEqual(fixed, expected)
         self.assertTrue(repairs and {r.method for r in repairs} == {"geometry"})
         self.assertTrue(all(r.original != r.repaired for r in repairs))  # provenance kept
         text_only, repairs = repair_page_lines(1, spaced, None)  # no PDFium geometry
-        self.assertEqual(text_only, expected)
+        # Without geometry a digit next to a letter keeps its space (glued item
+        # numbers); some extractor versions glue "1" + "NOT" across cells.
+        digit_letter = re.compile(r"(?<=\d)(?=[^\W\d_])|(?<=[^\W\d_])(?=\d)")
+        self.assertEqual(text_only, [digit_letter.sub(" ", " ".join(line.split()))
+                                     for line in original])
         self.assertEqual({r.method for r in repairs}, {"text"})
         (instrument,) = parse_scientific_lines([(1, line) for line in fixed], "spaced.pdf").instruments
         self.assertEqual([row.number for row in instrument.questions], list(range(1, 17)))
+
+    def test_lines_glued_by_the_extractor_are_split_at_real_line_changes(self):
+        """Any pypdf version: text merged across physical lines without a space
+        (e.g. "invented" + "garden", "1" + "NOT AT" + "ALL") is restored from
+        PDFium's glyph lines, also when the merge is in a different order."""
+        data = coping_text_pdf(scoring=False)
+        import pypdfium2 as pdfium
+
+        pdf = pdfium.PdfDocument(data)
+        try:
+            geometry = pdf_page_glyph_lines(pdf, 1)
+        finally:
+            pdf.close()
+        physical = ["".join(glyph.char for glyph in line.glyphs) for line in geometry]
+        prompt = next(i for i, text in enumerate(physical) if text.startswith("During"))
+        first, second = physical[prompt], physical[prompt + 1]
+        glued = first + second.lstrip()            # no whitespace at the line change
+        fixed, repairs = repair_page_lines(1, [glued], geometry)
+        self.assertEqual(fixed, [" ".join(first.split()), " ".join(second.split())])
+        self.assertTrue(repairs and repairs[0].original == glued)  # provenance kept
+        # A line that only looks merged but keeps its spaces stays untouched.
+        spaced = first + " " + second.lstrip()
+        self.assertEqual(repair_page_lines(1, [spaced], geometry)[0], [spaced])
 
     def test_ordinary_text_layers_are_not_changed(self):
         data = connectedness_text_pdf()
