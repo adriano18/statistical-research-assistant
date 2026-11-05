@@ -23,6 +23,8 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [x] Startup (#16, #17): immediate light startup screen, background import of the analysis libraries, configured light boot screen, visible startup failures, phase-timing log in `%LOCALAPPDATA%`, per-user survey storage for packaged builds
 - [x] Windows CI normal-GUI startup check: ordinary launch with a system-only PATH, screenshots every 0.5 s, fails on black window > 3 s, failed startup or missing Home screen
 - [x] True/False, T/F and Yes/No answer formats (#17): shared headers, per-row labels, DOCX table columns, OCR variants, EN/RU/LV; labels as printed, no codes/keys/reverse scoring; reviewed bulk conversion for instruction-only evidence; 60-item text PDF, DOCX and scanned-PDF regressions
+- [x] Shared response scales (#18): `ResponseScheme` per instrument, stable question ↔ matrix-row ↔ region links, O/S/R/N legends, spelled-out headers, printed codes, OCR-tolerant headers/cells, version separation on numbering restart, blocking banner, one review panel with separate structure / numeric / reverse confirmations, end-to-end tests through preview, publish and export
+- [ ] Per-item repeated multi-line option labels (coping-inventory layouts) and letter-spaced PDF text layers
 - [ ] Clean-machine manual test of the ZIP on Windows 10/11 (no Python/Tesseract), high-DPI and Narrator QA
 - [ ] Transposed matrices (items as columns), rotated header text and filled-in answer marks
 - [ ] Dedicated respondent-facing matrix/grid control and persisting region corrections with the draft

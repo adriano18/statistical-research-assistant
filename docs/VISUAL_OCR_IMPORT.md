@@ -54,6 +54,43 @@ Right side:
 Any change to regions, matrix cells or question wording resets the
 scientific, numeric-code and reverse-key approvals.
 
+### Shared response scales (Likert / frequency tables)
+
+Questionnaires such as a 20-item frequency inventory print one response scale
+for many rows (`O S R N`, `Never Rarely Sometimes Often`, `1 2 3 4`). The
+importer treats them as **questions sharing one response scale**:
+
+* The scale comes from the column header, this document's own legend
+  (`O = Often   S = Sometimes …`), codes printed in each row, and the
+  reconstructed matrix. Every matrix row is linked to its extracted question
+  and source region. Labels stay exactly as documented; abbreviations become
+  words only when the same document defines them.
+* **Original and revised versions stay separate.** When numbering restarts at
+  1 after a new heading (or a new scale header/legend/page), a new instrument
+  starts. Legends, codes and reverse-scoring notes never cross versions.
+* Linked questions are proposed as fixed choices but marked **NOT verified**.
+  An amber banner ("20 questions use an unverified 4-choice scale …") blocks
+  **Use extracted questions as editable draft** until the scale is reviewed.
+  A matrix is never silently imported as free text.
+* **RESPONSE SCALE REVIEW** (top of the right-hand panel) shows the evidence,
+  linked items, problems (undefined abbreviations, possibly incomplete
+  two-line labels, unreadable or differing cells) and editable labels, codes
+  and reverse-keyed items for the whole scale. It has three independent
+  confirmations:
+  1. **Confirm structure** — the linked questions become `single_choice` with
+     the documented labels;
+  2. **Confirm numeric coding exactly as printed** — `rating_scale` with those
+     codes (only when every category has a printed code);
+  3. **Confirm reverse scoring** of the listed items (only after numeric
+     coding; the source statement is shown, e.g. "Items 1, 5, 6 … are reverse
+     scored" or "Score 5-circled number for items …").
+  Press **Apply scale review to all linked questions**. Editing labels, codes
+  or reverse items, or detaching a question by editing it manually, clears
+  the confirmations. **Not a shared scale** keeps the questions as text by
+  explicit decision. **Show this scale on the source page** jumps to the rows.
+* Text-layer PDFs show "PDF text layer — OCR confidence does not apply"; only
+  scanned pages report OCR word confidence.
+
 ### True/False, T/F and Yes/No answers
 
 Binary answer formats are recognized from evidence in the source:
@@ -157,6 +194,7 @@ If no text is detected in a scanned PDF, the original source is still displayed.
 ## Known limitations
 
 - Word layout is a **reconstruction**, not a pixel-perfect render of the original page. Convert a Word document to PDF locally if precise visual pagination is necessary.
+- Layouts that repeat multi-line option labels inside every item (for example a coping inventory printing "1 I haven't been doing this at all … 4 I've been doing this a lot" under each statement) and letter-spaced text layers are not reconstructed yet; enter such scales manually.
 - Matrix reconstruction is conservative: printed codes/markers or clear header labels are required to find columns; transposed grids (items as columns), rotated header text and hand-drawn tables are not reconstructed and must be entered manually. Ticked answers on filled-in forms are not interpreted.
 - Matrix rows become ordinary questions sharing one scale (rating scale or single choice); a dedicated respondent-facing grid control is not part of this stage.
 - OCR quality depends on scan resolution, skew, image contrast and language packs; full fidelity is not guaranteed. Small skew is handled by Tesseract; larger skew is not corrected automatically. Some multi-page questionnaires need all relevant pages OCRed in sequence.
