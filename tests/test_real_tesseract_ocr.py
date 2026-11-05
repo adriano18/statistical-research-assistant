@@ -100,14 +100,16 @@ class RealTesseractTests(unittest.TestCase):
         pdf = image_pdf(image)
         png, dpi = _render_pdf_page(pdf, 1, scale=2.0, max_width=1800)
         seen = {}
-        for language in ("lav", "lav+rus", "eng+lav+rus"):
+        for language in ("lav", "lav+rus", "lav+rus+eng", "eng+lav+rus"):
             page = recognize_page_layout(png, language, dpi=dpi)
             seen[language] = " / ".join(line.text for line in page.lines)
         report = "; ".join(f"{k}: {v}" for k, v in seen.items())
         print("\nMultilingual OCR:", report)
         # The Latvian model alone must recover Latvian diacritics.
         self.assertIn("nedēļa", seen["lav"], report)
-        review = ocr_scientific_pdf(pdf, "multilingual.pdf", [1], "eng+lav+rus")
+        # The UI's "All three · Latvian main" preset (Tesseract 5.5 favours
+        # the first language; English-first loses ē/ļ on that engine).
+        review = ocr_scientific_pdf(pdf, "multilingual.pdf", [1], "lav+rus+eng")
         text = " ".join(q.question["prompt"] for q in review.instruments[0].questions)
         self.assertIn("вымышленные", text, report)
         self.assertIn("nedēļa", text, report)

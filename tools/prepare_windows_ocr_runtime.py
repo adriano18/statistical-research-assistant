@@ -26,13 +26,11 @@ import argparse
 import hashlib
 import io
 import json
-import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
 import sys
 import tarfile
-import tempfile
 import time
 import urllib.request
 

@@ -127,7 +127,7 @@ def run_selftest(output: Path, sample: Path | None = None) -> int:
             result["errors"].append("OCR did not recover the sample questions")
         if not review.matrices or len(review.matrices[0].columns) != 5:
             result["errors"].append("matrix reconstruction failed")
-        multilingual = ocr_scientific_pdf(source, "selftest_scan.pdf", [1], "eng+lav+rus")
+        multilingual = ocr_scientific_pdf(source, "selftest_scan.pdf", [1], "lav+rus+eng")
         result["multilingual_questions"] = len(multilingual.instruments[0].questions)
         result["ok"] = not result["errors"]
     except Exception as error:  # report everything; this is a diagnostic

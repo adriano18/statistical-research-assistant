@@ -461,16 +461,20 @@ def build_survey_workspace(
     )
     document_ocr_language = ft.Dropdown(
         label="Local OCR language packs", width=265, value="eng",
+        tooltip="Put the document's main language first; the engine "
+                "favours the first language of a combination.",
         options=[
             ft.DropdownOption(key=code, text=description)
             for code, description in (
                 ("eng", "English"),
                 ("lav", "Latvian"),
                 ("rus", "Russian"),
-                ("eng+lav", "English + Latvian"),
-                ("eng+rus", "English + Russian"),
-                ("lav+rus", "Latvian + Russian"),
-                ("eng+lav+rus", "All three"),
+                ("lav+eng", "Latvian (main) + English"),
+                ("rus+eng", "Russian (main) + English"),
+                ("lav+rus", "Latvian (main) + Russian"),
+                ("rus+lav", "Russian (main) + Latvian"),
+                ("lav+rus+eng", "All three · Latvian main"),
+                ("rus+lav+eng", "All three · Russian main"),
             )
         ],
     )

@@ -11,7 +11,6 @@ from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import os
 import re
 import shutil
 import subprocess
@@ -38,7 +37,15 @@ from scientific_survey_import import (
 from survey_storage import validate_questions
 
 MAX_BATCH_PAGES = 20
-OCR_LANGUAGES = {"eng", "lav", "rus", "eng+lav", "eng+rus", "lav+rus", "eng+lav+rus"}
+# Tesseract 5.5 strongly prefers the FIRST language of a combination: with
+# "eng+lav" Latvian diacritics are replaced by English look-alikes (ē → é).
+# The UI therefore offers the document's main language first; the older
+# English-first strings stay accepted for compatibility.
+OCR_LANGUAGES = {
+    "eng", "lav", "rus", "lav+eng", "rus+eng", "lav+rus", "rus+lav",
+    "lav+rus+eng", "rus+lav+eng",
+    "eng+lav", "eng+rus", "eng+lav+rus",
+}
 MAX_RENDER_PIXELS = 5_000_000
 MAX_PNG_BYTES = 12_000_000
 MAX_TEXT_LAYER_CHARS = 120_000
