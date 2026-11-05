@@ -102,6 +102,11 @@ class ScientificDocumentReview:
     warnings: tuple[str, ...]
     page_count: int
     image_only_pages: tuple[int, ...] = ()
+    # Optional Stage 32 evidence (ocr_layout.SpatialEvidence) and matrix
+    # proposals (matrix_reconstruction.MatrixProposal). Both are review
+    # aids only; they never approve scoring, rights or wording.
+    spatial: object | None = None
+    matrices: tuple = ()
 
 
 def _title(line: str) -> str | None:
