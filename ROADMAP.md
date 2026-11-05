@@ -20,6 +20,9 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [x] Linux CI with real Tesseract; Windows CI verifies the bundle with an isolated PATH and runs real OCR tests against it
 - [x] Windows CI: `flet build windows`, in-package runtime SHA-256 check and an OCR self-test inside the packaged `StatisticalResearchAssistant.exe` (system-only PATH, `origin: bundled`) pass; ZIP published as an artifact
 - [x] Synthetic regression fixtures: PSS-like/UCLA-like layouts, 0–4 and 1–4 scales, EN/LV/RU, skewed and sideways scans, multi-page and merged-header tables, missing cells
+- [x] Startup (#16, #17): immediate light startup screen, background import of the analysis libraries, configured light boot screen, visible startup failures, phase-timing log in `%LOCALAPPDATA%`, per-user survey storage for packaged builds
+- [x] Windows CI normal-GUI startup check: ordinary launch with a system-only PATH, screenshots every 0.5 s, fails on black window > 3 s, failed startup or missing Home screen
+- [x] True/False, T/F and Yes/No answer formats (#17): shared headers, per-row labels, DOCX table columns, OCR variants, EN/RU/LV; labels as printed, no codes/keys/reverse scoring; reviewed bulk conversion for instruction-only evidence; 60-item text PDF, DOCX and scanned-PDF regressions
 - [ ] Clean-machine manual test of the ZIP on Windows 10/11 (no Python/Tesseract), high-DPI and Narrator QA
 - [ ] Transposed matrices (items as columns), rotated header text and filled-in answer marks
 - [ ] Dedicated respondent-facing matrix/grid control and persisting region corrections with the draft

@@ -22,12 +22,18 @@ The scientific importer is now a **split-screen review**: the rendered source pa
 * **Matrices:** Likert-type row × column grids are reconstructed from native Word tables (merged group headers, numeric code rows, multi-line cells, missing cells), PDF text geometry and OCR boxes (printed codes, page-break continuation, descending codes, overlapping headers). The original grid is preserved; the editable grid must be verified, and numeric codes and reverse-keyed rows apply only after separate confirmation. Every edit resets approvals.
 * **Offline OCR included on Windows:** the Windows build bundles Tesseract 5.5.4 (MSYS2 UCRT64) with `eng`, `lav`, `rus` and `osd` data, its exact DLL closure, licence texts and pinned SHA-256 hashes. No Tesseract, Python or language pack installation is needed. `TESSERACT_CMD` still overrides the bundled engine for development. **Settings → Offline OCR engine…** shows version, languages and integrity.
 
+* **Fast, visible startup (#16, #17):** `app.py` is a thin launcher. It paints a light startup screen within about a second, loads the statistics libraries in the background and then swaps in the workspace (`research_app.py`). A light native boot screen covers the interpreter start, so the window is never left black. A startup failure is shown in the window together with the log location.
+* **True/False, T/F and Yes/No answers (#17):** shared column headers (`T F`, `True False`, `Statement Yes No`), per-row labels, native Word table columns and OCR variants (`T | F`, `T/F`, Cyrillic `Т`) become labelled `single_choice` questions in PDF, DOCX and scanned imports. English, Russian and Latvian are supported (`Верно/Неверно`, `Да/Нет`, `Jā/Nē`, `Patiesi/Nepatiesi`). Labels are kept as printed; no numeric codes, answer keys or reverse scoring are assigned. A format named only in the instructions is offered as a reviewed bulk conversion, which can also rename `T/F` to `True/False` for every item.
+
 ### Installing the Windows desktop preview
 
 1. Open the latest successful run of **Windows desktop bundle with offline OCR** under the repository's *Actions* tab (it runs on pull requests touching the importer/OCR and can be started manually).
 2. Download the `StatisticalResearchAssistant-Windows-x64-unsigned-preview` artifact and extract `StatisticalResearchAssistant-Windows-x64.zip` to a folder you can write to (for example `C:\Users\<you>\Apps\StatisticalResearchAssistant`).
 3. Run `StatisticalResearchAssistant.exe`. The build is **unsigned**, so Windows SmartScreen may ask you to confirm ("More info → Run anyway").
 4. Optional check: **Settings → Offline OCR engine…** should say "bundled with this application", list `eng, lav, osd, rus` and "bundle integrity verified".
+5. If startup is slow or fails, send `%LOCALAPPDATA%\StatisticalResearchAssistant\logs\startup.log`. It holds one line per launch with phase timings and, on failure, code locations only, never questionnaire content. Flet additionally writes the app's Python console output to a `console.log` in its per-user cache folder.
+
+Packaged builds save questionnaires in the per-user Flet data folder (under `%APPDATA%`, provided by Flet as `FLET_APP_STORAGE_DATA`), so extracting a newer ZIP elsewhere keeps them. Surveys already saved inside an earlier unpacked preview stay where they are. Running from source still uses `data/surveys` in the repository.
 
 From source on any OS, install Tesseract 5 with `eng`/`lav`/`rus` data (or set `TESSERACT_CMD`) — see the user guide.
 

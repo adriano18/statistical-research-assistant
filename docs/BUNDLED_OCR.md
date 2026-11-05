@@ -114,6 +114,31 @@ refreshed. The CI cache keyed on the lock hash avoids repeated downloads.
 6. Upload `StatisticalResearchAssistant-Windows-x64.zip` and the self-test
    result as an artifact.
 
+## Startup architecture and the GUI startup check
+
+`app.py` is the packaged entry point (`--module-name app`). It imports only
+Flet and the standard library, shows a startup screen as soon as the page
+connects, imports `research_app` (pandas, SciPy, statsmodels, pingouin,
+matplotlib) in a background thread and then replaces the startup screen
+with the workspace. `pyproject.toml` configures Flet's native boot screen
+(light background, spinner and message) for the interpreter start; it has
+no `[project].dependencies`, so `flet build` still installs
+`requirements.txt`.
+
+Each launch appends a JSON line to `startup.log` with phase timings
+(`flet_imported`, `page_connected`, `splash_shown`, `workspace_imported`,
+`interface_built`, `interface_ready`). The first writable folder wins:
+`SRA_LOG_DIR`, `%LOCALAPPDATA%\StatisticalResearchAssistant\logs`,
+`FLET_APP_STORAGE_DATA/logs`, `~/.statistical_research_assistant/logs`.
+
+`tools/check_gui_startup.py` (Windows CI) starts the built exe through this
+ordinary path with a system-only `PATH` and `SRA_STARTUP_SMOKE=<json>`. It
+captures the window every 0.5 s and fails on a failed startup, a missing
+Home screen, a window that stays black for more than 3 s, or a dark final
+frame. Screenshots (`startup_first.png`, `startup_after_2s.png`,
+`startup_final.png`) and `gui-startup-result.json` are uploaded with the
+ZIP.
+
 ## Self-test for support
 
 From a source checkout: `python ocr_selftest.py result.json`. In a packaged

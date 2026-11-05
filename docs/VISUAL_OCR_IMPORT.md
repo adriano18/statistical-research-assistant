@@ -54,6 +54,23 @@ Right side:
 Any change to regions, matrix cells or question wording resets the
 scientific, numeric-code and reverse-key approvals.
 
+### True/False, T/F and Yes/No answers
+
+Binary answer formats are recognized from evidence in the source:
+
+| Evidence | Example | What happens |
+|---|---|---|
+| Each item's own row | `12. I enjoy invented trips.   T  F` | converted to a `single_choice` with those labels |
+| Shared column header | `T F`, `Statement  True  False`, a Word table header `No. │ Statement │ T │ F` | every following text item of the same instrument gets the labels |
+| Instructions only | "Answer each statement True or False." | **not** converted automatically; the **BINARY ANSWERS** panel offers a reviewed bulk conversion |
+
+* English, Russian and Latvian forms are recognized: `T/F`, `True/False`, `Yes/No`, `Y/N`, `Верно/Неверно`, `Правда/Неправда`, `Да/Нет`, `Jā/Nē`, `Patiesi/Nepatiesi`, `Pareizi/Nepareizi`. OCR variants such as `T | F`, `T/F`, a Cyrillic `Т` or a speck before the `T` (`tT F`) are tolerated.
+* True/False and Yes/No are different formats and are never swapped. Labels stay as printed. Single letters stay letters unless the document defines them (`T = True`, `True (T)`).
+* No numeric 1/0 codes, answer keys or reverse scoring are assigned. Star marks on binary items are not treated as reverse keys.
+* Question wording alone ("Is it true or false that…?") never creates a binary item. A header that appears after open questions does not change those earlier questions.
+* **BINARY ANSWERS · shared response format** (right-hand panel) shows the evidence, page and number of items. Edit the two labels (for example `T`/`F` → `True`/`False`), tick *I checked the source…* and press **Apply binary answers to matching items**. Manually edited questions are not overwritten, and every approval is reset afterwards.
+* Word tables and text/OCR geometry also produce a two-column matrix proposal in the matrix editor.
+
 ### OCR confidence thresholds
 
 | Status | Rule (mean of Tesseract word confidences, ignoring `-1`) |
