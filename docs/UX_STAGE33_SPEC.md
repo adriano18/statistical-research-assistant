@@ -397,8 +397,9 @@ export.
   correction.
 * Preview of the proposed respondent controls.
 * Checklist: version/wording/permissions, item count/order, all scales
-  confirmed or declined; blockers listed; **Create editable draft** only
-  when nothing blocks.
+  confirmed or declined, every low-confidence item compared with the
+  source (per-item checkbox; any structural edit resets these reviews);
+  blockers listed; **Create editable draft** only when nothing blocks.
 
 ---
 

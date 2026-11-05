@@ -198,6 +198,34 @@ class AdvisorTests(unittest.TestCase):
         self.assertEqual(run.section, "groups")
 
 
+class ImportGateTests(unittest.TestCase):
+    def test_low_confidence_items_block_until_compared_with_the_source(self):
+        from dataclasses import replace
+
+        from import_session import ImportSession
+        from synthetic_documents import connectedness_text_pdf
+
+        session = ImportSession()
+        session.open(connectedness_text_pdf(), "two_versions.pdf")
+        instrument = session.instrument
+        questions = list(instrument.questions)
+        questions[2] = replace(questions[2], confidence="low")
+        session.review = replace(session.review, instruments=(
+            replace(instrument, questions=tuple(questions)), *session.instruments[1:]))
+        session.checks = {"version": True, "items": True}
+        blocked = [b for b in session.blockers() if "low-confidence" in b]
+        self.assertEqual(len(blocked), 1)
+        self.assertIn(str(questions[2].number), blocked[0])
+        session.mark_reviewed(2)
+        self.assertFalse([b for b in session.blockers() if "low-confidence" in b])
+        # Any structural edit resets the item reviews and the checklist.
+        scheme = session.instrument.schemes[0]
+        session.review_scale(scheme.id, labels=list(scheme.labels), codes=list(scheme.codes),
+                             reverse_items=[], structure=True)
+        self.assertEqual(session.reviewed, set())
+        self.assertFalse(session.checks["version"])
+
+
 class RouteMapTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -32,6 +32,8 @@ class ImportSession:
     instrument_index: int = 0
     message: str = ""
     checks: dict = field(default_factory=lambda: {"version": False, "items": False})
+    # Low-confidence items the researcher compared with the source (indices).
+    reviewed: set = field(default_factory=set)
 
     # ------------------------------------------------------------ reading
     def open(self, binary: bytes, filename: str) -> str:
@@ -49,6 +51,7 @@ class ImportSession:
         self.filename, self.source = filename, binary
         self.review, self.instrument_index = None, 0
         self.checks = {"version": False, "items": False}
+        self.reviewed = set()
         self.page_count = (pdf_page_count(binary) if suffix == ".pdf"
                            else word_structure_page_count(binary, suffix))
         try:
@@ -91,6 +94,7 @@ class ImportSession:
                                          rotation=rotation, cancel=cancel)
         self.instrument_index = 0
         self.checks = {"version": False, "items": False}
+        self.reviewed = set()
         self.message = f"Local OCR completed for {len(pages)} page(s)."
         return self.message
 
@@ -124,12 +128,14 @@ class ImportSession:
         if 0 <= index < len(self.instruments):
             self.instrument_index = index
             self.checks = {"version": False, "items": False}
+            self.reviewed = set()
 
     def store(self, updated: InstrumentCandidate) -> None:
         collection = list(self.review.instruments)
         collection[self.instrument_index] = updated
         self.review = replace(self.review, instruments=tuple(collection))
         self.checks = {"version": False, "items": False}  # every edit resets approvals
+        self.reviewed = set()
 
     def linked(self, scheme_id: str) -> list[int]:
         return linked_questions(self.instrument, scheme_id)
@@ -168,6 +174,14 @@ class ImportSession:
                     found.append((index, note))
         return found
 
+    def low_confidence(self) -> list[int]:
+        return [i for i, row in enumerate(self.instrument.questions if self.instrument else ())
+                if row.confidence == "low"]
+
+    def mark_reviewed(self, index: int, value: bool = True) -> None:
+        """The researcher compared a low-confidence item with the source."""
+        (self.reviewed.add if value else self.reviewed.discard)(index)
+
     def blockers(self) -> list[str]:
         if self.instrument is None:
             return ["No instrument was extracted from this document."]
@@ -175,6 +189,12 @@ class ImportSession:
         banner = scheme_banner(self.instrument)
         if banner:
             problems.append(banner)
+        unreviewed = [i for i in self.low_confidence() if i not in self.reviewed]
+        if unreviewed:
+            numbers = ", ".join(str(self.instrument.questions[i].number) for i in unreviewed[:12])
+            problems.append(
+                f"{len(unreviewed)} low-confidence item(s) not yet compared with the source "
+                f"(items {numbers}{'…' if len(unreviewed) > 12 else ''}).")
         if not self.checks.get("version"):
             problems.append("Confirm the instrument version, wording and permissions.")
         if not self.checks.get("items"):

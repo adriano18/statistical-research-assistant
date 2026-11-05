@@ -820,7 +820,9 @@ class ImportPage:
                     ft.Column([
                         wc.text(ui, row.question.get("prompt", ""), tk.TYPE_BODY, max_lines=2),
                         ft.Row([wc.caption(ui, f"p. {row.page} · {ui.t('kind.' + kind)}"),
-                                *([wc.chip(ui, ui.t("imp.flags"), "warning")]
+                                *([wc.chip(ui, ui.t("imp.reviewed"), "success")]
+                                  if index in s.reviewed else
+                                  [wc.chip(ui, ui.t("imp.flags"), "warning")]
                                   if index in flags else [])], spacing=tk.SPACE_2),
                     ], spacing=2, expand=True),
                 ], spacing=tk.SPACE_2, vertical_alignment=ft.CrossAxisAlignment.START),
@@ -833,10 +835,16 @@ class ImportPage:
             row = instrument.questions[self.selected]
             wording = wc.text_field(ui, ui.t("imp.edit_wording"), row.question.get("prompt", ""),
                                     multiline=True, data="imp-wording")
+            low = row.confidence == "low"
             detail = [wc.card(ui, [
                 wc.section_label(ui, ui.t("imp.source_excerpt")),
                 wc.text(ui, row.excerpt, tk.TYPE_BODY, color=ui.p.text_secondary, selectable=True),
                 *[wc.caption(ui, "• " + note) for note in row.notes],
+                *([wc.checkbox(ui, ui.t("imp.item_reviewed"),
+                               self.selected in self.session.reviewed,
+                               on_change=lambda e, i=self.selected: self._reviewed(
+                                   i, e.control.value), data="imp-item-reviewed")]
+                  if low else []),
                 wording,
                 wc.button(ui, ui.t("q.apply"), lambda e: self._wording(wording.value),
                           data="imp-wording-apply"),
@@ -861,6 +869,10 @@ class ImportPage:
         self.selected = index
         row = self.session.instrument.questions[index]
         self.page_number = row.page or self.page_number
+        self.app.render()
+
+    def _reviewed(self, index: int, value: bool):
+        self.session.mark_reviewed(index, bool(value))
         self.app.render()
 
     def _wording(self, prompt: str):
