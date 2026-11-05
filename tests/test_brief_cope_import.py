@@ -184,6 +184,20 @@ class RepeatedChoiceLineTests(unittest.TestCase):
                              list(range(1, count + 1)), kwargs)
             self.assertEqual(instrument.schemes[0].labels, COPING_LABELS, kwargs)
 
+    def test_code_only_blocks_take_labels_from_this_instruments_legend(self):
+        labels = ("NEVER TRUE", "RARELY TRUE", "OFTEN TRUE", "ALWAYS TRUE")
+        rows = coping_text_lines(labels=("", "", "", ""))  # only codes after every item
+        rows.insert(3, (1, "  ".join(f"{n} = {label}" for n, label in enumerate(labels, 1))))
+        instrument = self.parse(rows)
+        (scheme,) = instrument.schemes
+        self.assertEqual((scheme.labels, scheme.codes), (labels, ("1", "2", "3", "4")))
+        self.assertEqual(scheme.evidence, "item_block+legend")
+        self.assertEqual(len(linked_questions(instrument, scheme.id)), 28)
+        # Without a legend the labels must be entered before the scale is usable.
+        bare = self.parse(coping_text_lines(labels=("", "", "", "")))
+        self.assertTrue(bare.schemes[0].label_problems())
+        self.assertIn("unverified 4-choice scale (labels missing)", scheme_banner(bare))
+
     def test_a_block_that_differs_on_one_item_is_reported(self):
         odd = ("NOT AT ALL", "A SMALL AMOUNT", "RATHER OFTEN", "VERY MUCH")
         instrument = self.parse(coping_text_lines(overrides={7: odd}))

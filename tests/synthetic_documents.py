@@ -545,7 +545,7 @@ def coping_text_lines(*, labels=COPING_LABELS, language: str = "en", count: int 
                 rows.append((page, f"{code} {label}"))
             else:
                 rows.append((page, code))
-                rows += [(page, part) for part in _label_lines(label)]
+                rows += [(page, part) for part in _label_lines(label) if part]
     if scoring:
         last = rows[-1][0]
         rows += [(last, text) for text in coping_scoring_lines(language)]

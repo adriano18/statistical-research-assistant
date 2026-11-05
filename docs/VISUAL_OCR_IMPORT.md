@@ -121,7 +121,11 @@ numbers. The importer handles this layout as follows:
   items are proposed as `single_choice`, never as free text, and the usual
   banner ("28 questions use an unverified 4-choice scale …") blocks the
   draft until **Response scale review** confirms the structure (and,
-  separately, the numeric codes).
+  separately, the numeric codes). When the repeated blocks print codes
+  only, a code legend (`1 = …  2 = …`) or a scale header of the same
+  instrument supplies the labels (evidence `item_block+legend` /
+  `item_block+header`); a legend that disagrees with labels printed after
+  the items is reported as an issue.
 * **Differences are reported, never unified silently.** If the block printed
   after an item differs (another label, a missing choice, an OCR variant),
   the scale's issues name the items ("Printed answer choices differ on

@@ -19,7 +19,9 @@ from binary_responses import (
     match_instruction, split_row, strip_noisy_row_pair,
 )
 from letter_spacing import SpacingRepair, repair_pdf_text, repair_summary
-from repeated_choices import BlockItemLine, ChoiceBlock, segment_repeated_choices
+from repeated_choices import (
+    BlockItemLine, ChoiceBlock, printed_label, segment_repeated_choices,
+)
 from response_scales import (
     codes_line, match_legend_header, match_scale_header,
     normalize_tokens, parse_code_legend, parse_legend, split_row_tokens,
@@ -547,12 +549,33 @@ def _majority(values):
     return best, values.count(best)
 
 
-def _block_scheme(scheme_id: str, group: dict, rows, scoring, context) -> ResponseScheme:
-    """Shared scale from answer choices printed after every linked item."""
+def _block_scheme(scheme_id: str, group: dict, rows, scoring, context,
+                  codebook=None, header=None) -> ResponseScheme:
+    """Shared scale from answer choices printed after every linked item.
+
+    When the blocks print codes only, a code legend (``1 = …``) or a scale
+    header of THIS instrument supplies the labels; a legend that disagrees
+    with printed labels is reported.
+    """
     template: ChoiceBlock = group["template"]
     labels = tuple(template.labels)
     numbers = tuple(row.number for row in rows)
     issues = []
+    evidence = "item_block"
+    legend = {str(code): printed_label(label) for code, label in (codebook or {}).items()}
+    covered = bool(legend) and all(code in legend for code in template.codes)
+    if not any(labels) and covered:
+        labels, evidence = tuple(legend[code] for code in template.codes), "item_block+legend"
+    elif not any(labels) and header is not None and len(header.labels) == template.size:
+        labels, evidence = tuple(printed_label(l) for l in header.labels), "item_block+header"
+    elif covered and [re.sub(r"\s+", "", legend[c]).casefold() for c in template.codes] != [
+            re.sub(r"\s+", "", l).casefold() for l in labels]:
+        issues.append(
+            "The code legend printed for this instrument ("
+            + " / ".join(f"{c} = {legend[c]}" for c in template.codes)
+            + ") differs from the answer choices printed after every item; "
+            "check which labels the source uses."
+        )
     differing = [(n, d) for n, d in group["deviations"] if d]
     if differing:
         detail = "; ".join(f"item {n}: {d[0]}" for n, d in differing[:4])
@@ -571,7 +594,8 @@ def _block_scheme(scheme_id: str, group: dict, rows, scoring, context) -> Respon
     reverse_text = next((line for line in context
                          if re.search(r"revers|circled number", line, re.I)), "")
     return ResponseScheme(
-        scheme_id, labels, labels, tuple(template.codes), "item_block",
+        scheme_id, labels, tuple(template.labels) if any(template.labels) else tuple(template.codes),
+        tuple(template.codes), evidence,
         pages[0] if pages else template.page, source[:160],
         numbers, reverse, reverse_text[:200], issues=tuple(issues),
     )
@@ -588,8 +612,10 @@ def _build_schemes(current: dict, scoring: "ProposedScoring"):
         if len(indices) < 2:
             continue
         if key[0] == "block":
+            scale = current["scale"]
             scheme = _block_scheme(f"s{len(schemes) + 1}", group, [rows[i] for i in indices],
-                                   scoring, current["context"])
+                                   scoring, current["context"], codebook,
+                                   scale["header"] if scale else None)
             schemes.append(scheme)
             for i in indices:
                 assignments[i] = scheme
