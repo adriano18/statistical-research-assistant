@@ -6,7 +6,7 @@ Resolution order (first match wins):
    not point to a file, OCR is reported as misconfigured; there is no
    silent fallback to another engine.
 2. The bundled runtime shipped inside the Windows desktop package:
-   ``ocr_runtime/windows-x64/`` containing ``bin/tesseract.exe``, its DLLs,
+   ``bundled_ocr/windows-x64/`` containing ``bin/tesseract.exe``, its DLLs,
    ``tessdata/{eng,lav,rus,osd}.traineddata`` and ``MANIFEST.json``.
    ``SRA_OCR_RUNTIME_DIR`` may point to such a directory explicitly.
 3. ``tesseract`` on the system ``PATH``.
@@ -31,7 +31,7 @@ from tempfile import TemporaryDirectory
 import threading
 import time
 
-BUNDLE_FOLDER = "ocr_runtime"
+BUNDLE_FOLDER = "bundled_ocr"
 REQUIRED_LANGUAGES = ("eng", "lav", "rus")
 MAX_OUTPUT_BYTES = 16_000_000
 MAX_DIAGNOSTIC_CHARS = 400

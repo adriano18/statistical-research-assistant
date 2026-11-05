@@ -1,15 +1,33 @@
-name: Windows desktop bundle (manual, unsigned preview)
+name: Windows desktop bundle with offline OCR (unsigned preview)
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "app.py"
+      - "ocr_*.py"
+      - "visual_survey_review.py"
+      - "matrix_reconstruction.py"
+      - "scientific_survey_import.py"
+      - "spatial_review_ui.py"
+      - "survey_ui.py"
+      - "requirements.txt"
+      - "packaging/**"
+      - "tools/prepare_windows_ocr_runtime.py"
+      - "tests/test_real_tesseract_ocr.py"
+      - ".github/workflows/windows-package.yml"
 
 permissions:
   contents: read
 
 jobs:
-  windows-preview:
+  windows-ocr-bundle:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
+    env:
+      PYTHONUTF8: "1"
+      MPLBACKEND: Agg
+      RUNTIME_DIR: bundled_ocr\windows-x64
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -19,13 +37,47 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install direct project dependencies
-        run: python -m pip install -r requirements.txt
-      - name: Compile Python code
-        run: python -m compileall -q .
-      - name: Validate local import and preference paths
+        run: python -m pip install -r requirements.txt "zstandard>=0.23,<1"
+      - name: Cache pinned OCR packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\ocr-cache
+          key: ocr-msys2-${{ hashFiles('packaging/windows_ocr_runtime.lock.json') }}
+      - name: Prepare pinned Tesseract runtime (SHA-256 verified)
+        run: python tools/prepare_windows_ocr_runtime.py fetch --out "${{ env.RUNTIME_DIR }}" --cache "${{ runner.temp }}\ocr-cache"
+
+      - name: Verify bundled engine with an isolated PATH
+        shell: pwsh
         run: |
-          python -m unittest discover -s tests -p "test_data_import_variations.py" -v
-          python -m unittest discover -s tests -p "test_app_preferences.py" -v
+          # Hide Git/MSYS DLLs on the runner so missing bundled DLLs fail here.
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          Remove-Item Env:TESSDATA_PREFIX -ErrorAction SilentlyContinue
+          $exe = Resolve-Path "$env:RUNTIME_DIR\bin\tesseract.exe"
+          $data = Resolve-Path "$env:RUNTIME_DIR\tessdata"
+          & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw "tesseract --version failed ($LASTEXITCODE)" }
+          $langs = & $exe --tessdata-dir $data --list-langs
+          $langs
+          foreach ($code in "eng", "lav", "rus") {
+            if (-not ($langs -contains $code)) { throw "Missing bundled language $code" }
+          }
+
+      - name: Real OCR regression tests against the bundled engine
+        shell: pwsh
+        env:
+          SRA_REQUIRE_REAL_OCR: "1"
+          TESSERACT_CMD: ""
+        run: |
+          $python = (Get-Command python).Source
+          $env:SRA_OCR_RUNTIME_DIR = (Resolve-Path $env:RUNTIME_DIR).Path
+          $env:PATH = "$(Split-Path $python);$env:SystemRoot\System32;$env:SystemRoot"
+          & $python -m unittest discover -s tests -p "test_real_tesseract_ocr.py" -v
+          if ($LASTEXITCODE -ne 0) { throw "real OCR tests failed" }
+          & $python -m unittest discover -s tests -p "test_ocr_*.py" -v
+          if ($LASTEXITCODE -ne 0) { throw "OCR unit tests failed" }
+          & $python -m unittest discover -s tests -p "test_matrix_reconstruction.py" -v
+          if ($LASTEXITCODE -ne 0) { throw "matrix tests failed" }
+
       - name: Build unsigned Windows desktop bundle
         run: >-
           flet build windows .
@@ -34,18 +86,54 @@ jobs:
           --product "Statistical Research Assistant"
           --artifact "StatisticalResearchAssistant"
           --no-rich-output --yes
-      - name: Validate executable exists
+
+      - name: Validate executable and packaged OCR runtime
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path "build/windows" -Filter "*.exe" -Recurse |
-            Where-Object { $_.Name -eq "StatisticalResearchAssistant.exe" } |
-            Select-Object -First 1
+          $exe = Get-ChildItem -Path "build/windows" -Filter "StatisticalResearchAssistant.exe" -Recurse | Select-Object -First 1
           if (-not $exe) { throw "Expected .exe was not created" }
-          Write-Output "Found preview executable: $($exe.FullName)"
+          Write-Output "Executable: $($exe.FullName)"
+          "EXE_PATH=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Get-ChildItem -Path "build/windows" -Recurse -Include "*.zip" | ForEach-Object { "$($_.FullName) $($_.Length)" }
+          python tools/check_packaged_ocr.py build/windows
+
+      - name: Run OCR self-test inside the packaged application
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $result = Join-Path $env:RUNNER_TEMP "packaged-ocr-selftest.json"
+          if (Test-Path $result) { Remove-Item $result }
+          $env:SRA_OCR_SELFTEST = $result
+          Remove-Item Env:TESSERACT_CMD -ErrorAction SilentlyContinue
+          Remove-Item Env:TESSDATA_PREFIX -ErrorAction SilentlyContinue
+          # No Python, Tesseract or MSYS directories on PATH: a clean machine.
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\Wbem"
+          $process = Start-Process -FilePath $env:EXE_PATH -PassThru
+          $deadline = (Get-Date).AddMinutes(10)
+          while (-not (Test-Path $result) -and (Get-Date) -lt $deadline -and -not $process.HasExited) {
+            Start-Sleep -Seconds 3
+          }
+          Start-Sleep -Seconds 2
+          if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+          if (-not (Test-Path $result)) { throw "Packaged app wrote no OCR self-test result (exit: $($process.ExitCode))" }
+          Get-Content $result
+          $json = Get-Content $result -Raw | ConvertFrom-Json
+          if (-not $json.ok) { throw "Packaged OCR self-test failed: $($json.errors -join '; ')" }
+          if ($json.origin -ne "bundled") { throw "Packaged app did not use the bundled engine: $($json.origin)" }
+          Copy-Item $result build/windows/ocr-selftest-result.json
+
+      - name: Create distributable ZIP
+        shell: pwsh
+        run: |
+          $source = Split-Path $env:EXE_PATH
+          Compress-Archive -Path "$source\*" -DestinationPath StatisticalResearchAssistant-Windows-x64.zip -CompressionLevel Optimal
+          Get-FileHash StatisticalResearchAssistant-Windows-x64.zip -Algorithm SHA256 | Format-List
       - name: Upload unsigned portable preview bundle
         uses: actions/upload-artifact@v4
         with:
-          name: StatisticalResearchAssistant-Windows-unsigned-preview
-          path: build/windows/
+          name: StatisticalResearchAssistant-Windows-x64-unsigned-preview
+          path: |
+            StatisticalResearchAssistant-Windows-x64.zip
+            build/windows/ocr-selftest-result.json
           if-no-files-found: error
           retention-days: 14

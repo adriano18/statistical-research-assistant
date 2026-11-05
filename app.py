@@ -4,6 +4,12 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from ocr_selftest import maybe_run_from_environment
+
+# Packaging CI / support diagnostics only: when SRA_OCR_SELFTEST is set the
+# bundled OCR engine is exercised on a synthetic scan and the process exits.
+maybe_run_from_environment()
+
 import flet as ft
 import pandas as pd
 

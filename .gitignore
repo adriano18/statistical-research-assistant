@@ -9,3 +9,6 @@ __pycache__/
 data/
 reports/
 *.sav
+
+# Bundled OCR runtime is generated from the pinned lock file in CI.
+bundled_ocr/

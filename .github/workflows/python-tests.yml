@@ -19,14 +19,25 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - name: Install local OCR engine and ENG/LAV/RUS language data
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q tesseract-ocr tesseract-ocr-eng tesseract-ocr-lav tesseract-ocr-rus
+          tesseract --version
+          tesseract --list-langs
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
       - name: Compile source
         run: python -m compileall -q .
-      - name: Unit tests
+      - name: Unit tests (real local OCR required)
         env:
           MPLBACKEND: Agg
+          SRA_REQUIRE_REAL_OCR: "1"
         run: python -m unittest discover -s tests -v
+      - name: OCR self-test with the system engine
+        env:
+          MPLBACKEND: Agg
+        run: python ocr_selftest.py ocr-selftest.json && cat ocr-selftest.json
 
   windows-sqlite:
     runs-on: windows-latest
