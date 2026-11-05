@@ -10,17 +10,23 @@ import copy
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import threading
 
 import flet as ft
 import pandas as pd
 
 from localization import tr
-from scientific_survey_import import read_scientific_document, reviewed_draft
+from scientific_survey_import import (
+    ScientificDocumentReview, read_scientific_document, reviewed_draft,
+)
 from visual_survey_review import (
     load_document_bytes, render_document_page, pdf_page_count,
     word_structure_page_count, ocr_scientific_pdf,
     edit_candidate_question, tesseract_available,
+    attach_text_layer_geometry, attach_docx_matrices,
 )
+from ocr_runtime import OCRCancelled, ocr_readiness
+from spatial_review_ui import SpatialReviewController
 from desktop_button_style import style_buttons
 from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
@@ -475,10 +481,14 @@ def build_survey_workspace(
         "OCR first 20 PDF pages", disabled=True,
     )
     document_ocr_status = ft.Text(
-        "OCR requires a local Tesseract installation with the selected "
-        "language packs. No cloud services are used.",
+        "OCR runs locally with the bundled Tesseract engine (Windows "
+        "package) or a local installation. No cloud services are used.",
         size=12, selectable=True,
     )
+    document_ocr_cancel = ft.Button("Cancel OCR", disabled=True)
+    document_ocr_check = ft.Button("Check OCR engine")
+    document_ocr_engine = ft.Text("", size=12, selectable=True, color="#536781")
+    ocr_cancel_event = {"event": None}
     document_question_picker = ft.Dropdown(
         label="Question to review / edit", width=520,
         options=[], disabled=True,
@@ -565,18 +575,24 @@ def build_survey_workspace(
             f"{item.excerpt[:250]}. Corrections update the draft proposal, "
             "not the original document."
         )
-        if imported_source_name and Path(imported_source_name).suffix.lower() == ".pdf":
-            document_page_picker.value = str(item.page)
 
-    async def refresh_document_page(event=None):
+    def is_pdf_source():
+        return bool(
+            imported_source_name
+            and Path(imported_source_name).suffix.lower() == ".pdf"
+        )
+
+    async def render_source_page(number, rotation=0):
+        """Render one page for the spatial viewer; returns PNG or None."""
         if imported_source_bytes is None or not imported_source_name:
-            return
+            return None
+        document_page_picker.value = str(number)
         try:
-            number = int(document_page_picker.value or "1")
             source = imported_source_bytes
             filename = imported_source_name
             image_bytes = await asyncio.to_thread(
                 render_document_page, source, filename, number,
+                rotation=rotation if is_pdf_source() else 0,
             )
             document_page_image.src = image_bytes
             document_page_image.visible = True
@@ -589,16 +605,34 @@ def build_survey_workspace(
                     else "Compare every question against this page."
                 )
             )
+            return image_bytes
         except Exception as error:
             document_page_image.visible = False
             document_page_status.value = f"Cannot render document page: {error}"
+            return None
+
+    async def refresh_document_page(event=None):
+        if imported_source_bytes is None or not imported_source_name:
+            return
+        try:
+            number = int(document_page_picker.value or "1")
+        except ValueError:
+            number = 1
+        png = await render_source_page(number, spatial.view_rotation)
+        if png:
+            spatial.show_rendered(number, png)
         page.update()
 
     document_page_picker.on_select = refresh_document_page
 
     async def on_document_question_select(event):
         show_editable_question()
-        await refresh_document_page()
+        try:
+            index = int(document_question_picker.value)
+        except (TypeError, ValueError):
+            index = None
+        await spatial.on_question_selected(index)
+        page.update()
 
     document_question_picker.on_select = on_document_question_select
 
@@ -627,6 +661,8 @@ def build_survey_workspace(
             refresh_document_review()
             document_question_picker.value = str(index)
             show_editable_question()
+            spatial.selected_index = index
+            spatial.relayout()
             document_import_status.value = (
                 f"Correction saved to question {index+1}. "
                 "Source file unchanged; verify the complete proposal "
@@ -665,6 +701,11 @@ def build_survey_workspace(
             )
             page.update()
             return
+        cancel = threading.Event()
+        ocr_cancel_event["event"] = cancel
+        document_ocr_cancel.disabled = False
+        document_ocr_button.disabled = True
+        document_ocr_all_button.disabled = True
         try:
             count = pdf_page_count(imported_source_bytes)
             target = (
@@ -672,14 +713,16 @@ def build_survey_workspace(
                 if batch else [int(document_page_picker.value or "1")]
             )
             document_ocr_status.value = (
-                f"Running local OCR on {len(target)} PDF page(s). "
-                "The imported form is not saved or published."
+                f"Running local OCR on {len(target)} PDF page(s) at "
+                f"{spatial.view_rotation}° view rotation. You can cancel; "
+                "the imported form is not saved or published."
             )
             page.update()
             review = await asyncio.to_thread(
                 ocr_scientific_pdf,
                 imported_source_bytes, imported_source_name,
                 target, document_ocr_language.value or "eng",
+                rotation=spatial.view_rotation, cancel=cancel,
             )
             extracted_document = review
             document_instrument.options = [
@@ -701,13 +744,43 @@ def build_survey_workspace(
                     "Manually verify every recognized question."
                 )
             )
+            spatial.selected_index = 0 if selected_instrument() and selected_instrument().questions else None
+            spatial.matrix_index = None
             await refresh_document_page()
+        except OCRCancelled:
+            document_ocr_status.value = (
+                "OCR cancelled. Existing extracted proposals were not changed."
+            )
+            page.update()
         except Exception as error:
             document_ocr_status.value = (
                 f"OCR did not produce an importable questionnaire: {error}. "
                 "Existing extracted proposals were not changed."
             )
             page.update()
+        finally:
+            ocr_cancel_event["event"] = None
+            document_ocr_cancel.disabled = True
+            document_ocr_button.disabled = not is_pdf_source()
+            document_ocr_all_button.disabled = not is_pdf_source()
+            page.update()
+
+    def cancel_ocr(event=None):
+        current = ocr_cancel_event["event"]
+        if current is not None:
+            current.set()
+            document_ocr_status.value = "Cancelling local OCR…"
+            page.update()
+
+    async def check_ocr_engine(event=None):
+        document_ocr_engine.value = "Checking the local OCR engine…"
+        page.update()
+        ready = await asyncio.to_thread(ocr_readiness, full_hash=True, use_cache=False)
+        document_ocr_engine.value = "OCR engine: " + ready.summary()
+        page.update()
+
+    document_ocr_cancel.on_click = cancel_ocr
+    document_ocr_check.on_click = check_ocr_engine
 
     async def ocr_current_page(event):
         await run_document_ocr(event, batch=False)
@@ -820,6 +893,7 @@ def build_survey_workspace(
 
     async def on_instrument_select(event):
         refresh_document_review()
+        spatial.selected_index = 0 if selected_instrument() and selected_instrument().questions else None
         await refresh_document_page()
 
     document_instrument.on_select = on_instrument_select
@@ -854,6 +928,7 @@ def build_survey_workspace(
         document_review_confirm.value = False
         document_numeric_confirm.value = False
         document_reverse_confirm.value = False
+        spatial.reset()
         try:
             if suffix not in {".docx", ".doc", ".pdf"}:
                 raise ValueError("Choose a DOCX, DOC or PDF document.")
@@ -906,7 +981,35 @@ def build_survey_workspace(
                     "The source remains available in the visual viewer. "
                     "For scanned PDF pages use the local OCR buttons."
                 )
+                if suffix == ".docx":
+                    # A pure rating-matrix table may have no numbered lines.
+                    empty = ScientificDocumentReview(
+                        filename, (), (
+                            "Only Word-table matrix proposals were found; "
+                            "verify them in the matrix editor.",
+                        ), 1,
+                    )
+                    matrices_only = await asyncio.to_thread(
+                        attach_docx_matrices, empty, binary,
+                    )
+                    if matrices_only.matrices:
+                        extracted_document = matrices_only
+                        document_import_status.value += (
+                            f" {len(matrices_only.matrices)} Word-table "
+                            "matrix proposal(s) are available for review."
+                        )
             else:
+                try:
+                    if suffix == ".pdf":
+                        parsed = await asyncio.to_thread(
+                            attach_text_layer_geometry, parsed, binary,
+                        )
+                    elif suffix == ".docx":
+                        parsed = await asyncio.to_thread(
+                            attach_docx_matrices, parsed, binary,
+                        )
+                except Exception:
+                    pass  # spatial evidence is optional; never block import
                 extracted_document = parsed
                 document_instrument.options = [
                     ft.DropdownOption(
@@ -922,7 +1025,13 @@ def build_survey_workspace(
                     f"{sum(len(x.questions) for x in parsed.instruments)} "
                     f"candidate questions from {filename}. "
                     "Review the original page and correct items before use."
+                    + (
+                        f" {len(parsed.matrices)} response-matrix proposal(s) "
+                        "need verification in the matrix editor."
+                        if parsed.matrices else ""
+                    )
                 )
+                spatial.selected_index = 0 if parsed.instruments and parsed.instruments[0].questions else None
             await refresh_document_page()
         except Exception as error:
             document_import_status.value = f"Document import failed: {error}"
@@ -958,13 +1067,7 @@ def build_survey_workspace(
             )
             page.update()
             return
-        if draft and not document_replace_confirm.value:
-            document_import_status.value = (
-                "Your current draft has unsaved questions. Check the "
-                "replace confirmation to overwrite it. Published surveys "
-                "and responses are not changed."
-            )
-            page.update()
+        if not draft_replace_allowed():
             return
         try:
             candidate_draft = reviewed_draft(
@@ -998,6 +1101,92 @@ def build_survey_workspace(
 
     document_commit_button.on_click = commit_document_draft
 
+    def draft_replace_allowed():
+        if draft and not document_replace_confirm.value:
+            document_import_status.value = (
+                "Your current draft has unsaved questions. Check the "
+                "replace confirmation to overwrite it. Published surveys "
+                "and responses are not changed."
+            )
+            page.update()
+            return False
+        return True
+
+    def commit_matrix_draft(questions, matrix_title):
+        """Install verified matrix rows; same safeguards as candidates."""
+        if extracted_document is None:
+            return False
+        if not document_review_confirm.value:
+            document_import_status.value = (
+                "Review the original, version and permissions, then check "
+                "the scientific review confirmation before using the matrix."
+            )
+            page.update()
+            return False
+        if not draft_replace_allowed():
+            return False
+        draft[:] = questions
+        title.value = matrix_title[:120]
+        description.value = (
+            f"Imported matrix draft from {extracted_document.source_name}. "
+            "Confirm licensing, exact version, wording, scoring and "
+            "translation before using this instrument in research."
+        )[:500]
+        new_editor()
+        update_draft()
+        document_import_status.value = (
+            f"Imported {len(questions)} editable matrix questions from "
+            f"{matrix_title}. Verify scoring, consent and omissions before "
+            "publishing."
+        )
+        document_replace_confirm.value = False
+        document_review_confirm.value = False
+        page.update()
+        return True
+
+    def get_review():
+        return extracted_document
+
+    def set_review(review):
+        nonlocal extracted_document
+        extracted_document = review
+
+    def get_instrument_index():
+        if extracted_document is None or not document_instrument.value:
+            return None
+        try:
+            index = int(document_instrument.value)
+        except ValueError:
+            return None
+        return index if 0 <= index < len(extracted_document.instruments) else None
+
+    def focus_question(index):
+        document_question_picker.value = str(index)
+        show_editable_question()
+
+    def invalidate_approvals(message):
+        document_review_confirm.value = False
+        document_numeric_confirm.value = False
+        document_reverse_confirm.value = False
+        document_import_status.value = message
+
+    def source_page_count():
+        if not is_pdf_source():
+            return 0
+        return len(document_page_picker.options)
+
+    def set_page_value(number):
+        document_page_picker.value = str(number)
+
+    spatial = SpatialReviewController(
+        page, document_page_image,
+        get_review=get_review, set_review=set_review,
+        get_instrument=get_instrument_index, focus_question=focus_question,
+        render_page=render_source_page, page_count=source_page_count,
+        set_page_value=set_page_value, on_invalidate=invalidate_approvals,
+        on_matrix_commit=commit_matrix_draft,
+    )
+
     document_import_tile = ft.ExpansionTile(
         title=ft.Text("Scientific importer · Word / PDF questionnaires"),
         expanded=False,
@@ -1015,44 +1204,55 @@ def build_survey_workspace(
             ),
             document_import_status,
             document_instrument,
-            ft.Row(
+            # Responsive split screen: source left, review/editing right.
+            ft.ResponsiveRow(
                 controls=[
                     ft.Container(
-                        width=515, padding=12,
+                        col={"xs": 12, "lg": 6}, padding=12,
                         border=ft.Border.all(1, "#D7E1EE"),
                         content=ft.Column(
                             controls=[
                                 ft.Text("SOURCE · rendered PDF page / Word text",
                                         weight="bold", size=13),
-                                document_page_picker,
+                                ft.Row(
+                                    controls=[document_page_picker],
+                                    wrap=True, spacing=10,
+                                ),
                                 document_page_status,
-                                document_page_image,
+                                spatial.left_tools,
+                                spatial.viewer,
                                 document_ocr_language,
                                 ft.Row(
                                     controls=[
                                         document_ocr_button,
                                         document_ocr_all_button,
+                                        document_ocr_cancel,
+                                        document_ocr_check,
                                     ],
                                     wrap=True, spacing=10,
                                 ),
                                 document_ocr_status,
+                                document_ocr_engine,
                             ],
-                            spacing=9, scroll=ft.ScrollMode.AUTO,
+                            spacing=9,
                         ),
                     ),
                     ft.Container(
-                        width=540, padding=12,
+                        col={"xs": 12, "lg": 6}, padding=12,
                         border=ft.Border.all(1, "#D7E1EE"),
                         content=ft.Column(
                             controls=[
                                 ft.Text("EDIT · recognized questions",
                                         weight="bold", size=13),
                                 document_editor_panel,
+                                spatial.question_panel,
+                                spatial.queue_panel,
+                                spatial.matrix.panel,
                             ], spacing=9,
                         ),
                     ),
                 ],
-                wrap=True, spacing=12,
+                spacing=12, run_spacing=12,
             ),
             document_import_preview,
             document_review_confirm,

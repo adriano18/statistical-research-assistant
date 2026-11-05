@@ -77,6 +77,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "OCR unit tests failed" }
           & $python -m unittest discover -s tests -p "test_matrix_reconstruction.py" -v
           if ($LASTEXITCODE -ne 0) { throw "matrix tests failed" }
+          & $python -m unittest discover -s tests -p "test_spatial_review_ui.py" -v
+          if ($LASTEXITCODE -ne 0) { throw "spatial UI tests failed" }
 
       - name: Build unsigned Windows desktop bundle
         run: >-

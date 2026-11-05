@@ -531,12 +531,23 @@ def ocr_scientific_pdf(
                     geometry.append(pdf_text_layer_page(source, n))
                 except (ValueError, RuntimeError):
                     pass
-    review = parse_scientific_lines(
-        lines, filename, page_count=count,
-    )
+    matrices = geometric_matrices(geometry)
+    try:
+        review = parse_scientific_lines(
+            lines, filename, page_count=count,
+        )
+    except ValueError:
+        if not matrices:
+            raise
+        # Grid rows without recognizable numbering: keep matrix proposals.
+        review = ScientificDocumentReview(
+            filename, (), (
+                "No numbered question lines were recognized; only response-"
+                "matrix proposals are available. Verify them manually.",
+            ), count,
+        )
     review = replace(
-        review, spatial=link_candidates(review, geometry),
-        matrices=geometric_matrices(geometry),
+        review, spatial=link_candidates(review, geometry), matrices=matrices,
     )
     confidence_note = ocr_confidence_warning(review)
     return replace(
