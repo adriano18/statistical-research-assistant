@@ -18,10 +18,16 @@ from binary_responses import (
     BinaryScale, expand_with_legend, legend_labels, match_header,
     match_instruction, split_row, strip_noisy_row_pair,
 )
+from letter_spacing import SpacingRepair, repair_pdf_text, repair_summary
+from repeated_choices import BlockItemLine, ChoiceBlock, segment_repeated_choices
 from response_scales import (
     codes_line, match_legend_header, match_scale_header,
     normalize_tokens, parse_code_legend, parse_legend, split_row_tokens,
     strip_trailing_scale_tokens,
+)
+from scoring_evidence import (
+    ReviewEvidence, ScoringGroup, ScoringStatement, parse_scoring_evidence,
+    referenced_missing, sequence_gaps,
 )
 from survey_storage import validate_questions
 
@@ -171,6 +177,9 @@ class InstrumentCandidate:
     schemes: tuple[ResponseScheme, ...] = ()
     # Abbreviation legend printed for THIS instrument (e.g. O = Often).
     scale_legend: tuple[tuple[str, str], ...] = ()
+    # Review-only evidence for Stage 33: documented scoring groups/statements
+    # (never applied), missing item numbers and per-item flags.
+    evidence: ReviewEvidence = ReviewEvidence()
 
 
 @dataclass(frozen=True)
@@ -185,6 +194,11 @@ class ScientificDocumentReview:
     # aids only; they never approve scoring, rights or wording.
     spatial: object | None = None
     matrices: tuple = ()
+    # Whitespace repairs of a letter-spaced PDF text layer (original text kept).
+    spacing_repairs: tuple[SpacingRepair, ...] = ()
+    # repeated_choices.ChoiceLayout when answer choices follow every item:
+    # the common block and every item's own printed block (review evidence).
+    choice_layout: object | None = None
 
 
 def _title(line: str) -> str | None:
@@ -281,10 +295,25 @@ def _reference_like(line: str) -> bool:
     return bool(re.search(r"\(\d{4}[a-z]?\)|\bdoi\b|\bet al\.?|\bpp?\.\s*\d", line, re.I))
 
 
+FORM_FIELD_WORDS = {
+    "name", "date", "clinician", "respondent", "participant", "patient", "client",
+    "signature", "id", "age", "sex", "gender", "dob", "birth", "examiner",
+    "therapist", "rater", "vārds", "uzvārds", "datums", "vecums", "dzimums",
+    "имя", "фамилия", "дата", "возраст", "пол",
+}
+
+
+def _form_field_line(line: str) -> bool:
+    """Respondent name / date / clinician fields printed above the items."""
+    words = [w.strip(":_.·|").casefold() for w in line.split()]
+    words = [w for w in words if w and not set(w) <= set("_-")]
+    return bool(words) and sum(w in FORM_FIELD_WORDS for w in words) >= max(2, round(0.6 * len(words)))
+
+
 def _stem_title(source_name: str, preamble_lines: list[str]) -> str:
     """A heading printed just before the items, else the file name stem."""
     for line in reversed(preamble_lines[-6:]):
-        if _title_line(line):
+        if _title_line(line) and not _form_field_line(line):
             return line[:75]
     return Path(source_name).stem[:75]
 
@@ -334,18 +363,18 @@ def _scoring_from_lines(
     )
 
 
-def _read_pdf(path: Path) -> tuple[list[tuple[int, str]], int, tuple[int, ...]]:
+def _read_pdf_pages(path: Path):
     from pypdf import PdfReader
     reader = PdfReader(str(path))
     if reader.is_encrypted:
         raise ValueError("Password-protected PDF cannot be imported.")
     if len(reader.pages) > MAX_PAGES:
         raise ValueError("PDF exceeds the 80-page limit.")
-    lines = []
+    pages = []
     image_pages = []
     for i, page in enumerate(reader.pages, 1):
         text = page.extract_text() or ""
-        lines += [(i, s) for s in text.splitlines()]
+        pages.append((i, text.splitlines()))
         # An image-backed page with no question text may hide its scale table
         # even when it has a readable footer/bibliography.
         try:
@@ -353,7 +382,18 @@ def _read_pdf(path: Path) -> tuple[list[tuple[int, str]], int, tuple[int, ...]]:
                 image_pages.append(i)
         except (ValueError, KeyError):
             pass
-    return lines, len(reader.pages), tuple(image_pages)
+    # Letter-spaced text layers ("sched ule", "s c h e d u l e") are
+    # repaired conservatively from PDFium glyph geometry (whitespace only).
+    with_text = [(i, page_lines) for i, page_lines in pages if any(s.strip() for s in page_lines)]
+    fixed, repairs = repair_pdf_text(path, with_text)
+    by_page = dict(fixed)
+    lines = [(i, s) for i, page_lines in pages for s in by_page.get(i, page_lines)]
+    return lines, len(reader.pages), tuple(image_pages), repairs
+
+
+def _read_pdf(path: Path) -> tuple[list[tuple[int, str]], int, tuple[int, ...]]:
+    lines, pages, images, _repairs = _read_pdf_pages(path)
+    return lines, pages, images
 
 
 def _read_docx(path: Path) -> tuple[list[tuple[int, str]], int, tuple[int, ...]]:
@@ -388,12 +428,20 @@ def _read_docx(path: Path) -> tuple[list[tuple[int, str]], int, tuple[int, ...]]
                     lines.append((1, f"{values[0]}. {values[1]}"))
                     for value in values[2:]:
                         if value:
-                            lines.append((1, value))
+                            lines.extend((1, v) for v in _cell_lines(value))
                 else:
                     for value in values:
                         if value:
-                            lines.append((1, value))
+                            lines.extend((1, v) for v in _cell_lines(value))
     return lines, 1, ()
+
+
+def _cell_lines(value: str) -> list[str]:
+    """A choice cell printed as ``1`` + ``NOT AT ALL`` keeps its code line."""
+    parts = [p.strip() for p in value.splitlines() if p.strip()]
+    if len(parts) >= 2 and re.fullmatch(r"[(\[]?\d{1,2}[)\].]?|[①-⑳]", parts[0]):
+        return parts
+    return [value]
 
 
 def _read_legacy_doc(path: Path) -> tuple[list[tuple[int, str]], int, tuple[int, ...]]:
@@ -422,14 +470,57 @@ def read_scientific_document(path: str | Path) -> ScientificDocumentReview:
     size = file.stat().st_size
     if size < 1 or size > MAX_BYTES:
         raise ValueError("Source must be nonempty and at most 20 MB.")
+    repairs: tuple[SpacingRepair, ...] = ()
     if ext == ".pdf":
-        lines, pages, images = _read_pdf(file)
+        lines, pages, images, repairs = _read_pdf_pages(file)
+        source = "pdf_text_layer"
     elif ext == ".docx":
         lines, pages, images = _read_docx(file)
+        source = "docx"
     else:
         lines, pages, images = _read_legacy_doc(file)
-    return parse_scientific_lines(
-        lines, file.name, page_count=pages, image_pages=images,
+        source = "doc"
+    review = parse_scientific_lines(
+        lines, file.name, page_count=pages, image_pages=images, text_source=source,
+    )
+    return with_spacing_repairs(review, repairs)
+
+
+def with_spacing_repairs(
+    review: ScientificDocumentReview, repairs,
+) -> ScientificDocumentReview:
+    """Record whitespace repairs (provenance) and flag the affected items."""
+    repairs = tuple(repairs)
+    if not repairs:
+        return review
+    changed: dict[int, list[str]] = {}
+    for repair in repairs:
+        changed.setdefault(repair.page, []).append(" ".join(repair.repaired.split()))
+    instruments = []
+    for instrument in review.instruments:
+        rows, flagged = [], []
+        for row in instrument.questions:
+            prompt = " ".join(row.question.get("prompt", "").split())
+            excerpt = " ".join(row.excerpt.split())
+            hit = sum(1 for text in changed.get(row.page, ())
+                      if len(text) >= 3 and (text in prompt or text in excerpt))
+            if hit:
+                flagged.append(row.number)
+                row = replace(row, notes=(*row.notes, (
+                    f"Letter-spacing of the PDF text layer was repaired in {hit} "
+                    "source line(s) of this item (whitespace only); the original "
+                    "text is kept in the import review.")))
+            rows.append(row)
+        evidence = instrument.evidence
+        if flagged:
+            flags = dict(evidence.item_flags)
+            for number in flagged:
+                flags[number] = (*flags.get(number, ()), "spacing repaired")
+            evidence = replace(evidence, item_flags=tuple(sorted(flags.items())))
+        instruments.append(replace(instrument, questions=tuple(rows), evidence=evidence))
+    return replace(
+        review, instruments=tuple(instruments), spacing_repairs=repairs,
+        warnings=(*review.warnings, repair_summary(repairs)),
     )
 
 
@@ -456,6 +547,36 @@ def _majority(values):
     return best, values.count(best)
 
 
+def _block_scheme(scheme_id: str, group: dict, rows, scoring, context) -> ResponseScheme:
+    """Shared scale from answer choices printed after every linked item."""
+    template: ChoiceBlock = group["template"]
+    labels = tuple(template.labels)
+    numbers = tuple(row.number for row in rows)
+    issues = []
+    differing = [(n, d) for n, d in group["deviations"] if d]
+    if differing:
+        detail = "; ".join(f"item {n}: {d[0]}" for n, d in differing[:4])
+        issues.append(
+            "Printed answer choices differ on item(s) "
+            + ", ".join(str(n) for n, _ in differing[:15])
+            + f" ({detail}); check them on the source page before confirming."
+        )
+    if not all(labels):
+        issues.append("Some answer choices have no printed label; enter the labels.")
+    if group.get("fuzzy"):
+        issues.append("Answer choices were read by OCR; compare every label with the source.")
+    pages = sorted({row.page for row in rows})
+    source = " · ".join(f"{c} {l}".strip() for c, l in zip(template.codes, labels))
+    reverse = tuple(n for n in scoring.reverse_numbers if n in numbers)
+    reverse_text = next((line for line in context
+                         if re.search(r"revers|circled number", line, re.I)), "")
+    return ResponseScheme(
+        scheme_id, labels, labels, tuple(template.codes), "item_block",
+        pages[0] if pages else template.page, source[:160],
+        numbers, reverse, reverse_text[:200], issues=tuple(issues),
+    )
+
+
 def _build_schemes(current: dict, scoring: "ProposedScoring"):
     """Shared scales from header / legend / row-token evidence of ONE instrument."""
     schemes, assignments = [], {}
@@ -465,6 +586,13 @@ def _build_schemes(current: dict, scoring: "ProposedScoring"):
     for key, group in current["scale_groups"].items():
         indices = [i for i, k in current["links"] if k == key]
         if len(indices) < 2:
+            continue
+        if key[0] == "block":
+            scheme = _block_scheme(f"s{len(schemes) + 1}", group, [rows[i] for i in indices],
+                                   scoring, current["context"])
+            schemes.append(scheme)
+            for i in indices:
+                assignments[i] = scheme
             continue
         header = group["header"]
         tokens, agreeing = _majority([tuple(t) for t in group["tokens"]])
@@ -535,10 +663,39 @@ def _build_schemes(current: dict, scoring: "ProposedScoring"):
     return schemes, assignments
 
 
+def _review_evidence(current: dict, rows, evidence_for) -> ReviewEvidence:
+    """Documented scoring, missing item numbers and per-item flags (review only)."""
+    numbers = [row.number for row in rows]
+    groups, statements, issues = parse_scoring_evidence(
+        current["evidence_lines"], numbers, evidence_for=evidence_for,
+    )
+    top = max(numbers) if numbers else 0
+    missing = set(sequence_gaps(numbers)) | {
+        n for n in referenced_missing(groups, numbers) if n <= top + 5
+    }
+    flags: dict[int, list[str]] = {n: list(v) for n, v in current["flags"].items()}
+    for row in rows:
+        if evidence_for(row.page) == "ocr":
+            flags.setdefault(row.number, []).append("read by OCR")
+    item_flags = tuple(
+        (number, tuple(dict.fromkeys(values)))
+        for number, values in sorted(flags.items()) if values
+    )
+    return ReviewEvidence(groups, statements, tuple(sorted(missing)), item_flags, issues)
+
+
 def parse_scientific_lines(
     lines: list[tuple[int, str]], source_name: str, *,
     page_count: int = 1, image_pages: tuple[int, ...] = (),
+    ocr_pages: tuple[int, ...] = (), text_source: str = "text",
 ) -> ScientificDocumentReview:
+    """Candidate instruments from ``(page, line)`` text.
+
+    ``ocr_pages`` marks pages whose text came from local OCR (evidence is
+    labelled as OCR-only and repeated answer labels are compared tolerantly);
+    ``text_source`` names the source of the other pages ("pdf_text_layer",
+    "docx", "doc" or "text").
+    """
     if len(lines) > 30000:
         raise ValueError("Document has too many text lines.")
     instruments: list[InstrumentCandidate] = []
@@ -551,6 +708,20 @@ def parse_scientific_lines(
             "Image-backed content on PDF page(s) "
             + ", ".join(map(str, image_pages))
             + " may include unseen table questions. OCR is not automatic."
+        )
+    ocr_set = set(ocr_pages)
+
+    def evidence_for(page: int) -> str:
+        return "ocr" if page in ocr_set else text_source
+
+    # Answer choices repeated after every item (coping-inventory layouts):
+    # each item becomes ONE line carrying its parsed block of choices.
+    lines, choice_layout = segment_repeated_choices(list(lines), fuzzy_pages=ocr_pages)
+    if choice_layout is not None:
+        document_notes.append(
+            f"Answer choices printed after every item were recognized "
+            f"({len(choice_layout.items)} items, {choice_layout.template.size} choices "
+            "each); item numbers were joined with their prompts. Verify against the source."
         )
     current = None
     bibliography_zone = False
@@ -570,10 +741,36 @@ def parse_scientific_lines(
             "legend": dict(preamble["legend"]), "formats": {},
             "scale": preamble["scale"], "scale_legend": dict(preamble["scale_legend"]),
             "buffer": [], "links": [], "scale_groups": {},
+            "evidence_lines": [], "flags": {},
         }
         preamble.update({"binary": None, "hint": None, "legend": {}, "scale": None,
                          "scale_legend": {}, "lines": [], "codes": {}})
         return state
+
+    # A differing block printed identically after two or more items is a
+    # different scale; a one-off difference stays on the common scale and is
+    # reported as an issue of that scale (never silently replaced).
+    other_scales = {}
+    if choice_layout is not None:
+        counts: dict = {}
+        for item in choice_layout.items:
+            if (item.block.size == choice_layout.template.size
+                    and any("OCR variant" not in d for d in item.deviations)):
+                counts[item.block.key] = counts.get(item.block.key, 0) + 1
+        other_scales = {key for key, count in counts.items() if count >= 2}
+
+    def block_link(pending):
+        """Shared-scale key for an item whose answer choices follow it."""
+        item = pending["block_item"]
+        own = item.block.key in other_scales
+        template = item.block if own else choice_layout.template
+        key = ("block", template.key)
+        group = current["scale_groups"].setdefault(key, {
+            "header": None, "page": pending["page"], "scale": None, "tokens": [],
+            "template": template, "deviations": [], "fuzzy": choice_layout.fuzzy,
+        })
+        group["deviations"].append((item.number, () if own else item.deviations))
+        return key
 
     def scale_link(pending):
         """Key of the shared scale this text item belongs to, or None."""
@@ -648,7 +845,9 @@ def parse_scientific_lines(
             return
         opts = list(dict.fromkeys(pending["options"]))[:12]
         link = None
-        if len(opts) < 2:
+        if pending.get("block_item") is not None:
+            link = block_link(pending)
+        elif len(opts) < 2:
             binary = binary_options(pending)
             if binary:
                 opts = binary
@@ -789,10 +988,20 @@ def parse_scientific_lines(
                 current["warnings"].append(
                     f"Candidates must be edited before publishing: {error}"
                 )
+            evidence = _review_evidence(current, rows, evidence_for)
+            if evidence.missing_items:
+                numbers = [r.number for r in rows]
+                current["warnings"].append(
+                    "Item number(s) " + ", ".join(map(str, evidence.missing_items))
+                    + f" missing from the numbered sequence {min(numbers)}–"
+                    f"{max([*numbers, *evidence.missing_items])}; check the source page."
+                )
+            current["warnings"].extend(evidence.issues)
             instruments.append(InstrumentCandidate(
                 current["title"], tuple(rows), scoring,
                 tuple(current["warnings"]), current["page"], tuple(formats),
                 tuple(schemes), tuple(sorted(current["scale_legend"].items())),
+                evidence,
             ))
         current = None
 
@@ -829,8 +1038,37 @@ def parse_scientific_lines(
             current["rows"][-1].number + 1 if current["rows"] else 1
         )
 
+    def handle_block_item(page, raw: BlockItemLine):
+        """An item whose answer choices were printed right after it."""
+        item = raw.item
+        current["context"].append(_clean(raw))
+        finish_question()
+        current["capture"] = True
+        if current["scale"] is not None:
+            current["scale"]["fresh"] = False
+        flags = current["flags"].setdefault(item.number, [])
+        if item.number_source == "inferred":
+            flags.append("item number inferred from order")
+        if item.deviations:
+            flags.append("answer choices differ from the common scale")
+        if item.prompt_lines > 1:
+            flags.append(f"prompt joined from {item.prompt_lines} lines")
+        notes = list(item.notes)
+        if item.deviations:
+            notes.append("Printed answer choices differ: " + "; ".join(item.deviations) + ".")
+        current["pending"] = {
+            "number": item.number, "prompt": item.prompt[:300], "page": item.page,
+            "excerpt": item.excerpt[:300], "confidence": "review",
+            "options": [], "notes": notes, "binary": None, "lines": 0,
+            "row_tokens": (), "block_item": item,
+        }
+        finish_question()  # the printed choices end the item: no wrapped text follows
+
     def handle(page, raw):
         """Process one non-title line inside the current instrument."""
+        if isinstance(raw, BlockItemLine):
+            handle_block_item(page, raw)
+            return
         line = _clean(raw)
         numbered_text, row_scale, row_tokens = item_text(raw)
         current["context"].append(line)
@@ -946,6 +1184,8 @@ def parse_scientific_lines(
                 current["warnings"].append(
                     f"Item {expected} was not recognized; check the source page."
                 )
+        if not detected:
+            current["evidence_lines"].append((page, line))
         if detected:
             finish_question()
             n, prompt, starred = detected
@@ -1045,7 +1285,12 @@ def parse_scientific_lines(
             )
             current = begin(title, page, collection=collection)
             continue
-        numbered_text, _row_scale, _tokens = item_text(raw)
+        block = isinstance(raw, BlockItemLine)
+        numbered_text = str(raw) if block else item_text(raw)[0]
+        if current is None and block:
+            current = begin(_stem_title(source_name, preamble["lines"]), page)
+            handle(page, raw)
+            continue
         if current is None:
             if re.match(r"^references\s*:?\s*$", line, re.I):
                 bibliography_zone = True
@@ -1096,11 +1341,20 @@ def parse_scientific_lines(
             handle(page, raw)
             continue
         expected = expected_number()
-        continues = _numbered(numbered_text, expected) or (
-            _numbered(numbered_text, expected + 1)
-        )
+        if block:
+            # Items with printed choices continue the instrument (gaps are
+            # reported); numbering restarting at 1 starts another version.
+            continues = raw.item.number != 1
+        else:
+            continues = _numbered(numbered_text, expected) or (
+                _numbered(numbered_text, expected + 1)
+            )
         restart = None
-        if not continues and expected > 3 and _numbered(numbered_text, 1) and not _reference_like(line):
+        if block and not continues:
+            restart = restart_split(page)
+            if restart is None:
+                restart = len(current["buffer"])
+        elif not continues and expected > 3 and _numbered(numbered_text, 1) and not _reference_like(line):
             restart = restart_split(page)
         if restart is not None:
             buffer = current["buffer"]
@@ -1136,7 +1390,7 @@ def parse_scientific_lines(
         )
     return ScientificDocumentReview(
         source_name, tuple(instruments), tuple(document_notes),
-        page_count, image_pages,
+        page_count, image_pages, choice_layout=choice_layout,
     )
 
 
@@ -1165,6 +1419,74 @@ def scheme_banner(candidate: InstrumentCandidate) -> str | None:
     return "; ".join(parts) + ". Review and confirm the response scale before importing."
 
 
+def missing_items_banner(candidate: InstrumentCandidate) -> str | None:
+    """Blocking message for item numbers missing from the sequence, or None."""
+    evidence = candidate.evidence
+    if not evidence.missing_items or evidence.missing_acknowledged:
+        return None
+    numbers = [row.number for row in candidate.questions]
+    last = max([*numbers, *evidence.missing_items]) if numbers else max(evidence.missing_items)
+    first = min([*numbers, *evidence.missing_items])
+    missing = ", ".join(map(str, evidence.missing_items))
+    return (
+        f"Item {missing} {'is' if len(evidence.missing_items) == 1 else 'are'} missing "
+        f"from the numbered sequence {first}–{last}. Check the source page, add the "
+        "item(s) or confirm that the source omits them before importing."
+    )
+
+
+def review_banner(candidate: InstrumentCandidate) -> str | None:
+    """Every blocking review message of a candidate (scale, then sequence)."""
+    parts = [text for text in (scheme_banner(candidate), missing_items_banner(candidate)) if text]
+    return " ".join(parts) or None
+
+
+def acknowledge_missing_items(candidate: InstrumentCandidate) -> InstrumentCandidate:
+    """Researcher decision: the reported item numbers are absent in the source."""
+    if not candidate.evidence.missing_items:
+        raise ValueError("No item numbers are missing from this candidate.")
+    return replace(candidate, evidence=replace(candidate.evidence, missing_acknowledged=True))
+
+
+def approve_scoring_evidence(
+    candidate: InstrumentCandidate, group_ids=None, *, ocr_checked: bool = False,
+) -> InstrumentCandidate:
+    """Mark documented scoring groups as checked by the researcher.
+
+    Approval is review metadata for a later scoring step: it NEVER changes a
+    question, a code or a reverse key, and :func:`reviewed_draft` ignores it.
+    Every listed item must already be on a shared scale whose numeric codes
+    were confirmed; OCR-only evidence additionally needs ``ocr_checked``.
+    """
+    evidence = candidate.evidence
+    if not evidence.scoring_groups:
+        raise ValueError("This candidate has no documented scoring groups.")
+    wanted = set(group_ids) if group_ids is not None else {g.id for g in evidence.scoring_groups}
+    unknown = wanted - {g.id for g in evidence.scoring_groups}
+    if unknown:
+        raise KeyError("Unknown scoring group: " + ", ".join(sorted(unknown)))
+    confirmed = {
+        row.number for row in candidate.questions
+        if row.scheme_id and any(s.id == row.scheme_id and s.codes_confirmed
+                                 for s in candidate.schemes)
+    }
+    groups = []
+    for group in evidence.scoring_groups:
+        if group.id in wanted:
+            if group.ocr_only and not ocr_checked:
+                raise ValueError(f"Scoring group “{group.name}” was read by OCR only; "
+                                 "compare it with the source page first.")
+            missing = [n for n in group.items if n not in confirmed]
+            if missing:
+                raise ValueError(
+                    f"Confirm the numeric codes of the shared scale before approving "
+                    f"“{group.name}” (item(s) {', '.join(map(str, missing[:10]))} not confirmed)."
+                )
+            group = replace(group, approved=True)
+        groups.append(group)
+    return replace(candidate, evidence=replace(evidence, scoring_groups=tuple(groups)))
+
+
 def reviewed_draft(
     candidate: InstrumentCandidate, *,
     accept_numeric: bool = False,
@@ -1174,11 +1496,11 @@ def reviewed_draft(
 
     Items on a shared response scale (``Candidate.scheme_id``) follow THAT
     scale's separate confirmations; an unconfirmed scale blocks the draft
-    instead of silently producing free-text questions.
+    instead of silently producing free-text questions, and so do item numbers
+    missing from the sequence until they are added or acknowledged.
     ``accept_numeric``/``accept_reverse`` apply to the remaining items with
-    a parsed text codebook.
+    a parsed text codebook. Documented scoring groups are never applied.
     """
-    from copy import deepcopy
     if accept_reverse and not accept_numeric:
         raise ValueError(
             "Confirm numeric response codes before applying reverse keys."
@@ -1186,12 +1508,33 @@ def reviewed_draft(
     banner = scheme_banner(candidate)
     if banner:
         raise ValueError(banner)
+    missing = missing_items_banner(candidate)
+    if missing:
+        raise ValueError(missing)
+    return draft_questions(candidate, accept_numeric=accept_numeric,
+                           accept_reverse=accept_reverse)
+
+
+def draft_questions(
+    candidate: InstrumentCandidate, *,
+    accept_numeric: bool = False,
+    accept_reverse: bool = False,
+) -> list[dict]:
+    """The validated draft WITHOUT the review gates of :func:`reviewed_draft`.
+
+    Used to check a partial review (one confirmed scale of several, a
+    sequence that still has a gap). Unconfirmed scales keep their proposal.
+    """
+    from copy import deepcopy
     schemes = {s.id: s for s in candidate.schemes}
     reversed_numbers = set(candidate.scoring.reverse_numbers)
     raw = []
     for row in candidate.questions:
         q = deepcopy(row.question)
         scheme = schemes.get(row.scheme_id) if row.scheme_id else None
+        if scheme is not None and not scheme.structure_confirmed:
+            raw.append(q)
+            continue
         if scheme is not None:
             for name in ("options", "value_labels", "scale_id"):
                 q.pop(name, None)
