@@ -141,3 +141,34 @@ browser. Behaviour that only the native Windows client shows — the Win32
 save dialog (does it append the filter's extension?), 125/150 % display
 scaling and real UI Automation focus — is checked by the packaged-EXE GUI
 end-to-end tests (Stage 34.5, Priority 1), not by these tests.
+
+## Found by the packaged-EXE journeys
+
+`tools/windows_gui_e2e.py` drives the distributed executable through Windows
+UI Automation, the interface a screen reader uses. Its runs found three
+defects that the Python-control tests could not see: those tests read each
+control's value directly, cannot tell where a row ends up on screen, and
+awaited every coroutine a button returned. The dropped coroutines are the
+primary cause of symptoms 5 and 6 and are recorded with them above ("Found
+later by the packaged-EXE journeys"); the other two follow.
+
+| # | Symptom | Root cause (confirmed) | Failing before the fix |
+|---|---|---|---|
+| 13 | Several kinds of text are invisible to screen readers and to UI Automation: the status line ("Loaded …", "Saved to …"), every notice (for example "Published … on this computer." and error explanations), the dataset name, the row counts and the provenance values. A status change is never announced. | Flet renders `Text(selectable=True)` as Flutter's `SelectableText`, which stays out of the accessibility tree unless it has an explicit semantics label. The status line, the body of every notice, the stat values and the labelled values are all selectable. | **Packaged EXE (run 7):** the Data page showed the loaded dataset, but no element carried "Loaded sample_ancova.csv." or the published-questionnaire notice. **Browser:** the stat value `sample_scale.csv` had no node, and `data-status-announced` announced nothing (`[]`). **Tests:** `SelectableTextAccessibilityTests` had 3 failures (no accessible name). |
+| 14 | Going through a long questionnaire in the import review, clicking the next item (61) while item 60 is open makes the clicked row jump up by about 560 px, away from the pointer. | The selected item's editor opens under its row. Selecting a row below it closes that editor *above* the clicked row, so the content above it shrinks by the editor's height. | **Packaged EXE (run 9):** item 61 moved −561 px. **Browser:** `import-120-next-item` moved −559 px. **Tests:** `test_the_next_row_clicked_stays_under_the_pointer` errored (no measured editor). |
+
+**Fix (13).** `workspace_components.text(..., selectable=True)` gives the text
+itself as the semantics label. `workspace_components.set_text` keeps the
+label in step when a text changes in place, as the status line and the
+report preview do.
+
+**Fix (14).** The editor reports its laid-out height (`on_size_change`). When
+a row below the open editor is clicked, the page scrolls up by exactly that
+height (`WorkspaceApp.scroll_page`), so the clicked row stays where it was.
+"Next item to check" keeps bringing the next item to where the editor was.
+
+**After the fixes.**
+- **Next item:** item 61 stays in place (0 px), both in the browser and in the test.
+- **Selectable texts:** every selectable text on every page carries its text as its accessible name. Selection with the mouse is unchanged.
+- **Announcements:** confirming the levels is announced as "5 levels confirmed from suggestions.".
+- **Checks:** the 4 tests and the 2 browser checks pass.

@@ -43,6 +43,16 @@ def _import_120_args() -> list[str]:
     return [f"60. {statements[59][:28]}", T["imp.edit_wording"][0], f"1. {statements[0][:20]}"]
 
 
+def _import_120_next_args() -> list[str]:
+    """Item 60, then item 61 below it, then the list's first item."""
+    sys.path.insert(0, str(ROOT / "tests"))
+    from synthetic_documents import strain_statements
+
+    statements = strain_statements(120)
+    return [f"60. {statements[59][:28]}", f"61. {statements[60][:28]}",
+            f"1. {statements[0][:20]}"]
+
+
 def _labels_with(prefix: str, button: str, expected: str):
     """A button named exactly (``prefix`` "=") and the text it must bring."""
     def arguments() -> list[str]:
@@ -76,6 +86,15 @@ CHECKS = (
     ("results-add-report-twice", "results", "toggle", _labels("results.add_report",
                                                               "results.in_report"),
      lambda r: r["found_after"] and not r["image_problems"]),
+    # Going on to the next item keeps it under the pointer: the editor that
+    # closes above it must not pull the list up (found by the packaged EXE).
+    ("import-120-next-item", "import-120", "next", _import_120_next_args,
+     lambda r: _near(r["moved_by"])),
+    # The status line is announced to screen readers (selectable text needs
+    # an explicit accessible name; found by the packaged-EXE journeys).
+    ("data-status-announced", "data", "announce",
+     _labels("data.accept_confirm", "data.accept_suggestions"),
+     lambda r: any("levels confirmed from suggestions" in said for said in r["announced"])),
     # Open on Home opens the project (a lambda around the coroutine did nothing).
     ("projects-open-from-home", "projects", "effect",
      _labels_with("=", "project.open", "project.dashboard_subtitle"),

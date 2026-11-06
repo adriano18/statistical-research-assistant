@@ -1018,7 +1018,7 @@ class ReportsPage:
         in place: re-rendering the page on every keystroke is not needed."""
         self.study_title = e.control.value or ""
         if self._preview is not None:
-            self._preview.value = self.app.session.combined_report(self.study_title)
+            wc.set_text(self._preview, self.app.session.combined_report(self.study_title))
             try:
                 self.app.page.update()
             except Exception:  # pragma: no cover - page not shown
