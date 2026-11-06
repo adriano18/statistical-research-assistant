@@ -125,9 +125,43 @@ def build_interface(
     )
     cornered.append(home_banner)
 
+    preview_entry = []
+    if a.get("open_workspace_preview"):
+        preview_entry = [ft.Container(
+            padding=ft.Padding.symmetric(horizontal=16, vertical=12),
+            bgcolor="#FFFFFF", border=ft.Border.all(1, "#DBE4F0"),
+            border_radius=corner_radius(),
+            content=ft.Row(
+                controls=[
+                    ft.Icon(ft.Icons.SCIENCE_OUTLINED, color="#2755A1"),
+                    ft.Column(
+                        controls=[
+                            localized_text("Try the new research workspace (Stage 33 preview)",
+                                           size=15, weight="bold", color="#172A43"),
+                            localized_text(
+                                "Guided analysis, a results log, a three-pane questionnaire "
+                                "builder and a focused scientific import. Same engine, same "
+                                "data; this classic interface stays available.",
+                                size=13, color="#415570"),
+                        ],
+                        spacing=3, expand=True,
+                    ),
+                    ft.Button(
+                        content=localized_text("Open the preview"),
+                        on_click=a["open_workspace_preview"],
+                        data="open-workspace-preview",
+                    ),
+                ],
+                spacing=14, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            data="workspace-preview-entry",
+        )]
+        cornered.append(preview_entry[0])
+
     home_screen = ft.Column(
         controls=[
             home_banner,
+            *preview_entry,
             localized_text("What would you like to do?", size=20,
                     weight="bold", color="#172A43"),
             ft.ResponsiveRow(

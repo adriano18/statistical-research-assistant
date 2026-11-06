@@ -82,6 +82,8 @@ def main(argv=None) -> int:
     parser.add_argument("out", type=Path)
     parser.add_argument("--timeout", type=float, default=240)
     parser.add_argument("--max-black", type=float, default=3.0)
+    parser.add_argument("--workspace", action="store_true",
+                        help="start in the Stage 33 workspace preview (SRA_UI=workspace)")
     args = parser.parse_args(argv)
     if os.name != "nt":
         print("GUI startup check runs on Windows only.")
@@ -105,6 +107,8 @@ def main(argv=None) -> int:
         "SRA_STARTUP_SMOKE_HOLD": "12",
         "SRA_LOG_DIR": str(work / "logs"),
     })
+    if args.workspace:
+        env["SRA_UI"] = "workspace"
     started = time.monotonic()
     process = subprocess.Popen([str(args.exe)], cwd=str(args.exe.parent), env=env)
     frames = []  # (seconds, dark_fraction, mean_luma)
@@ -150,7 +154,9 @@ def main(argv=None) -> int:
         smoke = json.loads(result_path.read_text(encoding="utf-8"))
         if smoke.get("outcome") != "ok":
             errors.append(f"startup outcome: {smoke.get('outcome')}: {(smoke.get('error') or '')[-400:]}")
-        if not smoke.get("has_home_banner"):
+        if args.workspace and not smoke.get("workspace_present"):
+            errors.append("Stage 33 workspace preview not on screen")
+        if not args.workspace and not smoke.get("has_home_banner"):
             errors.append("Home screen text not found in the interface")
         if smoke.get("splash_present") or smoke.get("failure_present"):
             errors.append("splash or failure view still on screen after startup")

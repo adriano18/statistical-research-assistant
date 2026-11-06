@@ -7,6 +7,7 @@ while these libraries load.
 """
 
 import asyncio
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -2795,6 +2796,56 @@ async def main(page: ft.Page, startup=None):
         appearance_getter=lambda: preferences.appearance,
     )
 
+    # Stage 33 preview: the new research workspace shares this dataset and
+    # the survey storage; the classic interface stays the default.
+    workspace_state = {"app": None, "restore": None}
+
+    def current_dataset():
+        if dataframe is None:
+            return None, ""
+        name = (source_file.name if source_file is not None
+                else dataframe.attrs.get("research_source_name")) or "Classic dataset"
+        return dataframe, name
+
+    async def adopt_dataset(df, name):
+        await show_file(df, display_name=name)
+
+    def return_to_classic():
+        restore = workspace_state["restore"] or {}
+        page.controls.clear()
+        page.add(ui)
+        page.on_keyboard_event = None
+        for name, value in restore.items():
+            setattr(page, name, value)
+        page.update()
+
+    def open_classic(screen):
+        return_to_classic()
+        if navigate_to_dataset is not None:
+            navigate_to_dataset(screen)
+
+    def open_workspace_preview(e=None):
+        from workspace_shell import ClassicBridge, WorkspaceApp
+
+        workspace_state["restore"] = {
+            name: getattr(page, name, None)
+            for name in ("on_resize", "theme", "dark_theme", "theme_mode",
+                         "bgcolor", "padding")
+        }
+        app = workspace_state["app"]
+        if app is None:
+            app = WorkspaceApp(
+                page, language=preferences.language, corners=preferences.appearance,
+                bridge=ClassicBridge(
+                    current_dataset=current_dataset, adopt_dataset=adopt_dataset,
+                    return_to_classic=return_to_classic, open_classic=open_classic,
+                    survey_root=survey_data_root(Path(__file__).resolve().parent),
+                ),
+            )
+            workspace_state["app"] = app
+        page.padding = 0
+        app.mount()
+
     # STEP 6: Present existing actions in separate, easier-to-navigate screens.
     _mark(startup, "questionnaire_workspace_built")
     ui = build_interface(
@@ -2966,6 +3017,7 @@ async def main(page: ft.Page, startup=None):
             "open_report_wizard": lambda: setattr(
                 interpretation_wizard.root, "expanded", True
             ),
+            "open_workspace_preview": open_workspace_preview,
             "set_active_screen": set_active_screen,
             "load_sample": load_sample,
             "load_scale_example": load_scale_example,
@@ -3002,6 +3054,9 @@ async def main(page: ft.Page, startup=None):
     page.add(ui)
     page.update()
     _mark(startup, "interface_shown")
+    if os.environ.get("SRA_UI", "").strip().lower() == "workspace":
+        open_workspace_preview()
+        _mark(startup, "workspace_preview_shown")
 
 
 if __name__ == "__main__":

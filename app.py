@@ -127,6 +127,8 @@ def _smoke_summary(page) -> dict:
         "splash_present": any(getattr(c, "data", None) == "startup-splash" for c in page.controls),
         "failure_present": any(getattr(c, "data", None) == "startup-failure" for c in page.controls),
         "has_home_banner": any("YOUR RESEARCH WORKSPACE" in t for t in texts),
+        "workspace_present": any(getattr(c, "data", None) == "workspace-root"
+                                 for c in page.controls),
         "text_controls": len(texts),
     }
 

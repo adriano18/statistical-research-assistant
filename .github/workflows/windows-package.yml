@@ -17,6 +17,10 @@ on:
       - "scientific_survey_import.py"
       - "spatial_review_ui.py"
       - "survey_ui.py"
+      - "interface_layout.py"
+      - "analysis_runs.py"
+      - "import_session.py"
+      - "workspace_*.py"
       - "requirements.txt"
       - "packaging/**"
       - "tools/prepare_windows_ocr_runtime.py"
@@ -25,6 +29,9 @@ on:
       - "tests/test_shared_scales.py"
       - "tests/test_app_startup.py"
       - "tests/test_real_tesseract_ocr.py"
+      - "tests/test_analysis_runs.py"
+      - "tests/test_workspace_*.py"
+      - "tests/workspace_harness.py"
       - ".github/workflows/windows-package.yml"
 
 permissions:
@@ -95,6 +102,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "shared scale tests failed" }
           & $python -m unittest discover -s tests -p "test_app_startup.py" -v
           if ($LASTEXITCODE -ne 0) { throw "startup tests failed" }
+          & $python -m unittest discover -s tests -p "test_analysis_runs.py" -v
+          if ($LASTEXITCODE -ne 0) { throw "classic parity tests failed" }
+          & $python -m unittest discover -s tests -p "test_workspace_*.py" -v
+          if ($LASTEXITCODE -ne 0) { throw "Stage 33 workspace tests failed" }
 
       - name: Build unsigned Windows desktop bundle
         run: >-
@@ -149,6 +160,14 @@ jobs:
           python tools/check_gui_startup.py "$env:EXE_PATH" gui-startup
           if ($LASTEXITCODE -ne 0) { throw "Packaged GUI startup check failed" }
 
+      - name: Stage 33 workspace preview GUI startup (SRA_UI=workspace)
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          # Same packaged exe, opened straight into the new workspace preview.
+          python tools/check_gui_startup.py "$env:EXE_PATH" gui-workspace --workspace
+          if ($LASTEXITCODE -ne 0) { throw "Packaged workspace preview startup check failed" }
+
       - name: Create distributable ZIP
         shell: pwsh
         run: |
@@ -163,5 +182,6 @@ jobs:
             StatisticalResearchAssistant-Windows-x64.zip
             build/windows/ocr-selftest-result.json
             gui-startup/
+            gui-workspace/
           if-no-files-found: error
           retention-days: 14

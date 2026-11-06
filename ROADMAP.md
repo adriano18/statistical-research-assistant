@@ -6,6 +6,23 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 **Next development sequence**: independently validate advanced psychometric estimates → polish stage-23 light desktop onboarding and respondent-scale UX → add optional ordinal/polychoric modeling and more psychometric diagnostics → build researcher method guidance / optional AI → complete EN/LV/RU UX, packaging and secure respondent-facing distribution. English/Latvian/Russian localization and reporting remain cross-cutting priorities. Do not delay blockers in data collection or export.
 
+## Stage 33 — student-first research workspace (Issue #19)
+
+- [x] Generated inventory of every classic screen, command, export and action (`tools/ux_inventory.py`)
+- [x] Audit findings, two UX concepts (+1 rejected), beginner/expert comparison and a combined design (`docs/UX_STAGE33_SPEC.md`)
+- [x] Design tokens with WCAG AA tests in light and dark themes; reusable components; EN/LV/RU text with plural rules
+- [x] `analysis_runs`: UI-independent runs of all 15 classic analysis areas; parity tests against the classic callbacks
+- [x] Method catalog with engine limits and confirmations; deterministic guided advisor (design + confirmed levels only)
+- [x] Prototype shell and screens: Home, Data, Analyze (guided + all methods), Results, Reports, Questionnaires (list/editor/preview), Scientific import (source/review/preview)
+- [x] Old → new route map with tests against the live inventory; classic interface unchanged and reachable
+- [x] Journeys: XLSX → Mann–Whitney → APA/Word; PDF → scale review → responses → α/ω; preparation → EFA
+- [x] Screenshot suite (light/dark, EN/LV/RU, 960–1600 px, 100/125/150 %) and Windows GUI check of the workspace
+- [ ] Owner evaluation on a real Windows PC; native LV/RU review; Narrator/NVDA and keyboard-only QA
+- [ ] Workspace as default shell; persist theme; share confirmed levels with classic screens (33-B)
+- [ ] Builder parity: pages/page titles, DK/PNA, value-label editor, clone published, multi-page respondent flow, response table, matrix grid, regions, OCR batch inside the import workspace (33-C)
+- [ ] Combined Word report from several results (33-D); remove classic routes after sign-off (33-F)
+- [ ] Secure web respondent interface (architecture proposal only in Stage 33)
+
 ## Stage 32 — spatial OCR, confidence, matrices and bundled Windows OCR
 
 - [x] Typed immutable OCR word/line/block/page models with normalized boxes, pixel dimensions, stable IDs and `None` for unavailable confidence
