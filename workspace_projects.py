@@ -454,10 +454,35 @@ class ProjectPage:
             body.append(wc.notice(ui, ui.t(key), tone, data="project-message"))
         if hub.feedback:
             body.append(wc.notice(ui, hub.feedback[0], hub.feedback[1], data="project-feedback"))
-        body += [self._next(datasets), self._sources(datasets), self._questionnaires(),
-                 self._results(), self._report()]
+        body += [self._question(), self._next(datasets), self._sources(datasets),
+                 self._questionnaires(), self._results(), self._report()]
         return app.constrained(ft.Column(body, spacing=tk.SPACE_4, data="project-dashboard",
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
+
+    # ------------------------------------------------------ question
+    def _question(self) -> ft.Control:
+        """The research question or hypothesis: the first step of the journey."""
+        app, ui = self.app, self.app.ui
+        field = wc.text_field(ui, ui.t("project.question"), app.research_question(),
+                              multiline=True, hint=ui.t("project.question_hint"),
+                              on_change=lambda e: setattr(self, "_question_text",
+                                                          e.control.value or ""),
+                              data="project-question")
+        field.on_blur = self.save_question
+        return wc.card(ui, [field, wc.caption(ui, ui.t("project.question_body"))],
+                       title=ui.t("journey.question"), data="project-question-card")
+
+    def save_question(self, e=None):
+        text = getattr(self, "_question_text", None)
+        if text is None:
+            return
+        try:
+            self.app.projects.set_research_question(text)
+        except (ProjectError, OSError) as error:
+            self.app.hub._failed(error)
+            return
+        self._question_text = None
+        self.app.render()
 
     # ------------------------------------------------------------ next step
     def next_step(self, datasets) -> tuple[str, str, list[tuple[str, object, str]]]:

@@ -9,6 +9,12 @@ scroll and tick a checkbox, type into a field, select item 60 of a
 120-item questionnaire and edit it, open a section and tick inside it. The
 page must not jump, lose the keyboard focus or the typed text, or close the
 section. Fictional data only. Stage 34.5, issue #30.
+
+The pointer checks hover one control of each clickable kind (sidebar item,
+context chip, journey step, result card, buttons, segmented switch,
+checkbox, section header, wizard step, item row, sticky footer): each must
+show a pointer cursor and a visible hover state, and a disabled button must
+not offer a pointer. Issue #32.
 """
 
 from __future__ import annotations
@@ -60,6 +66,53 @@ def _labels(*keys: str):
     return arguments
 
 
+def _clickable_kinds() -> list[str]:
+    """One control of each clickable kind on the Results page (role:label)."""
+    from workspace_text import T
+
+    return [
+        f"button:={T['nav.data'][0]}",                       # sidebar item
+        f"button:{T['context.open_data_tip'][0]}",            # context bar chip
+        f"button:{T['journey.data.tip'][0][:30]}",            # research journey step
+        "button:Independent-group comparison",                # result in the list
+        f"button:{T['results.add_report'][0]}",               # secondary button
+        "button:=LV",                                         # segmented switch
+        "checkbox:Confirm independent participants",          # checkbox
+        f"button:{T['results.interpretation'][0]}",           # section header
+        f"button:{T['results.save_docx'][0]}",                # export button
+    ]
+
+
+def _import_clickable_kinds() -> list[str]:
+    """The import wizard's step buttons, an item row, the filter and the footer."""
+    sys.path.insert(0, str(ROOT / "tests"))
+    from synthetic_documents import strain_statements
+    from workspace_text import T
+
+    return [
+        f"button:1. {T['imp.step.source'][0]}",              # wizard step
+        f"button:1. {strain_statements(120)[0][:20]}",        # item row
+        f"button:{T['imp.filter.all'][0].split(' (')[0]} (",  # filter switch
+        f"button:={T['imp.next'][0]}",                       # sticky footer
+        f"!button:{T['imp.create_draft'][0]}",               # disabled until reviewed
+    ]
+
+
+def _pointer_everywhere(result) -> bool:
+    """Every clickable control shows a pointer and a hover state; a disabled
+    one (a target starting with "!") does not offer a pointer."""
+    def fine(control) -> bool:
+        if not control["found"]:
+            return False
+        if control.get("negative"):
+            return control["cursor"] != "pointer"
+        return (control["cursor"] == "pointer" and control["hover_visible"]
+                and control["resting_cursor"] != "pointer")
+
+    controls = result["controls"]
+    return bool(controls) and all(fine(control) for control in controls)
+
+
 # name, scenario, mode, text (or a function giving the arguments), what must hold
 CHECKS = (
     ("results-scroll-then-check", "results", "scroll", "",
@@ -76,6 +129,11 @@ CHECKS = (
     ("results-add-report-twice", "results", "toggle", _labels("results.add_report",
                                                               "results.in_report"),
      lambda r: r["found_after"] and not r["image_problems"]),
+    # Anything that can be clicked shows a pointer and a hover state (#32).
+    ("results-pointer-affordances", "results", "affordance", _clickable_kinds,
+     _pointer_everywhere),
+    ("import-pointer-affordances", "import-120", "affordance", _import_clickable_kinds,
+     _pointer_everywhere),
     # Open on Home opens the project (a lambda around the coroutine did nothing).
     ("projects-open-from-home", "projects", "effect",
      _labels_with("=", "project.open", "project.dashboard_subtitle"),

@@ -586,6 +586,7 @@ class ResultsPage:
         self.app = app
         self.opened: set[str] = set()      # expanded sections (kept across renders)
         self._seen: set[int] = set()
+        self.depth: str | None = None   # interpretation: "student" or "professor"
         self.reviewed: dict[int, set[str]] = {}
         self.notes: dict[int, str] = {}
         self.feedback: dict[int, tuple[str, str]] = {}
@@ -749,12 +750,45 @@ class ResultsPage:
             self._seen.add(entry.id)
             if self.app.profile.explanations == "detailed":
                 self.opened.add(f"interpretation-{entry.id}")
+        unverified = [a for a in evidence.assumptions if a not in reviewed]
+        depth = self.depth or self._default_depth()
+        if depth == "professor":
+            explained = [wc.text(ui, interpretation_summary(evidence, reviewed,
+                                                            self.notes.get(entry.id, "")),
+                                 tk.TYPE_BODY, selectable=True, data="result-interpretation")]
+            from statistical_guide import method_guide_text
+
+            guide = method_guide_text(run.section, ui.language)
+            if guide:
+                explained.append(wc.expansion(
+                    ui, wc.text(ui, ui.t("depth.method_notes"), tk.TYPE_LABEL,
+                                weight=ft.FontWeight.W_600),
+                    [ft.Container(wc.text(ui, guide, tk.TYPE_BODY, selectable=True),
+                                  padding=tk.SPACE_3)],
+                    key=f"guide-{entry.id}", opened=self.opened, data="result-method-notes"))
+        else:
+            explained = [
+                wc.section_label(ui, ui.t("depth.plain")),
+                wc.text(ui, run.interpretation or run.summary, tk.TYPE_BODY, selectable=True,
+                        data="result-interpretation"),
+                wc.section_label(ui, ui.t("depth.main_result")),
+                wc.text(ui, run.summary, tk.TYPE_BODY, selectable=True),
+                wc.section_label(ui, ui.t("depth.not_shown")),
+                wc.text(ui, evidence.limitation, tk.TYPE_BODY, selectable=True),
+            ]
+        # Unverified decisions are always labelled, at both depths.
+        labels = ([wc.notice(ui, ui.t("depth.unverified", count=len(unverified))
+                             + "\n" + "\n".join("• " + a for a in unverified), "warning",
+                             data="result-unverified")] if unverified else
+                  [wc.notice(ui, ui.t("depth.all_reviewed"), "success", data="result-unverified")])
         sections.append(wc.expansion(
             ui, wc.heading(ui, ui.t("results.interpretation"), tk.TYPE_TITLE_S),
             [ft.Container(ft.Column([
-                wc.text(ui, interpretation_summary(evidence, reviewed,
-                                                   self.notes.get(entry.id, "")),
-                        tk.TYPE_BODY, selectable=True, data="result-interpretation"),
+                wc.segmented(ui, [("student", ui.t("depth.student")),
+                                  ("professor", ui.t("depth.professor"))], depth,
+                             self._set_depth, data="result-depth"),
+                *labels,
+                *explained,
                 notes,
             ], spacing=tk.SPACE_3), padding=tk.SPACE_4)],
             key=f"interpretation-{entry.id}", opened=self.opened,
@@ -765,21 +799,70 @@ class ResultsPage:
             [ft.Container(wc.text(ui, run.report, tk.TYPE_BODY, selectable=True,
                                   data="result-report"), padding=tk.SPACE_4)],
             key=f"report-{entry.id}", opened=self.opened, data="result-report-section"))
-        provenance = [
-            wc.labeled(ui, ui.t("results.dataset"),
-                       f"{entry.dataset} · {count_text(ui.language, entry.rows, 'rows')}"),
-            wc.labeled(ui, ui.t("results.variables"),
-                       "; ".join(f"{k} = {v}" for k, v in run.inputs.items()
-                                 if v not in (None, "", []))),
-            wc.labeled(ui, ui.t("results.confirmed"), "; ".join(entry.confirmations) or "—"),
-            wc.labeled(ui, ui.t("results.time"), f"{entry.created:%Y-%m-%d %H:%M:%S}"),
-            wc.labeled(ui, ui.t("results.engine"), f"analysis_runs · {run.section}"),
-        ]
+        provenance = self._provenance(entry, evidence)
         sections.append(wc.card(ui, provenance, title=ui.t("results.provenance"),
                                 data="result-provenance"))
         sections.append(self._exports(entry, evidence, reviewed))
         return ft.Column(sections, spacing=tk.SPACE_4, data=f"result-detail-{entry.id}",
                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+
+    def _provenance(self, entry, evidence) -> list[ft.Control]:
+        """What the numbers rest on (Issue #32): the dataset version, complete
+        cases, how each variable was coded, the method's options and who
+        confirmed what. Nothing here is estimated or invented."""
+        from workspace_methods import METHODS
+
+        ui, run, facts = self.app.ui, entry.run, entry.provenance or {}
+        dataset = f"{entry.dataset} · {count_text(ui.language, entry.rows, 'rows')}"
+        if facts.get("dataset_sha256"):
+            dataset += " · " + ui.t("prov.version", sha=facts["dataset_sha256"][:12])
+        rows = [wc.labeled(ui, ui.t("results.dataset"), dataset)]
+        complete, total = evidence.n_complete, evidence.n_total
+        if complete is None and facts.get("complete") is not None:
+            complete, total = facts["complete"], facts.get("rows")
+        if complete is not None and total:
+            rows.append(wc.labeled(ui, ui.t("prov.complete"), ui.t(
+                "prov.complete_value", complete=complete, total=total,
+                missing=max(0, int(total) - int(complete)))))
+        levels = facts.get("levels") or {}
+        if levels:
+            coded = []
+            for name, level in levels.items():
+                text = f"{name}: {ui.t('level.' + level) if level else '—'}"
+                labels = (facts.get("groups") or {}).get(name)
+                if labels:
+                    text += f" ({', '.join(str(x) for x in labels)})"
+                if (facts.get("confirmed_in") or {}).get(name) == "data-bulk":
+                    text += " · " + ui.t("prov.bulk")
+                coded.append(text)
+            rows.append(wc.labeled(ui, ui.t("prov.coding"), "; ".join(coded)))
+        else:
+            rows.append(wc.labeled(ui, ui.t("results.variables"), "; ".join(
+                f"{k} = {v}" for k, v in run.inputs.items() if v not in (None, "", []))))
+        spec = METHODS.get(entry.method) if entry.method else None
+        if spec is not None:
+            options = "; ".join(
+                f"{engine_label(ui.language, o.label)} = "
+                f"{engine_label(ui.language, dict(o.choices).get((entry.options or {}).get(o.key, o.default), ''))}"
+                for o in spec.options)
+            rows.append(wc.labeled(ui, ui.t("prov.method"),
+                                   spec.title + (f" · {options}" if options else "")))
+        rows += [
+            wc.labeled(ui, ui.t("results.confirmed"), "; ".join(entry.confirmations) or "—"),
+            wc.labeled(ui, ui.t("results.time"), f"{entry.created:%Y-%m-%d %H:%M:%S}"
+                       + (" · " + ui.t("prov.restored") if entry.restored else "")),
+            wc.labeled(ui, ui.t("results.engine"), f"analysis_runs · {run.section}"),
+        ]
+        return rows
+
+    def _default_depth(self) -> str:
+        """Doctoral and faculty profiles start with the technical depth."""
+        return "professor" if self.app.profile.study_level in ("doctoral", "faculty") \
+            else "student"
+
+    def _set_depth(self, value: str):
+        self.depth = value if value in ("student", "professor") else "student"
+        self.app.render()
 
     def _wide_detail(self) -> bool:
         """Room for the summary and the figure next to each other (≥ 1000 px)."""
@@ -860,6 +943,12 @@ class ResultsPage:
         # The outcome of the last save or copy sits right under the buttons.
         feedback = ([wc.notice(ui, *self.feedback[entry.id], data="result-feedback")]
                     if entry.id in self.feedback else [])
+        settings = wc.caption(ui, ui.t(
+            "prov.export_settings", reviewed=len([a for a in evidence.assumptions if a in reviewed]),
+            total=len(evidence.assumptions), figure=self.figure_number or "1",
+            title=self.app.pages["reports"].study_title or "—",
+            notes=ui.t("common.yes") if self.notes.get(entry.id, "").strip() else ui.t("common.no")),
+            data="result-export-settings")
         return wc.card(ui, [ft.Row([
             wc.button(ui, ui.t("results.copy"), lambda e, i=entry.id: self._copied(i),
                       action=ft.CopyToClipboard(self.complete_report(run)),
@@ -873,7 +962,7 @@ class ResultsPage:
                       icon=ft.Icons.DESCRIPTION_OUTLINED, kind="primary", data="export-docx"),
             figure_number,
         ], wrap=True, spacing=tk.SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            *feedback], title=None, data="result-exports")
+            settings, *feedback], title=None, data="result-exports")
 
     def _copied(self, entry_id: int):
         self.feedback[entry_id] = (self.app.t("results.copied"), "success")
