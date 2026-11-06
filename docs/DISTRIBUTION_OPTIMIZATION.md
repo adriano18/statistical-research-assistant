@@ -80,19 +80,67 @@ Evidence that nothing needed was removed:
    report SHA-256 equals the source checkout's. 18/18 identical on PR #25.
 3. Existing packaged OCR self-test and both GUI startup checks still pass.
 
-## 4. Startup — what can and cannot be concluded
+## 4. Startup — measured on one runner
 
 Single launches on different runners vary more than any packaging effect:
 recent builds of essentially the same code reported "interface ready" between
 **3.0 s and 3.9 s** (PR #21: 3.03–3.16 s; PR #22: 3.71 s; PR #15: 3.9 s; PR #25:
-3.59–3.69 s), and window visibility is sampled only every 0.5 s. **No startup
-claim is made from these numbers.**
+3.59–3.69 s), and window visibility is sampled only every 0.5 s. Startup is
+therefore compared only within one job, where
+`.github/workflows/windows-packaging-experiments.yml` builds the variants and
+launches them alternately five times each (`tools/startup_ab.py`); the first
+launch is reported separately as the cold start.
 
-`.github/workflows/windows-packaging-experiments.yml` measures it properly:
-the baseline (pre-Stage-34 contents) and the cleaned build are built on **one
-runner** and launched alternately five times each (`tools/startup_ab.py`), the
-first launch reported separately as the cold start. Results are added here
-when that job has run (§8).
+**Removing unused files does not change startup.** Run 42191629552 (commit
+`0c30f5a`, one Windows runner) compared the pre-Stage-34 package contents with
+the cleaned contents, built from the same source:
+
+| Build | Launches OK | Cold: window / ready | Warm median: window / ready | Warm range ready |
+|---|---:|---:|---:|---:|
+| without the cleanup | 5/5 | 2.00 s / 3.86 s | 2.01 s / 3.94 s | 3.87–3.99 s |
+| with the cleanup | 5/5 | 2.02 s / 3.85 s | 2.01 s / 3.92 s | 3.88–3.97 s |
+
+The difference (0.02 s) is inside the spread of either build; as expected,
+files that are never opened cost no time. The size gain of §1 is therefore
+the whole benefit of the cleanup. (The size report of that run is not used:
+its second build packaged the first one's output folder, which the workflow
+now keeps outside the source tree.)
+
+**Where the time goes.** The application records its own timeline (median of
+the five warm launches, cleaned build):
+
+| Phase | Reached at | Step |
+|---|---:|---:|
+| Flet imported | 0.07 s | 0.07 s |
+| Window connected | 0.36 s | 0.29 s |
+| Startup screen shown | 0.41 s | 0.05 s |
+| Interface module imported (`research_app`) | 3.38 s | **2.97 s** |
+| Preferences, controls and workspaces built | 3.70 s | 0.32 s |
+| Interface ready | 3.91 s | 0.21 s |
+
+Three quarters of the time to a usable window is spent importing the
+statistics stack that `research_app` loads at start, while the startup screen
+is already visible. `python -X importtime -c "import research_app"` (Linux,
+warm cache, 1.70–1.88 s in total) attributes it to `reliability` → pingouin
+0.68 s (pingouin imports scikit-learn, seaborn and xarray), the statsmodels
+modules used by `omega_analysis`/`regression_analysis` about 0.3 s once
+pingouin is gone, matplotlib through `apa_figures` 0.26–0.29 s and pandas
+0.20–0.25 s.
+
+This PR moves the pingouin import into `reliability.analyze_cronbach`, the
+only place that uses it: the same function computes the same alpha (checked
+in `test_pingouin_is_imported_only_when_an_alpha_is_calculated`), and
+scikit-learn, seaborn and xarray are no longer loaded at start. Locally that
+alone saves only about 0.2 s, because statsmodels and SciPy are still loaded
+by other analysis modules; the experiments workflow now measures *before*
+(the pull request's base commit) against *after* (its head) on one runner and
+the result is recorded here when that job has run.
+
+The larger, still unmeasured opportunity is to load the whole analysis stack
+after the interface is shown (statsmodels, SciPy, matplotlib; together most
+of the 2.97 s), with each analysis waiting for it on first use. That changes
+the import structure of the classic interface and is proposed as its own pull
+request with a same-runner before/after measurement, not as part of this one.
 
 ## 5. Distribution and download
 
@@ -141,7 +189,7 @@ Python runtime 10.4 MiB (compressed).
 | Variant | Status |
 |---|---|
 | `flet build windows` (current) | measured above |
-| `flet pack --onedir` (PyInstaller, officially documented by Flet) | built and measured on the same runner by the experiments workflow (size, packaged analysis self-test, startup) — results pending |
+| `flet pack --onedir` (PyInstaller, officially documented by Flet) | Run 42191629552: **`flet pack` itself fails on Windows** with flet-cli 1.1.0 (and the same code is in 1.0.5): after updating the executable's version resource it restores the overlay with `open(exe_path, "ab", encoding="utf-8")`, and binary mode takes no encoding (`ValueError`). `tools/flet_pack_compat.py` runs the unchanged CLI with that one call fixed so the variant can be measured; size, packaged analysis self-test and startup are added here when the experiments job has run. Shipping `flet pack` would depend on this workaround or an upstream fix. |
 | Nuitka, Briefcase | not evaluated: not part of Flet's supported packaging; would need a separate Flutter client strategy |
 
 ## 9. Server option (study)

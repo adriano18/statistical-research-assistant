@@ -244,3 +244,48 @@ class AnalysisSelftestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StartupImportTests(unittest.TestCase):
+    def test_pingouin_is_imported_only_when_an_alpha_is_calculated(self):
+        """pingouin (with scikit-learn, seaborn and xarray) is the largest single
+        import of the classic interface; it now loads on first use."""
+        import subprocess
+
+        script = (
+            "import sys\n"
+            "import pandas as pd\n"
+            "import reliability\n"
+            "print('before', 'pingouin' in sys.modules)\n"
+            "frame = pd.read_csv(sys.argv[1])\n"
+            "result = reliability.analyze_cronbach(frame, ['stress_q1', 'stress_q2', 'stress_q3', 'stress_q4'])\n"
+            "print('after', 'pingouin' in sys.modules, round(result.alpha, 12))\n"
+        )
+        output = subprocess.run(
+            [sys.executable, "-c", script, str(ROOT / "examples" / "sample_scale.csv")],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+            env={**__import__("os").environ, "MPLBACKEND": "Agg"}).stdout.split("\n")
+        self.assertEqual(output[0], "before False")
+        self.assertTrue(output[1].startswith("after True "))
+        # Same value as calculating in this process (where pingouin may be loaded).
+        import pandas as pd
+        import reliability
+
+        frame = pd.read_csv(ROOT / "examples" / "sample_scale.csv")
+        expected = reliability.analyze_cronbach(
+            frame, ["stress_q1", "stress_q2", "stress_q3", "stress_q4"]).alpha
+        self.assertEqual(output[1].split()[-1], str(round(expected, 12)))
+
+    def test_flet_pack_workaround_only_drops_encodings_in_binary_mode(self):
+        import flet_pack_compat
+
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "overlay.bin"
+            path.write_bytes(b"MZ")
+            with flet_pack_compat._binary_safe_open(path, "ab", encoding="utf-8") as stream:
+                stream.write(b"\x00overlay")
+            self.assertEqual(path.read_bytes(), b"MZ\x00overlay")
+            text = Path(temp) / "note.txt"
+            with flet_pack_compat._binary_safe_open(text, "w", encoding="utf-8") as stream:
+                stream.write("päivä")
+            self.assertEqual(text.read_text(encoding="utf-8"), "päivä")
