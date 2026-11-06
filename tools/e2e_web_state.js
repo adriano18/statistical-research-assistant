@@ -112,11 +112,12 @@ async function nodeByLabel(page, fragment) {
 // list: scroll a long questionnaire list to <target>, select it, then edit its
 //   wording: the selected row must stay where it was and the caret must stay
 //   in the wording field while typing.
-async function listCheck(url, target, suffix, fieldLabel = 'Question text') {
+async function listCheck(url, target, suffix, fieldLabel = 'Question text',
+                         anchor = 'Fictional statement 1.') {
   const { browser, page } = await openPage(url);
   try {
     let node = await nodeByLabel(page, target);
-    const first = await nodeByLabel(page, 'Fictional statement 1.');
+    const first = await nodeByLabel(page, anchor);
     if (!first) throw new Error('questionnaire list not found');
     await page.mouse.move(first.x, first.y + 120);
     for (let i = 0; i < 80 && (!node || node.y > 700 || node.y < 120); i += 1) {
@@ -200,7 +201,7 @@ async function expandCheck(url, header) {
 }
 
 (async () => {
-  const [mode, url, out, text = 'Fictional stress study'] = process.argv.slice(2);
+  const [mode, url, out, text = 'Fictional stress study', fieldLabel, anchor] = process.argv.slice(2);
   if (mode === 'expand') {
     const result = await expandCheck(url, text);
     require('fs').writeFileSync(out, JSON.stringify(result, null, 1));
@@ -208,7 +209,8 @@ async function expandCheck(url, header) {
     return;
   }
   const result = mode === 'scroll' ? await scrollCheck(url)
-    : mode === 'list' ? await listCheck(url, text, ' (edited)')
+    : mode === 'list' ? await listCheck(url, text, ' (edited)', fieldLabel || undefined,
+                                         anchor || undefined)
       : await typeCheck(url, text);
   require('fs').writeFileSync(out, JSON.stringify(result, null, 1));
   console.log(JSON.stringify(result));

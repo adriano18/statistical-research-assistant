@@ -212,18 +212,23 @@ class ImportGateTests(unittest.TestCase):
         questions[2] = replace(questions[2], confidence="low")
         session.review = replace(session.review, instruments=(
             replace(instrument, questions=tuple(questions)), *session.instruments[1:]))
-        session.checks = {"version": True, "items": True}
+        session.checks = {"version": True, "rights": True, "items": True}
         blocked = [b for b in session.blockers() if "low-confidence" in b]
         self.assertEqual(len(blocked), 1)
         self.assertIn(str(questions[2].number), blocked[0])
         session.mark_reviewed(2)
         self.assertFalse([b for b in session.blockers() if "low-confidence" in b])
-        # Any structural edit resets the item reviews and the checklist.
+        # Issue #31: confirmations are independent. Reviewing a scale does not
+        # withdraw the item comparisons or the version/rights/count checks.
         scheme = session.instrument.schemes[0]
         session.review_scale(scheme.id, labels=list(scheme.labels), codes=list(scheme.codes),
                              reverse_items=[], structure=True)
+        self.assertEqual(session.reviewed, {2})
+        self.assertTrue(session.checks["version"] and session.checks["rights"])
+        # Another instrument (version) of the document starts over.
+        session.select(1)
         self.assertEqual(session.reviewed, set())
-        self.assertFalse(session.checks["version"])
+        self.assertFalse(any(session.checks.values()))
 
 
 class RouteMapTests(unittest.TestCase):

@@ -29,6 +29,14 @@ from scientific_survey_import import (
 
 SUFFIXES = {".pdf", ".docx", ".doc"}
 MAX_BYTES = 20_000_000
+# The researcher's own confirmations, each given separately (Issue #31):
+# the instrument version, the right to use it, and item count and order.
+# Numeric codes and reverse keying are confirmed per shared scale.
+CONFIRMATIONS = ("version", "rights", "items")
+
+
+def fresh_checks() -> dict:
+    return {key: False for key in CONFIRMATIONS}
 # Automatic OCR reads pages whose placed images cover at least this share
 # of the page (a scan or an item table), not pages with a logo or a stamp.
 AUTO_OCR_MIN_IMAGE_SHARE = 0.08
@@ -50,7 +58,7 @@ class ImportSession:
     review: ScientificDocumentReview | None = None
     instrument_index: int = 0
     message: str = ""
-    checks: dict = field(default_factory=lambda: {"version": False, "items": False})
+    checks: dict = field(default_factory=fresh_checks)
     # Low-confidence items the researcher compared with the source (indices).
     reviewed: set = field(default_factory=set)
     # Import-integrity facts for the UI, refreshed by open() / ocr_pages():
@@ -59,6 +67,11 @@ class ImportSession:
     expected_count: int | None = None                  # item count the text states
     image_pages: tuple[int, ...] = ()                  # pages drawing a large image
     non_items: tuple[tuple[int, str], ...] = ()        # (page, line) kept out as references
+    # The same facts as (key, values) for a translated interface: the keys
+    # are "ocr_read", "ocr_unavailable", "ocr_cancelled", "ocr_failed",
+    # "ocr_nothing", "ocr_limit", "references", "count_match",
+    # "count_mismatch" and "unreadable".
+    facts: list[tuple[str, dict]] = field(default_factory=list)
 
     # ------------------------------------------------------------ reading
     def open(self, binary: bytes, filename: str, *, progress=None, cancel=None,
@@ -86,9 +99,10 @@ class ImportSession:
             raise ValueError("No readable file bytes or file over 20 MB.")
         self.filename, self.source = filename, binary
         self.review, self.instrument_index = None, 0
-        self.checks = {"version": False, "items": False}
+        self.checks = fresh_checks()
         self.reviewed = set()
         self.notes, self.ocr_pages_used, self.image_pages = [], (), ()
+        self.facts = []
         self.expected_count, self.non_items = None, ()
         try:
             self.page_count = (pdf_page_count(binary) if suffix == ".pdf"
@@ -146,9 +160,10 @@ class ImportSession:
         self.review = ocr_scientific_pdf(self.source, self.filename, pages, language,
                                          rotation=rotation, cancel=cancel)
         self.instrument_index = 0
-        self.checks = {"version": False, "items": False}
+        self.checks = fresh_checks()
         self.reviewed = set()
         self.notes, self.ocr_pages_used = [], tuple(sorted(set(pages)))
+        self.facts = []
         self._take_evidence(self.review, None)
         return self._report(f"Local OCR completed for {len(pages)} page(s).")
 
@@ -157,6 +172,7 @@ class ImportSession:
         """Nothing usable was opened; keep the explicit reason for the UI."""
         self.source, self.page_count = None, 0
         self.notes, self.message = [str(error)], str(error)
+        self.facts = [("unreadable", {"reason": str(error)})]
 
     def _read_image_pages(self, review, failure, *, progress, cancel, language):
         """Run local OCR on image pages whose text layer gave no items.
@@ -184,21 +200,22 @@ class ImportSession:
         if len(targets) > MAX_BATCH_PAGES:
             rest, targets = targets[MAX_BATCH_PAGES:], targets[:MAX_BATCH_PAGES]
             later, many = _pages_phrase(rest)
-            self.notes.append(
-                f"{later} {'are images' if many else 'is an image'} beyond the automatic OCR "
-                f"limit of {MAX_BATCH_PAGES} pages; run OCR on {'them' if many else 'it'} "
-                "separately.")
+            self._note("ocr_limit", f"{later} {'are images' if many else 'is an image'} beyond "
+                       f"the automatic OCR limit of {MAX_BATCH_PAGES} pages; run OCR on "
+                       f"{'them' if many else 'it'} separately.", pages=list(rest),
+                       limit=MAX_BATCH_PAGES)
         subject, many = _pages_phrase(targets)
         image = f"{subject} {'are images' if many else 'is an image'}"
         its, it = ("their", "them") if many else ("its", "it")
+        pages = list(targets)
         if not tesseract_available():
-            self.notes.append(
-                f"{image}; local OCR is not available, so {its} questions could not be read.")
+            self._note("ocr_unavailable", f"{image}; local OCR is not available, so {its} "
+                       "questions could not be read.", pages=pages)
             return review
         cancelled = (f"{image}; local OCR was cancelled, so {its} questions were not read. "
                      f"Run OCR on {'those pages' if many else 'that page'} to try again.")
         if cancel is not None and cancel.is_set():
-            self.notes.append(cancelled)
+            self._note("ocr_cancelled", cancelled, pages=pages)
             return review
 
         def announce(done: int, total: int) -> None:
@@ -211,24 +228,30 @@ class ImportSession:
                                      self._ocr_language(language, review, failure),
                                      cancel=cancel, progress=announce)
         except OCRCancelled:
-            self.notes.append(cancelled)
+            self._note("ocr_cancelled", cancelled, pages=pages)
             return review
         except NoQuestionsFound:
             ocr = None
         except (RuntimeError, ValueError, OSError) as error:
             detail = " ".join(str(error).split())[:240].rstrip(". ")
-            self.notes.append(f"{image}; local OCR failed, so {its} questions could not be "
-                              f"read ({detail}).")
+            self._note("ocr_failed", f"{image}; local OCR failed, so {its} questions could not "
+                       f"be read ({detail}).", pages=pages, detail=detail)
             return review
         found = [row for x in (ocr.instruments if ocr else ()) for row in x.questions]
         known = sum(len(x.questions) for x in (review.instruments if review else ()))
         if any(row.page in targets for row in found) and len(found) >= known:
             self.ocr_pages_used = tuple(targets)
-            self.notes.append(f"{image}; {its} questions were read with local OCR. "
-                              "Compare every item with the source page.")
+            self._note("ocr_read", f"{image}; {its} questions were read with local OCR. "
+                       "Compare every item with the source page.", pages=pages)
             return ocr
-        self.notes.append(f"{image}; local OCR found no numbered questions on {it}.")
+        self._note("ocr_nothing", f"{image}; local OCR found no numbered questions on {it}.",
+                   pages=pages)
         return review
+
+    def _note(self, key: str, english: str, **values) -> None:
+        """One fact, as an English sentence and as (key, values) for the UI."""
+        self.notes.append(english)
+        self.facts.append((key, values))
 
     @staticmethod
     def _ocr_language(language, review, failure) -> str:
@@ -267,17 +290,22 @@ class ImportSession:
         """Add the references and item-count facts to ``notes``; the message."""
         if self.non_items:
             count = len(self.non_items)
-            where = _pages_phrase(sorted({page for page, _ in self.non_items}))[0].lower()
-            self.notes.append(
+            pages = sorted({page for page, _ in self.non_items})
+            where = _pages_phrase(pages)[0].lower()
+            self._note(
+                "references",
                 f"The {count} numbered lines on {where} look like references (a bibliography), "
                 "not questions; they were not imported." if count > 1 else
                 f"The numbered line on {where} looks like a reference (a bibliography entry), "
-                "not a question; it was not imported.")
+                "not a question; it was not imported.", count=count, pages=pages)
         if self.expected_count is not None:
             found, expected = self._found_count(), self.expected_count
-            self.notes.append(
-                f"Found {found} of {expected} expected questions." if found == expected else
-                f"Found {found} question{'' if found == 1 else 's'}; the text says {expected}.")
+            if found == expected:
+                self._note("count_match", f"Found {found} of {expected} expected questions.",
+                           found=found, expected=expected)
+            else:
+                self._note("count_mismatch", f"Found {found} question{'' if found == 1 else 's'}; "
+                           f"the text says {expected}.", found=found, expected=expected)
         self.message = " ".join([head, *self.notes])
         return self.message
 
@@ -315,15 +343,16 @@ class ImportSession:
     def select(self, index: int) -> None:
         if 0 <= index < len(self.instruments):
             self.instrument_index = index
-            self.checks = {"version": False, "items": False}
+            self.checks = fresh_checks()
             self.reviewed = set()
 
     def store(self, updated: InstrumentCandidate) -> None:
         collection = list(self.review.instruments)
         collection[self.instrument_index] = updated
         self.review = replace(self.review, instruments=tuple(collection))
-        self.checks = {"version": False, "items": False}  # every edit resets approvals
-        self.reviewed = set()
+        # Confirmations are independent: correcting an item or reviewing a
+        # scale withdraws neither the version, rights and count confirmations
+        # nor the items already compared with the source.
 
     def linked(self, scheme_id: str) -> list[int]:
         return linked_questions(self.instrument, scheme_id)
@@ -370,23 +399,41 @@ class ImportSession:
         """The researcher compared a low-confidence item with the source."""
         (self.reviewed.add if value else self.reviewed.discard)(index)
 
-    def blockers(self) -> list[str]:
+    def blocker_keys(self) -> list[tuple[str, dict]]:
+        """Why a draft cannot be created yet, as (key, values) for the UI."""
         if self.instrument is None:
-            return ["No instrument was extracted from this document."]
+            return [("no_instrument", {})]
         problems = []
-        banner = scheme_banner(self.instrument)
-        if banner:
-            problems.append(banner)
+        if scheme_banner(self.instrument):
+            problems.append(("scale", {}))
         unreviewed = [i for i in self.low_confidence() if i not in self.reviewed]
         if unreviewed:
             numbers = ", ".join(str(self.instrument.questions[i].number) for i in unreviewed[:12])
-            problems.append(
-                f"{len(unreviewed)} low-confidence item(s) not yet compared with the source "
-                f"(items {numbers}{'…' if len(unreviewed) > 12 else ''}).")
-        if not self.checks.get("version"):
-            problems.append("Confirm the instrument version, wording and permissions.")
-        if not self.checks.get("items"):
-            problems.append("Confirm that item count and order match the source.")
+            problems.append(("unreviewed", {
+                "count": len(unreviewed), "items": numbers + ("…" if len(unreviewed) > 12 else "")}))
+        for key in CONFIRMATIONS:
+            if not self.checks.get(key):
+                problems.append((key, {}))
+        return problems
+
+    def blockers(self) -> list[str]:
+        if self.instrument is None:
+            return ["No instrument was extracted from this document."]
+        english = {
+            "rights": "Confirm that you may use this instrument (licence or permission).",
+            "version": "Confirm the instrument version and wording against the source.",
+            "items": "Confirm that item count and order match the source.",
+        }
+        problems = []
+        for key, values in self.blocker_keys():
+            if key == "scale":
+                problems.append(scheme_banner(self.instrument))
+            elif key == "unreviewed":
+                problems.append(
+                    f"{values['count']} low-confidence item(s) not yet compared with the source "
+                    f"(items {values['items']}).")
+            else:
+                problems.append(english[key])
         return problems
 
     def draft(self) -> list[dict]:

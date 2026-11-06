@@ -32,7 +32,17 @@ def _near(value) -> bool:
     return value is not None and abs(value) <= TOLERANCE
 
 
-# name, scenario, mode, text, what must hold
+def _import_120_args() -> list[str]:
+    """Item 60 of the synthetic 120-item import, its wording field, item 1."""
+    sys.path.insert(0, str(ROOT / "tests"))
+    from synthetic_documents import strain_statements
+    from workspace_text import T
+
+    statements = strain_statements(120)
+    return [f"60. {statements[59][:28]}", T["imp.edit_wording"][0], f"1. {statements[0][:20]}"]
+
+
+# name, scenario, mode, text (or a list of arguments), what must hold
 CHECKS = (
     ("results-scroll-then-check", "results", "scroll", "",
      lambda r: _near(r["moved_by"]) and r["checked_after"] == "true"),
@@ -42,6 +52,8 @@ CHECKS = (
      lambda r: _near(r["moved_by"]) and r["kept_typing"]),
     ("results-section-stays-open", "results", "expand", "Interpretation",
      lambda r: r["still_open"]),
+    ("import-120-item-60", "import-120", "list", _import_120_args,
+     lambda r: _near(r["moved_by"]) and r["kept_typing"]),
 )
 
 
@@ -62,8 +74,9 @@ def run(check, out: Path) -> dict:
                                               text=True, check=False).stdout.strip()
         except FileNotFoundError:
             pass
+        arguments = text() if callable(text) else ([text] if text else [])
         command = ["node", str(ROOT / "tools" / "e2e_web_state.js"), mode,
-                   f"http://127.0.0.1:{port}/", str(target)] + ([text] if text else [])
+                   f"http://127.0.0.1:{port}/", str(target)] + arguments
         result = subprocess.run(command, cwd="/tmp" if os.name != "nt" else None, env=env,
                                 capture_output=True, text=True, timeout=400, check=False)
     finally:
