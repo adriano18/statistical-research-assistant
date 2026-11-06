@@ -71,6 +71,7 @@ class AnalyzePage:
         self.form_confirms: dict = {}
         self.running = False
         self.message: tuple[str, str] | None = None
+        self.choosing_goal = False          # step 1 re-opened with "Change"
 
     def rerun(self, entry) -> None:
         """Open a saved result's analysis for the current data. The researcher
@@ -86,6 +87,7 @@ class AnalyzePage:
     def reset(self) -> None:
         """Forget choices made for another project's data."""
         self.goal, self.selection, self.confirms, self.override = None, {}, {}, None
+        self.choosing_goal = False
         self.method, self.form_roles, self.form_options, self.form_confirms = None, {}, {}, {}
         self.message = None
 
@@ -146,9 +148,24 @@ class AnalyzePage:
                 on_click=lambda e, g=goal: self._set_goal(g), data=f"goal-{goal}",
                 col={"xs": 12, "md": 6, "xl": 3}, tooltip=ui.t(f"goal.{goal}.body"),
             ))
+        if self.goal and not self.choosing_goal:
+            # Progressive disclosure: the chosen question stays in view as one
+            # line, so the variables, checks and the run button move up.
+            chosen_goal = ft.Row([
+                ft.Icon(GOAL_ICONS[self.goal], color=ui.p.accent, size=22),
+                ft.Column([wc.text(ui, ui.t(f"goal.{self.goal}"), tk.TYPE_LABEL,
+                                   weight=ft.FontWeight.W_600, data="goal-summary"),
+                           wc.caption(ui, ui.t(f"goal.{self.goal}.body"))],
+                          spacing=2, expand=True),
+                wc.button(ui, ui.t("analyze.change_goal"), self._change_goal, kind="quiet",
+                          icon=ft.Icons.EDIT_OUTLINED, data="goal-change"),
+            ], spacing=tk.SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            goal_content = [chosen_goal]
+        else:
+            goal_content = [ft.ResponsiveRow(goal_tiles, spacing=tk.SPACE_3,
+                                             run_spacing=tk.SPACE_3)]
         steps = [wc.step_card(
-            ui, 1, ui.t("step.goal"),
-            [ft.ResponsiveRow(goal_tiles, spacing=tk.SPACE_3, run_spacing=tk.SPACE_3)],
+            ui, 1, ui.t("step.goal"), goal_content,
             state="done" if self.goal else "active", data="step-goal")]
         if not self.goal:
             steps += [wc.step_card(ui, 2, ui.t("step.variables"), [], state="locked"),
@@ -171,6 +188,12 @@ class AnalyzePage:
         if goal != self.goal:
             self.goal, self.selection, self.confirms, self.override = goal, {}, {}, None
             self.message = None
+        self.choosing_goal = False
+        self.app.render()
+
+    def _change_goal(self, e=None):
+        """Show every question again (the current one stays selected)."""
+        self.choosing_goal = True
         self.app.render()
 
     def _roles_filled(self) -> bool:
@@ -626,10 +649,30 @@ class ResultsPage:
             sections.append(wc.notice(ui, ui.t("results.stale_body", reasons=reasons), "warning",
                                       title=ui.t("results.stale_title"), actions=rerun,
                                       data="result-stale"))
+        summary_card = figure_card = None
+        wide = self._wide_detail()
         if answer:
-            sections.append(wc.card(ui, [wc.text(ui, answer, tk.TYPE_BODY_L, selectable=True,
-                                                 data="result-answer")],
-                                    title=ui.t("results.answer")))
+            summary_card = wc.card(ui, [wc.text(ui, answer, tk.TYPE_BODY_L, selectable=True,
+                                                data="result-answer")],
+                                   title=ui.t("results.answer"), data="result-summary")
+        if run.png:
+            from apa_figures import section_embeds_figure_header
+
+            embedded = section_embeds_figure_header(run.section)
+            figure_card = wc.card(ui, [wc.figure(
+                ui, run.png, caption_text="" if embedded else run.title,
+                on_enlarge=lambda e: self._enlarge(run), enlarge_label=ui.t("results.enlarge"),
+                max_height=360 if wide and answer else 460)],
+                title=ui.t("results.figure"), data="result-figure")
+        # The primary result first: the summary and its figure, side by side
+        # when the detail column is wide enough, before estimates and tables.
+        if summary_card is not None and figure_card is not None and wide:
+            sections.append(ft.Row([ft.Container(summary_card, expand=1),
+                                    ft.Container(figure_card, expand=1)],
+                                   spacing=tk.SPACE_4, data="result-primary",
+                                   vertical_alignment=ft.CrossAxisAlignment.START))
+        else:
+            sections += [card for card in (summary_card, figure_card) if card is not None]
         if estimates:
             sections.append(wc.card(ui, [ft.ResponsiveRow(estimates, spacing=tk.SPACE_3,
                                                           run_spacing=tk.SPACE_3)],
@@ -651,14 +694,6 @@ class ResultsPage:
                                     icon=ft.Icons.COMPARE_ARROWS, data="result-posthoc"))
         sections.append(wc.card(ui, tables or [wc.caption(ui, ui.t("results.no_table"))],
                                 title=ui.t("results.table"), data="result-table"))
-        if run.png:
-            from apa_figures import section_embeds_figure_header
-
-            embedded = section_embeds_figure_header(run.section)
-            sections.append(wc.card(ui, [wc.figure(
-                ui, run.png, caption_text="" if embedded else run.title,
-                on_enlarge=lambda e: self._enlarge(run), enlarge_label=ui.t("results.enlarge"))],
-                title=ui.t("results.figure"), data="result-figure"))
         checks = [wc.checkbox(ui, assumption, assumption in reviewed,
                               on_change=lambda e, a=assumption, i=entry.id: self._review(
                                   i, a, e.control.value), data=f"review-{index}")
@@ -716,6 +751,14 @@ class ResultsPage:
             sections.append(wc.notice(ui, message, tone, data="result-feedback"))
         return ft.Column(sections, spacing=tk.SPACE_4, data=f"result-detail-{entry.id}",
                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+
+    def _wide_detail(self) -> bool:
+        """Room for the summary and the figure next to each other (≥ 1000 px)."""
+        app = self.app
+        width = min(tk.CONTENT_MAX_WIDTH + 200, app.content_width)
+        if not app.compact:
+            width -= tk.PANE_LIST_WIDTH + tk.SPACE_5
+        return width >= 1000
 
     def _report_toggle(self, entry) -> ft.Control:
         ui = self.app.ui
@@ -896,6 +939,9 @@ class ReportsPage:
                                           data=f"report-stale-{entry.id}")]
                                  if entry.stale_reasons else [])],
                               spacing=2, expand=True),
+                    wc.icon_button(ui, ft.Icons.OPEN_IN_NEW, ui.t("reports.open_result"),
+                                   lambda e, i=entry.id: self._show(i),
+                                   data=f"report-open-{entry.id}"),
                     wc.icon_button(ui, ft.Icons.ARROW_UPWARD, ui.t("reports.move_up"),
                                    lambda e, i=entry.id: self._move(i, -1),
                                    disabled=number == 1),
@@ -912,12 +958,21 @@ class ReportsPage:
                     wc.checkbox(ui, ui.t("reports.include_stale"), self.include_stale,
                                 on_change=lambda e: self._include(bool(e.control.value)),
                                 data="reports-include-stale")], data="reports-stale")]
+            preview = ft.Container(ft.ExpansionTile(
+                title=wc.heading(ui, ui.t("reports.preview"), tk.TYPE_TITLE_S),
+                subtitle=wc.caption(ui, ui.t("reports.preview_hint")),
+                controls=[ft.Container(wc.text(
+                    ui, s.combined_report(self.study_title), tk.TYPE_BODY, selectable=True,
+                    data="reports-preview-text"), padding=tk.SPACE_4)],
+                bgcolor=ui.p.surface, collapsed_bgcolor=ui.p.surface,
+            ), border=ft.Border.all(1, ui.p.border), border_radius=ui.radius("card"),
+                data="reports-preview")
             body = [
                 wc.text_field(ui, ui.t("reports.study_title"), self.study_title, width=520,
-                              on_change=lambda e: setattr(self, "study_title",
-                                                          e.control.value or "")),
+                              on_change=self._set_title, data="reports-study-title"),
                 *gate,
                 *items,
+                preview,
                 wc.notice(ui, ui.t("reports.export_docx_note"), "neutral"),
             ]
         if self.feedback:
@@ -925,6 +980,10 @@ class ReportsPage:
         return app.constrained(ft.Column([header, *body, wc.caption(
             ui, session_note(app), data="reports-note")], spacing=tk.SPACE_4,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH), tk.READING_MAX_WIDTH + 240)
+
+    def _set_title(self, e):
+        self.study_title = e.control.value or ""
+        self.app.render()        # the preview shows the title as it will be exported
 
     def _include(self, value: bool):
         self.include_stale = value
