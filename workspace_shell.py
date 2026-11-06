@@ -1250,6 +1250,7 @@ class SettingsPage:
 
         self.app = app
         self.ocr_summary = ""
+        self.data_note = ""
         self.profile = ProfileSettings(app)
 
     def build(self) -> ft.Control:
@@ -1281,6 +1282,7 @@ class SettingsPage:
                     title=ui.t("settings.title")),
             self.profile.profile_card(),
             self.profile.ai_card(),
+            self._data_card(),
             wc.card(ui, ocr, title=ui.t("settings.ocr")),
         ]
         if app.bridge.return_to_classic is not None:
@@ -1291,6 +1293,39 @@ class SettingsPage:
                                          spacing=tk.SPACE_5,
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
                                tk.READING_MAX_WIDTH + 200)
+
+    def _data_card(self) -> ft.Control:
+        """Where research data is kept, and data of earlier versions (#44)."""
+        import data_ui
+
+        app, ui = self.app, self.app.ui
+        language = app.session.language
+        root = app.project_root.parent
+        rows = [wc.text(ui, data_ui.t(language, "folder_body"), color=ui.p.text_secondary),
+                wc.text(ui, str(root), selectable=True, data="settings-data-folder"),
+                wc.caption(ui, data_ui.t(language, "folder_note")),
+                ft.Row([wc.button(ui, data_ui.t(language, "open_folder"),
+                                  lambda e=None: data_ui.open_folder(root),
+                                  icon=ft.Icons.FOLDER_OPEN_OUTLINED, data="settings-data-open"),
+                        wc.button(ui, data_ui.t(language, "find"), self._find_legacy,
+                                  icon=ft.Icons.MANAGE_SEARCH, data="settings-data-find")],
+                       wrap=True, spacing=tk.SPACE_2)]
+        if self.data_note:
+            rows.append(wc.text(ui, self.data_note, selectable=True, data="settings-data-note"))
+        return wc.card(ui, rows, title=data_ui.t(language, "folder_title"), data="settings-data")
+
+    async def _find_legacy(self, e=None):
+        import data_ui
+
+        language = self.app.session.language
+        picker = data_ui.folder_picker(self.app.page)
+        try:
+            chosen = await picker.get_directory_path(dialog_title=data_ui.t(language, "pick"))
+        except Exception:
+            chosen = None
+        self.data_note = await data_ui.find_in_chosen_folder(
+            self.app.page, chosen, self.app.project_root.parent, language)
+        self.app.render()
 
     async def _check_ocr(self, e=None):
         from ocr_runtime import ocr_readiness
