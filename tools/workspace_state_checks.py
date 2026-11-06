@@ -49,6 +49,15 @@ def _import_120_args() -> list[str]:
     return [f"60. {statements[59][:28]}", T["imp.edit_wording"][0], f"1. {statements[0][:20]}"]
 
 
+def _labels_with(prefix: str, button: str, expected: str):
+    """A button named exactly (``prefix`` "=") and the text it must bring."""
+    def arguments() -> list[str]:
+        from workspace_text import T
+
+        return [prefix + T[button][0], T[expected][0][:40]]
+    return arguments
+
+
 def _labels(*keys: str):
     def arguments() -> list[str]:
         from workspace_text import T
@@ -125,6 +134,10 @@ CHECKS = (
      _pointer_everywhere),
     ("import-pointer-affordances", "import-120", "affordance", _import_clickable_kinds,
      _pointer_everywhere),
+    # Open on Home opens the project (a lambda around the coroutine did nothing).
+    ("projects-open-from-home", "projects", "effect",
+     _labels_with("=", "project.open", "project.dashboard_subtitle"),
+     lambda r: not r["shown_before"] and r["shown_after"]),
 )
 
 

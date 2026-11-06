@@ -181,6 +181,45 @@ async function listCheck(url, target, suffix, fieldLabel = 'Question text',
   }
 }
 
+// effect: clicks the button whose name contains <label> and reports whether
+//   <expected> then appears on the page: a button must do what it says (a
+//   handler that hands Flet a coroutine does nothing at all).
+async function effectCheck(url, label, expected) {
+  const { browser, page } = await openPage(url);
+  try {
+    // A label starting with "=" must match the button's whole name.
+    const exact = (name) => page.evaluate((wanted) => {
+      const node = Array.from(document.querySelectorAll('flt-semantics'))
+        .find((n) => n.getAttribute('role') === 'button'
+                     && (n.getAttribute('aria-label') || n.innerText || '').trim() === wanted);
+      if (!node) return null;
+      const r = node.getBoundingClientRect();
+      return { x: r.x + Math.min(r.width / 2, 60), y: r.y + r.height / 2 };
+    }, name);
+    const locate = () => (label.startsWith('=') ? exact(label.slice(1)) : nodeByLabel(page, label));
+    let node = await locate();
+    await page.mouse.move(900, 500);
+    for (let i = 0; i < 40 && (!node || node.y > 820 || node.y < 80); i += 1) {
+      await page.mouse.wheel(0, node && node.y < 80 ? -200 : 200);
+      await page.waitForTimeout(150);
+      node = await locate();
+    }
+    if (!node) throw new Error(`${label} not found`);
+    const shown = () => page.evaluate((text) => Array.from(document.querySelectorAll('flt-semantics'))
+      .some((n) => (n.getAttribute('aria-label') || n.innerText || '').includes(text)), expected);
+    const before = await shown();
+    await page.mouse.click(node.x, node.y);
+    let after = false;
+    for (let i = 0; i < 20 && !after; i += 1) {
+      await page.waitForTimeout(400);
+      after = await shown();
+    }
+    return { label, expected, shown_before: before, shown_after: after };
+  } finally {
+    await browser.close();
+  }
+}
+
 // expand: opens the section whose header contains <text>, then clicks the
 //   first checkbox; the section must still be open afterwards.
 async function expandCheck(url, header) {
@@ -319,6 +358,12 @@ async function affordanceCheck(url, targets) {
 
 (async () => {
   const [mode, url, out, text = 'Fictional stress study', fieldLabel, anchor] = process.argv.slice(2);
+  if (mode === 'effect') {
+    const result = await effectCheck(url, text, fieldLabel);
+    require('fs').writeFileSync(out, JSON.stringify(result, null, 1));
+    console.log(JSON.stringify(result));
+    return;
+  }
   if (mode === 'affordance') {
     const result = await affordanceCheck(url, process.argv.slice(5));
     require('fs').writeFileSync(out, JSON.stringify(result, null, 1));
