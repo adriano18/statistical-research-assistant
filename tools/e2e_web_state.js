@@ -134,20 +134,29 @@ async function listCheck(url, target, suffix, fieldLabel = 'Question text',
     await page.waitForTimeout(2500);
     const after = await nodeByLabel(page, target);
     // The wording field is labelled; its value is only in the DOM while focused.
-    const field = await page.evaluate((label) => {
+    const locate = () => page.evaluate((label) => {
       const el = Array.from(document.querySelectorAll('textarea, input'))
         .find((e) => e.getAttribute('aria-label') === label);
       if (!el) return null;
       const r = el.getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      return { x: r.x + r.width / 2, y: r.y + Math.min(r.height / 2, 20), bottom: r.y + r.height };
     }, fieldLabel);
+    let field = await locate();
+    // Like a person, scroll a little when the editor opened low on the screen
+    // (a sticky footer may cover the bottom of the page).
+    for (let i = 0; i < 12 && field && field.bottom > 700; i += 1) {
+      await page.mouse.wheel(0, 120);
+      await page.waitForTimeout(200);
+      field = await locate();
+    }
     let typed = null;
     let shown = null;
     if (field) {
       await page.mouse.click(field.x, field.y);
       await page.waitForTimeout(600);
       shown = await page.evaluate(() => (document.activeElement || {}).value || null);
-      await page.keyboard.press('End');
+      // The end of the text, not of the first visual line of a multiline field.
+      await page.keyboard.press('Control+End');
       for (const ch of suffix) {
         await page.keyboard.type(ch);
         await page.waitForTimeout(150);
@@ -158,11 +167,13 @@ async function listCheck(url, target, suffix, fieldLabel = 'Question text',
         return { tag: el ? el.tagName : null, value: el && 'value' in el ? el.value : null };
       });
     }
+    // A list row may show its number ("60. ...") in front of the wording.
+    const content = target.replace(/^\d+\.\s+/, '');
     return { target, before_y: Math.round(node.y), after_y: after ? Math.round(after.y) : null,
              moved_by: after ? Math.round(after.y - node.y) : null,
-             editor_shows_item: Boolean(shown && shown.includes(target)),
+             editor_shows_item: Boolean(shown && shown.includes(content)),
              focused_tag: typed && typed.tag, final_value: typed && typed.value,
-             kept_typing: Boolean(typed && typed.value && typed.value.includes(target)
+             kept_typing: Boolean(typed && typed.value && typed.value.includes(content)
                                   && typed.value.endsWith(suffix)) };
   } finally {
     await browser.close();
