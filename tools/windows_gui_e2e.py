@@ -953,8 +953,10 @@ def save_via_dialog(gui: Gui, journey: Journey, button: str, target: Path, *, ki
         gui.wait_text(T("save.saved", path="").strip(), timeout=40)
         gui.wait_text(target.name if kind == "sra" or target.suffix else target.name + ".",
                       timeout=10)
-        facts = verify_saved(target, kind=kind, contains=contains)
-        journey.facts[target.name] = facts
+        # A name typed without its extension is saved with it (``with_extension``).
+        written = target if target.suffix else target.with_name(target.name + "." + kind)
+        facts = verify_saved(written, kind=kind, contains=contains)
+        journey.facts[written.name] = facts
         return facts
 
 
@@ -1177,32 +1179,30 @@ def journey_responses(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text(T("q.publish_ok", title="Fictional wellbeing pilot"))
     for respondent, (group, stress) in enumerate((("A", "2"), ("B", "4"), ("A", "3"))):
         with journey.step(f"collect response {respondent + 1} in the form"):
-            before = {gui.element_id(e) for e in gui.query(T("q.collect"), control_type="Button")}
             opener = gui.click(T("q.collect"), control_type=("Button", "Text"), index=0)
 
-            def form_submit(wait):
-                # The dialog's own submit button is the new "Collect a response".
+            def form(wait):
+                # Flutter names an open dialog "Alert"; the page behind it is hidden.
                 deadline = time.monotonic() + wait
                 while time.monotonic() < deadline:
-                    found = next((e for e in gui.query(T("q.collect"), control_type="Button")
-                                  if gui.element_id(e) not in before), None)
-                    if found is not None:
-                        return found
+                    found = gui.query("Alert", control_type=("Group", "Pane", "Window", "Custom"))
+                    if found:
+                        return found[-1]
                     time.sleep(0.5)
                 return None
 
-            submit = form_submit(8)
-            if submit is None:
+            alert = form(8)
+            if alert is None:
                 print("  [form] the click did not open the response form; pressing the "
                       "button through UI Automation", flush=True)
                 Gui.activate(opener)
-                submit = form_submit(10)
-            if submit is None:
+                alert = form(10)
+            if alert is None:
                 gui.log_screen("the response form did not open")
-            expect(submit is not None, "the response form did not open")
-            r = submit.element_info.rectangle
-            dialog = (r.right - 720, r.top - 640, r.right + 30, r.bottom + 10)
-            print(f"  [form] the response form is open around {dialog}", flush=True)
+            expect(alert is not None, "the response form did not open")
+            r = alert.element_info.rectangle
+            dialog = (r.left, r.top, r.right, r.bottom)
+            print(f"  [form] the response form is open at {dialog}", flush=True)
             with gui.within(dialog):
                 answer_form(gui, group, stress, 30 + respondent)
                 gui.click(T("q.collect"), control_type="Button")
