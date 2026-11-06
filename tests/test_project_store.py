@@ -185,6 +185,71 @@ class ProjectLifecycleTests(StoreCase):
         with mock.patch.dict(os.environ, {"SRA_DATA_DIR": str(self.base / "custom")}):
             self.assertEqual(ps.project_data_root(ROOT), self.base / "custom" / "projects")
 
+    def test_packaged_projects_never_live_in_the_unpacked_app_folder(self):
+        """Older questionnaires may still be read from an unpacked preview
+        folder; projects always go to the durable per-user data folder."""
+        install = self.base / "unpacked-preview"
+        (install / "data" / "surveys").mkdir(parents=True)
+        (install / "data" / "surveys" / "survey_old.sqlite3").write_bytes(b"kept")
+        durable = self.base / "user-data"
+        environment = {"FLET_APP_STORAGE_DATA": str(durable)}
+        with mock.patch.dict(os.environ, environment), \
+                mock.patch("startup_diagnostics.is_packaged", return_value=True):
+            os.environ.pop("SRA_DATA_DIR", None)
+            from startup_diagnostics import survey_data_root
+
+            self.assertEqual(survey_data_root(install), install / "data" / "surveys")
+            self.assertEqual(ps.project_data_root(install), durable / "projects")
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SRA_DATA_DIR", None)
+            os.environ.pop("FLET_APP_STORAGE_DATA", None)
+            self.assertEqual(ps.project_data_root(install), install / "data" / "projects")
+
+
+class StoredTableTests(StoreCase):
+    def test_stored_copies_read_back_as_exactly_the_same_table(self):
+        """CSV text alone loses types ("01" → 1, "NA" → missing, 0.1 + 0.2 → 0.3);
+        the stored column types keep the reopened table identical."""
+        import numpy as np
+
+        frame = pd.DataFrame({
+            "id": ["001", "002", "003", "004"],
+            "group": ["01", "02", "01", "02"],
+            "score": [1.5, 0.1 + 0.2, np.nan, 1 / 3],
+            "count": [1, 2, 3, 4],
+            "nullable": pd.array([1, None, 3, 4], dtype="Int64"),
+            "flag": [True, False, True, False],
+            "text": ["a, b", "NA", None, 'x"y\nz'],
+            "blank": ["", None, "q", ""],
+            "when": pd.to_datetime(["2024-01-01", "2024-02-01 10:30", None, "2024-03-05"],
+                                   format="ISO8601"),
+            "level": pd.Categorical(["low", "high", "low", "high"],
+                                    categories=["low", "mid", "high"], ordered=True),
+            "decimal_comma_text": ["1,5", "2,5", "3,5", "4,5"],
+            "extremes": [1e-300, -0.0, 12345678901234567.0, 2.5e10],
+            "1": [1.25, 2.0, 3.0, 4.0],
+        })
+        info = self.store.create("Types")
+        with self.store.open(info.id) as project:
+            record = project.add_frame(frame, "types", origin="copy")
+        with self.restart().open(info.id) as project:
+            back = project.load_frame(record.id)
+            version = project.load_version(record.id, record.sha256)
+        pd.testing.assert_frame_equal(back, frame, check_exact=True)
+        pd.testing.assert_frame_equal(version, frame, check_exact=True)
+        self.assertEqual(ps.frame_sha256(back), ps.frame_sha256(frame))
+
+    def test_original_files_without_stored_types_use_the_normal_importer(self):
+        info = self.store.create("Original file")
+        with self.store.open(info.id) as project:
+            record = project.import_dataset(EXAMPLES / "sample_scale.csv", mode="copy")
+            self.assertFalse(any(p.name.endswith(ps.TABLE_SCHEMA_SUFFIX)
+                                 for p in (project.path / "datasets").iterdir()))
+            from data_loader import load_dataset
+
+            pd.testing.assert_frame_equal(project.load_frame(record.id),
+                                          load_dataset(EXAMPLES / "sample_scale.csv"))
+
 
 class StaleResultTests(StoreCase):
     def test_changed_source_data_marks_results_stale_without_deleting_them(self):

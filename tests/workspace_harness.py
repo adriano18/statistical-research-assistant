@@ -33,12 +33,15 @@ class FakePage(_InventoryPage):
 class Workspace:
     """A live WorkspaceApp plus helpers to find and operate controls."""
 
-    def __init__(self, width: int = 1440, *, language: str = "en", bridge=None):
+    def __init__(self, width: int = 1440, *, language: str = "en", bridge=None,
+                 root: Path | None = None):
+        """``root`` reuses a data folder (an application restart); by default
+        every workspace gets its own temporary folder."""
         from flet.controls.context import _context_page
         from workspace_shell import ClassicBridge, WorkspaceApp
 
-        self.temp = TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        self.temp = None if root is not None else TemporaryDirectory()
+        self.root = Path(root) if root is not None else Path(self.temp.name)
         self.page = FakePage(width)
         self._token = _context_page.set(self.page)
         self.app = WorkspaceApp(
@@ -55,10 +58,16 @@ class Workspace:
         self.app.save_dialog = save_dialog
 
     def close(self):
+        """Quit the application: the open project is closed, its lock released."""
         from flet.controls.context import _context_page
 
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
+        self.app.projects.close(clear=False)
         _context_page.reset(self._token)
-        self.temp.cleanup()
+        if self.temp is not None:
+            self.temp.cleanup()
 
     # ------------------------------------------------------------ queries
     def controls(self, root=None) -> list:

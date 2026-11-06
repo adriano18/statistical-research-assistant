@@ -16,6 +16,7 @@ Requires Node with the pre-installed Playwright Chromium. Fictional data only.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import os
 from pathlib import Path
@@ -43,6 +44,10 @@ MATRIX = (
     ("questionnaires_narrow", "questionnaires", 960, 1000, 1, "en", "light"),
     ("scientific_import", "import", 1600, 1500, 1, "en", "light"),
     ("help_shortcuts", "help", 1280, 800, 1, "en", "light"),
+    ("home_projects", "projects", 1440, 1500, 1, "en", "light"),
+    ("home_projects_lv_125", "projects", 1280, 1600, 1.25, "lv", "light"),
+    ("home_projects_ru_dark", "projects", 1100, 1600, 1, "ru", "dark"),
+    ("results_stale", "results-stale", 1440, 1500, 1, "en", "light"),
     ("classic_home", "classic-home", 1440, 900, 1, "en", "light"),
     ("classic_groups", "classic-groups", 1440, 2200, 1, "en", "light"),
 )
@@ -77,8 +82,16 @@ def check_image(path: Path) -> list[str]:
     colours = len(set(pixels))
     if colours < 40:
         problems.append(f"almost blank ({colours} colours)")
-    grey = sum(1 for r, g, b in pixels if 180 <= r <= 200 and 185 <= g <= 200
-               and 185 <= b <= 200 and abs(r - g) < 8 and abs(g - b) < 8)
+    # Rendered pages are at most ~60 % one background colour; Flet's loading
+    # screen (a logo on white) is ~99 % and has enough anti-aliased colours
+    # to pass the check above.
+    dominant = Counter(pixels).most_common(1)[0][1] / len(pixels)
+    if dominant > 0.9:
+        problems.append(f"not rendered: {dominant:.0%} one colour (loading screen?)")
+    # Flutter's release-mode error box is flat neutral grey: #B7B7B7 on the
+    # dark theme, slightly lighter on the light theme.
+    grey = sum(1 for r, g, b in pixels if 175 <= r <= 200 and 175 <= g <= 200
+               and 175 <= b <= 200 and abs(r - g) < 8 and abs(g - b) < 8)
     if grey / len(pixels) > 0.04:
         problems.append(f"possible error placeholder ({grey / len(pixels):.1%} flat grey)")
     return problems

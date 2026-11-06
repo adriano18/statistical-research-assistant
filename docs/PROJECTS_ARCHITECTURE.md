@@ -41,7 +41,9 @@ Non-goals (this stage)
 ## 3. Where data lives
 
 `project_data_root()` places projects next to the questionnaire storage
-(`startup_diagnostics.survey_data_root`):
+(`startup_diagnostics.survey_data_root`), with one deliberate difference: a
+packaged build that still reads older questionnaires from an unpacked preview
+folder keeps its projects in the per-user data folder anyway.
 
 | Situation | Questionnaires | Projects |
 |---|---|---|
@@ -56,12 +58,25 @@ projects/
   <project-id>/                 one self-contained folder per project
     project.sqlite3             everything structured (schema below)
     datasets/<sha256><ext>      imported copies, content-addressed, immutable
+    datasets/<sha256>.schema.json  column types of a table the project wrote as CSV
     figures/<run-id>.png        chart of each saved run
     project.lock                while an app instance has it open
   .trash/<id>-<timestamp>/      deleted projects (restorable)
   .backups/                     database copies taken before a migration
   .new-<id>/                    staging during create/duplicate/restore
 ```
+
+**Stored tables read back identically.** A table that exists only in memory
+(the loaded table with its import options applied, prepared data, questionnaire
+responses) is written as plain CSV plus a small JSON schema with each column's
+type, the categories of categorical columns and which text cells were missing
+rather than empty. CSV text alone would not survive a reopen: `"01"` would
+become `1`, the text `"NA"` would become missing, integers would become floats
+and `0.1 + 0.2` would be rounded. With the schema the reopened table is equal
+to the original (`test_stored_copies_read_back_as_exactly_the_same_table`);
+the only documented loss is a column mixing numbers and text in one object
+column, which is read back as text. Original files the researcher imported keep
+their own format and are read with the normal importer.
 
 **No separate catalog.** The project list is the set of folders; each
 `project.sqlite3` describes itself. A catalog database would be a second
@@ -90,7 +105,7 @@ filters titles, descriptions and research areas.
   interface shows "the project was not closed properly". Archive, delete and
   move are refused while a project is open.
 - **Recoverable delete.** Delete moves the folder to `.trash`; restore moves it
-  back. Permanent removal is a separate, explicitly confirmed action (UI PR).
+  back. Permanent removal will be a separate, explicitly confirmed action (planned).
 
 ## 6. Migrations
 
@@ -118,8 +133,20 @@ filters titles, descriptions and research areas.
 - **Reproduction**: because the exact data version and inputs are stored, a
   saved run can be recalculated with `workspace_methods.run_method`; the test
   suite checks that the recalculated report has the same SHA-256 after a
-  restart. Word export of a saved run uses this path (UI PR), so a Word file is
-  never built from stale numbers.
+  restart.
+- **On opening a project** saved results appear at once from their stored
+  report, tables and chart. A background check (`ProjectBinding.verify_restored`)
+  then recalculates each one on the exact dataset version it used. When the
+  report SHA-256 matches, the full engine result object is restored; when it
+  does not, the result is marked "recalculating it gives a different report"
+  and is never silently replaced. Word export and post-hoc tests need that
+  object, so they run the same check first; an unreproducible result can still
+  be copied or saved as text, but no Word file is built from it.
+- A follow-up of a saved result (post-hoc pairs of an omnibus test) is stored
+  with the data version of the result it extends, not the current one.
+- A calculation that finishes after the researcher switched project or loaded
+  other data is discarded with a message, so a result is never filed against
+  data it was not calculated on.
 - `report_text()` refuses stale runs unless the caller explicitly allows them,
   in which case each one is labelled STALE with its reasons.
 - `reproducibility_appendix()` lists dataset version, variables, options,
@@ -198,18 +225,42 @@ confirmation per request; the provider and region are shown; every transfer
 is logged in the project's activity log; switching projects clears the
 context; no model inference from the profile's education level alone.
 
-## 13. Interface (next PR)
+## 13. Interface
 
-- **Project Hub** becomes Home: New project (title → Create: two actions),
-  Recent, Open/restore backup, Archived, Samples, search.
-- **Active project bar**: project title, active dataset, save state ("Saved"
-  after each change — every action is persisted), switch project, back up.
-- Switching is refused while a calculation or OCR job runs (or asks to wait).
-- Results and Reports read runs from the project; stale runs carry a badge with
-  reasons and a *Recalculate* action; the combined report blocks stale runs.
-- **Supervisor review mode**: a read-only view of decisions, confirmations,
-  provenance and the activity log — a view, not an account or role.
-- Novice/advanced explanations come from the profile, overridable per project.
+Implemented (`workspace_projects.py`, `project_session.py`):
+
+- **Home** shows the current project (title, counts, "Saved automatically ·
+  last change", results to review, *Back up…*, *Close project*) and the list
+  of projects: **create** (title → *Create project*: two actions), *Open*,
+  *Duplicate*, *Back up…*, *Archive* / *Return from the archive*, *Delete…*
+  (asks first; moves to **Recently deleted**, restorable), *Show archived
+  projects* and *Restore a backup…* (`.sra`, desktop path or browser upload).
+- Work done before any project exists moves into the first project created;
+  creating or opening another project starts from that project's own state.
+- **Context bar**: "Project: <title>" (warning tone while results need review)
+  or "No project" with the explanation that work is kept for this session only.
+- **No save step.** Every session event is written at once: datasets (with
+  their origin: file, sample, upload, questionnaire responses, prepared data,
+  classic interface), confirmed levels, results with roles, effective options
+  and confirmations, and the report selection. Loading the same file or the
+  same questionnaire again records a new version of the same dataset.
+- **Results**: stale results carry a "Review needed" badge and a notice with
+  the translated reasons and *Recalculate with current data*, which opens the
+  analysis form with the same method, variables and options but **without**
+  the earlier confirmations — the researcher confirms the checks again for the
+  changed data. The earlier result is kept.
+- **Reports**: while selected results need review, export waits until they are
+  recalculated or removed, or the researcher includes them explicitly; each is
+  then labelled "Needs review: calculated before these changes: …".
+- The project is closed (its lock released) when the application exits; only
+  a real interruption shows the recovery message on the next start.
+- Projects live in Flet's per-user data folder in a packaged build (§3); if
+  that folder cannot be written, Home says so and the workspace keeps working
+  without projects.
+
+Planned: search across projects, a **supervisor review mode** (read-only view
+of decisions, confirmations, provenance and the activity log — a view, not an
+account or role), and novice/advanced explanations from the profile.
 
 ## 14. Acceptance mapping (issue #24)
 
@@ -220,6 +271,12 @@ context; no model inference from the profile's education level alone.
 | Recovery, backup/restore on a clean machine, migration, large data, missing paths | `test_an_abandoned_lock_is_recovered_and_logged`, `test_backup_restores_on_a_clean_machine_with_questionnaires`, `test_migration_backs_up_the_old_database_and_keeps_data`, `test_large_dataset_round_trip`, `test_missing_linked_file_can_be_relinked` |
 | Existing questionnaires intact | `test_existing_questionnaires_are_untouched_by_project_operations`, `test_restoring_twice_never_overwrites_a_project_or_newer_responses` |
 | Reproducibility | `test_saved_run_reproduces_the_same_report_from_the_project` |
-| Profile independence, EN/LV/RU, accessibility, packaged smoke | profile and UI pull requests |
+| Create in two actions, reopen after restart, switch without mixing (interface) | `test_a_project_is_created_in_two_actions_and_saves_without_a_save_step`, `test_reopening_after_a_restart_restores_data_levels_results_and_report`, `test_switching_projects_from_home_keeps_their_work_apart` |
+| Duplicate, archive, back up, delete, restore (interface) | `test_duplicate_archive_backup_delete_and_restore_from_home`, `test_a_backup_from_the_browser_arrives_as_bytes`, `test_a_damaged_backup_is_refused_with_a_message` |
+| Stale warnings, recalculation with renewed confirmations, report gate | `test_changed_data_marks_results_and_holds_the_report_until_decided`, `test_recalculating_opens_the_analysis_and_asks_for_the_checks_again`, `test_loading_the_changed_file_again_keeps_old_results_reproducible` |
+| Questionnaire responses as a versioned dataset; questionnaires untouched | `test_questionnaire_responses_are_one_dataset_with_versions` |
+| Exact table round trip; unreproducible results never become Word files | `test_stored_copies_read_back_as_exactly_the_same_table`, `test_a_result_that_cannot_be_reproduced_is_not_exported_as_word` |
+| No result filed against the wrong data | `test_a_result_finished_after_switching_projects_is_not_filed_in_the_new_one`, `test_work_started_without_a_project_moves_into_the_first_one_created` |
+| Profile independence, accessibility, packaged smoke | profile pull request; screenshot suite (`home_projects`) |
 
 The project tests also run on the Windows CI runner (locks, renames, file URIs).

@@ -69,6 +69,7 @@ MAX_PACKAGE_FILES = 20_000
 MAX_PACKAGE_BYTES = 4 * 1024 ** 3          # uncompressed
 MAX_COMPRESSION_RATIO = 250                # per entry, above 10 MiB
 DATASET_SUFFIXES = {".csv", ".xlsx", ".xls", ".tsv", ".txt"}
+TABLE_SCHEMA_SUFFIX = ".schema.json"         # column types of a stored CSV copy
 LIBRARIES = ("numpy", "scipy", "pandas", "statsmodels", "pingouin", "matplotlib",
              "scikit-learn", "openpyxl", "python-docx")
 PROJECT_FIELDS = ("title", "description", "research_area", "population_notes",
@@ -138,10 +139,23 @@ def library_versions() -> dict[str, str]:
 
 
 def project_data_root(source_root: Path) -> Path:
-    """Folder holding all projects, next to the questionnaire storage."""
-    from startup_diagnostics import survey_data_root
+    """Folder holding all projects.
 
-    return survey_data_root(Path(source_root)).parent / "projects"
+    ``SRA_DATA_DIR`` wins (tests, portable use). A packaged build always uses
+    Flet's durable per-user data folder, even while older questionnaires are
+    still read from an unpacked preview folder, so a new version extracted
+    elsewhere never hides a project. A source checkout keeps
+    ``<repo>/data/projects`` (git-ignored, next to ``data/surveys``).
+    """
+    from startup_diagnostics import is_packaged
+
+    override = os.environ.get("SRA_DATA_DIR", "").strip()
+    if override:
+        return Path(override) / "projects"
+    data = os.environ.get("FLET_APP_STORAGE_DATA", "").strip()
+    if data and is_packaged():
+        return Path(data) / "projects"
+    return Path(source_root) / "data" / "projects"
 
 
 # ------------------------------------------------------------------ schema
@@ -923,13 +937,21 @@ class Project:
         """Store an in-memory table (prepared data, questionnaire responses) as CSV."""
         if origin not in ("copy", "derived", "survey"):
             raise ProjectError("origin must be 'copy', 'derived' or 'survey'")
+        stored, digest = self._write_table(frame)
+        return self._insert_dataset(name, origin, None, stored, digest, frame,
+                                    parent_id=parent_id, survey_id=survey_id)
+
+    def _write_table(self, frame) -> tuple[str, str]:
+        """Store a table as CSV plus its column types; (stored path, SHA-256 of the CSV)."""
         data = frame.to_csv(index=False, lineterminator="\n").encode("utf-8")
         digest = sha256_bytes(data)
         stored = f"datasets/{digest}.csv"
+        schema = self.path / "datasets" / f"{digest}{TABLE_SCHEMA_SUFFIX}"
+        if not schema.exists():
+            _atomic_write(schema, json.dumps(table_schema(frame), ensure_ascii=False).encode("utf-8"))
         if not (self.path / stored).exists():
             _atomic_write(self.path / stored, data)
-        return self._insert_dataset(name, origin, None, stored, digest, frame,
-                                    parent_id=parent_id, survey_id=survey_id)
+        return stored, digest
 
     def _insert_dataset(self, name, origin, source, stored, digest, frame, *, parent_id=None,
                         survey_id=None) -> DatasetRecord:
@@ -963,16 +985,20 @@ class Project:
             frame = frame if frame is not None else _load_frame(path)
             suffix = path.suffix.lower()
         elif frame is not None:
-            data = frame.to_csv(index=False, lineterminator="\n").encode("utf-8")
-            suffix = ".csv"
+            data = None
         else:
             raise ProjectError("Give the new file or table.")
-        digest = sha256_bytes(data)
         stored = record.stored_path
-        if record.origin != "link":
-            stored = f"datasets/{digest}{suffix}"
-            if not (self.path / stored).exists():
-                _atomic_write(self.path / stored, data)
+        if data is None:
+            if record.origin == "link":
+                raise ProjectError("A linked dataset changes with its file; relink it instead.")
+            stored, digest = self._write_table(frame)
+        else:
+            digest = sha256_bytes(data)
+            if record.origin != "link":
+                stored = f"datasets/{digest}{suffix}"
+                if not (self.path / stored).exists():
+                    _atomic_write(self.path / stored, data)
         with self._write() as db:
             self._new_version(db, dataset_id, digest, stored, frame.shape, reason,
                               source=str(path.resolve()) if path is not None and record.origin == "link" else None)
@@ -1026,6 +1052,21 @@ class Project:
                 raise ProjectError(f"The linked file is missing: {record.source_path}")
             return _load_frame(Path(record.source_path))
         return _load_frame(self.path / record.stored_path)
+
+    def version_files(self, dataset_id: str, sha256: str) -> tuple[Path, ...]:
+        """Files that may hold one version of a dataset, newest first (no reading)."""
+        record = self.dataset(dataset_id)
+        paths = [self.path / version["stored_path"]
+                 for version in reversed(self.dataset_versions(dataset_id))
+                 if version["sha256"] == sha256 and version["stored_path"]]
+        if record.origin == "link" and record.sha256 == sha256 and record.source_path:
+            paths.append(Path(record.source_path))
+        return tuple(paths)
+
+    def load_version(self, dataset_id: str, sha256: str):
+        """The table exactly as it was at one version, or None when the project
+        kept no copy of that version (a linked file that has changed since)."""
+        return load_verified(self.version_files(dataset_id, sha256), sha256)
 
     def check_source(self, dataset_id: str) -> SourceStatus:
         """For linked files: has the original been moved or changed?"""
@@ -1124,9 +1165,16 @@ class Project:
     # ---------------------------------------------------------------- runs
     def record_run(self, run, *, method: str, dataset_id: str | None, roles: dict,
                    options: dict, confirms: dict, confirmations: Iterable[str] = (),
-                   levels: dict | None = None) -> RunRecord:
-        """Save one completed analysis (an ``analysis_runs.AnalysisRun``)."""
-        dataset_sha = self.dataset(dataset_id).sha256 if dataset_id else ""
+                   levels: dict | None = None, dataset_sha256: str | None = None) -> RunRecord:
+        """Save one completed analysis (an ``analysis_runs.AnalysisRun``).
+
+        ``dataset_sha256`` names the dataset version the run was calculated on
+        when that is not the current one (a follow-up of an earlier result)."""
+        if dataset_sha256 and dataset_id:
+            known = {v["sha256"] for v in self.dataset_versions(dataset_id)}
+            if dataset_sha256 not in known:
+                raise ProjectError("That dataset version is not part of this project.")
+        dataset_sha = dataset_sha256 or (self.dataset(dataset_id).sha256 if dataset_id else "")
         run_id = str(uuid.uuid4())
         figure = None
         if run.png:
@@ -1280,7 +1328,103 @@ class _ClosingConnection:
             self.db.close()
 
 
+def load_verified(paths: Iterable[Path], sha256: str):
+    """The first file whose content still has this SHA-256, loaded; else None.
+
+    Touches no project database, so a worker thread may call it."""
+    for path in paths:
+        path = Path(path)
+        if path.is_file() and sha256_file(path) == sha256:
+            return _load_frame(path)
+    return None
+
+
+def table_schema(frame) -> dict:
+    """What CSV text cannot carry about a table: each column's type, the
+    categories of categorical columns, and which text cells were missing
+    rather than empty. Stored next to every CSV copy the project writes."""
+    import numpy as np
+    import pandas as pd
+
+    columns = []
+    for position, (name, dtype) in enumerate(frame.dtypes.items()):
+        entry: dict[str, Any] = {"name": str(name), "dtype": str(dtype)}
+        if isinstance(dtype, pd.CategoricalDtype):
+            entry["categories"] = [str(c) for c in dtype.categories]
+            entry["ordered"] = bool(dtype.ordered)
+        elif _is_text_type(entry["dtype"]):
+            values = frame.iloc[:, position]
+            missing = values.isna().to_numpy()
+            empty = values.map(lambda v: isinstance(v, str) and v == "").to_numpy(dtype=bool)
+            if empty.any():
+                entry["empty_text"] = True
+                if missing.any():
+                    entry["missing_rows"] = [int(i) for i in np.flatnonzero(missing)]
+        columns.append(entry)
+    return {"format": 1, "columns": columns}
+
+
+def _is_text_type(kind: str) -> bool:
+    # "object" (pandas 2), "str" (pandas 3 default) and the explicit "string" types
+    return kind in ("object", "str") or kind.startswith("string")
+
+
+def _read_typed_table(path: Path):
+    """A CSV copy written by this module, read back with its stored column
+    types; None when the file has no schema (an original file)."""
+    import pandas as pd
+
+    schema_file = path.with_name(path.stem + TABLE_SCHEMA_SUFFIX)
+    if path.suffix.lower() != ".csv" or not schema_file.is_file():
+        return None
+    try:
+        columns = json.loads(schema_file.read_text(encoding="utf-8"))["columns"]
+        names = [str(c["name"]) for c in columns]
+        kinds = [str(c["dtype"]) for c in columns]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    read_as: dict[int, Any] = {}
+    missing: dict[int, list[str]] = {}
+    for index, (column, kind) in enumerate(zip(columns, kinds)):
+        textual = _is_text_type(kind) or kind == "category" or kind.startswith(("datetime", "timedelta"))
+        if textual:
+            read_as[index] = str
+            missing[index] = [] if column.get("empty_text") else [""]
+        elif kind == "bool" or kind.startswith(("int", "uint")):
+            read_as[index] = kind      # cannot hold missing values
+            missing[index] = []
+        else:                          # float64, Int64, Float64, boolean ...
+            read_as[index] = kind
+            missing[index] = [""]
+    frame = pd.read_csv(path, header=None, skiprows=1, dtype=read_as, keep_default_na=False,
+                        na_values=missing, encoding="utf-8", float_precision="round_trip")
+    if frame.shape[1] != len(names):
+        raise ProjectFormatError(f"{path.name} does not match its column types.")
+    frame.columns = names
+    for index, (column, kind) in enumerate(zip(columns, kinds)):
+        values = frame.iloc[:, index]
+        if column.get("missing_rows"):
+            values = values.copy()
+            values.iloc[column["missing_rows"]] = None
+        if kind == "category":
+            values = values.astype(pd.CategoricalDtype(column.get("categories") or None,
+                                                       ordered=bool(column.get("ordered"))))
+        elif kind.startswith("datetime"):
+            values = pd.to_datetime(values, format="ISO8601").astype(kind)
+        elif kind.startswith("timedelta"):
+            values = pd.to_timedelta(values).astype(kind)
+        elif kind == "object":
+            values = values.astype(object)
+        elif kind == "str" or kind.startswith("string"):
+            values = values.astype(kind)
+        frame.isetitem(index, values)
+    return frame
+
+
 def _load_frame(path: Path):
+    typed = _read_typed_table(Path(path))
+    if typed is not None:
+        return typed
     from data_loader import load_dataset
 
     return load_dataset(path)

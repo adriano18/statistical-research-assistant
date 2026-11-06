@@ -89,6 +89,15 @@ class ResultEntry:
     created: datetime
     confirmations: tuple[str, ...] = ()
     in_report: bool = False
+    # How the result was produced (method key, variable roles, effective
+    # options, confirmations) — what a project stores to reproduce it.
+    method: str | None = None
+    roles: dict | None = None
+    options: dict | None = None
+    confirms: dict | None = None
+    record_id: str | None = None    # saved analysis run in the open project
+    restored: bool = False          # loaded from the project, not calculated now
+    stale_reasons: tuple[str, ...] = ()
 
     @property
     def title(self) -> str:
@@ -101,6 +110,10 @@ class ResearchSession:
     source_name: str = ""
     import_report: object | None = None
     source_path: str | None = None
+    # Where the table came from: "file", "sample", "upload", "survey",
+    # "prepared" or "classic" — what a project records as its provenance.
+    dataset_origin: str = ""
+    dataset_survey_id: str | None = None
     variables: dict[str, VariableInfo] = field(default_factory=dict)
     results: list[ResultEntry] = field(default_factory=list)
     report_order: list[int] = field(default_factory=list)
@@ -120,13 +133,31 @@ class ResearchSession:
         for listener in list(self._listeners):
             listener(what)
 
+    def clear(self) -> None:
+        """Forget the dataset, results and report (switching projects);
+        language, theme and listeners stay."""
+        self.df = None
+        self.source_name = ""
+        self.import_report = None
+        self.source_path = None
+        self.dataset_origin = ""
+        self.dataset_survey_id = None
+        self.variables = {}
+        self.results = []
+        self.report_order = []
+        self.selected_result = None
+        self.guided = {}
+        self.notify("dataset")
+        self.notify("results")
+
     # ---------------------------------------------------------- dataset
     @property
     def has_data(self) -> bool:
         return self.df is not None and not self.df.columns.empty
 
     def set_dataset(self, df: pd.DataFrame, name: str, *, report=None,
-                    path: str | None = None) -> None:
+                    path: str | None = None, origin: str | None = None,
+                    survey_id: str | None = None) -> None:
         if df is None or df.columns.empty:
             raise ValueError("No variables found in this file.")
         same_columns = self.df is not None and list(self.df.columns) == list(df.columns)
@@ -135,6 +166,8 @@ class ResearchSession:
         self.source_name = name
         self.import_report = report
         self.source_path = path
+        self.dataset_origin = origin or ("file" if path else "copy")
+        self.dataset_survey_id = survey_id
         self.guided = {}
         self.notify("dataset")
 
@@ -177,11 +210,17 @@ class ResearchSession:
         return sorted(values.unique().tolist())
 
     # ---------------------------------------------------------- results
-    def add_result(self, run, confirmations=()) -> ResultEntry:
+    def add_result(self, run, confirmations=(), *, method: str | None = None,
+                   roles: dict | None = None, options: dict | None = None,
+                   confirms: dict | None = None, dataset: str | None = None,
+                   rows: int | None = None, created: datetime | None = None,
+                   record_id: str | None = None, restored: bool = False) -> ResultEntry:
         entry = ResultEntry(
-            id=next(self._ids), run=run, dataset=self.source_name,
-            rows=0 if self.df is None else len(self.df), created=datetime.now(),
-            confirmations=tuple(confirmations),
+            id=next(self._ids), run=run, dataset=self.source_name if dataset is None else dataset,
+            rows=(0 if self.df is None else len(self.df)) if rows is None else rows,
+            created=created or datetime.now(), confirmations=tuple(confirmations),
+            method=method, roles=roles, options=options, confirms=confirms,
+            record_id=record_id, restored=restored,
         )
         self.results.append(entry)
         self.selected_result = entry.id
@@ -232,6 +271,9 @@ class ResearchSession:
                 heading, "-" * len(heading),
                 f"Dataset: {entry.dataset} ({entry.rows} rows) · "
                 f"calculated {entry.created:%Y-%m-%d %H:%M}",
-                "", entry.run.report.strip(), "",
             ]
+            if entry.stale_reasons:
+                parts.append("Needs review: calculated before these changes: "
+                             + "; ".join(entry.stale_reasons) + ".")
+            parts += ["", entry.run.report.strip(), ""]
         return "\n".join(parts).rstrip() + "\n"

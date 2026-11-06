@@ -2825,6 +2825,7 @@ async def main(page: ft.Page, startup=None):
             navigate_to_dataset(screen)
 
     def open_workspace_preview(e=None):
+        from project_store import project_data_root
         from workspace_shell import ClassicBridge, WorkspaceApp
 
         workspace_state["restore"] = {
@@ -2840,6 +2841,7 @@ async def main(page: ft.Page, startup=None):
                     current_dataset=current_dataset, adopt_dataset=adopt_dataset,
                     return_to_classic=return_to_classic, open_classic=open_classic,
                     survey_root=survey_data_root(Path(__file__).resolve().parent),
+                    project_root=project_data_root(Path(__file__).resolve().parent),
                 ),
             )
             workspace_state["app"] = app

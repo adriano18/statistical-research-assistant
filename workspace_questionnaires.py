@@ -651,7 +651,8 @@ class QuestionnairesPage:
         from survey_storage import responses_dataframe
 
         df = responses_dataframe(self.app.survey_root, survey.survey_id)
-        self.app.session.set_dataset(df, survey.title)
+        self.app.session.set_dataset(df, survey.title, origin="survey",
+                                     survey_id=survey.survey_id)
         self.app.status(self.app.t("data.loaded", name=survey.title), "success")
         self.app.navigate("data")
 

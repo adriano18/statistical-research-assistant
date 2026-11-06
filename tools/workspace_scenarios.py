@@ -26,8 +26,31 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 SCENARIOS = (
     "home", "data", "guided", "results", "catalog", "form", "reports",
     "questionnaires", "phone-preview", "import", "help", "settings",
-    "classic-home", "classic-groups",
+    "projects", "results-stale", "classic-home", "classic-groups",
 )
+
+
+async def projects(app) -> None:
+    """Three fictional projects (one archived) and an open one with a result
+    that needs review after a measurement level changed."""
+    s, store = app.session, app.projects.store
+    for title in ("Exam anxiety pilot (fictional)", "Peer support evaluation (fictional)"):
+        store.create(title)
+    archived = store.create("Pilot 2025 (fictional)")
+    store.set_archived(archived.id, True)
+    app.projects.create("Sleep and stress (fictional)")
+    await app.load_sample("sample_scale.csv")
+    page = app.pages["analyze"]
+    page.mode = "guided"
+    page._set_goal("compare")
+    page.selection = {"outcome": "stress_q1", "group": "group"}
+    s.confirm_level("stress_q1", "ordinal", "analyze")
+    s.confirm_level("group", "nominal", "analyze")
+    page.confirms = {"independent": True}
+    await page._run_guided()
+    s.toggle_report(s.results[-1].id)
+    s.confirm_level("stress_q1", "scale", "data")      # the result now needs review
+    app.status("")
 
 
 async def apply(app, name: str) -> None:
@@ -35,6 +58,11 @@ async def apply(app, name: str) -> None:
     s = app.session
     if name in {"home", "help", "settings"}:
         app.navigate(name)
+        return
+    if name in {"projects", "results-stale"}:
+        await projects(app)
+        app.pages["home"].hide_onboarding = True
+        app.navigate("home" if name == "projects" else "results")
         return
     if name in {"data", "guided", "results", "catalog", "form", "reports"}:
         await app.load_sample("sample_scale.csv")
