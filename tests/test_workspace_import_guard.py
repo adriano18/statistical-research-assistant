@@ -38,10 +38,13 @@ class Base(unittest.TestCase):
         ws.run(page.open_bytes(connectedness_text_pdf(), "synthetic_two_versions.pdf"))
         ws.choose("imp-instrument", "1")
         scheme = page.session.instrument.schemes[0]
+        ws.click("imp-step-scale")
         ws.check(f"scale-{scheme.id}-structure")
         ws.check(f"scale-{scheme.id}-numeric")
         ws.click(f"scale-{scheme.id}-apply")
+        ws.click("imp-step-confirm")
         ws.check("imp-check-version")
+        ws.check("imp-check-rights")
         ws.check("imp-check-items")
         return page
 

@@ -33,6 +33,16 @@ def _near(value) -> bool:
     return value is not None and abs(value) <= TOLERANCE
 
 
+def _import_120_args() -> list[str]:
+    """Item 60 of the synthetic 120-item import, its wording field, item 1."""
+    sys.path.insert(0, str(ROOT / "tests"))
+    from synthetic_documents import strain_statements
+    from workspace_text import T
+
+    statements = strain_statements(120)
+    return [f"60. {statements[59][:28]}", T["imp.edit_wording"][0], f"1. {statements[0][:20]}"]
+
+
 def _labels_with(prefix: str, button: str, expected: str):
     """A button named exactly (``prefix`` "=") and the text it must bring."""
     def arguments() -> list[str]:
@@ -60,6 +70,8 @@ CHECKS = (
      lambda r: _near(r["moved_by"]) and r["kept_typing"]),
     ("results-section-stays-open", "results", "expand", "Interpretation",
      lambda r: r["still_open"]),
+    ("import-120-item-60", "import-120", "list", _import_120_args,
+     lambda r: _near(r["moved_by"]) and r["kept_typing"]),
     # A button that changes kind is patched, not replaced: it must still draw.
     ("results-add-report-twice", "results", "toggle", _labels("results.add_report",
                                                               "results.in_report"),

@@ -27,7 +27,7 @@ SCENARIOS = (
     "home", "data", "guided", "results", "catalog", "form", "reports",
     "questionnaires", "phone-preview", "import", "help", "settings",
     "projects", "results-stale", "settings-profile", "import-zoom", "questionnaire-120",
-    "project", "classic-home", "classic-groups",
+    "project", "import-psq", "import-120", "classic-home", "classic-groups",
 )
 
 
@@ -190,6 +190,23 @@ async def apply(app, name: str) -> None:
         if len(page.session.instruments) > 1:
             page._instrument(1)
         page._select(0)
+        return
+    if name == "import-psq":
+        from synthetic_documents import psq_like_pdf
+
+        page = app.pages["import"]
+        app.navigate("import")
+        await page.open_bytes(psq_like_pdf(), "synthetic_strain_questionnaire.pdf")
+        page.opened.add("imp-excluded")
+        app.render()
+        return
+    if name == "import-120":
+        from synthetic_documents import numbered_items_pdf
+
+        page = app.pages["import"]
+        app.navigate("import")
+        await page.open_bytes(numbered_items_pdf(120), "synthetic_120_items.pdf")
+        page._go("items")
         return
     raise ValueError(f"Unknown scenario: {name}")
 

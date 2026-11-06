@@ -24,6 +24,24 @@ from workspace_text import count_text
 
 IMPORT_SUFFIXES = (".pdf", ".docx", ".doc")
 
+
+def pages_text(language: str, pages) -> str:
+    """"page 2" / "pages 2, 3 and 5" in the interface language."""
+    numbers = [str(p) for p in sorted(set(pages))]
+    if not numbers:
+        return ""
+    if language == "lv":
+        if len(numbers) == 1:
+            return f"{numbers[0]}. lappuse"
+        return ", ".join(n + "." for n in numbers[:-1]) + f" un {numbers[-1]}. lappuse"
+    if language == "ru":
+        if len(numbers) == 1:
+            return f"страница {numbers[0]}"
+        return f"страницы {', '.join(numbers[:-1])} и {numbers[-1]}"
+    if len(numbers) == 1:
+        return f"page {numbers[0]}"
+    return f"pages {', '.join(numbers[:-1])} and {numbers[-1]}"
+
 KINDS = ("single_choice", "multiple_choice", "likert5", "likert7", "rating_scale",
          "yes_no", "number", "short_text", "long_text", "date", "consent")
 CHOICE_KINDS = {"single_choice", "multiple_choice"}
@@ -758,7 +776,12 @@ class ImportPage:
         self.scale_edits: dict = {}
         self._page_cache: dict = {}
         self.zoom = "fit"           # enlarged page view: fit, 150 or 200 (%)
-
+        # Review wizard (Issue #31): source → shared scale → items → confirm.
+        self.step = "source"
+        self.filter = "all"         # items step: "all" or "attention"
+        self.progress: str | None = None   # what the reading is doing now
+        self._cancel = None         # threading.Event while reading
+        self.opened: set[str] = set()
     async def open_files(self, files):
         picked = files[0]
         name = str(getattr(picked, "name", "") or Path(getattr(picked, "path", "") or "").name)
@@ -783,6 +806,12 @@ class ImportPage:
         return None
 
     async def open_bytes(self, binary: bytes, name: str):
+        """Read a document in a worker thread, with progress and Cancel.
+
+        It is read into a fresh session: a document that cannot be read
+        leaves the one under review as it was."""
+        import threading
+
         problem = self.unreadable(name)
         if problem:
             # Nothing is opened, and a document already under review stays.
@@ -790,35 +819,71 @@ class ImportPage:
             self.app.status(problem, "danger")
             self.app.render()
             return
-        self.busy, self.feedback = True, (self.app.t("imp.reading"), "info")
-        self.app.render()
-        try:
-            message = await asyncio.to_thread(self.session.open, binary, name)
-            ok = self.session.instrument is not None
-            self.feedback = ((self.app.t("imp.read_ok", instruments=len(self.session.instruments),
-                                         items=sum(len(i.questions)
-                                                   for i in self.session.instruments),
-                                         name=name), "success") if ok
-                             else (self.app.t("imp.read_failed", error=message), "warning"))
-        except Exception as error:
-            self.feedback = (self.app.t("imp.read_failed", error=error), "danger")
-        self.busy = False
-        self.page_number, self.selected = 1, None
-        self.scale_edits, self._page_cache = {}, {}
-        if self.session.instrument is not None:
-            self.page_number = self.session.instrument.first_page or 1
+        loop = asyncio.get_running_loop()
+        self._cancel = threading.Event()
+        self.busy, self.progress, self.feedback = True, self.app.t("imp.reading"), None
         self.app.render()
 
+        def progress(message: str):
+            loop.call_soon_threadsafe(self._show_progress, message)
+
+        fresh = ImportSession()
+        try:
+            await asyncio.to_thread(fresh.open, binary, name, progress=progress,
+                                    cancel=self._cancel)
+        except Exception as error:
+            self.feedback = (self.app.t("imp.read_failed", error=error), "danger")
+        else:
+            self.session = fresh
+            self.step, self.filter, self.selected = "source", "all", None
+            self.page_number, self.scale_edits, self._page_cache = 1, {}, {}
+            if fresh.instrument is not None:
+                self.page_number = fresh.instrument.first_page or 1
+                self.feedback = (self.app.t(
+                    "imp.read_ok", instruments=len(fresh.instruments),
+                    items=sum(len(i.questions) for i in fresh.instruments), name=name),
+                    "success")
+            else:
+                self.feedback = (self.app.t("imp.none_found", name=name), "warning")
+        finally:
+            self.busy, self.progress, self._cancel = False, None, None
+        self.app.status(self.feedback[0], self.feedback[1])
+        self.app.render()
+
+    def _show_progress(self, message: str):
+        """A progress message of the reader, in the interface language."""
+        import re
+
+        match = re.search(r"page (\d+) with local OCR \((\d+) of (\d+)\)", message)
+        self.progress = (self.app.t("imp.ocr_progress", page=match[1], done=match[2],
+                                    total=match[3]) if match else message)
+        if self.busy:
+            self.app.render()
+
+    def cancel_reading(self, e=None):
+        if self._cancel is not None:
+            self._cancel.set()
+            self.progress = self.app.t("imp.cancelling")
+            self.app.render()
     # ------------------------------------------------------------- build
     def build(self) -> ft.Control:
         app, ui = self.app, self.app.ui
         header = wc.page_header(ui, ui.t("imp.title"), ui.t("imp.subtitle"), actions=[
             wc.button(ui, ui.t("imp.choose"), action=app.open_document_action, kind="primary",
-                      icon=ft.Icons.UPLOAD_FILE, data="imp-choose"),
+                      icon=ft.Icons.UPLOAD_FILE, disabled=self.busy, data="imp-choose"),
             wc.button(ui, ui.t("nav.questionnaires"), lambda e: app.navigate("questionnaires"),
                       kind="quiet", icon=ft.Icons.ARROW_BACK),
         ])
         body: list[ft.Control] = [header]
+        if self.busy:
+            body.append(wc.card(ui, [ft.Row([
+                ft.ProgressRing(width=20, height=20, stroke_width=3),
+                ft.Container(wc.text(ui, self.progress or ui.t("imp.reading"), tk.TYPE_BODY,
+                                     data="imp-progress"), expand=True),
+                wc.button(ui, ui.t("imp.cancel_ocr"), self.cancel_reading, kind="quiet",
+                          icon=ft.Icons.CANCEL_OUTLINED, data="imp-cancel"),
+            ], spacing=tk.SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER)],
+                padding=tk.SPACE_4, data="imp-busy"))
         if self.feedback:
             retry = ([wc.button(ui, ui.t("imp.choose_other"), action=app.open_document_action,
                                 kind="secondary", icon=ft.Icons.UPLOAD_FILE,
@@ -827,28 +892,135 @@ class ImportPage:
             body.append(wc.notice(ui, self.feedback[0], self.feedback[1], actions=retry,
                                   data="imp-feedback"))
         if self.session.source is None:
-            body.append(wc.empty_state(ui, ft.Icons.DOCUMENT_SCANNER_OUTLINED,
-                                       ui.t("imp.empty.title"), ui.t("imp.empty.body"),
-                                       actions=[wc.button(ui, ui.t("imp.choose"),
-                                                          action=app.open_document_action,
-                                                          kind="primary")],
-                                       data="imp-empty"))
+            if not self.busy:
+                body.append(wc.empty_state(ui, ft.Icons.DOCUMENT_SCANNER_OUTLINED,
+                                           ui.t("imp.empty.title"), ui.t("imp.empty.body"),
+                                           actions=[wc.button(ui, ui.t("imp.choose"),
+                                                              action=app.open_document_action,
+                                                              kind="primary")],
+                                           data="imp-empty"))
             return app.constrained(ft.Column(body, spacing=tk.SPACE_4))
+        steps = {"source": self._step_source, "scale": self._step_scale,
+                 "items": self._step_items, "confirm": self._step_confirm}
+        if self.session.instrument is None:
+            self.step = "source"
+        content = steps[self.step]()
         source = self._source_pane()
-        review = self._review_pane()
-        preview = self._preview_pane()
-        if app.content_width >= 1180:
-            panes = ft.Row([ft.Container(source, width=int(app.content_width * 0.34)),
-                            ft.Container(review, expand=True),
-                            ft.Container(preview, width=tk.PANE_PREVIEW_WIDTH - 40)],
+        if app.content_width >= 1100:
+            panes = ft.Row([ft.Container(source, width=int(app.content_width * 0.38)),
+                            ft.Container(content, expand=True)],
                            vertical_alignment=ft.CrossAxisAlignment.START, spacing=tk.SPACE_4)
         else:
-            panes = ft.Column([source, review, preview], spacing=tk.SPACE_4)
-        body += [panes, self._checklist()]
+            panes = ft.Column([content, source], spacing=tk.SPACE_4)
+        if self.session.instrument is not None:
+            body.append(self._stepper())
+        body.append(panes)
         return app.constrained(ft.Column(body, spacing=tk.SPACE_4,
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
                                tk.CONTENT_MAX_WIDTH + 400)
 
+    # ---------------------------------------------------------- wizard
+    STEPS = ("source", "scale", "items", "confirm")
+
+    def _status(self) -> dict:
+        """What is still open in each step (counts for the stepper and footer)."""
+        s = self.session
+        instrument = s.instrument
+        keys = dict(s.blocker_keys())
+        schemes = instrument.schemes if instrument else ()
+        confirmed = sum(1 for x in schemes if x.structure_confirmed)
+        attention = len({i for i, _ in s.flags()} - s.reviewed)
+        checks = sum(1 for key in ("rights", "version", "items") if s.checks.get(key))
+        return {
+            "source": instrument is not None,
+            "scale": "scale" not in keys, "schemes": len(schemes), "confirmed": confirmed,
+            "items": "unreviewed" not in keys, "attention": attention,
+            "total": len(instrument.questions) if instrument else 0,
+            "checked": len(s.reviewed),
+            "confirm": checks == 3, "checks": checks,
+            "ready": not keys,
+        }
+
+    def _step_label(self, key: str, status: dict) -> str:
+        ui = self.app.ui
+        number = self.STEPS.index(key) + 1
+        title = ui.t(f"imp.step.{key}")
+        if key == "source":
+            detail = count_text(ui.language, status["total"], "questions")
+        elif key == "scale":
+            detail = (ui.t("imp.status.scales", done=status["confirmed"], total=status["schemes"])
+                      if status["schemes"] else ui.t("imp.status.no_scales"))
+        elif key == "items":
+            detail = (ui.t("imp.status.attention", count=status["attention"])
+                      if status["attention"] else ui.t("imp.status.all_checked"))
+        else:
+            detail = ui.t("imp.status.confirmations", done=status["checks"], total=3)
+        return f"{number}. {title} · {detail}"
+
+    def _stepper(self) -> ft.Control:
+        ui = self.app.ui
+        status = self._status()
+        buttons = []
+        for key in self.STEPS:
+            buttons.append(wc.button(
+                ui, self._step_label(key, status), lambda e, k=key: self._go(k),
+                kind="primary" if key == self.step else "secondary",
+                icon=ft.Icons.CHECK_CIRCLE if status[key] else ft.Icons.RADIO_BUTTON_UNCHECKED,
+                data=f"imp-step-{key}"))
+        return ft.Row(buttons, wrap=True, spacing=tk.SPACE_2, data="imp-steps")
+
+    def _go(self, step: str):
+        if step in self.STEPS:
+            self.step = step
+            self.app.render()
+
+    def footer(self) -> ft.Control | None:
+        """Sticky review actions: always on screen below the page, however
+        far the list has been scrolled (Issue #31)."""
+        ui, s = self.app.ui, self.session
+        if s.source is None or s.instrument is None or self.busy:
+            return None
+        status = self._status()
+        index = self.STEPS.index(self.step)
+        keys = s.blocker_keys()
+        reason = self.blocker_text(*keys[0]) if keys else None
+        summary = ui.t("imp.step_of", number=index + 1, total=len(self.STEPS),
+                       title=ui.t(f"imp.step.{self.step}"))
+        counts = ui.t("imp.counts", total=status["total"], attention=status["attention"],
+                      checked=status["checked"])
+        actions = [
+            wc.button(ui, ui.t("imp.back"), lambda e: self._go(self.STEPS[index - 1]),
+                      kind="quiet", icon=ft.Icons.ARROW_BACK, disabled=index == 0,
+                      data="imp-back"),
+        ]
+        if index < len(self.STEPS) - 1:
+            actions.append(wc.button(ui, ui.t("imp.next"),
+                                     lambda e: self._go(self.STEPS[index + 1]),
+                                     kind="secondary", icon=ft.Icons.ARROW_FORWARD,
+                                     data="imp-next"))
+        actions.append(wc.button(ui, ui.t("imp.create_draft"), self._create_draft,
+                                 kind="primary", icon=ft.Icons.CHECK,
+                                 disabled=bool(keys), tooltip=reason, data="imp-create-draft"))
+        return ft.Container(ft.Row([
+            ft.Column([wc.text(ui, summary, tk.TYPE_LABEL, weight=ft.FontWeight.W_600),
+                       wc.caption(ui, counts + (" · " + reason if reason else ""),
+                                  data="imp-footer-status")],
+                      spacing=2, expand=True),
+            *actions,
+        ], spacing=tk.SPACE_2, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            bgcolor=ui.p.surface, border=ft.Border(top=ft.BorderSide(1, ui.p.border)),
+            padding=ft.Padding.symmetric(horizontal=tk.SPACE_5, vertical=tk.SPACE_2),
+            data="imp-footer")
+
+    def blocker_text(self, key: str, values: dict) -> str:
+        return self.app.t(f"impblock.{key}", **values)
+
+    def fact_text(self, key: str, values: dict) -> str:
+        values = dict(values)
+        if "pages" in values:
+            values["pages"] = pages_text(self.app.ui.language, values["pages"])
+        text = self.app.t(f"impnote.{key}", **values)
+        return text[:1].upper() + text[1:]
     # ------------------------------------------------------------ source
     def _source_pane(self) -> ft.Control:
         ui, s = self.app.ui, self.session
@@ -978,39 +1150,94 @@ class ImportPage:
         self.app.page.pop_dialog()
 
     async def _ocr_page(self, e=None):
-        self.busy, self.feedback = True, (self.app.t("run.running"), "info")
+        """Read the page on screen with local OCR (the researcher's choice)."""
+        self.busy, self.feedback = True, None
+        self.progress = self.app.t("imp.ocr_progress", page=self.page_number, done=1, total=1)
         self.app.render()
         try:
-            message = await asyncio.to_thread(self.session.ocr_pages, [self.page_number])
-            self.feedback = (message, "success")
+            await asyncio.to_thread(self.session.ocr_pages, [self.page_number])
+            self.feedback = (self.app.t("imp.ocr_done", pages=pages_text(
+                self.app.ui.language, [self.page_number])), "success")
+            self.step, self.selected, self.filter = "source", None, "all"
         except Exception as error:
             self.feedback = (self.app.t("imp.read_failed", error=error), "danger")
-        self.busy = False
+        self.busy, self.progress = False, None
+        self.app.status(self.feedback[0], self.feedback[1])
         self.app.render()
 
-    # ------------------------------------------------------------ review
-    def _review_pane(self) -> ft.Control:
+    # ------------------------------------------------------------ steps
+    def _step_source(self) -> ft.Control:
+        """Step 1: what was read from which pages, what was kept out, and
+        how many items the document says it has."""
         ui, s = self.app.ui, self.session
         instrument = s.instrument
+        rows: list[ft.Control] = []
+        tones = {"count_match": "success", "references": "info", "ocr_read": "info"}
+        for key, values in s.facts:
+            rows.append(wc.notice(ui, self.fact_text(key, values), tones.get(key, "warning"),
+                                  data=f"imp-fact-{key}"))
         if instrument is None:
-            return wc.card(ui, [wc.caption(ui, s.message or ui.t("common.not_available"))],
-                           title=ui.t("imp.items"))
-        picker = wc.dropdown(ui, ui.t("imp.instrument"), [
-            (str(i), f"{x.title} ({count_text(ui.language, len(x.questions), 'questions')})")
-            for i, x in enumerate(s.instruments)], str(s.instrument_index),
-            on_select=lambda e: self._instrument(int(e.control.value)), width=None,
-            data="imp-instrument")
-        scales = [self._scale_card(scheme) for scheme in instrument.schemes]
+            rows.append(wc.notice(ui, ui.t("impblock.no_instrument"), "warning",
+                                  data="imp-no-items"))
+            return wc.card(ui, rows, title=ui.t("imp.step.source"), data="imp-step-body")
+        if s.expected_count is None:
+            rows.append(wc.caption(ui, ui.t("imp.no_count"), data="imp-no-count"))
+        pages = sorted({row.page for row in instrument.questions if row.page})
+        if pages:
+            rows.append(wc.caption(ui, ui.t("imp.pages_with_items",
+                                            pages=pages_text(ui.language, pages))))
+        if s.non_items:
+            listing = [wc.caption(ui, f"p. {page}: {line}") for page, line in s.non_items[:60]]
+            rows.append(wc.expansion(
+                ui, wc.text(ui, ui.t("imp.excluded", count=len(s.non_items)), tk.TYPE_LABEL,
+                            weight=ft.FontWeight.W_600),
+                [ft.Container(ft.Column(listing, spacing=2), padding=tk.SPACE_3)],
+                key="imp-excluded", opened=self.opened, data="imp-excluded"))
+        if len(s.instruments) > 1:
+            rows.append(wc.dropdown(ui, ui.t("imp.instrument"), [
+                (str(i), f"{x.title} ({count_text(ui.language, len(x.questions), 'questions')})")
+                for i, x in enumerate(s.instruments)], str(s.instrument_index),
+                on_select=lambda e: self._instrument(int(e.control.value)), width=None,
+                data="imp-instrument"))
+        else:
+            rows.append(wc.labeled(ui, ui.t("imp.instrument"), instrument.title))
+        rows += [wc.notice(ui, w, "warning") for w in instrument.warnings[:3]]
+        return wc.card(ui, rows, title=ui.t("imp.step.source"), data="imp-step-body")
+
+    def _step_scale(self) -> ft.Control:
+        """Step 2: each shared response scale, confirmed on its own."""
+        ui, instrument = self.app.ui, self.session.instrument
+        if not instrument.schemes:
+            return wc.card(ui, [wc.text(ui, ui.t("imp.no_scales"), tk.TYPE_BODY)],
+                           title=ui.t("imp.step.scale"), data="imp-step-body")
+        return ft.Column([wc.heading(ui, ui.t("imp.step.scale"), tk.TYPE_TITLE_S),
+                          *[self._scale_card(scheme) for scheme in instrument.schemes]],
+                         spacing=tk.SPACE_3, data="imp-step-body")
+
+    def _step_items(self) -> ft.Control:
+        """Step 3: every item with status counts; the selected one opens
+        right under itself, so the list never jumps to an editor far away."""
+        ui, s = self.app.ui, self.session
+        instrument = s.instrument
         flags = {i for i, _ in s.flags()}
-        items = []
+        attention = flags - s.reviewed
+        status = self._status()
+        selector = wc.segmented(ui, [
+            ("all", ui.t("imp.filter.all", count=status["total"])),
+            ("attention", ui.t("imp.filter.attention", count=len(attention)))],
+            self.filter, self._set_filter, data="imp-filter")
+        items: list[ft.Control] = []
         for index, row in enumerate(instrument.questions):
+            if self.filter == "attention" and index not in attention and index != self.selected:
+                continue
             selected = index == self.selected
             kind = row.question.get("kind")
             items.append(ft.Container(
                 content=ft.Row([
                     wc.text(ui, str(row.number), tk.TYPE_LABEL, color=ui.p.text_muted),
                     ft.Column([
-                        wc.text(ui, row.question.get("prompt", ""), tk.TYPE_BODY, max_lines=2),
+                        wc.text(ui, f"{row.number}. {row.question.get('prompt', '')}",
+                                tk.TYPE_BODY, max_lines=2),
                         ft.Row([wc.caption(ui, f"p. {row.page} · {ui.t('kind.' + kind)}"),
                                 *([wc.chip(ui, ui.t("imp.reviewed"), "success")]
                                   if index in s.reviewed else
@@ -1021,34 +1248,96 @@ class ImportPage:
                 bgcolor=ui.p.accent_subtle if selected else ui.p.surface,
                 border=ft.Border.all(1, ui.p.accent if selected else ui.p.border),
                 border_radius=ui.radius("card"), padding=tk.SPACE_2 + 2, ink=True,
-                on_click=lambda e, i=index: self._select(i), data=f"imp-item-{index}"))
-        detail = []
-        if self.selected is not None and self.selected < len(instrument.questions):
-            row = instrument.questions[self.selected]
-            wording = wc.text_field(ui, ui.t("imp.edit_wording"), row.question.get("prompt", ""),
-                                    multiline=True, data="imp-wording")
-            low = row.confidence == "low"
-            detail = [wc.card(ui, [
-                wc.section_label(ui, ui.t("imp.source_excerpt")),
-                wc.text(ui, row.excerpt, tk.TYPE_BODY, color=ui.p.text_secondary, selectable=True),
-                *[wc.caption(ui, "• " + note) for note in row.notes],
-                *([wc.checkbox(ui, ui.t("imp.item_reviewed"),
-                               self.selected in self.session.reviewed,
-                               on_change=lambda e, i=self.selected: self._reviewed(
-                                   i, e.control.value), data="imp-item-reviewed")]
-                  if low else []),
-                wording,
+                on_click=lambda e, i=index: self._select(i), key=f"imp-row-{index}",
+                data=f"imp-item-{index}"))
+            if selected:
+                items.append(self._item_editor(index, low=index in flags))
+        if not items:
+            items.append(wc.caption(ui, ui.t("imp.status.all_checked")))
+        return ft.Column([
+            ft.Row([wc.heading(ui, ui.t("imp.step.items"), tk.TYPE_TITLE_S), selector],
+                   wrap=True, spacing=tk.SPACE_3,
+                   vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            wc.caption(ui, ui.t("imp.counts", total=status["total"],
+                                attention=status["attention"], checked=status["checked"]),
+                       data="imp-counts"),
+            ft.Column(items, spacing=tk.SPACE_1, data="imp-items"),
+        ], spacing=tk.SPACE_3, data="imp-step-body")
+
+    def _item_editor(self, index: int, *, low: bool) -> ft.Control:
+        """The selected item: its source excerpt, a one-question preview and
+        the wording correction."""
+        from scientific_survey_import import proposed_scheme_question
+
+        ui, s = self.app.ui, self.session
+        row = s.instrument.questions[index]
+        wording = wc.text_field(ui, ui.t("imp.edit_wording"), row.question.get("prompt", ""),
+                                multiline=True, data="imp-wording")
+        question = dict(row.question)
+        schemes = {x.id: x for x in s.instrument.schemes}
+        if row.scheme_id in schemes:
+            question = proposed_scheme_question(question, schemes[row.scheme_id])
+        return wc.card(ui, [
+            wc.section_label(ui, ui.t("imp.source_excerpt")),
+            wc.text(ui, row.excerpt, tk.TYPE_BODY, color=ui.p.text_secondary, selectable=True),
+            *[wc.caption(ui, "• " + note) for note in row.notes],
+            *([wc.checkbox(ui, ui.t("imp.item_reviewed"), index in s.reviewed,
+                           on_change=lambda e, i=index: self._reviewed(i, e.control.value),
+                           data="imp-item-reviewed")] if low else []),
+            wording,
+            ft.Row([
                 wc.button(ui, ui.t("q.apply"), lambda e: self._wording(wording.value),
                           data="imp-wording-apply"),
-            ], title=f"{row.number}. {ui.t('q.editor')}", padding=tk.SPACE_4)]
-        return ft.Column([
-            wc.card(ui, [picker, *([wc.notice(ui, w, "warning") for w in instrument.warnings[:3]])],
-                    padding=tk.SPACE_4),
-            *([wc.heading(ui, ui.t("imp.scales"), tk.TYPE_TITLE_S)] + scales if scales else []),
-            wc.heading(ui, ui.t("imp.items"), tk.TYPE_TITLE_S),
-            ft.Column(items, spacing=tk.SPACE_1, data="imp-items"),
-            *detail,
-        ], spacing=tk.SPACE_3, data="imp-review")
+                wc.button(ui, ui.t("imp.next_flag"), self._next_flag, kind="quiet",
+                          icon=ft.Icons.SKIP_NEXT, data="imp-next-flag"),
+            ], wrap=True, spacing=tk.SPACE_2),
+            wc.section_label(ui, ui.t("q.preview")),
+            respondent_question(ui, question, None, lambda k, v: None, number=row.number),
+        ], title=f"{row.number}. {ui.t('q.editor')}", padding=tk.SPACE_4,
+            border=ui.p.accent, data="imp-editor")
+
+    def _set_filter(self, value: str):
+        self.filter = value if value in ("all", "attention") else "all"
+        self.app.render()
+
+    def _next_flag(self, e=None):
+        s = self.session
+        attention = sorted({i for i, _ in s.flags()} - s.reviewed)
+        after = [i for i in attention if self.selected is None or i > self.selected]
+        if after or attention:
+            self._select((after or attention)[0])
+
+    def _step_confirm(self) -> ft.Control:
+        """Step 4: the researcher's independent confirmations."""
+        ui, s = self.app.ui, self.session
+        status = self._status()
+        count_fact = next((f for f in s.facts if f[0] in ("count_match", "count_mismatch")), None)
+        controls: list[ft.Control] = [
+            wc.checkbox(ui, ui.t("imp.check_version"), bool(s.checks.get("version")),
+                        on_change=lambda e: self._check("version", e.control.value),
+                        data="imp-check-version"),
+            wc.checkbox(ui, ui.t("imp.check_rights"), bool(s.checks.get("rights")),
+                        on_change=lambda e: self._check("rights", e.control.value),
+                        data="imp-check-rights"),
+            wc.checkbox(ui, ui.t("imp.check_items"), bool(s.checks.get("items")),
+                        on_change=lambda e: self._check("items", e.control.value),
+                        data="imp-check-items"),
+            wc.caption(ui, self.fact_text(*count_fact) if count_fact else ui.t("imp.no_count")),
+        ]
+        for done, label in ((status["scale"], self._step_label("scale", status)),
+                            (status["items"], self._step_label("items", status))):
+            controls.append(ft.Row([
+                ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE if done else ft.Icons.PENDING_OUTLINED,
+                        color=ui.p.success if done else ui.p.warning, size=18),
+                wc.text(ui, label)], spacing=tk.SPACE_2))
+        keys = s.blocker_keys()
+        if keys:
+            controls.append(wc.notice(ui, "\n".join("• " + self.blocker_text(*k) for k in keys),
+                                      "warning", title=ui.t("imp.blocked", reason="").rstrip(": "),
+                                      data="imp-blockers"))
+        else:
+            controls.append(wc.notice(ui, ui.t("imp.ready"), "success", data="imp-ready"))
+        return wc.card(ui, controls, title=ui.t("imp.step.confirm"), data="imp-checklist")
 
     def _instrument(self, index: int):
         self.session.select(index)
@@ -1059,8 +1348,9 @@ class ImportPage:
 
     def _select(self, index: int):
         self.selected = index
+        self.step = "items"
         row = self.session.instrument.questions[index]
-        self.page_number = row.page or self.page_number
+        self.page_number = row.page or self.page_number   # the source follows the item
         self.app.render()
 
     def _reviewed(self, index: int, value: bool):
@@ -1155,54 +1445,7 @@ class ImportPage:
             self.feedback = (str(error), "danger")
         self.app.render()
 
-    # ----------------------------------------------------------- preview
-    def _preview_pane(self) -> ft.Control:
-        ui, s = self.app.ui, self.session
-        instrument = s.instrument
-        controls: list[ft.Control] = [wc.heading(ui, ui.t("q.preview"), tk.TYPE_TITLE_S)]
-        if instrument is not None:
-            from scientific_survey_import import proposed_scheme_question
-
-            schemes = {x.id: x for x in instrument.schemes}
-            for row in instrument.questions[:40]:
-                q = dict(row.question)
-                if row.scheme_id in schemes:
-                    q = proposed_scheme_question(q, schemes[row.scheme_id])
-                controls.append(respondent_question(ui, q, None, lambda k, v: None,
-                                                    number=row.number))
-        return ft.Container(ft.Column(controls, spacing=tk.SPACE_1), bgcolor=ui.p.surface,
-                            border=ft.Border.all(1, ui.p.border), border_radius=ui.radius("card"),
-                            padding=tk.SPACE_4, data="imp-preview")
-
-    # --------------------------------------------------------- checklist
-    def _checklist(self) -> ft.Control:
-        ui, s = self.app.ui, self.session
-        if s.instrument is None:
-            return ft.Container()
-        blockers = s.blockers()
-        scales_ok = not any("unverified" in b for b in blockers)
-        controls = [
-            wc.checkbox(ui, ui.t("imp.check_version"), bool(s.checks.get("version")),
-                        on_change=lambda e: self._check("version", e.control.value),
-                        data="imp-check-version"),
-            wc.checkbox(ui, ui.t("imp.check_items"), bool(s.checks.get("items")),
-                        on_change=lambda e: self._check("items", e.control.value),
-                        data="imp-check-items"),
-            ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE if scales_ok else ft.Icons.PENDING_OUTLINED,
-                            color=ui.p.success if scales_ok else ui.p.warning, size=18),
-                    wc.text(ui, ui.t("imp.check_scales"))], spacing=tk.SPACE_2),
-        ]
-        if blockers:
-            controls.append(wc.notice(ui, "\n".join("• " + b for b in blockers), "warning",
-                                      title=ui.t("imp.blocked", reason="").rstrip(": "),
-                                      data="imp-blockers"))
-        controls.append(wc.button(ui, ui.t("imp.create_draft"), self._create_draft,
-                                  kind="primary", icon=ft.Icons.ARROW_FORWARD,
-                                  disabled=bool(blockers),
-                                  tooltip=ui.t("disabled.resolve_first") if blockers else None,
-                                  data="imp-create-draft"))
-        return wc.card(ui, controls, title=ui.t("imp.checklist"), data="imp-checklist")
-
+    # --------------------------------------------------------- confirm
     def _check(self, key: str, value: bool):
         self.session.checks[key] = bool(value)
         self.app.render()

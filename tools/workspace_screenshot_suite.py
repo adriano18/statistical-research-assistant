@@ -57,6 +57,10 @@ MATRIX = (
     ("project_dashboard_ru_125", "project", 1280, 1900, 1.25, "ru", "light"),
     ("project_dashboard_lv_dark", "project", 1100, 1900, 1, "lv", "dark"),
     ("questionnaire_120", "questionnaire-120", 1440, 1100, 1, "en", "light"),
+    ("import_wizard_source", "import-psq", 1600, 1100, 1, "en", "light"),
+    ("import_wizard_source_ru_125", "import-psq", 1440, 1100, 1.25, "ru", "light"),
+    ("import_wizard_items_120", "import-120", 1600, 1000, 1, "en", "light"),
+    ("import_wizard_items_lv_dark", "import-120", 1100, 1000, 1, "lv", "dark"),
     ("classic_home", "classic-home", 1440, 900, 1, "en", "light"),
     ("classic_groups", "classic-groups", 1440, 2200, 1, "en", "light"),
 )

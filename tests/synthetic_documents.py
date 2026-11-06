@@ -430,3 +430,177 @@ def connectedness_docx(*, abbreviations: bool = True, coded_row: bool = False) -
     stream = BytesIO()
     document.save(stream)
     return stream.getvalue()
+
+
+# ------------------------------------- import integrity: references, image pages
+# The same geometry on every machine: a matplotlibrc may choose another font,
+# and hinted Agg extents differ between platforms.
+PINNED_STYLE = {"font.family": ["DejaVu Sans"], "text.hinting": "no_hinting", "pdf.fonttype": 3}
+STRAIN_LABELS = ("Almost never", "Sometimes", "Often", "Usually")
+_STRAIN_SUBJECTS = ("Fictional neighbours", "Synthetic coworkers", "Pretend classmates",
+                    "Made-up relatives", "Sample club members")
+_STRAIN_FEELINGS = ("rested", "hurried", "calm", "under pressure", "cheerful", "tense")
+_STRAIN_WEEKS = ("one", "two", "three", "four", "five", "six", "seven")
+# Invented bibliography entries in common citation shapes (author list,
+# year in parentheses, et al., volume (issue) pages, DOI).
+FICTIONAL_CITATIONS = (
+    ("1. Fictional, A., & Placeholder, B. (2001). Invented strain in synthetic samples.",
+     "Journal of Fictional Studies, 4 (2), 101–119."),
+    ("2. Sample, C., et al. (2015). A made-up questionnaire for tests. "
+     "Synthetic Review, 12 (3), 33–47.",),
+    ("3. Example, D. (1999). Fabricated items and pretend scales. doi:10.0000/fictional.1999",),
+)
+SSQ_DESCRIPTION = (
+    "This fictional questionnaire consists of 30 items about invented daily strain.",
+    "Respondents rate each statement on a 4-point scale from 1 (almost never) to 4 (usually).",
+    "The form is a synthetic test fixture, not a published instrument.",
+)
+SSQ_SCORING_NOTE = ("Scoring note: add the item codes; consult the fictional manual "
+                    "before interpreting totals.")
+
+
+def strain_statements(count: int = 30) -> list[str]:
+    """Invented, distinct statements (none starts with a capital I, which
+    DejaVu Sans draws as a bar that OCR reads as "|")."""
+    items = []
+    for n in range(count):
+        subject = _STRAIN_SUBJECTS[(n // len(_STRAIN_FEELINGS)) % len(_STRAIN_SUBJECTS)]
+        text = f"{subject} leave me feeling {_STRAIN_FEELINGS[n % len(_STRAIN_FEELINGS)]}"
+        if count > 30:
+            text += f" in synthetic week {_STRAIN_WEEKS[n // 30]}"
+        items.append(text + ".")
+    return items
+
+
+def _pdf_pages(*draw_page) -> bytes:
+    """One A4 page per callable ``draw(figure)``; pinned fonts and metrics."""
+    import matplotlib
+    matplotlib.use("Agg")
+    from matplotlib.backends.backend_pdf import PdfPages
+    import matplotlib.pyplot as plt
+
+    stream = BytesIO()
+    with matplotlib.rc_context(PINNED_STYLE), PdfPages(stream) as pdf:
+        for draw in draw_page:
+            figure = plt.figure(figsize=(8.27, 11.69))
+            draw(figure)
+            pdf.savefig(figure)
+            plt.close(figure)
+    return stream.getvalue()
+
+
+def _place_image(figure, image: Image.Image, box) -> None:
+    """Embed ``image`` as a raster XObject inside ``box`` (figure fractions)."""
+    import numpy as np
+
+    axes = figure.add_axes(box)
+    axes.imshow(np.asarray(image.convert("RGB")), interpolation="none")
+    axes.axis("off")
+
+
+def strain_table_image(statements=None, labels=STRAIN_LABELS, *, dpi: int = 150) -> Image.Image:
+    """The item matrix as a raster table (matplotlib text, rendered to PNG):
+    numbered statements and one row of 1–4 codes under shared labels."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    statements = list(statements or strain_statements(30))
+    columns = (0.60, 0.72, 0.83, 0.92)
+    stream = BytesIO()
+    with matplotlib.rc_context(PINNED_STYLE):
+        figure = plt.figure(figsize=(7.4, 0.6 + 0.24 * len(statements)), dpi=dpi)
+        step = 0.24 / (0.6 + 0.24 * len(statements))
+        y = 1 - 0.3 / (0.6 + 0.24 * len(statements))
+        for x, label in zip(columns, labels):
+            figure.text(x, y, label, fontsize=9, ha="center")
+        for number, text in enumerate(statements, 1):
+            y -= step
+            figure.text(0.02, y, f"{number}.", fontsize=9)
+            figure.text(0.07, y, text, fontsize=9)
+            for x, code in zip(columns, "1234"):
+                figure.text(x, y, code, fontsize=9, ha="center")
+        figure.savefig(stream, format="png", dpi=dpi, facecolor="white")
+        plt.close(figure)
+    return Image.open(BytesIO(stream.getvalue())).convert("RGB")
+
+
+def _citation_entries(start_y: float, *, heading: str | None, size: float = 8,
+                      step: float = 0.022) -> list[tuple[float, float, str, float]]:
+    entries, y = [], start_y
+    if heading:
+        entries.append((0.08, y, heading, size + 2))
+        y -= step + 0.006
+    for citation in FICTIONAL_CITATIONS:
+        for k, line in enumerate(citation):
+            entries.append((0.08 if k == 0 else 0.11, y, line, size))
+            y -= step
+    return entries
+
+
+def psq_like_pdf(*, references_heading: str | None = "References", dpi: int = 150) -> bytes:
+    """A 2-page scale description in the shape of Issue #31 (all invented).
+
+    Page 1: text only — a fictional title and a description that states 30
+    items and a 4-point 1–4 scale. Page 2: the 30-item matrix as an
+    embedded RASTER image (so pypdf reports ``page.images``) and, in the
+    text layer, only a header, a scoring note and a numbered bibliography.
+    """
+    table = strain_table_image(dpi=dpi)
+
+    def description(figure):
+        figure.text(0.08, 0.93, "Synthetic Strain Questionnaire (SSQ)", fontsize=13)
+        for k, line in enumerate(SSQ_DESCRIPTION):
+            figure.text(0.08, 0.88 - 0.025 * k, line, fontsize=9)
+
+    def form(figure):
+        figure.text(0.08, 0.955, "SSQ response form (synthetic)", fontsize=9)
+        _place_image(figure, table, (0.05, 0.30, 0.90, 0.63))
+        figure.text(0.08, 0.26, SSQ_SCORING_NOTE, fontsize=8)
+        for x, y, text, size in _citation_entries(0.23, heading=references_heading):
+            figure.text(x, y, text, fontsize=size)
+
+    return _pdf_pages(description, form)
+
+
+def references_only_pdf(heading: str | None = "References", *, logo: bool = False) -> bytes:
+    """A reading list without any questionnaire; optional small logo image."""
+    def page(figure):
+        figure.text(0.08, 0.93, "Synthetic reading list", fontsize=13)
+        for x, y, text, size in _citation_entries(0.88, heading=heading, size=9, step=0.024):
+            figure.text(x, y, text, fontsize=size)
+        if logo:  # ~1 % of the page: a header logo, not a scanned form
+            mark = Image.new("RGB", (160, 80), "white")
+            ImageDraw.Draw(mark).ellipse((10, 10, 150, 70), outline="black", width=6)
+            _place_image(figure, mark, (0.80, 0.93, 0.12, 0.05))
+
+    return _pdf_pages(page)
+
+
+def numbered_items_pdf(count: int, *, references: bool = False, per_page: int = 30) -> bytes:
+    """Text-layer form: ``count`` numbered items, ONE shared 4-point code
+    legend on page 1, printed 1–4 codes on every row; optional references."""
+    statements = strain_statements(count)
+    columns = (0.70, 0.77, 0.84, 0.91)
+    pages = []
+    for start in range(0, count, per_page):
+        entries, y = [], 0.95
+        if start == 0:
+            entries.append((0.08, y, "Synthetic Daily Strain Form", 12))
+            y -= 0.03
+            entries.append((0.08, y, f"This synthetic form consists of {count} items.", 8))
+            y -= 0.022
+            entries.append((0.08, y, "   ".join(f"{code} = {label}" for code, label
+                                                in zip("1234", STRAIN_LABELS)), 8))
+            y -= 0.03
+        for n in range(start, min(start + per_page, count)):
+            entries.append((0.08, y, f"{n + 1}. {statements[n]}", 8))
+            entries += [(x, y, code, 8) for x, code in zip(columns, "1234")]
+            y -= 0.028
+        pages.append(entries)
+    if references:
+        pages.append(_citation_entries(0.93, heading="References"))
+    draws = [lambda figure, entries=entries: [figure.text(x, y, t, fontsize=s)
+                                              for x, y, t, s in entries]
+             for entries in pages]
+    return _pdf_pages(*draws)

@@ -120,13 +120,20 @@ class PdfQuestionnaireToAnalysisJourney(unittest.TestCase):
         self.assertEqual(len(instrument.questions), 20)
         scheme = instrument.schemes[0]
         self.assertEqual(tuple(scheme.labels), REVISED_LABELS)
-        # Blocked until the researcher confirms the scale and the checklist.
+        # Blocked until the researcher confirms the scale and the checklist,
+        # step by step in the review wizard (the footer stays on screen).
         self.assertTrue(ws.find("imp-create-draft").disabled)
+        ws.click("imp-step-scale")
         ws.check(f"scale-{scheme.id}-structure")
         ws.check(f"scale-{scheme.id}-numeric")
         ws.click(f"scale-{scheme.id}-apply")
         self.assertTrue(page.session.instrument.schemes[0].codes_confirmed)
+        ws.click("imp-next")
+        self.assertEqual(page.step, "items")
+        ws.click("imp-step-confirm")
         ws.check("imp-check-version")
+        ws.check("imp-check-rights")
+        self.assertTrue(ws.find("imp-create-draft").disabled, "every confirmation is its own")
         ws.check("imp-check-items")
         ws.click("imp-create-draft")
         self.assertEqual(ws.app.route, "questionnaires")

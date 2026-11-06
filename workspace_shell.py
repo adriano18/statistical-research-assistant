@@ -362,10 +362,17 @@ class WorkspaceApp:
         # one on screen (same control identities) instead of replacing it, so
         # the scroll position, keyboard focus, caret and expanded sections
         # survive a re-render; another route gets a fresh page.
-        self._page_stack.controls = [ft.Column(
+        controls: list[ft.Control] = [ft.Column(
             [body], scroll=ft.ScrollMode.AUTO, expand=True,
             data=f"workspace-page-{self.route}", key=f"workspace-page-{self.route}",
         )]
+        # A page may keep its main actions on screen below the scrolling
+        # content (the import review's sticky footer).
+        footer = page.footer() if hasattr(page, "footer") else None
+        if footer is not None:
+            controls.append(ft.Container(footer, key=f"workspace-footer-{self.route}",
+                                         data="workspace-footer"))
+        self._page_stack.controls = controls
         self.content_host.bgcolor = self.ui.p.canvas
         self.root.bgcolor = self.ui.p.canvas
         self._rendered_width = int(getattr(self.page, "width", None) or 1280)
