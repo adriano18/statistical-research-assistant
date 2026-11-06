@@ -35,15 +35,80 @@ import time
 TITLE = "Statistical Research Assistant"
 
 
+def descendants(root: int, pairs) -> set[int]:
+    """``root`` and every process below it, from (pid, parent pid) pairs."""
+    children: dict[int, list[int]] = {}
+    for pid, parent in pairs:
+        if pid != parent:
+            children.setdefault(parent, []).append(pid)
+    tree, todo = set(), [root]
+    while todo:
+        pid = todo.pop()
+        if pid not in tree:
+            tree.add(pid)
+            todo.extend(children.get(pid, ()))
+    return tree
+
+
+def process_tree(root: int) -> set[int]:
+    """The launched process and its descendants (Windows Toolhelp snapshot).
+
+    ``flet build`` draws its window in the launched process; ``flet pack``
+    starts a separate Flet client process that owns the window."""
+
+    class PROCESSENTRY32(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
+                    ("th32ProcessID", wintypes.DWORD), ("th32DefaultHeapID", ctypes.c_size_t),
+                    ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+                    ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long),
+                    ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_char * 260)]
+
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    snapshot = kernel32.CreateToolhelp32Snapshot(0x00000002, 0)   # TH32CS_SNAPPROCESS
+    if not snapshot or snapshot == wintypes.HANDLE(-1).value:
+        return {root}
+    pairs = []
+    entry = PROCESSENTRY32()
+    entry.dwSize = ctypes.sizeof(PROCESSENTRY32)
+    try:
+        more = kernel32.Process32First(snapshot, ctypes.byref(entry))
+        while more:
+            pairs.append((entry.th32ProcessID, entry.th32ParentProcessID))
+            more = kernel32.Process32Next(snapshot, ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(snapshot)
+    return descendants(root, pairs)
+
+
+def stop_tree(process) -> None:
+    """End the app and every process it started (a Flet client, helpers);
+    a left-over client would slow down every later launch on the runner."""
+    if os.name == "nt":
+        # Children keep their parent's id after it exits, so the tree is still
+        # found when the launched process has already gone.
+        pids = sorted(process_tree(process.pid))
+        command = ["taskkill", "/T", "/F"]
+        for pid in pids:
+            command += ["/PID", str(pid)]
+        try:
+            subprocess.run(command, capture_output=True, timeout=30, check=False)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if process.poll() is None:
+        process.kill()
+
+
 def find_window(pid: int):
     user32 = ctypes.windll.user32
     found = []
+    pids = process_tree(pid)
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     def callback(hwnd, _):
         owner = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
-        if owner.value == pid and user32.IsWindowVisible(hwnd):
+        if owner.value in pids and user32.IsWindowVisible(hwnd):
             rect = wintypes.RECT()
             user32.GetWindowRect(hwnd, ctypes.byref(rect))
             width, height = rect.right - rect.left, rect.bottom - rect.top
@@ -146,8 +211,7 @@ def main(argv=None) -> int:
             final = ImageGrab.grab(bbox=client_box(rect), all_screens=True)
             final.save(args.out / "startup_final.png")
     finally:
-        if process.poll() is None:
-            process.kill()
+        stop_tree(process)
     errors = []
     smoke = {}
     if result_path.exists():

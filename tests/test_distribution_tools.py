@@ -289,3 +289,14 @@ class StartupImportTests(unittest.TestCase):
             with flet_pack_compat._binary_safe_open(text, "w", encoding="utf-8") as stream:
                 stream.write("päivä")
             self.assertEqual(text.read_text(encoding="utf-8"), "päivä")
+
+
+class GuiStartupCheckTests(unittest.TestCase):
+    def test_the_window_search_covers_every_process_the_app_started(self):
+        """flet pack draws its window in a child Flet client process."""
+        import check_gui_startup as check
+
+        pairs = [(100, 1), (200, 100), (300, 200), (400, 1), (500, 400), (600, 300), (100, 100)]
+        self.assertEqual(check.descendants(100, pairs), {100, 200, 300, 600})
+        self.assertEqual(check.descendants(400, pairs), {400, 500})
+        self.assertEqual(check.descendants(999, pairs), {999})
