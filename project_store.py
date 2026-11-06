@@ -58,7 +58,7 @@ from typing import Any, Iterable
 import uuid
 import zipfile
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PACKAGE_FORMAT = "sra-project"
 PACKAGE_VERSION = 1
 DB_NAME = "project.sqlite3"
@@ -160,9 +160,7 @@ def project_data_root(source_root: Path) -> Path:
 
 # ------------------------------------------------------------------ schema
 
-def _create_v1(db: sqlite3.Connection) -> None:
-    db.executescript(
-        """
+V1_SCHEMA = """
         CREATE TABLE project (
             id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
             research_area TEXT NOT NULL DEFAULT '', population_notes TEXT NOT NULL DEFAULT '',
@@ -226,14 +224,37 @@ def _create_v1(db: sqlite3.Connection) -> None:
             detail TEXT NOT NULL
         );
         """
-    )
+
+
+def _create_v1(db: sqlite3.Connection) -> None:
+    # One statement at a time: executescript() would commit the
+    # transaction that migrate() opened.
+    for statement in V1_SCHEMA.split(";"):
+        if statement.strip():
+            db.execute(statement)
 
 
 # version -> migration that upgrades a database from version-1 to version.
 # Version 1 creates a new database inside a staging folder (see create());
 # later migrations must use execute(), not executescript(), so they run in
 # the single transaction that migrate() opens.
-MIGRATIONS = {1: _create_v1}
+def _migrate_v2(db: sqlite3.Connection) -> None:
+    """Format 2: project-scoped permissions for a future AI assistant.
+
+    Every source is off unless the researcher allows it; the table starts
+    empty (= all off). ``data_anonymous`` records the researcher's own
+    statement that the project's data rows identify nobody, which a future
+    remote assistant would require before it may ever receive rows.
+    Individual statements, not a script, so the change stays inside the
+    migration's transaction."""
+    db.execute("CREATE TABLE ai_permissions ("
+               " source TEXT PRIMARY KEY,"
+               " allowed INTEGER NOT NULL DEFAULT 0 CHECK (allowed IN (0, 1)),"
+               " changed_at TEXT NOT NULL)")
+    db.execute("ALTER TABLE project ADD COLUMN data_anonymous INTEGER NOT NULL DEFAULT 0")
+
+
+MIGRATIONS = {1: _create_v1, 2: _migrate_v2}
 
 
 def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
@@ -263,10 +284,19 @@ def migrate(path: Path, backups: Path) -> int:
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             with closing(sqlite3.connect(backups / f"{path.parent.name}-v{found}-{stamp}.sqlite3")) as copy:
                 db.backup(copy)
-        with db:
+        # One explicit transaction: Python's sqlite3 does not open one before
+        # CREATE/ALTER statements, so without it a failure halfway would leave
+        # a half-changed database still marked with the old format.
+        db.execute("BEGIN IMMEDIATE")
+        try:
             for version in range(found + 1, SCHEMA_VERSION + 1):
                 MIGRATIONS[version](db)
                 db.execute(f"PRAGMA user_version = {version}")
+            db.execute("COMMIT")
+        except BaseException:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            raise
         return found
 
 
@@ -1303,6 +1333,35 @@ class Project:
             return "removed dataset"
 
     # ---------------------------------------------------------------- log
+    # ----------------------------------------------- AI permissions (format 2)
+    def ai_permissions(self) -> dict[str, bool]:
+        """Stored decisions per context source; a missing source is off."""
+        with self._db() as db:
+            return {r["source"]: bool(r["allowed"])
+                    for r in db.execute("SELECT source, allowed FROM ai_permissions")}
+
+    def set_ai_permission(self, source: str, allowed: bool) -> None:
+        """Record the researcher's decision for one source (``ai_context`` checks it)."""
+        if not re.fullmatch(r"[a-z_]{1,40}", str(source)):
+            raise ProjectError(f"Unknown context source: {source!r}")
+        with self._write() as db:
+            db.execute("INSERT INTO ai_permissions VALUES (?, ?, ?) ON CONFLICT(source)"
+                       " DO UPDATE SET allowed = excluded.allowed, changed_at = excluded.changed_at",
+                       (source, int(bool(allowed)), now()))
+            self._touch(db)
+            _log(db, "ai_permission", {"source": source, "allowed": bool(allowed)})
+
+    @property
+    def data_anonymous(self) -> bool:
+        with self._db() as db:
+            return bool(db.execute("SELECT data_anonymous FROM project").fetchone()[0])
+
+    def set_data_anonymous(self, anonymous: bool) -> None:
+        with self._write() as db:
+            db.execute("UPDATE project SET data_anonymous = ?", (int(bool(anonymous)),))
+            self._touch(db)
+            _log(db, "data_anonymous", {"anonymous": bool(anonymous)})
+
     def events(self, limit: int = 200) -> list[dict]:
         with self._db() as db:
             return [dict(r) | {"detail": json.loads(r["detail"])} for r in db.execute(

@@ -48,6 +48,8 @@ MATRIX = (
     ("home_projects_lv_125", "projects", 1280, 1600, 1.25, "lv", "light"),
     ("home_projects_ru_dark", "projects", 1100, 1600, 1, "ru", "dark"),
     ("results_stale", "results-stale", 1440, 1500, 1, "en", "light"),
+    ("settings_profile", "settings-profile", 1440, 2600, 1, "en", "light"),
+    ("settings_profile_ru", "settings-profile", 1280, 2600, 1.25, "ru", "light"),
     ("classic_home", "classic-home", 1440, 900, 1, "en", "light"),
     ("classic_groups", "classic-groups", 1440, 2200, 1, "en", "light"),
 )

@@ -208,7 +208,8 @@ class ReviewScenarioTests(unittest.TestCase):
         sys.path.insert(0, str(ROOT / "tools"))
         from workspace_scenarios import apply
 
-        for name, route in (("projects", "home"), ("results-stale", "results")):
+        for name, route in (("projects", "home"), ("results-stale", "results"),
+                            ("settings-profile", "settings")):
             with self.subTest(scenario=name):
                 ws = Workspace()
                 self.addCleanup(ws.close)
