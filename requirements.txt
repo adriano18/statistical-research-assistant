@@ -9,4 +9,6 @@ python-docx>=1.1,<2
 Pillow>=10,<13
 pypdf>=5,<7
 pypdfium2>=4.30,<6
+# Verifies the Ed25519 signature of update manifests (Stage 35, #45).
+cryptography>=42,<60
 threadpoolctl>=3,<5

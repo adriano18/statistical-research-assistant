@@ -1322,6 +1322,12 @@ def build_interface(
 
         data_ui.show_data_folder(page, Path(__file__).resolve().parent, language)
 
+    def show_updates(e=None):
+        """Settings → Check for updates… / Help → About and updates… (#45)."""
+        import update_ui
+
+        update_ui.open_dialog(page, Path(__file__).resolve().parent, language)
+
     def navigate_and_open(section, registered_action):
         switch_screen(section)
         if registered_action in a:
@@ -1378,6 +1384,7 @@ def build_interface(
                 ("macos", lambda e: change_appearance("macos")),
                 ("ocr_status", show_ocr_status),
                 ("data_folder", show_data_folder),
+                ("updates", show_updates),
             ]),
             group("ai", [
                 ("ai_status", lambda e: explain("ai_note")),
@@ -1387,6 +1394,7 @@ def build_interface(
                 ("ai_status", lambda e: explain("ai_note")),
                 ("privacy", lambda e: explain("privacy_note")),
                 ("ocr_status", show_ocr_status),
+                ("about", show_updates),
             ]),
         ],
     )

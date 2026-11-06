@@ -209,14 +209,15 @@ async def start(page, *, import_workspace=None, timeline: StartupTimeline = TIME
 
 
 def _after_start(page, language: str) -> None:
-    """Work that waits until the window is usable and never blocks it: offer
-    to copy research data an earlier version kept elsewhere (#44)."""
+    """Work that waits until the window is usable and never blocks it: the
+    outcome of an update started by the previous run, the offer to copy an
+    earlier version's data (#44), then the daily update check (#45)."""
     if os.environ.get("SRA_STARTUP_SMOKE", "").strip():
         return   # startup measurements only
     try:
-        import data_ui
+        import update_ui
 
-        page.run_task(data_ui.offer_at_startup, page, Path(__file__).resolve().parent, language)
+        page.run_task(update_ui.after_start, page, Path(__file__).resolve().parent, language)
     except Exception:
         pass
 

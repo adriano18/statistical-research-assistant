@@ -135,6 +135,10 @@ class WorkspaceApp:
         # Saves every change of the session into the open project; subscribed
         # before the chrome so the context bar shows the saved state.
         self.projects = ProjectBinding(self.session, self.project_root)
+        # Before an in-app update closes the program, close the open project.
+        import update_ui
+
+        update_ui.register_before_exit(lambda: self.projects.close(clear=False))
         self._shown_project_message = None
         # Optional local researcher profile (beside the projects folder).
         from researcher_profile import load_profile, profile_path
@@ -1282,6 +1286,7 @@ class SettingsPage:
                     title=ui.t("settings.title")),
             self.profile.profile_card(),
             self.profile.ai_card(),
+            self._updates_card(),
             self._data_card(),
             wc.card(ui, ocr, title=ui.t("settings.ocr")),
         ]
@@ -1293,6 +1298,33 @@ class SettingsPage:
                                          spacing=tk.SPACE_5,
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
                                tk.READING_MAX_WIDTH + 200)
+
+    def _updates_card(self) -> ft.Control:
+        """Version, channel and in-app updates (#45)."""
+        import app_identity
+        import update_client
+        import update_ui
+
+        app, ui = self.app, self.app.ui
+        language = app.session.language
+        build = app_identity.build_info()
+        root = app.project_root.parent
+        rows = [wc.text(ui, line, data="settings-version") for line in
+                update_ui.version_lines(language, build)]
+
+        def toggle(e=None):
+            state = update_client.state(root)
+            state["automatic"] = bool(e.control.value) if e is not None else True
+            update_client.save_state(root, state)
+
+        rows.append(ft.Checkbox(label=update_ui.t(language, "automatic"),
+                                value=update_client.state(root).get("automatic", True),
+                                on_change=toggle, data="settings-updates-automatic"))
+        rows.append(wc.caption(ui, update_ui.t(language, "privacy")))
+        rows.append(wc.button(ui, update_ui.t(language, "check"),
+                              lambda e=None: update_ui.open_dialog(app.page, ROOT, language),
+                              icon=ft.Icons.SYSTEM_UPDATE_ALT, data="settings-updates-check"))
+        return wc.card(ui, rows, title=update_ui.t(language, "title"), data="settings-updates")
 
     def _data_card(self) -> ft.Control:
         """Where research data is kept, and data of earlier versions (#44)."""
