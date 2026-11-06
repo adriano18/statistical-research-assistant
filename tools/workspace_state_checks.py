@@ -33,6 +33,15 @@ def _near(value) -> bool:
     return value is not None and abs(value) <= TOLERANCE
 
 
+def _labels_with(prefix: str, button: str, expected: str):
+    """A button named exactly (``prefix`` "=") and the text it must bring."""
+    def arguments() -> list[str]:
+        from workspace_text import T
+
+        return [prefix + T[button][0], T[expected][0][:40]]
+    return arguments
+
+
 def _labels(*keys: str):
     def arguments() -> list[str]:
         from workspace_text import T
@@ -55,6 +64,10 @@ CHECKS = (
     ("results-add-report-twice", "results", "toggle", _labels("results.add_report",
                                                               "results.in_report"),
      lambda r: r["found_after"] and not r["image_problems"]),
+    # Open on Home opens the project (a lambda around the coroutine did nothing).
+    ("projects-open-from-home", "projects", "effect",
+     _labels_with("=", "project.open", "project.dashboard_subtitle"),
+     lambda r: not r["shown_before"] and r["shown_after"]),
 )
 
 

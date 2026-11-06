@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -100,6 +101,26 @@ class Workspace:
             return asyncio.run(result)
         return result
 
+    def dispatch(self, handler, event):
+        """Call an event handler exactly as Flet 1.x does
+        (``flet/controls/base_control.py``): a coroutine function is awaited;
+        any other callable is called and whatever it returns is dropped. A
+        plain handler, such as a lambda, that returns a coroutine therefore does
+        nothing in the application: it fails here instead of being run."""
+        from flet.utils.object_model import get_param_count
+
+        def call():
+            return handler() if get_param_count(handler) == 0 else handler(event)
+
+        if inspect.iscoroutinefunction(handler):
+            return asyncio.run(call())
+        result = call()
+        if inspect.iscoroutine(result):
+            result.close()
+            raise AssertionError(f"{handler!r} returns a coroutine that Flet never awaits: "
+                                 "the action would do nothing in the application")
+        return result
+
     def click(self, data: str):
         control = self.find(data)
         handler = getattr(control, "on_click", None)
@@ -107,30 +128,30 @@ class Workspace:
             raise AssertionError(f"{data} is not clickable")
         if getattr(control, "disabled", False):
             raise AssertionError(f"{data} is disabled")
-        return self.run(handler(SimpleNamespace(control=control, data=None)))
+        return self.dispatch(handler, SimpleNamespace(control=control, data=None))
 
     def choose(self, data: str, value):
         control = self.find(data, ft.Dropdown)
         control.value = value
-        return self.run(control.on_select(SimpleNamespace(control=control, data=value)))
+        return self.dispatch(control.on_select, SimpleNamespace(control=control, data=value))
 
     def check(self, data: str, value: bool = True):
         control = self.find(data, ft.Checkbox)
         control.value = value
-        return self.run(control.on_change(SimpleNamespace(control=control, data=value)))
+        return self.dispatch(control.on_change, SimpleNamespace(control=control, data=value))
 
     def type(self, data: str, value: str):
         control = self.find(data, ft.TextField)
         control.value = value
-        return self.run(control.on_change(SimpleNamespace(control=control, data=value)))
+        return self.dispatch(control.on_change, SimpleNamespace(control=control, data=value))
 
     def segment(self, data: str, key: str):
         group = self.find(data)
         for control in self.controls(group):
             if isinstance(control, ft.Button) and control.data == key:
-                return self.run(control.on_click(SimpleNamespace(control=control)))
+                return self.dispatch(control.on_click, SimpleNamespace(control=control))
         raise AssertionError(f"segment {key} not in {data}")
 
     def key(self, key: str, *, ctrl=False, shift=False):
         event = SimpleNamespace(key=key, ctrl=ctrl, shift=shift, alt=False, meta=False)
-        return self.run(self.app.on_keyboard(event))
+        return self.dispatch(self.app.on_keyboard, event)

@@ -98,7 +98,7 @@ class ProjectHub:
             actions = []
             if self.restored_id:
                 actions.append(wc.button(ui, ui.t("project.open"),
-                                         lambda e, i=self.restored_id: self.open(i),
+                                         wc.handler(self.open, self.restored_id),
                                          kind="primary", data="project-open-restored"))
             controls.append(wc.notice(ui, self.feedback[0], self.feedback[1], actions=actions,
                                       data="project-feedback"))
@@ -128,7 +128,7 @@ class ProjectHub:
             ft.Row(chips, wrap=True, spacing=tk.SPACE_2),
             wc.caption(ui, ui.t("project.backup_note"), data="project-backup-note"),
         ], title=ui.t("project.current"), actions=[
-            wc.button(ui, ui.t("project.backup"), lambda e, i=info.id, t=info.title: self.backup(i, t),
+            wc.button(ui, ui.t("project.backup"), wc.handler(self.backup, info.id, info.title),
                       icon=ft.Icons.SAVE_ALT, data="project-backup-current"),
             wc.button(ui, ui.t("project.close"), self.close, kind="quiet",
                       icon=ft.Icons.CLOSE, data="project-close"),
@@ -182,7 +182,7 @@ class ProjectHub:
                            wc.caption(ui, ui.t("project.deleted_on", date=self._deleted_date(d)))],
                           spacing=2, expand=True),
                 wc.button(ui, ui.t("project.restore_deleted"),
-                          lambda e, p=d.path: self.restore_deleted(p), kind="quiet",
+                          wc.handler(self.restore_deleted, d.path), kind="quiet",
                           icon=ft.Icons.RESTORE_FROM_TRASH, data=f"project-undelete-{index}"),
             ], vertical_alignment=ft.CrossAxisAlignment.CENTER) for index, d in enumerate(deleted[:10])]
             content.append(wc.expansion(
@@ -211,19 +211,19 @@ class ProjectHub:
         trailing: list[ft.Control] = [
             wc.chip(ui, ui.t("project.is_open"), "success", icon=ft.Icons.FOLDER_OPEN,
                     data=f"project-current-{info.id}") if current else
-            wc.button(ui, ui.t("project.open"), lambda e, i=info.id: self.open(i),
+            wc.button(ui, ui.t("project.open"), wc.handler(self.open, info.id),
                       kind="secondary", icon=ft.Icons.FOLDER_OPEN_OUTLINED,
                       tooltip=(ui.t("disabled.archived") if info.archived
                                else ui.t("project.open_named", title=info.title)),
                       data=f"project-open-{info.id}", disabled=info.archived),
             wc.icon_button(ui, ft.Icons.CONTENT_COPY, ui.t("project.duplicate"),
-                           lambda e, i=info.id: self.duplicate(i), data=f"project-duplicate-{info.id}"),
+                           wc.handler(self.duplicate, info.id), data=f"project-duplicate-{info.id}"),
             wc.icon_button(ui, ft.Icons.SAVE_ALT, ui.t("project.backup"),
-                           lambda e, i=info.id, t=info.title: self.backup(i, t),
+                           wc.handler(self.backup, info.id, info.title),
                            data=f"project-backup-{info.id}"),
             wc.icon_button(ui, ft.Icons.UNARCHIVE_OUTLINED if info.archived else ft.Icons.ARCHIVE_OUTLINED,
                            ui.t("project.unarchive" if info.archived else "project.archive"),
-                           lambda e, i=info.id, a=not info.archived: self.archive(i, a),
+                           wc.handler(self.archive, info.id, not info.archived),
                            data=f"project-archive-{info.id}"),
             wc.icon_button(ui, ft.Icons.DELETE_OUTLINE, ui.t("project.delete"),
                            lambda e, i=info.id, t=info.title: self.confirm_delete(i, t),
@@ -431,7 +431,7 @@ class ProjectPage:
         datasets = binding.project.datasets()
         header = wc.page_header(ui, info.title, ui.t("project.dashboard_subtitle"), actions=[
             wc.button(ui, ui.t("project.backup"),
-                      lambda e, i=info.id, t=info.title: hub.backup(i, t),
+                      wc.handler(hub.backup, info.id, info.title),
                       icon=ft.Icons.SAVE_ALT, data="project-backup-current"),
             wc.button(ui, ui.t("project.all_projects"), lambda e: app.navigate("home"),
                       kind="quiet", icon=ft.Icons.FOLDER_COPY_OUTLINED, data="project-all"),
@@ -522,7 +522,7 @@ class ProjectPage:
                 meta.insert(0, detail)
             trailing = (wc.chip(ui, ui.t("source.in_use"), "success", icon=ft.Icons.CHECK,
                                 data=f"source-in-use-{record.id}") if in_use else
-                        wc.button(ui, ui.t("source.use"), lambda e, i=record.id: self.use(i),
+                        wc.button(ui, ui.t("source.use"), wc.handler(self.use, record.id),
                                   icon=ft.Icons.SWAP_HORIZ, tooltip=ui.t("source.use_tip"),
                                   data=f"source-use-{record.id}"))
             rows.append(ft.Container(ft.Row([
