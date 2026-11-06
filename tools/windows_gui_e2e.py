@@ -90,7 +90,7 @@ class Gui:
         self.exe, self.data_dir, self.out = exe, data_dir, out
         self.process: subprocess.Popen | None = None
         self.win = None
-        self.handle = None
+        self.handle, self.window_pid = None, None
         self.frames: list = []
         self._recording = None
         self.step_index = 0
@@ -127,6 +127,7 @@ class Gui:
                         rect = window.rectangle()
                         if rect.width() > 300 and rect.height() > 200:
                             self.handle = window.handle
+                            self.window_pid = window.process_id()
                             break
                 except Exception:
                     continue
@@ -167,7 +168,7 @@ class Gui:
                            capture_output=True, check=False)
             with contextlib.suppress(Exception):
                 self.process.wait(timeout=20)
-        self.process, self.win, self.handle = None, None, None
+        self.process, self.win, self.handle, self.window_pid = None, None, None, None
 
     # ------------------------------------------------------------ evidence
     def window_box(self):
@@ -459,16 +460,27 @@ class Gui:
     # --------------------------------------------------------- file dialogs
     def dialogs(self) -> list:
         """Visible standard Windows dialogs (class #32770) of THIS application.
-        (Hosted runners show their own system dialogs, e.g. a paging-file
-        warning, which must never be mistaken for the file dialog.)"""
+
+        UI Automation lists a dialog owned by the application window (the
+        Open and Save dialogs) as a child of that window, not on the desktop,
+        so both places are searched. Dialogs of other processes (a hosted
+        runner shows its own paging-file warning) are never taken."""
         from pywinauto import Desktop
 
-        pid = self.process.pid if self.process is not None else None
-        found = []
-        for window in Desktop(backend="uia").windows():
+        pid = self.window_pid or (
+            self.process.pid if self.process is not None else None)
+        candidates = []
+        with contextlib.suppress(Exception):
+            candidates.extend(self.win.wrapper_object().children())
+        with contextlib.suppress(Exception):
+            candidates.extend(Desktop(backend="uia").windows())
+        found, seen = [], set()
+        for window in candidates:
             with contextlib.suppress(Exception):
-                if (window.class_name() == "#32770" and window.is_visible()
-                        and window.process_id() == pid):
+                info = window.element_info
+                if (info.class_name == "#32770" and info.process_id == pid
+                        and window.is_visible() and info.handle not in seen):
+                    seen.add(info.handle)
                     found.append(window)
         return found
 
