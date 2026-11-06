@@ -415,7 +415,13 @@ class Gui:
               timeout: float = 15, settle: float = 0.8):
         element = self.find(name, regex=regex, control_type=control_type, index=index,
                             timeout=timeout)
-        element.click_input()
+        info = element.element_info
+        if info.control_type in ("RadioButton", "CheckBox"):
+            # On the button itself: its row spans the page (see check()).
+            rect = info.rectangle
+            element.click_input(coords=(min(20, rect.width() // 2), rect.height() // 2))
+        else:
+            element.click_input()
         time.sleep(settle)
         return element
 
@@ -446,13 +452,28 @@ class Gui:
         return UIAElementInfo(IUIA().get_focused_element())
 
     def check(self, label: str, value: bool = True, *, index: int = 0):
+        """Tick (or clear) a checkbox like a person: on the box itself. Its row
+        spans the page, and a click on the empty part to the right of the label
+        does nothing (run 10: the levels and the scale were never confirmed)."""
         box = self.find(label, control_type="CheckBox", index=index)
-        state = None
-        with contextlib.suppress(Exception):
-            state = box.get_toggle_state()
-        if state is None or bool(state) != value:
-            box.click_input()
+
+        def state():
+            with contextlib.suppress(Exception):
+                return bool(box.get_toggle_state())
+            return None
+
+        if state() == value:
+            return box
+        rect = box.element_info.rectangle
+        box.click_input(coords=(min(20, rect.width() // 2), rect.height() // 2))
+        time.sleep(0.8)
+        if state() not in (value, None):
+            print(f"  [check] clicking {label[:50]!r} did not change it; using UI Automation",
+                  flush=True)
+            with contextlib.suppress(Exception):
+                box.toggle()
             time.sleep(0.8)
+        expect(state() in (value, None), f"{label[:60]!r} could not be set to {value}")
         return box
 
     # The window's system menu (Restore, Move, Size, Minimize, Maximize, Close).
@@ -558,7 +579,9 @@ class Gui:
     def keys(self, keys: str):
         from pywinauto import keyboard
 
-        keyboard.send_keys(keys)
+        # with_spaces: pywinauto drops spaces otherwise (" (checked)" arrived
+        # as "(checked)" in run 10).
+        keyboard.send_keys(keys, with_spaces=True)
         time.sleep(0.5)
 
     def status(self) -> str:
@@ -1030,7 +1053,7 @@ def journey_review_120(gui: Gui, work: Path, journey: Journey) -> None:
     with journey.step("edit item 95: focus and every typed character stay"):
         field = gui.find(T("imp.edit_wording"), control_type="Edit")
         field.click_input()
-        gui.keys("{END}")
+        gui.keys("^{END}")                 # the end of the text, not of a visual line
         gui.keys(escape_keys(" (checked)"))
         focused = gui.focused()
         journey.facts["focused_type"] = focused.control_type
