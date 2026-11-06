@@ -378,6 +378,16 @@ class WorkspaceApp:
         self._rendered_width = int(getattr(self.page, "width", None) or 1280)
         self.page.update()
 
+    def scroll_page(self, delta: float) -> None:
+        """Scroll the page on screen by ``delta`` pixels (negative: up)."""
+        column = self.page_control
+        if column is None or not delta:
+            return
+        try:
+            self.page.run_task(column.scroll_to, delta=delta, duration=0)
+        except Exception:  # pragma: no cover - no page on screen
+            pass
+
     def _render_chrome(self):
         self.sidebar_host.content = self._sidebar()
         self.context_host.content = self._context_bar()

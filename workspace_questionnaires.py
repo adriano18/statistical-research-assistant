@@ -782,6 +782,7 @@ class ImportPage:
         self.progress: str | None = None   # what the reading is doing now
         self._cancel = None         # threading.Event while reading
         self.opened: set[str] = set()
+        self._editor_height = 0.0   # the open item editor, as laid out
     async def open_files(self, files):
         picked = files[0]
         name = str(getattr(picked, "name", "") or Path(getattr(picked, "path", "") or "").name)
@@ -1248,8 +1249,8 @@ class ImportPage:
                 bgcolor=ui.p.accent_subtle if selected else ui.p.surface,
                 border=ft.Border.all(1, ui.p.accent if selected else ui.p.border),
                 border_radius=ui.radius("card"), padding=tk.SPACE_2 + 2, ink=True,
-                on_click=lambda e, i=index: self._select(i), key=f"imp-row-{index}",
-                data=f"imp-item-{index}"))
+                on_click=lambda e, i=index: self._select(i, keep_in_place=True),
+                key=f"imp-row-{index}", data=f"imp-item-{index}"))
             if selected:
                 items.append(self._item_editor(index, low=index in flags))
         if not items:
@@ -1277,7 +1278,7 @@ class ImportPage:
         schemes = {x.id: x for x in s.instrument.schemes}
         if row.scheme_id in schemes:
             question = proposed_scheme_question(question, schemes[row.scheme_id])
-        return wc.card(ui, [
+        editor = wc.card(ui, [
             wc.section_label(ui, ui.t("imp.source_excerpt")),
             wc.text(ui, row.excerpt, tk.TYPE_BODY, color=ui.p.text_secondary, selectable=True),
             *[wc.caption(ui, "• " + note) for note in row.notes],
@@ -1295,6 +1296,11 @@ class ImportPage:
             respondent_question(ui, question, None, lambda k, v: None, number=row.number),
         ], title=f"{row.number}. {ui.t('q.editor')}", padding=tk.SPACE_4,
             border=ui.p.accent, data="imp-editor")
+        editor.on_size_change = self._editor_resized
+        return editor
+
+    def _editor_resized(self, e):
+        self._editor_height = float(getattr(e, "height", 0) or 0)
 
     def _set_filter(self, value: str):
         self.filter = value if value in ("all", "attention") else "all"
@@ -1346,12 +1352,19 @@ class ImportPage:
             self.page_number = self.session.instrument.first_page or 1
         self.app.render()
 
-    def _select(self, index: int):
+    def _select(self, index: int, *, keep_in_place: bool = False):
+        """Open item ``index``. A row clicked below the open editor stays under
+        the pointer: that editor closes above it, so the page scrolls up by the
+        editor's height (without this the row jumped up by ~560 px)."""
+        previous, was_items = self.selected, self.step == "items"
         self.selected = index
         self.step = "items"
         row = self.session.instrument.questions[index]
         self.page_number = row.page or self.page_number   # the source follows the item
         self.app.render()
+        if (keep_in_place and was_items and previous is not None and previous < index
+                and self._editor_height):
+            self.app.scroll_page(-(self._editor_height + tk.SPACE_1))
 
     def _reviewed(self, index: int, value: bool):
         self.session.mark_reviewed(index, bool(value))

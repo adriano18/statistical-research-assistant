@@ -180,6 +180,48 @@ async function listCheck(url, target, suffix, fieldLabel = 'Question text',
   }
 }
 
+// next: selects <first> in a long list (its editor opens under it), then
+//   clicks <second>, the row below, the way a reviewer goes through the
+//   items; the clicked row must stay under the pointer instead of jumping up
+//   when the editor above it closes.
+async function nextCheck(url, first, second, anchor) {
+  const { browser, page } = await openPage(url);
+  try {
+    let node = await nodeByLabel(page, first);
+    const top = await nodeByLabel(page, anchor);
+    if (!top) throw new Error('list not found');
+    await page.mouse.move(top.x, top.y + 120);
+    for (let i = 0; i < 80 && (!node || node.y > 600 || node.y < 120); i += 1) {
+      await page.mouse.wheel(0, 240);
+      await page.waitForTimeout(150);
+      node = await nodeByLabel(page, first);
+    }
+    if (!node) throw new Error(`${first} never came into view`);
+    await page.waitForTimeout(800);
+    node = await nodeByLabel(page, first);
+    await page.mouse.click(node.x, node.y);
+    await page.waitForTimeout(2500);
+    // The next row is below the editor that just opened: bring it on screen.
+    let next = await nodeByLabel(page, second);
+    for (let i = 0; i < 30 && (!next || next.y > 760); i += 1) {
+      await page.mouse.wheel(0, 120);
+      await page.waitForTimeout(200);
+      next = await nodeByLabel(page, second);
+    }
+    if (!next) throw new Error(`${second} never came into view`);
+    await page.waitForTimeout(800);
+    next = await nodeByLabel(page, second);
+    await page.mouse.click(next.x, next.y);
+    await page.waitForTimeout(2500);
+    const after = await nodeByLabel(page, second);
+    return { first, second, before_y: Math.round(next.y),
+             after_y: after ? Math.round(after.y) : null,
+             moved_by: after ? Math.round(after.y - next.y) : null };
+  } finally {
+    await browser.close();
+  }
+}
+
 // expand: opens the section whose header contains <text>, then clicks the
 //   first checkbox; the section must still be open afterwards.
 async function expandCheck(url, header) {
@@ -290,6 +332,12 @@ async function announceCheck(url, checkLabel, buttonLabel) {
 
 (async () => {
   const [mode, url, out, text = 'Fictional stress study', fieldLabel, anchor] = process.argv.slice(2);
+  if (mode === 'next') {
+    const result = await nextCheck(url, text, fieldLabel, anchor);
+    require('fs').writeFileSync(out, JSON.stringify(result, null, 1));
+    console.log(JSON.stringify(result));
+    return;
+  }
   if (mode === 'announce') {
     const result = await announceCheck(url, text, fieldLabel);
     require('fs').writeFileSync(out, JSON.stringify(result, null, 1));

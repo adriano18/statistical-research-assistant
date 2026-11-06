@@ -136,6 +136,33 @@ class LongFormTests(Base):
         self.assertEqual(self.page.page_number, self.page.session.instrument.questions[59].page,
                          "the source page follows the selected item")
 
+    def test_the_next_row_clicked_stays_under_the_pointer(self):
+        """Found on the packaged EXE: clicking item 61 while item 60's editor is
+        open closed that editor above it and item 61 jumped up by ~560 px.
+        The page now scrolls up by the closing editor's laid-out height."""
+        from types import SimpleNamespace
+        from unittest import mock
+
+        import workspace_tokens as tk
+
+        ws = self.ws
+        ws.click("imp-step-items")
+        ws.click("imp-item-59")                         # item 60: its editor opens
+        editor = ws.find("imp-editor")
+        editor.on_size_change(SimpleNamespace(control=editor, width=800, height=556))
+        with mock.patch.object(ws.app, "scroll_page") as scroll:
+            ws.click("imp-item-60")                     # item 61, below that editor
+        scroll.assert_called_once_with(-(556 + tk.SPACE_1))
+        self.assertEqual(self.page.selected, 60)
+        # Going up, the editor closes below the clicked row: nothing to correct.
+        with mock.patch.object(ws.app, "scroll_page") as scroll:
+            ws.click("imp-item-10")
+        scroll.assert_not_called()
+        # "Next item to check" brings the next item where the editor was.
+        with mock.patch.object(ws.app, "scroll_page") as scroll:
+            self.page._next_flag()
+        scroll.assert_not_called()
+
     def test_rows_keep_stable_keys(self):
         ws = self.ws
         ws.click("imp-step-items")
