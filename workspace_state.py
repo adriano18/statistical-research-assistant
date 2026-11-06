@@ -208,6 +208,32 @@ class ResearchSession:
     def missing_cells(self) -> int:
         return int(self.df.isna().sum().sum()) if self.has_data else 0
 
+    def value_summary(self, name: str, language: str = "en") -> str:
+        """What a column holds, to confirm its level by its content (Issue #32):
+        categories with counts, the codes of a short numeric scale, or the
+        range of a quantitative score — never the storage type alone."""
+        if not self.has_data or name not in self.df.columns:
+            return ""
+        series = self.df[name].dropna()
+        if series.empty:
+            return "—"
+        distinct = series.nunique()
+        numeric = pd.api.types.is_numeric_dtype(series)
+        if distinct == len(series) and distinct > 20:
+            return f"{distinct} unique"
+        if numeric and distinct > 12:
+            low, high = series.min(), series.max()
+            fmt = (lambda v: f"{v:g}")
+            return f"{fmt(low)} – {fmt(high)}"
+        counts = series.value_counts() if numeric else series.astype(str).value_counts()
+        order = sorted(counts.index)
+
+        def show(value) -> str:     # 4 rather than 4.0 for the codes of a scale
+            return f"{value:g}" if numeric else str(value)
+
+        shown = [f"{show(value)} ({counts[value]})" for value in order[:8]]
+        return ", ".join(shown) + (" …" if distinct > 8 else "")
+
     def group_labels(self, name: str) -> list[str]:
         if not self.has_data or name not in self.df.columns:
             return []

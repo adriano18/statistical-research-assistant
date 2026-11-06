@@ -64,6 +64,20 @@ class JourneyTests(unittest.TestCase):
             self.assertFalse(ws.find_all("journey-"), route)
 
 
+class ValueSummaryTests(unittest.TestCase):
+    def test_the_dictionary_shows_what_each_column_holds(self):
+        ws = Workspace()
+        self.addCleanup(ws.close)
+        ws.run(ws.app.load_sample("sample_scale.csv"))
+        values = {name: ws.find(f"values-{name}").value for name in ws.app.session.variables}
+        self.assertEqual(values["participant_id"], "32 unique")
+        self.assertEqual(values["group"], "A (16), B (16)")
+        self.assertEqual(values["stress_q1"], "1 (2), 2 (8), 3 (6), 4 (11), 5 (5)",
+                         "the codes of a response scale, not a range")
+        ws.run(ws.app.load_sample("sample_ancova.csv"))
+        self.assertEqual(ws.find("values-wellbeing").value, "34.24 – 66.13")
+
+
 class ResearchQuestionTests(unittest.TestCase):
     def test_the_question_is_kept_in_the_project(self):
         with TemporaryDirectory() as folder:

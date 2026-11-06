@@ -987,8 +987,9 @@ class DataPage:
     def _dictionary(self) -> ft.Control:
         ui, s = self.app.ui, self.app.session
         columns = [ui.t("data.col.variable"), ui.t("data.col.storage"),
-                   ui.t("data.col.suggested"), ui.t("data.col.level"),
-                   ui.t("data.col.missing"), ui.t("data.col.distinct")]
+                   ui.t("data.col.values"), ui.t("data.col.suggested"),
+                   ui.t("data.col.level"), ui.t("data.col.missing"),
+                   ui.t("data.col.distinct")]
         rows = []
         for info in s.variables.values():
             level = wc.dropdown(ui, "", _level_options(ui), info.confirmed,
@@ -1004,6 +1005,8 @@ class DataPage:
                 ft.DataCell(wc.text(ui, info.name, weight=ft.FontWeight.W_600, selectable=True)),
                 ft.DataCell(wc.text(ui, ui.t(f"storage.{info.storage}"),
                                     color=ui.p.text_secondary)),
+                ft.DataCell(wc.text(ui, s.value_summary(info.name), color=ui.p.text_secondary,
+                                    max_lines=2, data=f"values-{info.name}")),
                 ft.DataCell(wc.text(ui, suggestion, color=ui.p.text_secondary)),
                 ft.DataCell(level),
                 ft.DataCell(wc.text(ui, str(info.missing))),
