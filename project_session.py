@@ -274,7 +274,9 @@ class ProjectBinding:
                     method=run.method, roles=run.roles, options=run.options,
                     confirms=run.confirms, dataset=names.get(run.dataset_id, "—"),
                     rows=run.provenance.get("rows") or 0, created=_local_time(run.created_at),
-                    record_id=run.id, restored=True)
+                    record_id=run.id, restored=True,
+                    provenance={"dataset_sha256": run.dataset_sha256, "levels": dict(run.levels),
+                                "variables": list(run.levels), "rows": run.provenance.get("rows")})
                 entry.stale_reasons = project.run_status(run).reasons
                 self._saved_runs[entry.id] = id(entry.run)
             by_record = {e.record_id: e for e in session.results}
@@ -328,6 +330,26 @@ class ProjectBinding:
         """Keep a questionnaire published while this project is open with it."""
         if self.project is not None:
             self.project.link_questionnaire(survey_id, title, role)
+
+    def research_question(self) -> str:
+        """The project's research question or hypothesis ("" when none)."""
+        if self.project is None:
+            return ""
+        rows = self.project.questions()
+        return rows[0]["text"] if rows else ""
+
+    def set_research_question(self, text: str) -> None:
+        """Keep the research question in the project (an empty text removes it)."""
+        if self.project is None:
+            return
+        rows = self.project.questions()
+        text = (text or "").strip()
+        if rows and text:
+            self.project.update_question(rows[0]["id"], text)
+        elif rows:
+            self.project.remove_question(rows[0]["id"])
+        elif text:
+            self.project.add_question(text, "hypothesis" if "?" not in text else "question")
 
     def questionnaire_ids(self) -> set[str]:
         if self.project is None:

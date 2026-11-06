@@ -322,15 +322,19 @@ class MessageTests(Case):
                 single = [r for r in GOAL_ROLES[goal] if not r.multiple]
                 multiple = [r for r in GOAL_ROLES[goal] if r.multiple]
                 for chosen in itertools.permutations(names, len(single)):
-                    selection = {r.key: n for r, n in zip(single, chosen)}
-                    for r in multiple:
-                        selection[r.key] = [n for n in names if n not in chosen][:max(
-                            r.minimum or 1, 3)]
-                    advice = advise(goal, selection, session)
-                    if advice.ready and advice.method:
-                        problems = role_problems(METHODS[advice.method], advice.roles, session)
-                        if problems:
-                            disagreements.append((goal, advice.method, problems[0][0]))
+                    base = {r.key: n for r, n in zip(single, chosen)}
+                    fillings = [{r.key: [n for n in names if n not in chosen][:max(
+                        r.minimum or 1, 3)] for r in multiple}]
+                    if any(r.optional for r in multiple):   # and without the optional ones
+                        fillings.append({r.key: fillings[0][r.key] for r in multiple
+                                         if not r.optional})
+                    for filling in fillings:
+                        advice = advise(goal, {**base, **filling}, session)
+                        if advice.ready and advice.method:
+                            problems = role_problems(METHODS[advice.method], advice.roles,
+                                                     session)
+                            if problems:
+                                disagreements.append((goal, advice.method, problems[0][0]))
         self.assertEqual(disagreements[:5], [], f"{len(disagreements)} offered but blocked")
 
 
