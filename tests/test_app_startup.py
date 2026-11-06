@@ -160,18 +160,22 @@ class DataLocationTests(unittest.TestCase):
             self.assertEqual(survey_data_root(ROOT), ROOT / "data" / "surveys")
 
     def test_packaged_build_uses_durable_user_folder(self):
+        import app_paths
         import startup_diagnostics as sd
 
         with TemporaryDirectory() as bundle, TemporaryDirectory() as data:
             with patch.dict(os.environ, {"FLET_APP_STORAGE_DATA": data, "SRA_DATA_DIR": ""}):
-                with patch.object(sd, "is_packaged", return_value=True):
+                with patch.object(sd, "is_packaged", return_value=True), \
+                        patch.object(app_paths, "_windows", return_value=False):
                     self.assertEqual(sd.survey_data_root(Path(bundle)),
                                      Path(data) / "surveys")
                     legacy = Path(bundle) / "data" / "surveys"
                     legacy.mkdir(parents=True)
                     (legacy / "surveys.sqlite3").write_bytes(b"x")
-                    # Surveys saved by an earlier preview stay visible.
-                    self.assertEqual(sd.survey_data_root(Path(bundle)), legacy)
+                    # Stage 35: never used in place inside the program folder;
+                    # legacy_data offers to copy it into the data folder.
+                    self.assertEqual(sd.survey_data_root(Path(bundle)),
+                                     Path(data) / "surveys")
 
     def test_log_folder_falls_back_when_first_choice_is_not_writable(self):
         import startup_diagnostics as sd
