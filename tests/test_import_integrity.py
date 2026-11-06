@@ -153,6 +153,10 @@ class CitationParsingTests(CitationTestCase):
             "The form has 2 subscales with 15 items each.": None,
             "Developed by Fictional et al. (2001), the form consists of 30 items.": 30,
             "30 items; a short 10-item form also exists; the 30 items take 5 minutes.": 30,
+            # Scoring notes name a subset, not the length of the form.
+            "Reverse items 4, 5, 7 and 8. On these 4 questions, change the scores.": None,
+            "Šiem 3 apgalvojumiem punktus skaita pretēji.": None,
+            "Для этих 3 вопросов баллы считаются в обратном порядке.": None,
         }
         for text, expected in cases.items():
             with self.subTest(text=text):

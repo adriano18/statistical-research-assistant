@@ -409,7 +409,10 @@ _COUNT_STATED = re.compile(
     rf"\s+(?:[\w-]+\s+){{0,2}}?{_COUNTED}(?!\w)", re.I)
 _COUNT_HYPHENATED = re.compile(rf"\b{_COUNT}\s*[-‐–]\s*(?:items?|questions?|statements?)\b", re.I)
 _COUNT_MENTIONED = re.compile(rf"\b{_COUNT}\s+(?:[\w-]+\s+)?{_COUNTED}(?!\w)", re.I)
-_SUBSET_BEFORE = re.compile(r"\b(?:first|last|next|remaining|other|additional|extra|further)\s+$", re.I)
+# "these 4 questions" in scoring notes ("On these 4 questions, change the
+# scores ...") refers to a subset just named, not to the whole form.
+_SUBSET_BEFORE = re.compile(r"\b(?:first|last|next|remaining|other|additional|extra|further"
+                            r"|these|those|such|šiem|šo|šie|этих|эти|этим)\s+$", re.I)
 _SUBSET_AFTER = re.compile(r"\s*(?:\(|(?:are|were|is)\s+(?:reverse|reversed|positively|negatively|keyed)"
                            r"|reverse|each\b|per\b)", re.I)
 
