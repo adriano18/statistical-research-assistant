@@ -18,7 +18,9 @@ async function capture(url, out, width, height, scale, wait) {
     });
     await page.goto(url, { waitUntil: 'networkidle', timeout: 180000 });
     await page.waitForTimeout(Number(wait));
-    await page.screenshot({ path: out });
+    // One frame of the larger pages (Analyze) can take longer than
+    // Playwright's default 30 s with software rendering on a busy runner.
+    await page.screenshot({ path: out, timeout: 120000 });
   } finally {
     await browser.close().catch(() => {});
   }
@@ -31,12 +33,13 @@ async function capture(url, out, width, height, scale, wait) {
     await capture(url, out, width, height, scale, wait);
   } catch (error) {
     // The software renderer occasionally crashes the browser tab on large
-    // high-DPI canvases ("Page crashed"). A crash produces no picture of the
-    // app at all, so it is retried once in a fresh browser; a second crash,
-    // and any other error, fails. Rendered pages are still checked for blank
-    // or error content by workspace_screenshot_suite.py.
-    if (!/Page crashed|Target crashed/i.test(String(error))) throw error;
-    console.error(`browser tab crashed; retrying once: ${error.message}`);
+    // high-DPI canvases ("Page crashed") or delivers no frame in time on a
+    // busy CI runner. Neither produces a picture of the app at all, so it is
+    // retried once in a fresh browser; a second failure, and any other error,
+    // fails. Rendered pages are still checked for blank, unrendered or error
+    // content by workspace_screenshot_suite.py.
+    if (!/Page crashed|Target crashed|screenshot: Timeout/i.test(String(error))) throw error;
+    console.error(`no screenshot (${error.message.split('\n')[0]}); retrying once`);
     await capture(url, out, width, height, scale, wait);
   }
 })().catch((error) => {
