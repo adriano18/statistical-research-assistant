@@ -48,22 +48,39 @@ class Base(unittest.TestCase):
         self.ws.run(self.page.open_bytes(binary, name))
 
 
+def thirty_items_with_references() -> bytes:
+    """30 numbered items on a shared 4-point scale, then a bibliography: the
+    shape of issue #31 in the text layer, so no OCR engine is needed (the
+    image-page variant runs against real OCR in test_import_integrity)."""
+    from synthetic_documents import numbered_items_pdf
+
+    return numbered_items_pdf(30, references=True)
+
+
 class PsqLikeWizardTests(Base):
     def setUp(self):
         super().setUp()
-        from synthetic_documents import psq_like_pdf
-
-        self.open(psq_like_pdf(), "synthetic_strain.pdf")
+        self.open(thirty_items_with_references(), "synthetic_strain.pdf")
 
     def test_the_source_step_says_what_was_read_and_what_was_kept_out(self):
         ws = self.ws
         self.assertEqual(self.page.step, "source")
         self.assertIn("Found 30 of 30 expected items", texts_in(ws, "imp-fact-count_match"))
         self.assertIn("look like references", texts_in(ws, "imp-fact-references"))
-        self.assertIn("local OCR", texts_in(ws, "imp-fact-ocr_read"))
         excluded = ws.find("imp-excluded")
         self.assertIn("(3)", texts_in(ws, "imp-excluded"))
         self.assertIsInstance(excluded, ft.ExpansionTile)
+
+    def test_ocr_facts_are_shown_translated(self):
+        """What the reader says about image pages (the facts of an OCR run)."""
+        ws, page = self.ws, self.page
+        page.session.facts = [("ocr_read", {"pages": [2]}),
+                              ("ocr_unavailable", {"pages": [3, 4]})]
+        ws.app.render()
+        self.assertIn("Page 2: the questions printed as an image were read with local OCR",
+                      texts_in(ws, "imp-fact-ocr_read"))
+        self.assertIn("Pages 3 and 4: the questions printed as an image could not be read",
+                      texts_in(ws, "imp-fact-ocr_unavailable"))
 
     def test_the_footer_stays_on_every_step_and_create_waits_for_everything(self):
         ws = self.ws
@@ -185,9 +202,7 @@ class TranslatedFactsTests(Base):
     language = "ru"
 
     def test_no_engine_english_reaches_a_russian_screen(self):
-        from synthetic_documents import psq_like_pdf
-
-        self.open(psq_like_pdf(), "synthetic_strain.pdf")
+        self.open(thirty_items_with_references(), "synthetic_strain.pdf")
         text = " ".join(texts_in(self.ws, f"imp-fact-{key}") for key, _ in self.page.session.facts)
         self.assertIn("Найдено 30 из 30", text)
         self.assertIn("страница 2", text)
