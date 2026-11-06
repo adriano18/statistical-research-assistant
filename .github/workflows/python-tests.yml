@@ -39,6 +39,44 @@ jobs:
           MPLBACKEND: Agg
         run: python ocr_selftest.py ocr-selftest.json && cat ocr-selftest.json
 
+  # Issue #23: the Windows bundle drops package test suites, build-only files
+  # and the Pillow AVIF codec ([tool.flet.cleanup] in pyproject.toml). Remove
+  # exactly the same files here and run everything again, so a passing suite
+  # proves that no supported procedure needs them.
+  pruned-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install local OCR engine and ENG/LAV/RUS language data
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q tesseract-ocr tesseract-ocr-eng tesseract-ocr-lav tesseract-ocr-rus
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Analysis self-test before pruning (reference report hashes)
+        env:
+          MPLBACKEND: Agg
+        run: python analysis_selftest.py before-prune.json
+      - name: Remove what the Windows bundle removes
+        run: python tools/prune_packages.py --list | tail -n 20
+      - name: Unit tests on the pruned environment (real local OCR required)
+        env:
+          MPLBACKEND: Agg
+          SRA_REQUIRE_REAL_OCR: "1"
+        run: python -m unittest discover -s tests
+      - name: Analysis self-test after pruning (same report hashes)
+        env:
+          MPLBACKEND: Agg
+        run: |
+          python analysis_selftest.py after-prune.json
+          python analysis_selftest.py --compare before-prune.json after-prune.json
+
   windows-sqlite:
     runs-on: windows-latest
     steps:

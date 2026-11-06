@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-import pingouin as pg
 
 from variable_rules import looks_like_identifier
 
@@ -51,6 +50,10 @@ def analyze_cronbach(df: pd.DataFrame, item_names: list[str]) -> ReliabilityResu
         raise ValueError("One or more items have no variation.")
     if complete.sum(axis=1).var(ddof=1) <= 0:
         raise ValueError("The total score has no variation.")
+
+    # Imported on first use: pingouin pulls in scikit-learn, seaborn and
+    # xarray, the largest single cost of starting the application.
+    import pingouin as pg
 
     alpha, ci = pg.cronbach_alpha(data=complete, nan_policy="listwise")
     if not np.isfinite(alpha) or not np.all(np.isfinite(ci)):
