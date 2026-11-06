@@ -237,6 +237,32 @@ class Gui:
         target.write_text(json.dumps(rows, indent=1, ensure_ascii=False), encoding="utf-8")
         return target
 
+    @staticmethod
+    def describe(elements, limit: int = 120) -> str:
+        """Compact lines "type | name | automation id" for the CI log."""
+        lines = []
+        for element in list(elements)[:limit]:
+            info = element.element_info
+            try:
+                rect = info.rectangle
+                where = f"{rect.left},{rect.top},{rect.width()}x{rect.height()}"
+            except Exception:
+                where = "?"
+            lines.append(f"    {info.control_type:<12} | {(info.name or '')[:70]!r} | "
+                         f"{info.automation_id or ''} | {info.class_name or ''} | {where}")
+        return "\n".join(lines)
+
+    def log_screen(self, title: str) -> None:
+        """What is on screen now, printed into the CI log (artifacts may not be
+        reachable when diagnosing a failure)."""
+        try:
+            visible = [e for e in self.elements() if (e.element_info.name or "").strip()
+                       and self.on_screen(e)]
+            print(f"  [screen: {title}] {len(visible)} named elements on screen", flush=True)
+            print(self.describe(visible, 90), flush=True)
+        except Exception as error:
+            print(f"  [screen: {title}] could not list elements: {error!r}", flush=True)
+
     # ------------------------------------------------------------- queries
     def elements(self):
         return self.win.descendants()
@@ -326,6 +352,7 @@ class Gui:
                 time.sleep(0.4)
         self.dump(f"missing-{name or regex}")
         self.shot(f"missing-{name or regex}")
+        self.log_screen(f"missing {name or regex!r}")
         raise StepFailure(f"not found on screen: {name or regex!r} ({control_type or 'any'})")
 
     # ------------------------------------------------------------- actions
@@ -412,60 +439,90 @@ class Gui:
         raise StepFailure(f"text never appeared: {fragment!r}")
 
     # --------------------------------------------------------- file dialogs
+    def dialogs(self) -> list:
+        """Visible standard Windows dialogs (class #32770) of any process."""
+        from pywinauto import Desktop
+
+        found = []
+        for window in Desktop(backend="uia").windows():
+            with contextlib.suppress(Exception):
+                if window.class_name() == "#32770" and window.is_visible():
+                    found.append(window)
+        return found
+
     def file_dialog(self, path: Path, *, save: bool, timeout: float = 30) -> None:
-        """Fill in the native Windows Open/Save dialog like a person."""
-        from pywinauto import Desktop, keyboard
+        """Fill in the native Windows Open/Save dialog like a person: the
+        dialog opens with the keyboard in its File name box."""
+        from pywinauto import keyboard
 
         deadline = time.monotonic() + timeout
         dialog = None
         while time.monotonic() < deadline and dialog is None:
-            for window in Desktop(backend="uia").windows():
-                try:
-                    if window.class_name() == "#32770" and window.is_visible():
-                        dialog = window
-                        break
-                except Exception:
-                    continue
+            found = self.dialogs()
+            dialog = found[0] if found else None
             time.sleep(0.5)
         if dialog is None:
             self.shot("no-file-dialog")
+            self.log_screen("no file dialog")
             raise StepFailure("the Windows file dialog did not open")
+        time.sleep(1.0)            # let the dialog finish building its controls
         self.shot("file-dialog")
-        edit = None
-        for auto_id in (("1001", "1148") if save else ("1148", "1001")):
-            with contextlib.suppress(Exception):
-                candidate = dialog.child_window(auto_id=auto_id, control_type="Edit")
-                if candidate.exists(timeout=2):
-                    edit = candidate.wrapper_object()
-                    break
+        edits = []
+        with contextlib.suppress(Exception):
+            edits = dialog.descendants(control_type="Edit")
+        wanted = ("1001", "1148") if save else ("1148", "1001")
+        edit = next((e for key in wanted for e in edits
+                     if e.element_info.automation_id == key), None)
+        if edit is None and edits:
+            # The File name box is the lowest edit field (the search box is on top).
+            edit = max(edits, key=lambda e: e.element_info.rectangle.top)
+        print(f"  [file dialog] {dialog.window_text()!r}: {len(edits)} edit field(s); using "
+              f"{(edit.element_info.automation_id if edit else 'keyboard focus')!r}", flush=True)
         if edit is None:
-            edits = [e for e in dialog.descendants(control_type="Edit")
-                     if "name" in (e.element_info.name or "").lower()]
-            if not edits:
-                raise StepFailure("no file name field in the Windows dialog")
-            edit = edits[0]
-        edit.click_input()
+            print(self.describe(dialog.descendants(), 80), flush=True)
+        with contextlib.suppress(Exception):
+            dialog.set_focus()
+        if edit is not None:
+            with contextlib.suppress(Exception):
+                edit.click_input()
+        else:
+            keyboard.send_keys("%n")          # Alt+N: the File name box
+        time.sleep(0.3)
         keyboard.send_keys("^a{BACKSPACE}")
         keyboard.send_keys(escape_keys(str(path)), with_spaces=True, pause=0.01)
         time.sleep(0.4)
         keyboard.send_keys("{ENTER}")
-        # An existing file asks to be replaced.
-        end = time.monotonic() + 10
-        while time.monotonic() < end:
-            open_dialogs = []
-            for window in Desktop(backend="uia").windows():
-                with contextlib.suppress(Exception):
-                    if window.class_name() == "#32770" and window.is_visible():
-                        open_dialogs.append(window)
+        # An existing file asks to be replaced; otherwise the dialog closes.
+        end_at = time.monotonic() + 15
+        while time.monotonic() < end_at:
+            open_dialogs = self.dialogs()
             if not open_dialogs:
                 break
             for window in open_dialogs:
                 with contextlib.suppress(Exception):
-                    yes = window.child_window(title="Yes", control_type="Button")
-                    if yes.exists(timeout=0.5):
-                        yes.click_input()
+                    for button in window.descendants(control_type="Button"):
+                        if button.window_text() in ("Yes", "&Yes"):
+                            button.click_input()
             time.sleep(0.5)
+        if self.dialogs():
+            self.shot("file-dialog-still-open")
+            print(self.describe(self.dialogs()[0].descendants(), 60), flush=True)
+            raise StepFailure("the Windows file dialog stayed open after Enter")
         time.sleep(1.0)
+
+    def recover(self) -> None:
+        """After a failed journey: close dialogs and return to Home."""
+        from pywinauto import keyboard
+
+        for _ in range(3):
+            for window in self.dialogs():
+                with contextlib.suppress(Exception):
+                    window.close()
+            with contextlib.suppress(Exception):
+                keyboard.send_keys("{ESC}")
+            time.sleep(0.5)
+        with contextlib.suppress(Exception):
+            self.click(T("nav.home"), control_type=("Button", "Text"), timeout=8)
 
 
 # ================================================================ journeys
@@ -895,6 +952,8 @@ def main(argv=None) -> int:
                     outcome["ok"] = True
                 except Exception as error:
                     outcome["error"] = f"{type(error).__name__}: {error}"
+                    with contextlib.suppress(Exception):
+                        gui.recover()
             outcome.update(steps=journey.steps, facts=journey.facts)
             report["journeys"].append(outcome)
             print(("ok   " if outcome["ok"] else "FAIL ") + name,
