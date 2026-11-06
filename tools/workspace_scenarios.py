@@ -26,7 +26,8 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 SCENARIOS = (
     "home", "data", "guided", "results", "catalog", "form", "reports",
     "questionnaires", "phone-preview", "import", "help", "settings",
-    "projects", "results-stale", "settings-profile", "classic-home", "classic-groups",
+    "projects", "results-stale", "settings-profile", "import-zoom", "classic-home",
+    "classic-groups",
 )
 
 
@@ -120,6 +121,15 @@ async def apply(app, name: str) -> None:
         builder.title = "Fictional wellbeing pilot"
         builder.selected = 1
         app.navigate("questionnaires")
+        return
+    if name == "import-zoom":
+        from synthetic_documents import connectedness_text_pdf
+
+        page = app.pages["import"]
+        app.navigate("import")
+        await page.open_bytes(connectedness_text_pdf(), "synthetic_two_versions.pdf")
+        page.zoom = "150"
+        page.enlarge_page()
         return
     if name == "import":
         from synthetic_documents import connectedness_text_pdf

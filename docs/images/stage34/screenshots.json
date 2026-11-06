@@ -1,5 +1,31 @@
 [
  {
+  "name": "results_detail",
+  "scenario": "results",
+  "size": [
+   1440,
+   2600
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "reports",
+  "scenario": "reports",
+  "size": [
+   1440,
+   900
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
   "name": "home_projects",
   "scenario": "projects",
   "size": [
@@ -44,6 +70,45 @@
   "size": [
    1440,
    1500
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "results_wide",
+  "scenario": "results",
+  "size": [
+   1920,
+   1100
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "analyze_guided_fold",
+  "scenario": "guided",
+  "size": [
+   1440,
+   900
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "import_zoom",
+  "scenario": "import-zoom",
+  "size": [
+   1600,
+   1100
   ],
   "scale": 1,
   "language": "en",
