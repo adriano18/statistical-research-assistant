@@ -15,6 +15,7 @@ from pathlib import Path
 
 import flet as ft
 
+from project_store import project_data_root
 from startup_diagnostics import survey_data_root
 from workspace_shell import ClassicBridge, WorkspaceApp
 
@@ -29,7 +30,8 @@ def build(page: ft.Page, *, language: str | None = None, theme: str | None = Non
     page.title = "Statistical Research Assistant — workspace preview"
     page.padding = 0
     app = WorkspaceApp(
-        page, bridge=ClassicBridge(survey_root=survey_data_root(ROOT)),
+        page, bridge=ClassicBridge(survey_root=survey_data_root(ROOT),
+                                   project_root=project_data_root(ROOT)),
         language=language or os.environ.get("SRA_LANGUAGE") or preferences.language,
         corners=preferences.appearance,
     )

@@ -1,0 +1,54 @@
+[
+ {
+  "name": "home_projects",
+  "scenario": "projects",
+  "size": [
+   1440,
+   1500
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "home_projects_lv_125",
+  "scenario": "projects",
+  "size": [
+   1280,
+   1600
+  ],
+  "scale": 1.25,
+  "language": "lv",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "home_projects_ru_dark",
+  "scenario": "projects",
+  "size": [
+   1100,
+   1600
+  ],
+  "scale": 1,
+  "language": "ru",
+  "theme": "dark",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "results_stale",
+  "scenario": "results-stale",
+  "size": [
+   1440,
+   1500
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ }
+]

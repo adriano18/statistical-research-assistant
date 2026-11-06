@@ -29,6 +29,14 @@ GOAL_ICONS = {
 }
 
 
+def session_note(app) -> str:
+    """Where results live: the open project, or this session only."""
+    info = app.projects.info() if app.projects.active else None
+    if info is None:
+        return app.t("results.session_note")
+    return app.t("results.project_note", title=info.title)
+
+
 def method_label(key: str, options: dict) -> str:
     spec = METHODS[key]
     for option in spec.options:
@@ -63,6 +71,23 @@ class AnalyzePage:
         self.form_confirms: dict = {}
         self.running = False
         self.message: tuple[str, str] | None = None
+
+    def rerun(self, entry) -> None:
+        """Open a saved result's analysis for the current data. The researcher
+        gives the confirmations again: they were made for the earlier data."""
+        key = "omnibus" if entry.method == "posthoc" else entry.method
+        self.mode, self.method = "all", key
+        self.form_roles = dict(entry.roles or {})
+        self.form_options = {**default_options(METHODS[key]), **(entry.options or {})}
+        self.form_confirms = {}
+        self.message = (self.app.t("analyze.rerun", title=entry.title), "info")
+        self.app.navigate("analyze")
+
+    def reset(self) -> None:
+        """Forget choices made for another project's data."""
+        self.goal, self.selection, self.confirms, self.override = None, {}, {}, None
+        self.method, self.form_roles, self.form_options, self.form_confirms = None, {}, {}, {}
+        self.message = None
 
     # ----------------------------------------------------------- layout
     def build(self) -> ft.Control:
@@ -338,6 +363,8 @@ class AnalyzePage:
         app = self.app
         self.running, self.message = True, None
         app.render()
+        # A result belongs to the data and project it was calculated on.
+        started = (app.projects.generation, id(app.session.df))
         try:
             run = await asyncio.to_thread(run_method, key, app.session, roles, options, confirms)
         except Exception as error:
@@ -346,8 +373,15 @@ class AnalyzePage:
             app.render()
             return None
         self.running = False
+        if (app.projects.generation, id(app.session.df)) != started:
+            self.message = (app.t("run.discarded"), "warning")
+            app.status(self.message[0], "warning")
+            app.render()
+            return None
         confirmed = [c.label for c in METHODS[key].confirmations if confirms.get(c.key)]
-        entry = app.session.add_result(run, confirmed)
+        entry = app.session.add_result(
+            run, confirmed, method=key, roles=dict(roles),
+            options={**default_options(METHODS[key]), **options}, confirms=dict(confirms))
         app.status(app.t("run.done"), "success")
         app.navigate("results")
         return entry
@@ -529,8 +563,8 @@ class ResultsPage:
             ], vertical_alignment=ft.CrossAxisAlignment.START, spacing=tk.SPACE_5)],
                 spacing=tk.SPACE_4)
         return app.constrained(ft.Column(
-            [body, wc.caption(self.app.ui, ui.t("results.session_note"))], spacing=tk.SPACE_3),
-            tk.CONTENT_MAX_WIDTH + 200)
+            [body, wc.caption(self.app.ui, session_note(app), data="results-note")],
+            spacing=tk.SPACE_3), tk.CONTENT_MAX_WIDTH + 200)
 
     def _select(self, entry_id: int):
         self.app.session.selected_result = entry_id
@@ -548,6 +582,8 @@ class ResultsPage:
                     wc.caption(ui, f"{entry.dataset} · {entry.created:%H:%M}"),
                     *([wc.chip(ui, ui.t("results.in_report"), "success",
                                icon=ft.Icons.DESCRIPTION_OUTLINED)] if entry.in_report else []),
+                    *([wc.chip(ui, ui.t("results.stale"), "warning", icon=ft.Icons.UPDATE,
+                               data=f"result-stale-{entry.id}")] if entry.stale_reasons else []),
                 ], spacing=2),
                 bgcolor=ui.p.accent_subtle if selected else ui.p.surface,
                 border=ft.Border.all(1, ui.p.accent if selected else ui.p.border),
@@ -579,6 +615,17 @@ class ResultsPage:
                 self._report_toggle(entry),
             ], vertical_alignment=ft.CrossAxisAlignment.START),
         ]
+        if entry.stale_reasons:
+            from workspace_projects import stale_text
+
+            reasons = "; ".join(stale_text(ui, reason) for reason in entry.stale_reasons)
+            rerun = [] if entry.method is None else [wc.button(
+                ui, ui.t("results.recalculate"), lambda e, i=entry.id: self._rerun(i),
+                kind="primary", icon=ft.Icons.REFRESH, disabled=not self.app.session.has_data,
+                data="result-recalculate")]
+            sections.append(wc.notice(ui, ui.t("results.stale_body", reasons=reasons), "warning",
+                                      title=ui.t("results.stale_title"), actions=rerun,
+                                      data="result-stale"))
         if answer:
             sections.append(wc.card(ui, [wc.text(ui, answer, tk.TYPE_BODY_L, selectable=True,
                                                  data="result-answer")],
@@ -702,14 +749,25 @@ class ResultsPage:
         from analysis_runs import run_posthoc
 
         entry = self.app.session.result(entry_id)
+        if not await self.app.projects.ensure_result(entry):
+            self.feedback[entry_id] = (self.app.t("results.not_reproducible"), "warning")
+            self.app.render()
+            return
         try:
             run = await asyncio.to_thread(run_posthoc, entry.run)
         except Exception as error:
             self.feedback[entry_id] = (self.app.t("run.failed", error=error), "danger")
             self.app.render()
             return
+        if entry.method == "omnibus":
+            entry.method = "posthoc"   # how the project reproduces it
         self.app.session.replace_run(entry_id, run)
         self.app.render()
+
+    def _rerun(self, entry_id: int):
+        entry = self.app.session.result(entry_id)
+        if entry is not None and entry.method:
+            self.app.pages["analyze"].rerun(entry)
 
     # ------------------------------------------------------------- exports
     def complete_report(self, run) -> str:
@@ -778,6 +836,10 @@ class ResultsPage:
 
     async def _save(self, entry, kind: str):
         app = self.app
+        if kind == "docx" and not await app.projects.ensure_result(entry):
+            self.feedback[entry.id] = (app.t("results.not_reproducible"), "warning")
+            app.render()
+            return
         name, writer = self.export_payload(entry, kind)
         extension = name.rsplit(".", 1)[-1]
         try:
@@ -798,14 +860,19 @@ class ReportsPage:
     def __init__(self, app):
         self.app = app
         self.study_title = ""
+        self.include_stale = False
         self.feedback: tuple[str, str] | None = None
+
+    def _blocked(self) -> bool:
+        stale = [e for e in self.app.session.report_entries() if e.stale_reasons]
+        return bool(stale) and not self.include_stale
 
     def build(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session
         header = wc.page_header(ui, ui.t("reports.title"), ui.t("reports.subtitle"), actions=[
             wc.button(ui, ui.t("reports.export_txt"), self._export, kind="primary",
-                      icon=ft.Icons.FILE_DOWNLOAD_OUTLINED, disabled=not s.report_order,
-                      data="reports-export"),
+                      icon=ft.Icons.FILE_DOWNLOAD_OUTLINED,
+                      disabled=not s.report_order or self._blocked(), data="reports-export"),
         ])
         entries = s.report_entries()
         if not entries:
@@ -820,7 +887,12 @@ class ReportsPage:
                 items.append(wc.card(ui, [ft.Row([
                     ft.Column([wc.text(ui, f"{number}. {entry.title}", tk.TYPE_LABEL,
                                        weight=ft.FontWeight.W_600),
-                               wc.caption(ui, f"{entry.dataset} · {entry.created:%H:%M}")],
+                               wc.caption(ui, f"{entry.dataset} · {entry.created:%H:%M}"),
+                               *([wc.chip(ui, ui.t("results.stale"), "warning",
+                                          icon=ft.Icons.UPDATE,
+                                          on_click=lambda e, i=entry.id: self._show(i),
+                                          data=f"report-stale-{entry.id}")]
+                                 if entry.stale_reasons else [])],
                               spacing=2, expand=True),
                     wc.icon_button(ui, ft.Icons.ARROW_UPWARD, ui.t("reports.move_up"),
                                    lambda e, i=entry.id: self._move(i, -1),
@@ -832,18 +904,33 @@ class ReportsPage:
                                    lambda e, i=entry.id: self._remove(i)),
                 ], vertical_alignment=ft.CrossAxisAlignment.CENTER)], padding=tk.SPACE_4,
                     data=f"report-item-{entry.id}"))
+            stale = [e for e in entries if e.stale_reasons]
+            gate = [] if not stale else [wc.notice(
+                ui, ui.t("reports.stale_block", count=len(stale)), "warning", actions=[
+                    wc.checkbox(ui, ui.t("reports.include_stale"), self.include_stale,
+                                on_change=lambda e: self._include(bool(e.control.value)),
+                                data="reports-include-stale")], data="reports-stale")]
             body = [
                 wc.text_field(ui, ui.t("reports.study_title"), self.study_title, width=520,
                               on_change=lambda e: setattr(self, "study_title",
                                                           e.control.value or "")),
+                *gate,
                 *items,
                 wc.notice(ui, ui.t("reports.export_docx_note"), "neutral"),
             ]
         if self.feedback:
             body.append(wc.notice(ui, self.feedback[0], self.feedback[1], data="reports-feedback"))
         return app.constrained(ft.Column([header, *body, wc.caption(
-            ui, ui.t("results.session_note"))], spacing=tk.SPACE_4,
+            ui, session_note(app), data="reports-note")], spacing=tk.SPACE_4,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH), tk.READING_MAX_WIDTH + 240)
+
+    def _include(self, value: bool):
+        self.include_stale = value
+        self.app.render()
+
+    def _show(self, entry_id: int):
+        self.app.session.selected_result = entry_id
+        self.app.navigate("results")
 
     def _move(self, entry_id: int, step: int):
         self.app.session.move_in_report(entry_id, step)
@@ -855,6 +942,8 @@ class ReportsPage:
 
     async def _export(self, e=None):
         app = self.app
+        if self._blocked():
+            return
         text = app.session.combined_report(self.study_title)
         try:
             destination = await app.save_dialog(app.t("reports.export_txt"),

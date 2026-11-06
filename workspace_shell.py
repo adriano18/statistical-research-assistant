@@ -66,6 +66,7 @@ class ClassicBridge:
     return_to_classic: Callable[[], None] | None = None
     open_classic: Callable[[str], None] | None = None
     survey_root: Path | None = None
+    project_root: Path | None = None
     store_language: Callable[[str], None] | None = None
     preparation: Callable[[], tuple[ft.Control, Callable]] | None = None
 
@@ -88,11 +89,20 @@ class WorkspaceApp:
 
     def __init__(self, page: ft.Page, *, bridge: ClassicBridge | None = None,
                  session: ResearchSession | None = None, language: str = "en",
-                 corners: str = "windows", survey_root: Path | None = None):
+                 corners: str = "windows", survey_root: Path | None = None,
+                 project_root: Path | None = None):
+        from project_session import ProjectBinding
+
         self.page = page
         self.bridge = bridge or ClassicBridge()
         self.session = session or ResearchSession(language=language, corners=corners)
         self.survey_root = Path(survey_root or self.bridge.survey_root or (ROOT / "data" / "surveys"))
+        self.project_root = Path(project_root or self.bridge.project_root
+                                 or (self.survey_root.parent / "projects"))
+        # Saves every change of the session into the open project; subscribed
+        # before the chrome so the context bar shows the saved state.
+        self.projects = ProjectBinding(self.session, self.project_root)
+        self._shown_project_message = None
         self.area = "home"
         self.route = "home"          # sub-route (e.g. "import" under questionnaires)
         # Narrow windows start with the icon rail; the user's toggle wins afterwards.
@@ -109,7 +119,10 @@ class WorkspaceApp:
         self._rendered_width = None
         self._install_services()
         from workspace_analyze import AnalyzePage, ReportsPage, ResultsPage
+        from workspace_projects import ProjectHub
         from workspace_questionnaires import ImportPage, QuestionnairesPage
+
+        self.hub = ProjectHub(self)
 
         self.pages = {
             "home": HomePage(self), "data": DataPage(self),
@@ -192,7 +205,8 @@ class WorkspaceApp:
             with TemporaryDirectory(prefix="workspace-import-") as temporary:
                 path = Path(temporary) / Path(name).name
                 path.write_bytes(data)
-                return await self.load_path(str(path), display_name=name, remember=False)
+                return await self.load_path(str(path), display_name=name, remember=False,
+                                            origin="upload")
 
         result = await import_picked_files(files, import_path=self.load_path,
                                            import_bytes=from_bytes)
@@ -201,14 +215,15 @@ class WorkspaceApp:
         return result.successful
 
     async def load_path(self, path: str, *, display_name: str | None = None,
-                        options=None, remember: bool = True) -> bool:
+                        options=None, remember: bool = True, origin: str | None = None) -> bool:
         from data_loader import ImportOptions, load_dataset_with_report
 
         try:
             df, report = await asyncio.to_thread(
                 load_dataset_with_report, path, options or ImportOptions())
             self.session.set_dataset(df, display_name or Path(path).name, report=report,
-                                     path=path if remember else None)
+                                     path=path if remember else None,
+                                     origin=origin or ("file" if remember else "copy"))
         except Exception as error:
             self.status(self.t("data.load_failed", error=error), "danger")
             return False
@@ -219,7 +234,7 @@ class WorkspaceApp:
         return True
 
     async def load_sample(self, name: str) -> bool:
-        return await self.load_path(str(EXAMPLES / name), remember=False)
+        return await self.load_path(str(EXAMPLES / name), remember=False, origin="sample")
 
     def _remember_file(self, path: str):
         try:
@@ -245,7 +260,7 @@ class WorkspaceApp:
         if df is None or df.columns.empty or id(df) == self._classic_seen:
             return
         self._classic_seen = id(df)
-        self.session.set_dataset(df.copy(deep=True), name or "Classic dataset")
+        self.session.set_dataset(df.copy(deep=True), name or "Classic dataset", origin="classic")
         self._handed_over = id(self.session.df)
 
     async def hand_dataset_to_classic(self):
@@ -271,6 +286,10 @@ class WorkspaceApp:
         # Context bar and sidebar badges follow the session.
         if self.root is not None:
             self._render_chrome()
+        message = self.projects.message
+        if message is not None and message is not self._shown_project_message:
+            self._shown_project_message = message
+            self.status(self.t(message[0]), message[1])
 
     def render(self):
         if self.root is None:
@@ -465,7 +484,7 @@ class WorkspaceApp:
     def _context_bar(self) -> ft.Control:
         ui = self.ui
         s = self.session
-        left: list[ft.Control] = []
+        left: list[ft.Control] = [self._project_chip()]
         if s.has_data:
             rows, cols = len(s.df), len(s.df.columns)
             left.append(wc.chip(
@@ -509,6 +528,18 @@ class WorkspaceApp:
             border=ft.Border(bottom=ft.BorderSide(1, ui.p.border)),
             data="workspace-context",
         )
+
+    def _project_chip(self) -> ft.Control:
+        ui = self.ui
+        info = self.projects.info() if self.projects.active else None
+        if info is None:
+            return wc.chip(ui, ui.t("context.no_project"), "neutral", icon=ft.Icons.FOLDER_OFF_OUTLINED,
+                           tooltip=ui.t("context.no_project_tip"),
+                           on_click=lambda e: self.navigate("home"), data="context-project")
+        stale = self.projects.stale_count()
+        return wc.chip(ui, ui.t("context.project", title=info.title), "warning" if stale else "info",
+                       icon=ft.Icons.FOLDER_OUTLINED, tooltip=ui.t("context.project_tip"),
+                       on_click=lambda e: self.navigate("home"), data="context-project")
 
     # ------------------------------------------------------------ actions
     def toggle_sidebar(self):
@@ -651,6 +682,8 @@ class HomePage:
                                          tooltip=ui.t("preview.note"))),
             tiles,
             *how,
+            ft.Column(app.hub.section(), spacing=tk.SPACE_3, data="home-projects",
+                      horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
             wc.heading(ui, ui.t("home.continue"), tk.TYPE_TITLE_M),
             ft.ResponsiveRow(continue_cards, spacing=tk.SPACE_4, run_spacing=tk.SPACE_4),
             wc.notice(ui, ui.t("home.privacy"), "neutral", data="home-privacy"),
@@ -924,7 +957,8 @@ class DataPage:
             async def adopt(prepared: pd.DataFrame):
                 name = self.app.session.source_name
                 self.app.session.set_dataset(
-                    prepared, name if name.endswith("(prepared)") else f"{name} (prepared)")
+                    prepared, name if name.endswith("(prepared)") else f"{name} (prepared)",
+                    origin="prepared")
                 self.app.status(self.app.t("data.loaded", name=self.app.session.source_name),
                                 "success")
                 self.app.render()
