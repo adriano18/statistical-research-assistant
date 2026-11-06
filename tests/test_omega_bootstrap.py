@@ -55,6 +55,34 @@ class OmegaBootstrapTests(unittest.TestCase):
         self.assertAlmostEqual(first.upper, second.upper, places=5)
         self.assertEqual(first.successful, second.successful)
 
+    def test_ml_start_values_are_seeded_on_every_statsmodels_version(self):
+        """statsmodels 0.15 draws the EM starting loadings from fresh OS
+        entropy unless a generator is passed, so unseeded refits differ
+        between runs (rarely by a whole bootstrap-CI step). Every omega fit
+        must start from the draw statsmodels 0.14 used: RandomState(3427)."""
+        import copy
+        import inspect
+        from unittest import mock
+
+        from statsmodels.multivariate.factor import Factor
+
+        original = Factor.fit
+        starts = []
+
+        def spy(model, *args, **kwargs):
+            starts.append(copy.deepcopy(kwargs.get("rng")))
+            return original(model, *args, **kwargs)
+
+        with mock.patch.object(Factor, "fit", spy):
+            first = analyze_omega(self.df, self.items)
+            second = analyze_omega(self.df, self.items)
+        self.assertEqual(len(starts), 2)
+        self.assertAlmostEqual(first.omega, second.omega, places=10)
+        if "rng" in inspect.signature(original).parameters:
+            expected = np.random.RandomState(3427).standard_normal(4)
+            for start in starts:
+                np.testing.assert_array_equal(start.standard_normal(4), expected)
+
     def test_bootstrap_ignores_incomplete_participants(self):
         incomplete = self.df.copy()
         incomplete.loc[0, self.items[0]] = np.nan

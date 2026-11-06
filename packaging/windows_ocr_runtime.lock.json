@@ -1,0 +1,1261 @@
+{
+ "format": 1,
+ "source": "MSYS2 UCRT64 binary repository",
+ "repositories": [
+  "https://repo.msys2.org/mingw/ucrt64/",
+  "https://mirror.msys2.org/mingw/ucrt64/"
+ ],
+ "tesseract_version": "5.5.4-1",
+ "languages": [
+  "eng",
+  "lav",
+  "rus",
+  "osd"
+ ],
+ "packages": [
+  {
+   "name": "mingw-w64-ucrt-x86_64-brotli",
+   "version": "1.2.1-1",
+   "base": "mingw-w64-brotli",
+   "filename": "mingw-w64-ucrt-x86_64-brotli-1.2.1-1-any.pkg.tar.zst",
+   "sha256": "e3257d4303fc0aca4c64f702d4c8cd766a321351c5e61927631c30bfdf2e7536",
+   "license": "spdx:MIT",
+   "url": "https://github.com/google/brotli",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-bzip2",
+   "version": "1.0.8-4",
+   "base": "mingw-w64-bzip2",
+   "filename": "mingw-w64-ucrt-x86_64-bzip2-1.0.8-4-any.pkg.tar.zst",
+   "sha256": "f03a2174034ddd2d96cecd34f617c5f8e2ef86c812b8d2bb3b8875257f2c8bfa",
+   "license": "custom",
+   "url": "https://sourceware.org/bzip2/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-c-ares",
+   "version": "1.34.9-1",
+   "base": "mingw-w64-c-ares",
+   "filename": "mingw-w64-ucrt-x86_64-c-ares-1.34.9-1-any.pkg.tar.zst",
+   "sha256": "a95c349e1a838a825d4c6723c0fc497ae62d7ca9fe68b517552fd80afa5cd5f1",
+   "license": "spdx:MIT",
+   "url": "https://c-ares.org/",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-ca-certificates",
+   "version": "20260816-3",
+   "base": "mingw-w64-ca-certificates",
+   "filename": "mingw-w64-ucrt-x86_64-ca-certificates-20260816-3-any.pkg.tar.zst",
+   "sha256": "037d3bf0b4eb004e2b3586baa29e526db70013dfe3118a2a86748acb46ee07b4",
+   "license": "MPL / GPL",
+   "url": "https://www.mozilla.org/en-US/about/governance/policies/security-group/certs/",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-cc-libs",
+   "version": "16.2.0-6",
+   "base": "mingw-w64-gcc",
+   "filename": "mingw-w64-ucrt-x86_64-cc-libs-16.2.0-6-any.pkg.tar.zst",
+   "sha256": "d8fff9e62443168bcda8ce746697243519c4f090ea607357ce94feac0bd10a50",
+   "license": "spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later",
+   "url": "https://gcc.gnu.org",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-curl",
+   "version": "8.23.0-1",
+   "base": "mingw-w64-curl",
+   "filename": "mingw-w64-ucrt-x86_64-curl-8.23.0-1-any.pkg.tar.zst",
+   "sha256": "cb1b4e7c0aa8e6e39ac88af83f083d36fb9ea4c50377e795fdb7c3e97ac9fda5",
+   "license": "spdx:MIT",
+   "url": "https://curl.se/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-expat",
+   "version": "2.10.0-1",
+   "base": "mingw-w64-expat",
+   "filename": "mingw-w64-ucrt-x86_64-expat-2.10.0-1-any.pkg.tar.zst",
+   "sha256": "6e6c3e6d748ef546cd7e691637fb1cdade6183bbccab85056dc04f1f9237009f",
+   "license": "spdx:MIT",
+   "url": "https://libexpat.github.io/",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-gettext-runtime",
+   "version": "1.0-1",
+   "base": "mingw-w64-gettext",
+   "filename": "mingw-w64-ucrt-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst",
+   "sha256": "ba693dda4ac375af76ce481ff3a6e7481286546cc7dc6d56c7021dae34084157",
+   "license": "spdx:GPL-3.0-or-later AND LGPL-2.1-or-later",
+   "url": "https://www.gnu.org/software/gettext/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-giflib",
+   "version": "6.1.3-1",
+   "base": "mingw-w64-giflib",
+   "filename": "mingw-w64-ucrt-x86_64-giflib-6.1.3-1-any.pkg.tar.zst",
+   "sha256": "9e7ac8feb0e2af6e0fce3c8ead1bd7bcaf018661d08033858c1e2657a04f6f1a",
+   "license": "spdx:MIT",
+   "url": "https://sourceforge.net/projects/giflib/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-gmp",
+   "version": "6.3.0-2",
+   "base": "mingw-w64-gmp",
+   "filename": "mingw-w64-ucrt-x86_64-gmp-6.3.0-2-any.pkg.tar.zst",
+   "sha256": "e82a75968a556484a50084578238a84eb60fb93e34986fd6695c537975bd39ea",
+   "license": "LGPL3 / GPL",
+   "url": "https://gmplib.org/",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-gnutls",
+   "version": "3.8.13-3",
+   "base": "mingw-w64-gnutls",
+   "filename": "mingw-w64-ucrt-x86_64-gnutls-3.8.13-3-any.pkg.tar.zst",
+   "sha256": "303da3babd11f545fcac647439298e8559951ce6a1086666faf8ad2a1f708be6",
+   "license": "spdx:GPL-3.0-or-later / spdx:LGPL-2.1-or-later",
+   "url": "https://www.gnutls.org/",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-icu",
+   "version": "78.3-4",
+   "base": "mingw-w64-icu",
+   "filename": "mingw-w64-ucrt-x86_64-icu-78.3-4-any.pkg.tar.zst",
+   "sha256": "db9282bbd0a2e74c31d66af6bd89eb68d647a09f721eef4c661768588dca4324",
+   "license": "spdx:ICU",
+   "url": "https://icu.unicode.org/home/",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-jbigkit",
+   "version": "2.1-6",
+   "base": "mingw-w64-jbigkit",
+   "filename": "mingw-w64-ucrt-x86_64-jbigkit-2.1-6-any.pkg.tar.zst",
+   "sha256": "9e237d1041350e7436294cfa13d4bd3d1606d1f2a32ade2eb2958b4d4e79b7ad",
+   "license": "spdx:GPL-2.0",
+   "url": "https://www.cl.cam.ac.uk/~mgk25/jbigkit/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-lcms2",
+   "version": "2.20-1",
+   "base": "mingw-w64-lcms2",
+   "filename": "mingw-w64-ucrt-x86_64-lcms2-2.20-1-any.pkg.tar.zst",
+   "sha256": "4e1d12047e72c63832f2b50c2fc87c7ec9d2e5a8bd40ce6e820ccbeedf2e7b8f",
+   "license": "spdx:MIT AND GPL-3.0-or-later",
+   "url": "https://www.littlecms.com/color-engine/",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-leptonica",
+   "version": "1.87.0-2",
+   "base": "mingw-w64-leptonica",
+   "filename": "mingw-w64-ucrt-x86_64-leptonica-1.87.0-2-any.pkg.tar.zst",
+   "sha256": "2bdd380afc8d0eadb510224b470f1d7655990d34de67dffd3f1d85298008c16d",
+   "license": "spdx:BSD-2-Clause",
+   "url": "http://www.leptonica.org",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-lerc",
+   "version": "4.1.1-1",
+   "base": "mingw-w64-lerc",
+   "filename": "mingw-w64-ucrt-x86_64-lerc-4.1.1-1-any.pkg.tar.zst",
+   "sha256": "c0afbf4832488d67030c6f313349cd814946c9a7bc3ae9fd54524825c9ca055d",
+   "license": "spdx:Apache-2.0",
+   "url": "https://github.com/Esri/lerc",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libarchive",
+   "version": "3.8.11-1",
+   "base": "mingw-w64-libarchive",
+   "filename": "mingw-w64-ucrt-x86_64-libarchive-3.8.11-1-any.pkg.tar.zst",
+   "sha256": "e883f65d1fd9f06a8d03f35b2668826d7fa1407a2baf1eca050f34eb0f6f0927",
+   "license": "spdx:BSD-2-Clause",
+   "url": "https://www.libarchive.org/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libb2",
+   "version": "0.98.1-3",
+   "base": "mingw-w64-libb2",
+   "filename": "mingw-w64-ucrt-x86_64-libb2-0.98.1-3-any.pkg.tar.zst",
+   "sha256": "dfb554635119d3c46adb00c9d0c589bb38d1cb0781b10ecf31de07ce388bd0c0",
+   "license": "custom:CC0",
+   "url": "https://blake2.net/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libdeflate",
+   "version": "1.26-1",
+   "base": "mingw-w64-libdeflate",
+   "filename": "mingw-w64-ucrt-x86_64-libdeflate-1.26-1-any.pkg.tar.zst",
+   "sha256": "17720c77bd01641a3554801cafd71d96fb7fff7427f4cc20ac9f36efb8cb3da0",
+   "license": "spdx:MIT",
+   "url": "https://github.com/ebiggers/libdeflate",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libffi",
+   "version": "3.8.0-1",
+   "base": "mingw-w64-libffi",
+   "filename": "mingw-w64-ucrt-x86_64-libffi-3.8.0-1-any.pkg.tar.zst",
+   "sha256": "99ad12f4ecfa00a889ef9c5c0188592368a5bac109d0c508ce4e04f29ea95a76",
+   "license": "spdx:MIT",
+   "url": "https://sourceware.org/libffi",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libgcc",
+   "version": "16.2.0-6",
+   "base": "mingw-w64-gcc",
+   "filename": "mingw-w64-ucrt-x86_64-libgcc-16.2.0-6-any.pkg.tar.zst",
+   "sha256": "80b2497f019977dd9528b1abc8621b1328a0115ab1f724047ccbb56bf323f11d",
+   "license": "spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later",
+   "url": "https://gcc.gnu.org",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libgomp",
+   "version": "16.2.0-6",
+   "base": "mingw-w64-gcc",
+   "filename": "mingw-w64-ucrt-x86_64-libgomp-16.2.0-6-any.pkg.tar.zst",
+   "sha256": "809b95086d8d3ba145e041bb36d5756b4407d1d97c0524ef731d3b94548faa69",
+   "license": "spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later",
+   "url": "https://gcc.gnu.org",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libiconv",
+   "version": "1.19.1-1",
+   "base": "mingw-w64-libiconv",
+   "filename": "mingw-w64-ucrt-x86_64-libiconv-1.19.1-1-any.pkg.tar.zst",
+   "sha256": "8a45dc317a285a036bddd79e01505d67b79e44ff49fc3f6e7177a5ea98d098cf",
+   "license": "spdx:LGPL-2.1-or-later / documentation:spdx:GPL-3.0-or-later",
+   "url": "https://www.gnu.org/software/libiconv/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libidn2",
+   "version": "2.3.8-4",
+   "base": "mingw-w64-libidn2",
+   "filename": "mingw-w64-ucrt-x86_64-libidn2-2.3.8-4-any.pkg.tar.zst",
+   "sha256": "d5f4b5e9d99ff7b2a986d1dc0c73da2bcd93ba68462be7b1debbd6ef76371f57",
+   "license": "spdx:GPL-2.0-or-later / spdx:LGPL-3.0-or-later",
+   "url": "https://www.gnu.org/software/libidn/#libidn2",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libjpeg-turbo",
+   "version": "3.2.1-1",
+   "base": "mingw-w64-libjpeg-turbo",
+   "filename": "mingw-w64-ucrt-x86_64-libjpeg-turbo-3.2.1-1-any.pkg.tar.zst",
+   "sha256": "8eed77c1e0d6de7f8822687f7b1dfa32cda09394806ef67b23399e63de1a92a6",
+   "license": "custom:BSD-like",
+   "url": "https://libjpeg-turbo.virtualgl.org/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libpng",
+   "version": "1.6.59-2",
+   "base": "mingw-w64-libpng",
+   "filename": "mingw-w64-ucrt-x86_64-libpng-1.6.59-2-any.pkg.tar.zst",
+   "sha256": "6cc296f5029220e1a226c4bc50294212b20ab8fcabeb00b5a002667f4a882edc",
+   "license": "custom",
+   "url": "http://www.libpng.org/pub/png/libpng.html",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libpsl",
+   "version": "0.21.5-3",
+   "base": "mingw-w64-libpsl",
+   "filename": "mingw-w64-ucrt-x86_64-libpsl-0.21.5-3-any.pkg.tar.zst",
+   "sha256": "d96e0bb50ac3f8b6e44a39ea8de8d186f7b08f6938b0676eb69a7ba1f127bcf4",
+   "license": "spdx:MIT",
+   "url": "https://rockdaboot.github.io/libpsl/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libssh2",
+   "version": "1.11.1-2",
+   "base": "mingw-w64-libssh2",
+   "filename": "mingw-w64-ucrt-x86_64-libssh2-1.11.1-2-any.pkg.tar.zst",
+   "sha256": "0e91316dfa4979dcabbfa9e71528ec9882ece619ce549cb25312089b4754fa65",
+   "license": "spdx:BSD-3-Clause",
+   "url": "https://libssh2.org/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libstdc++",
+   "version": "16.2.0-6",
+   "base": "mingw-w64-gcc",
+   "filename": "mingw-w64-ucrt-x86_64-libstdc++-16.2.0-6-any.pkg.tar.zst",
+   "sha256": "33c5e58a85a538cf843a8672991cce591f0231d66da3b66a57629712d64be17f",
+   "license": "spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later",
+   "url": "https://gcc.gnu.org",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libtasn1",
+   "version": "4.21.0-1",
+   "base": "mingw-w64-libtasn1",
+   "filename": "mingw-w64-ucrt-x86_64-libtasn1-4.21.0-1-any.pkg.tar.zst",
+   "sha256": "d098b27834c3b25142b6f5aa9a0ca5731a8e4334c232786406cb149dd8bde2ba",
+   "license": "GPL3, LGPL",
+   "url": "https://www.gnu.org/software/libtasn1/",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libtiff",
+   "version": "4.7.2-2",
+   "base": "mingw-w64-libtiff",
+   "filename": "mingw-w64-ucrt-x86_64-libtiff-4.7.2-2-any.pkg.tar.zst",
+   "sha256": "258e08a91e6b1703d41730ffe6080c2a40968fe90896b45716c1b41042775076",
+   "license": "spdx:MIT",
+   "url": "https://libtiff.gitlab.io/libtiff/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libunistring",
+   "version": "1.4.2-1",
+   "base": "mingw-w64-libunistring",
+   "filename": "mingw-w64-ucrt-x86_64-libunistring-1.4.2-1-any.pkg.tar.zst",
+   "sha256": "e784273da19bbdcc91cbb510b5e27c3ac021b026140734eefcce5ccbd878bd97",
+   "license": "spdx:LGPL-3.0-or-later OR GPL-3.0-or-later",
+   "url": "https://www.gnu.org/software/libunistring",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libwebp",
+   "version": "1.6.0-1",
+   "base": "mingw-w64-libwebp",
+   "filename": "mingw-w64-ucrt-x86_64-libwebp-1.6.0-1-any.pkg.tar.zst",
+   "sha256": "34ff8396c403d484c8777ad49ad0fc06dfb94fadf6f14bcf84d50c45bc6fd17e",
+   "license": "spdx:BSD-3-Clause",
+   "url": "https://developers.google.com/speed/webp/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-libwinpthread",
+   "version": "14.0.0.r598.ge3d18511f-1",
+   "base": "mingw-w64-winpthreads",
+   "filename": "mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r598.ge3d18511f-1-any.pkg.tar.zst",
+   "sha256": "c35d6be83d141c8cfbb61f1637dd4b53aac8f5562d766aa26d0741c40bad4e4d",
+   "license": "spdx:MIT AND BSD-3-Clause",
+   "url": "https://www.mingw-w64.org/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-lz4",
+   "version": "1.11.0-1",
+   "base": "mingw-w64-lz4",
+   "filename": "mingw-w64-ucrt-x86_64-lz4-1.11.0-1-any.pkg.tar.zst",
+   "sha256": "83a8d234445f4d8b79424799d025df27a3b969415b7418fbe78fcdcb3cd98a0d",
+   "license": "spdx:BSD-2-Clause AND GPL-2.0-or-later",
+   "url": "https://lz4.github.io/lz4/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-nettle",
+   "version": "4.0-1",
+   "base": "mingw-w64-nettle",
+   "filename": "mingw-w64-ucrt-x86_64-nettle-4.0-1-any.pkg.tar.zst",
+   "sha256": "47b49f1723ef2c75ff3042b6e463910c47cdffa3342e175b6409fb9d630e64ed",
+   "license": "spdx:GPL-2.0-or-later / spdx:LGPL-3.0-or-later",
+   "url": "https://www.lysator.liu.se/~nisse/nettle",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-nghttp2",
+   "version": "1.71.0-1",
+   "base": "mingw-w64-nghttp2",
+   "filename": "mingw-w64-ucrt-x86_64-nghttp2-1.71.0-1-any.pkg.tar.zst",
+   "sha256": "ce394855ca96785b75ec9b8bf03de29cded23770228131c1dc459f96a2ff087e",
+   "license": "spdx:MIT",
+   "url": "https://nghttp2.org/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-nghttp3",
+   "version": "1.19.0-1",
+   "base": "mingw-w64-nghttp3",
+   "filename": "mingw-w64-ucrt-x86_64-nghttp3-1.19.0-1-any.pkg.tar.zst",
+   "sha256": "d2917a08bea179c0de58023d57fe8572f905b90f5d2f8d8798789bedfbbe5634",
+   "license": "spdx:MIT",
+   "url": "https://nghttp2.org/nghttp3/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-ngtcp2",
+   "version": "1.26.0-1",
+   "base": "mingw-w64-ngtcp2",
+   "filename": "mingw-w64-ucrt-x86_64-ngtcp2-1.26.0-1-any.pkg.tar.zst",
+   "sha256": "59d3bde1b148e996d92cb09e708fa94a2467d447982f77abf0f1adf4117f6c24",
+   "license": "spdx:MIT",
+   "url": "https://nghttp2.org/ngtcp2/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-openjpeg2",
+   "version": "2.5.4-2",
+   "base": "mingw-w64-openjpeg2",
+   "filename": "mingw-w64-ucrt-x86_64-openjpeg2-2.5.4-2-any.pkg.tar.zst",
+   "sha256": "2a4c148052b6f8e47abe5e98b29fd8942e2e3c17722ff00f172b1630897a10b9",
+   "license": "spdx:BSD-2-Clause",
+   "url": "https://www.openjpeg.org/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-openssl",
+   "version": "3.6.5-1",
+   "base": "mingw-w64-openssl",
+   "filename": "mingw-w64-ucrt-x86_64-openssl-3.6.5-1-any.pkg.tar.zst",
+   "sha256": "773e021ebad83f14b5c103db467411e8ff064663e1c7e7f730e2be72f4117064",
+   "license": "spdx:Apache-2.0",
+   "url": "https://openssl-library.org",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-p11-kit",
+   "version": "0.26.5-1",
+   "base": "mingw-w64-p11-kit",
+   "filename": "mingw-w64-ucrt-x86_64-p11-kit-0.26.5-1-any.pkg.tar.zst",
+   "sha256": "6e1645f0afa669f3e3325abb891d79c58dacf0bb5f9bb1ea719d22da1d754e62",
+   "license": "spdx:BSD-3-Clause",
+   "url": "https://p11-glue.freedesktop.org/p11-kit.html",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-pcre2",
+   "version": "10.49-1",
+   "base": "mingw-w64-pcre2",
+   "filename": "mingw-w64-ucrt-x86_64-pcre2-10.49-1-any.pkg.tar.zst",
+   "sha256": "63172179db724ac71e2439a7981134c1bcab8049bdddfd349b32b8f76ed52d1e",
+   "license": "spdx:BSD-3-Clause",
+   "url": "https://pcre.org/",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-tesseract-data-eng",
+   "version": "4.1.0-3",
+   "base": "mingw-w64-tesseract-data",
+   "filename": "mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst",
+   "sha256": "543111e842aeebe248839902945b3883f9bf79b58787a1696d6ac211c13f7029",
+   "license": "spdx:Apache-2.0",
+   "url": "https://github.com/tesseract-ocr/tessdata_fast",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-tesseract-data-lav",
+   "version": "4.1.0-3",
+   "base": "mingw-w64-tesseract-data",
+   "filename": "mingw-w64-ucrt-x86_64-tesseract-data-lav-4.1.0-3-any.pkg.tar.zst",
+   "sha256": "96e903e3b3158b4d991544a4cc6ae55817633676f7244792a914d150d622ee7f",
+   "license": "spdx:Apache-2.0",
+   "url": "https://github.com/tesseract-ocr/tessdata_fast",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-tesseract-data-osd",
+   "version": "4.1.0-3",
+   "base": "mingw-w64-tesseract-data",
+   "filename": "mingw-w64-ucrt-x86_64-tesseract-data-osd-4.1.0-3-any.pkg.tar.zst",
+   "sha256": "82b7d27eb1c23aac836e02bf235a959b987caa6653102c4ae6271e5e4127b186",
+   "license": "spdx:Apache-2.0",
+   "url": "https://github.com/tesseract-ocr/tessdata_fast",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-tesseract-data-rus",
+   "version": "4.1.0-3",
+   "base": "mingw-w64-tesseract-data",
+   "filename": "mingw-w64-ucrt-x86_64-tesseract-data-rus-4.1.0-3-any.pkg.tar.zst",
+   "sha256": "6b87b33c6a35f7a140f90fafac23d779e2269008c6d46a6d26ea4201ce1737c0",
+   "license": "spdx:Apache-2.0",
+   "url": "https://github.com/tesseract-ocr/tessdata_fast",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-tesseract-ocr",
+   "version": "5.5.4-1",
+   "base": "mingw-w64-tesseract-ocr",
+   "filename": "mingw-w64-ucrt-x86_64-tesseract-ocr-5.5.4-1-any.pkg.tar.zst",
+   "sha256": "a38f3f00d23ff9e05f2e6df87a65ec7f10b6735b131548e87aa15016a79538b2",
+   "license": "spdx:Apache-2.0",
+   "url": "https://github.com/tesseract-ocr/tesseract",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-tzdata",
+   "version": "2026f-1",
+   "base": "mingw-w64-tzdata",
+   "filename": "mingw-w64-ucrt-x86_64-tzdata-2026f-1-any.pkg.tar.zst",
+   "sha256": "dd8af2f770b3241d8c299343c12cd4d7e3b94c47195608158d28788a01575323",
+   "license": "custom: public domain",
+   "url": "https://www.iana.org/time-zones",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-wineditline",
+   "version": "2.208-1",
+   "base": "mingw-w64-wineditline",
+   "filename": "mingw-w64-ucrt-x86_64-wineditline-2.208-1-any.pkg.tar.zst",
+   "sha256": "b07b34de1669e16cfd6743691914f5a66ad4013500bbf0e4c7a7644046ae7b1c",
+   "license": "spdx:BSD-3-Clause",
+   "url": "https://mingweditline.sourceforge.io/",
+   "used": false
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-xz",
+   "version": "5.8.4-1",
+   "base": "mingw-w64-xz",
+   "filename": "mingw-w64-ucrt-x86_64-xz-5.8.4-1-any.pkg.tar.zst",
+   "sha256": "a9d771f816d8c0c5bde152ffb27a687ede91079b8e77e5b8297efa3b5a835934",
+   "license": "spdx:0BSD AND LGPL-2.1-or-later AND GPL-2.0-or-later",
+   "url": "https://tukaani.org/xz",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-zlib",
+   "version": "1.3.2-3",
+   "base": "mingw-w64-zlib",
+   "filename": "mingw-w64-ucrt-x86_64-zlib-1.3.2-3-any.pkg.tar.zst",
+   "sha256": "130e6ef04c654fc2150a177600aa5ed0035087665a893479d2c85ba7485d5704",
+   "license": "spdx:Zlib",
+   "url": "https://www.zlib.net/",
+   "used": true
+  },
+  {
+   "name": "mingw-w64-ucrt-x86_64-zstd",
+   "version": "1.5.7-2",
+   "base": "mingw-w64-zstd",
+   "filename": "mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+   "sha256": "dbdb8427280046a2b41697780aa4c52983b708082b0da4755951dc3bea96ca89",
+   "license": "spdx:BSD-3-Clause OR GPL-2.0-or-later",
+   "url": "https://facebook.github.io/zstd/",
+   "used": true
+  }
+ ],
+ "files": [
+  {
+   "package": "mingw-w64-ucrt-x86_64-libarchive",
+   "archive_path": "ucrt64/bin/libarchive-13.dll",
+   "path": "bin/libarchive-13.dll",
+   "sha256": "3f7754632098af48f8c30f628e3f344939b78160be953e9e45dca62b26eb0168",
+   "size": 1001421
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libb2",
+   "archive_path": "ucrt64/bin/libb2-1.dll",
+   "path": "bin/libb2-1.dll",
+   "sha256": "01bbf64090367d511f41d9fc8f34c557f61d4a227b7c9e47ce04052cbfdc3e7d",
+   "size": 35323
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-brotli",
+   "archive_path": "ucrt64/bin/libbrotlicommon.dll",
+   "path": "bin/libbrotlicommon.dll",
+   "sha256": "7b0047dc16dd92a7932124dfd5a6e698d342f533a15d37d61f710def66091436",
+   "size": 140697
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-brotli",
+   "archive_path": "ucrt64/bin/libbrotlidec.dll",
+   "path": "bin/libbrotlidec.dll",
+   "sha256": "c4c987a01597ddf969d93023f933f999a20f285588b0decb4deeb780c9e9cdf8",
+   "size": 60224
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-bzip2",
+   "archive_path": "ucrt64/bin/libbz2-1.dll",
+   "path": "bin/libbz2-1.dll",
+   "sha256": "1790bf6473c9d48db14c1f0ee8124142327556d281299ea2a72ee361118ee01a",
+   "size": 107741
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-openssl",
+   "archive_path": "ucrt64/bin/libcrypto-3-x64.dll",
+   "path": "bin/libcrypto-3-x64.dll",
+   "sha256": "97308feea369b305e562c0098638a1b02a06f52ee9fcc4b8cf3da362ff563cf4",
+   "size": 5501287
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-curl",
+   "archive_path": "ucrt64/bin/libcurl-4.dll",
+   "path": "bin/libcurl-4.dll",
+   "sha256": "529af2acc6ce7507dbc96fd96e196555bb9a38d9cbb47dee441ea2cce325428d",
+   "size": 1417088
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libdeflate",
+   "archive_path": "ucrt64/bin/libdeflate.dll",
+   "path": "bin/libdeflate.dll",
+   "sha256": "61a60665da9fd15a0e8668c47424f325e1d74479c3f896fa7ae48ffcee4ca300",
+   "size": 97053
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libgcc",
+   "archive_path": "ucrt64/bin/libgcc_s_seh-1.dll",
+   "path": "bin/libgcc_s_seh-1.dll",
+   "sha256": "791ebf66e99c7c1b4ed3666468cec45a0172b4c8942ac6c84c3e9cab3e1b5270",
+   "size": 150537
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-giflib",
+   "archive_path": "ucrt64/bin/libgif-7.dll",
+   "path": "bin/libgif-7.dll",
+   "sha256": "547f069546e3233430d3cbf106b403fbdc9c5cf1518e525c462533d58843b31e",
+   "size": 46093
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libgomp",
+   "archive_path": "ucrt64/bin/libgomp-1.dll",
+   "path": "bin/libgomp-1.dll",
+   "sha256": "ccaf59dc8cff15ace88ab47acd68a5b014167cad8f960e7683466a4c821e41c4",
+   "size": 327456
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libiconv",
+   "archive_path": "ucrt64/bin/libiconv-2.dll",
+   "path": "bin/libiconv-2.dll",
+   "sha256": "9824e9f78e76ad513e5ba0d697c60de2fb24a21c20922bc2f918c86998a08cab",
+   "size": 1139262
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libidn2",
+   "archive_path": "ucrt64/bin/libidn2-0.dll",
+   "path": "bin/libidn2-0.dll",
+   "sha256": "a054a6bb69aaf4666157f968740412e9697085cbc1e48a78f8dd9622169c5aaf",
+   "size": 246525
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-gettext-runtime",
+   "archive_path": "ucrt64/bin/libintl-8.dll",
+   "path": "bin/libintl-8.dll",
+   "sha256": "0e5a178731e6be6d115442a6ade3df7f03265cd1fc4338f8b6f86a8001cbf582",
+   "size": 298164
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-jbigkit",
+   "archive_path": "ucrt64/bin/libjbig-0.dll",
+   "path": "bin/libjbig-0.dll",
+   "sha256": "36b6155be36d24a19154a48177a09978ff6c26f48665d8c7bb5057aaace6b91c",
+   "size": 61598
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libjpeg-turbo",
+   "archive_path": "ucrt64/bin/libjpeg-8.dll",
+   "path": "bin/libjpeg-8.dll",
+   "sha256": "22286acc18b907d03eec1177c99f54a802a6f8437888d1abb79e65a7ecd14605",
+   "size": 963471
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-leptonica",
+   "archive_path": "ucrt64/bin/libleptonica-6.dll",
+   "path": "bin/libleptonica-6.dll",
+   "sha256": "c48f31ed1cb3dbea30b1121a169dfcd9a4bdb0ed12b5b6fb20a006094a7480bf",
+   "size": 2818986
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-lerc",
+   "archive_path": "ucrt64/bin/libLerc.dll",
+   "path": "bin/libLerc.dll",
+   "sha256": "1ffee78579c25b073267bcac8d0a6045d9bd446e010c7953b569b2629ca8a58a",
+   "size": 803103
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-lz4",
+   "archive_path": "ucrt64/bin/liblz4.dll",
+   "path": "bin/liblz4.dll",
+   "sha256": "f0b158b5e803ccfdacb0940fc38194f1b05fe795440620e1c61bd88f126e68ba",
+   "size": 187849
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-xz",
+   "archive_path": "ucrt64/bin/liblzma-5.dll",
+   "path": "bin/liblzma-5.dll",
+   "sha256": "d97a260b8bb4f6affc34ec47249429240068b94bb6f7dc30c4d64daaafb3ac69",
+   "size": 190872
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-nghttp2",
+   "archive_path": "ucrt64/bin/libnghttp2-14.dll",
+   "path": "bin/libnghttp2-14.dll",
+   "sha256": "5e5460b1f9dd489566a747f7fb72bcc7862608213e1cc401e02a9ee0f1866da1",
+   "size": 213153
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-nghttp3",
+   "archive_path": "ucrt64/bin/libnghttp3-9.dll",
+   "path": "bin/libnghttp3-9.dll",
+   "sha256": "30ed479b0ae35b56bd79c816e2b9010f2d0a9f84c96b0a210d44e188e9222f1e",
+   "size": 203451
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-ngtcp2",
+   "archive_path": "ucrt64/bin/libngtcp2-16.dll",
+   "path": "bin/libngtcp2-16.dll",
+   "sha256": "67bf912b2061e11ddb079a5f6eca7ff20a90bef70afcd8487775efcd04e12712",
+   "size": 391836
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-ngtcp2",
+   "archive_path": "ucrt64/bin/libngtcp2_crypto_ossl-0.dll",
+   "path": "bin/libngtcp2_crypto_ossl-0.dll",
+   "sha256": "3a1bc7ccd75561f06ac1658e3d80a9862d71ffdac7237a1a3ec37880b39a54ae",
+   "size": 51499
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-openjpeg2",
+   "archive_path": "ucrt64/bin/libopenjp2-7.dll",
+   "path": "bin/libopenjp2-7.dll",
+   "sha256": "94f9507828d391cf96d700d34918114f1c1e03f91dd1243a19275e0435690925",
+   "size": 517286
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libpng",
+   "archive_path": "ucrt64/bin/libpng16-16.dll",
+   "path": "bin/libpng16-16.dll",
+   "sha256": "28db7a8c6fcc579ce621729d27f1952324cd3a2b4e24da121611bb586346e732",
+   "size": 254777
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libpsl",
+   "archive_path": "ucrt64/bin/libpsl-5.dll",
+   "path": "bin/libpsl-5.dll",
+   "sha256": "a531e72de3c64d43fb83cbfb6fa63e5ee982a970292ec51314e29d0acabf1dd5",
+   "size": 105846
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libwebp",
+   "archive_path": "ucrt64/bin/libsharpyuv-0.dll",
+   "path": "bin/libsharpyuv-0.dll",
+   "sha256": "d29380c7056383f3e7a80bf9e150f0b8c425c1cf2568d1336e88979ddc2307af",
+   "size": 48938
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libssh2",
+   "archive_path": "ucrt64/bin/libssh2-1.dll",
+   "path": "bin/libssh2-1.dll",
+   "sha256": "7c9b4edb678b738b919950492c4a390482fdd644d1276d4728990fdd3c3ea989",
+   "size": 311537
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-openssl",
+   "archive_path": "ucrt64/bin/libssl-3-x64.dll",
+   "path": "bin/libssl-3-x64.dll",
+   "sha256": "8b71cd694f8edfbddc76674111278db6bcdcde0dcd63b99238420193848e6dbf",
+   "size": 998449
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libstdc++",
+   "archive_path": "ucrt64/bin/libstdc++-6.dll",
+   "path": "bin/libstdc++-6.dll",
+   "sha256": "4e4822dc4aaa99383f581dae7ab9464ae89346c5ca742f7efbcdebe20b0fe7b5",
+   "size": 2659194
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-tesseract-ocr",
+   "archive_path": "ucrt64/bin/libtesseract-5.5.dll",
+   "path": "bin/libtesseract-5.5.dll",
+   "sha256": "9a6e139504f3dbbc5db5aa3ed87c8fa641c7f9b4a6d7f0899cda2a381d48d704",
+   "size": 4294548
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libtiff",
+   "archive_path": "ucrt64/bin/libtiff-6.dll",
+   "path": "bin/libtiff-6.dll",
+   "sha256": "d047260c3d456f84a2f9cd801d3b57bee0357cade32724caf16006c64c5fe8ff",
+   "size": 614318
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libunistring",
+   "archive_path": "ucrt64/bin/libunistring-5.dll",
+   "path": "bin/libunistring-5.dll",
+   "sha256": "ee39258fa1086269674a8179d3cfaf7c4e380ada14441b5dd9ed53d82d15c4e3",
+   "size": 2256134
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libwebp",
+   "archive_path": "ucrt64/bin/libwebp-7.dll",
+   "path": "bin/libwebp-7.dll",
+   "sha256": "8dfe40c4e0abc90ddf18f080898987e01253d099b2b2d6daf7db521e55c00446",
+   "size": 746378
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libwebp",
+   "archive_path": "ucrt64/bin/libwebpmux-3.dll",
+   "path": "bin/libwebpmux-3.dll",
+   "sha256": "9bd85116a22923d648d6b0ad09f21d08df7bd3d8860b24a5b4a6d4ac788b7340",
+   "size": 78875
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libwinpthread",
+   "archive_path": "ucrt64/bin/libwinpthread-1.dll",
+   "path": "bin/libwinpthread-1.dll",
+   "sha256": "94a9a4e2fe27b4bc827a4b209e9deb4cc3dc34bc025df06b849144f9d4c588f8",
+   "size": 73308
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-zstd",
+   "archive_path": "ucrt64/bin/libzstd.dll",
+   "path": "bin/libzstd.dll",
+   "sha256": "48368ab0ca622d0ec12f41ce85d91f22866bf5da92c77a69a06483564c93816c",
+   "size": 1217412
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-tesseract-ocr",
+   "archive_path": "ucrt64/bin/tesseract.exe",
+   "path": "bin/tesseract.exe",
+   "sha256": "1038246a7a73eb5c1be1816f36bbd0b375c5365136ecaab50be64d3385e673f4",
+   "size": 85924
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-zlib",
+   "archive_path": "ucrt64/bin/zlib1.dll",
+   "path": "bin/zlib1.dll",
+   "sha256": "8ae7aeb0467763a1e271cd831ca8e2f7fd101602adb9923100ea26c6be2a559b",
+   "size": 121530
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-tesseract-data-eng",
+   "archive_path": "ucrt64/share/tessdata/eng.traineddata",
+   "path": "tessdata/eng.traineddata",
+   "sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+   "size": 4113088
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-tesseract-data-lav",
+   "archive_path": "ucrt64/share/tessdata/lav.traineddata",
+   "path": "tessdata/lav.traineddata",
+   "sha256": "7d9eaf22254b381f18b806cd6cb647862a397a7221adbce3e22cc421793a8847",
+   "size": 2717247
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-tesseract-data-rus",
+   "archive_path": "ucrt64/share/tessdata/rus.traineddata",
+   "path": "tessdata/rus.traineddata",
+   "sha256": "e16e5e036cce1d9ec2b00063cf8b54472625b9e14d893a169e2b0dedeb4df225",
+   "size": 3861738
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-tesseract-data-osd",
+   "archive_path": "ucrt64/share/tessdata/osd.traineddata",
+   "path": "tessdata/osd.traineddata",
+   "sha256": "9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff",
+   "size": 10562727
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-brotli",
+   "archive_path": "ucrt64/share/licenses/brotli/LICENSE",
+   "path": "licenses/brotli/LICENSE",
+   "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
+   "size": 1084
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-bzip2",
+   "archive_path": "ucrt64/share/licenses/bzip2/LICENSE",
+   "path": "licenses/bzip2/LICENSE",
+   "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+   "size": 1896
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-curl",
+   "archive_path": "ucrt64/share/licenses/curl/LICENSE",
+   "path": "licenses/curl/LICENSE",
+   "sha256": "82f2f4427d6545ee5aaac4f0b80428da6cc8ba41c2cf5da3a03680ec327b9681",
+   "size": 1088
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-gettext-runtime",
+   "archive_path": "ucrt64/share/licenses/gettext-runtime/COPYING",
+   "path": "licenses/gettext-runtime/COPYING",
+   "sha256": "7ef2cdfe58e0c0460657b6598b49af29d4e03c1e41cbaf0e1da1eb8ad74b95d0",
+   "size": 495
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-gettext-runtime",
+   "archive_path": "ucrt64/share/licenses/gettext-runtime/intl/COPYING.LIB",
+   "path": "licenses/gettext-runtime/intl/COPYING.LIB",
+   "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+   "size": 26419
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-gettext-runtime",
+   "archive_path": "ucrt64/share/licenses/gettext-runtime/libasprintf/COPYING",
+   "path": "licenses/gettext-runtime/libasprintf/COPYING",
+   "sha256": "03133addae5b99a6148c538300e6d97074453089be1423b741bd081f18e2b298",
+   "size": 65
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-gettext-runtime",
+   "archive_path": "ucrt64/share/licenses/gettext-runtime/libasprintf/COPYING.LIB",
+   "path": "licenses/gettext-runtime/libasprintf/COPYING.LIB",
+   "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+   "size": 26419
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-jbigkit",
+   "archive_path": "ucrt64/share/licenses/jbigkit/COPYING",
+   "path": "licenses/jbigkit/COPYING",
+   "sha256": "91df39d1816bfb17a4dda2d3d2c83b1f6f2d38d53e53e41e8f97ad5ac46a0cad",
+   "size": 17982
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-leptonica",
+   "archive_path": "ucrt64/share/licenses/leptonica/LICENSE",
+   "path": "licenses/leptonica/LICENSE",
+   "sha256": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806",
+   "size": 1521
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-lerc",
+   "archive_path": "ucrt64/share/licenses/lerc/LICENSE",
+   "path": "licenses/lerc/LICENSE",
+   "sha256": "77a8b761727c75e2167b15bfdf61b2c0bcf8792271228bebe80779106ad00671",
+   "size": 9198
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libarchive",
+   "archive_path": "ucrt64/share/licenses/libarchive/LICENSE",
+   "path": "licenses/libarchive/LICENSE",
+   "sha256": "30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229",
+   "size": 3089
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libb2",
+   "archive_path": "ucrt64/share/licenses/libb2/LICENSE",
+   "path": "licenses/libb2/LICENSE",
+   "sha256": "6a1ee543e5282cd9061881edf462e6fdab181f328da71fc2c9a6950a80e94d01",
+   "size": 6556
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libdeflate",
+   "archive_path": "ucrt64/share/licenses/libdeflate/COPYING",
+   "path": "licenses/libdeflate/COPYING",
+   "sha256": "4ad69099cb4374836fd27583d9991e2838cd86b6e4666ab26b2d32582c91e73a",
+   "size": 1078
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libgcc",
+   "archive_path": "ucrt64/share/licenses/libgcc/COPYING.RUNTIME",
+   "path": "licenses/libgcc/COPYING.RUNTIME",
+   "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+   "size": 3324
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libgcc",
+   "archive_path": "ucrt64/share/licenses/libgcc/COPYING3",
+   "path": "licenses/libgcc/COPYING3",
+   "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+   "size": 35147
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libgomp",
+   "archive_path": "ucrt64/share/licenses/libgomp/COPYING.RUNTIME",
+   "path": "licenses/libgomp/COPYING.RUNTIME",
+   "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+   "size": 3324
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libgomp",
+   "archive_path": "ucrt64/share/licenses/libgomp/COPYING3",
+   "path": "licenses/libgomp/COPYING3",
+   "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+   "size": 35147
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libiconv",
+   "archive_path": "ucrt64/share/licenses/libiconv/COPYING",
+   "path": "licenses/libiconv/COPYING",
+   "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+   "size": 35147
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libiconv",
+   "archive_path": "ucrt64/share/licenses/libiconv/COPYING.LIB",
+   "path": "licenses/libiconv/COPYING.LIB",
+   "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+   "size": 26419
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libiconv",
+   "archive_path": "ucrt64/share/licenses/libiconv/README",
+   "path": "licenses/libiconv/README",
+   "sha256": "ff0400ffb0c3dace1a64012f4125f292a3fef58c5b8486c7f9ba0c01a0637f3c",
+   "size": 5743
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libiconv",
+   "archive_path": "ucrt64/share/licenses/libiconv/libcharset/COPYING.LIB",
+   "path": "licenses/libiconv/libcharset/COPYING.LIB",
+   "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+   "size": 26419
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libjpeg-turbo",
+   "archive_path": "ucrt64/share/licenses/libjpeg-turbo/LICENSE.md",
+   "path": "licenses/libjpeg-turbo/LICENSE.md",
+   "sha256": "ba6bceebcba0fdd35488477c2cca8c4632ce82c74dbfbc87d886ce6fc4433579",
+   "size": 6077
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libjpeg-turbo",
+   "archive_path": "ucrt64/share/licenses/libjpeg-turbo/README.ijg",
+   "path": "licenses/libjpeg-turbo/README.ijg",
+   "sha256": "75815e3bf6484201a3c3d17a1bbf10f2e8e3237f84df10a2357ea896db2a81d6",
+   "size": 12799
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libjpeg-turbo",
+   "archive_path": "ucrt64/share/licenses/libjpeg-turbo/README.md",
+   "path": "licenses/libjpeg-turbo/README.md",
+   "sha256": "bd71f6ebae1c151e4b5fe7072dc2cedcf33671fa40d91ad5f9058ecdc0b01721",
+   "size": 17831
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libjpeg-turbo",
+   "archive_path": "ucrt64/share/licenses/libjpeg-turbo/simd/jsimdext.inc",
+   "path": "licenses/libjpeg-turbo/simd/jsimdext.inc",
+   "sha256": "68c5d236785edf75344cebe8b9bec36568bd35c96eb72cc67ffecd66c17dbd74",
+   "size": 15563
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libpng",
+   "archive_path": "ucrt64/share/licenses/libpng/LICENSE",
+   "path": "licenses/libpng/LICENSE",
+   "sha256": "bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526",
+   "size": 5345
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libpsl",
+   "archive_path": "ucrt64/share/licenses/libpsl/COPYING",
+   "path": "licenses/libpsl/COPYING",
+   "sha256": "322392e6001b2b3b0fca705dc9f11f26e12441188ecde50eb1d22909980b2925",
+   "size": 1060
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libssh2",
+   "archive_path": "ucrt64/share/licenses/libssh2/LICENSE",
+   "path": "licenses/libssh2/LICENSE",
+   "sha256": "f7f9633cf9ff2f1333f3d7ce46973a8716a4d2a2815ad56f30d437d5fea7bafe",
+   "size": 1959
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libstdc++",
+   "archive_path": "ucrt64/share/licenses/libstdc++/COPYING.RUNTIME",
+   "path": "licenses/libstdc++/COPYING.RUNTIME",
+   "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+   "size": 3324
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libstdc++",
+   "archive_path": "ucrt64/share/licenses/libstdc++/COPYING3",
+   "path": "licenses/libstdc++/COPYING3",
+   "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+   "size": 35147
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libtiff",
+   "archive_path": "ucrt64/share/licenses/libtiff/LICENSE.md",
+   "path": "licenses/libtiff/LICENSE.md",
+   "sha256": "0e27c2382d7b8147972bbb746e04059a1152c8d0fda9d03ef1399d1a433c4ade",
+   "size": 2416
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libunistring",
+   "archive_path": "ucrt64/share/licenses/libunistring/LICENSE",
+   "path": "licenses/libunistring/LICENSE",
+   "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+   "size": 35149
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libunistring",
+   "archive_path": "ucrt64/share/licenses/libunistring/LICENSE.LIB",
+   "path": "licenses/libunistring/LICENSE.LIB",
+   "sha256": "a853c2ffec17057872340eee242ae4d96cbf2b520ae27d903e1b2fef1a5f9d1c",
+   "size": 7639
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libwebp",
+   "archive_path": "ucrt64/share/licenses/libwebp/COPYING",
+   "path": "licenses/libwebp/COPYING",
+   "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf",
+   "size": 1496
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libwinpthread",
+   "archive_path": "ucrt64/share/licenses/libwinpthread/COPYING",
+   "path": "licenses/libwinpthread/COPYING",
+   "sha256": "63263614cdd29f2f93cba85e992f041b31f9fc7b4033692f31269489a8a1b177",
+   "size": 2883
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-nghttp2",
+   "archive_path": "ucrt64/share/licenses/nghttp2/COPYING",
+   "path": "licenses/nghttp2/COPYING",
+   "sha256": "6b94f3abc1aabd0c72a7c7d92a77f79dda7c8a0cb3df839a97890b4116a2de2a",
+   "size": 1156
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-nghttp3",
+   "archive_path": "ucrt64/share/licenses/nghttp3/COPYING",
+   "path": "licenses/nghttp3/COPYING",
+   "sha256": "58cc3fc8c6d6cb2485ab35eb5918e849b5bf1e56522974e106d7a39a88d61dcd",
+   "size": 1081
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-ngtcp2",
+   "archive_path": "ucrt64/share/licenses/ngtcp2/COPYING",
+   "path": "licenses/ngtcp2/COPYING",
+   "sha256": "542dd526d2ea23565f0571cc68df6f05ed11248a90ff0f32de19d8ba589db513",
+   "size": 1080
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-openjpeg2",
+   "archive_path": "ucrt64/share/licenses/openjpeg/LICENSE",
+   "path": "licenses/openjpeg/LICENSE",
+   "sha256": "a6af136f3e15038a666b61f376612a07d9a4e48cb7c01adbf3e33b3f14ab49b6",
+   "size": 2112
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-openssl",
+   "archive_path": "ucrt64/share/licenses/openssl/LICENSE",
+   "path": "licenses/openssl/LICENSE",
+   "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+   "size": 10175
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-tesseract-ocr",
+   "archive_path": "ucrt64/share/licenses/tesseract-ocr/LICENSE",
+   "path": "licenses/tesseract-ocr/LICENSE",
+   "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+   "size": 11358
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-xz",
+   "archive_path": "ucrt64/share/licenses/xz/COPYING",
+   "path": "licenses/xz/COPYING",
+   "sha256": "616a3ad264ce29b8f1cb97e53037b139d406899ca8d1f799651e17bfa09830b8",
+   "size": 3119
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-xz",
+   "archive_path": "ucrt64/share/licenses/xz/COPYING.0BSD",
+   "path": "licenses/xz/COPYING.0BSD",
+   "sha256": "0b01625d853911cd0e2e088dcfb743261034a091bb379246cb25a14cc4c74bf1",
+   "size": 607
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-xz",
+   "archive_path": "ucrt64/share/licenses/xz/COPYING.GPLv2",
+   "path": "licenses/xz/COPYING.GPLv2",
+   "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6",
+   "size": 17984
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-xz",
+   "archive_path": "ucrt64/share/licenses/xz/COPYING.GPLv3",
+   "path": "licenses/xz/COPYING.GPLv3",
+   "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+   "size": 35149
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-xz",
+   "archive_path": "ucrt64/share/licenses/xz/COPYING.LGPLv2.1",
+   "path": "licenses/xz/COPYING.LGPLv2.1",
+   "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+   "size": 26419
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-zlib",
+   "archive_path": "ucrt64/share/licenses/zlib/LICENSE",
+   "path": "licenses/zlib/LICENSE",
+   "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+   "size": 1002
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-zstd",
+   "archive_path": "ucrt64/share/licenses/zstd/LICENSE",
+   "path": "licenses/zstd/LICENSE",
+   "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8",
+   "size": 1549
+  }
+ ],
+ "license_sources": [
+  {
+   "package": "mingw-w64-ucrt-x86_64-giflib",
+   "filename": "mingw-w64-giflib-6.1.3-1.src.tar.zst",
+   "sha256": "7c41b8653d50671d511eb7ee455e219b1997de7b126ce4874eb3f47ae414aea6",
+   "inner": "giflib-6.1.3.tar.gz",
+   "members": [
+    {
+     "member": "giflib-6.1.3/COPYING",
+     "path": "licenses/giflib/COPYING",
+     "sha256": "ed5d90cb4a041bddad679470a071302ab05ae5d0ec2cf8f9c97ad7b2708751e6",
+     "size": 1039
+    }
+   ]
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-lz4",
+   "filename": "mingw-w64-lz4-1.11.0-1.src.tar.zst",
+   "sha256": "2f6e6b74ac5a37353ef48027c081b6160274665c1e09f7d464c1bafbc3f47ce8",
+   "inner": "lz4-1.11.0.tar.gz",
+   "members": [
+    {
+     "member": "lz4-1.11.0/LICENSE",
+     "path": "licenses/lz4/LICENSE",
+     "sha256": "4bc9c403f6b679cc076dee210e0e21c27b4e8f6d3fb43d85364c76657bfaaac5",
+     "size": 646
+    },
+    {
+     "member": "lz4-1.11.0/lib/LICENSE",
+     "path": "licenses/lz4/lib-LICENSE",
+     "sha256": "8b58c446121a109ccf32edc094bba3010a3d85e4ee3702950db55e4d3e87736c",
+     "size": 1311
+    }
+   ]
+  },
+  {
+   "package": "mingw-w64-ucrt-x86_64-libidn2",
+   "filename": "mingw-w64-libidn2-2.3.8-4.src.tar.zst",
+   "sha256": "cd83e8514fbeb6a4499299b88691b9b9ecc3114cca1e2be4f6c54aab6ae9ddd0",
+   "inner": "libidn2-2.3.8.tar.gz",
+   "members": [
+    {
+     "member": "libidn2-2.3.8/COPYING",
+     "path": "licenses/libidn2/COPYING",
+     "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+     "size": 35149
+    },
+    {
+     "member": "libidn2-2.3.8/COPYING.LESSERv3",
+     "path": "licenses/libidn2/COPYING.LESSERv3",
+     "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
+     "size": 7652
+    },
+    {
+     "member": "libidn2-2.3.8/COPYINGv2",
+     "path": "licenses/libidn2/COPYINGv2",
+     "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6",
+     "size": 17984
+    },
+    {
+     "member": "libidn2-2.3.8/COPYING.unicode",
+     "path": "licenses/libidn2/COPYING.unicode",
+     "sha256": "01d621eef165cf4d3d3dbb737aa0699178d94c6f18cf87e9dde6db3ca7790f46",
+     "size": 8782
+    }
+   ]
+  }
+ ]
+}

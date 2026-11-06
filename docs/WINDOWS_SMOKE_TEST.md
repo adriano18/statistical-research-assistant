@@ -39,9 +39,15 @@ Confirm that the Home screen appears. Change language from English to Русск
 5. Open the DOCX in Microsoft Word: check the numerical values against the calculation output, table cell editability, caption visibility, bibliography location and print layout. A raster chart is replaceable, not point-by-point editable.
 6. Load a different dataset and check that older statistics and interpretations are not reused.
 
+## D. Packaged preview: startup and True/False import
+
+1. Extract the latest `StatisticalResearchAssistant-Windows-x64.zip` to a new folder and start `StatisticalResearchAssistant.exe`. Within about a second you should see a light screen with a spinner ("Starting…"), never a black window, and then the Home screen.
+2. Close the app and start it again; note how long it takes until Home appears. Then open `%LOCALAPPDATA%\StatisticalResearchAssistant\logs\startup.log`. The last line shows timings such as `splash_shown` and `interface_ready`.
+3. Import a fictional True/False questionnaire (PDF, DOCX or scan). The items must appear as **Single choice** with the printed labels (for example `T`/`F`), not as Short text. Use **BINARY ANSWERS** to rename them to `True`/`False` if needed.
+
 ## When reporting a problem
 
-Include the operating system version, application language, the exact action, terminal traceback and a screenshot. Do not provide real identifying participant data.
+Include the operating system version, application language, the exact action, terminal traceback (or `startup.log` for the packaged app) and a screenshot. Do not provide real identifying participant data.
 
 ```powershell
 python --version

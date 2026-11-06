@@ -10,17 +10,27 @@ import copy
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import re
+import threading
 
 import flet as ft
 import pandas as pd
 
 from localization import tr
-from scientific_survey_import import read_scientific_document, reviewed_draft
+from scientific_survey_import import (
+    ScientificDocumentReview, read_scientific_document, reviewed_draft,
+)
 from visual_survey_review import (
     load_document_bytes, render_document_page, pdf_page_count,
     word_structure_page_count, ocr_scientific_pdf,
     edit_candidate_question, tesseract_available,
+    attach_text_layer_geometry, attach_docx_matrices, apply_response_format,
 )
+from binary_responses import FORMAT_LABELS
+from scientific_survey_import import linked_questions, scheme_banner
+from shared_scales import review_scheme, scheme_summary, unlink_scheme
+from ocr_runtime import OCRCancelled, ocr_readiness
+from spatial_review_ui import SpatialReviewController
 from desktop_button_style import style_buttons
 from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
@@ -455,16 +465,20 @@ def build_survey_workspace(
     )
     document_ocr_language = ft.Dropdown(
         label="Local OCR language packs", width=265, value="eng",
+        tooltip="Put the document's main language first; the engine "
+                "favours the first language of a combination.",
         options=[
             ft.DropdownOption(key=code, text=description)
             for code, description in (
                 ("eng", "English"),
                 ("lav", "Latvian"),
                 ("rus", "Russian"),
-                ("eng+lav", "English + Latvian"),
-                ("eng+rus", "English + Russian"),
-                ("lav+rus", "Latvian + Russian"),
-                ("eng+lav+rus", "All three"),
+                ("lav+eng", "Latvian (main) + English"),
+                ("rus+eng", "Russian (main) + English"),
+                ("lav+rus", "Latvian (main) + Russian"),
+                ("rus+lav", "Russian (main) + Latvian"),
+                ("lav+rus+eng", "All three · Latvian main"),
+                ("rus+lav+eng", "All three · Russian main"),
             )
         ],
     )
@@ -475,10 +489,14 @@ def build_survey_workspace(
         "OCR first 20 PDF pages", disabled=True,
     )
     document_ocr_status = ft.Text(
-        "OCR requires a local Tesseract installation with the selected "
-        "language packs. No cloud services are used.",
+        "OCR runs locally with the bundled Tesseract engine (Windows "
+        "package) or a local installation. No cloud services are used.",
         size=12, selectable=True,
     )
+    document_ocr_cancel = ft.Button("Cancel OCR", disabled=True)
+    document_ocr_check = ft.Button("Check OCR engine")
+    document_ocr_engine = ft.Text("", size=12, selectable=True, color="#536781")
+    ocr_cancel_event = {"event": None}
     document_question_picker = ft.Dropdown(
         label="Question to review / edit", width=520,
         options=[], disabled=True,
@@ -531,6 +549,297 @@ def build_survey_workspace(
         ], spacing=9, visible=False,
     )
 
+    # Shared response scales (rows × columns such as O/S/R/N or Never…Often).
+    scale_banner = ft.Container(
+        visible=False, padding=10, bgcolor="#FFF4E5",
+        border=ft.Border.all(1, "#E0A04B"),
+        content=ft.Text("", size=13, weight="bold", color="#7A4A00", selectable=True),
+    )
+    scale_picker = ft.Dropdown(label="Shared response scale", width=420, options=[])
+    scale_summary = ft.Text("", size=12, selectable=True, color="#3C536F")
+    scale_issues = ft.Column(spacing=3)
+    scale_fields = ft.Column(spacing=6)
+    scale_reverse = ft.TextField(
+        label="Reverse-keyed items (as documented)", width=420, dense=True,
+        hint_text="e.g. 1, 5, 6, 9",
+    )
+    scale_reverse_source = ft.Text("", size=11, color="#536781", selectable=True)
+    scale_confirm_structure = ft.Checkbox(
+        label="Confirm structure: all linked questions share these categories and labels",
+        value=False,
+    )
+    scale_confirm_codes = ft.Checkbox(
+        label="Confirm numeric coding exactly as printed in the source", value=False,
+    )
+    scale_confirm_reverse = ft.Checkbox(
+        label="Confirm reverse scoring of the listed items (checked in the manual)",
+        value=False,
+    )
+    scale_apply_button = ft.Button("Apply scale review to all linked questions")
+    scale_show_button = ft.Button("Show this scale on the source page")
+    scale_unlink_button = ft.Button("Not a shared scale — keep these questions as text")
+    scale_status = ft.Text("", size=12, selectable=True)
+    scale_panel = ft.Container(
+        visible=False, padding=12, bgcolor="#F7FAFF",
+        border=ft.Border.all(1, "#9DB7E0"),
+        content=ft.Column(spacing=8, controls=[
+            ft.Text("RESPONSE SCALE REVIEW · shared answer categories", weight="bold", size=13),
+            ft.Text(
+                "Rows of a response table share one scale. Check the labels "
+                "against the source, then confirm the structure. Numeric codes "
+                "and reverse-keyed items are applied only with their own "
+                "confirmation. Nothing is published.",
+                size=12, color="#536781",
+            ),
+            scale_picker, scale_summary, scale_issues, scale_fields,
+            scale_reverse, scale_reverse_source,
+            scale_confirm_structure, scale_confirm_codes, scale_confirm_reverse,
+            ft.Row([scale_apply_button, scale_show_button], wrap=True, spacing=8),
+            scale_unlink_button, scale_status,
+        ]),
+    )
+
+    def current_scheme():
+        candidate = selected_instrument()
+        if candidate is None or not candidate.schemes:
+            return candidate, None
+        ids = [s.id for s in candidate.schemes]
+        if scale_picker.value not in ids:
+            scale_picker.value = ids[0]
+        return candidate, next(s for s in candidate.schemes if s.id == scale_picker.value)
+
+    def show_scale_review():
+        candidate, scheme = current_scheme()
+        banner = scheme_banner(candidate) if candidate is not None else None
+        scale_banner.visible = bool(banner)
+        scale_banner.content.value = ("⚠ " + banner) if banner else ""
+        scale_panel.visible = scheme is not None
+        if scheme is None:
+            return
+        scale_picker.options = [
+            ft.DropdownOption(
+                key=s.id,
+                text=f"{s.id} · {s.size} categories · "
+                     f"{len(linked_questions(candidate, s.id))} questions"
+                     + (" · confirmed" if s.structure_confirmed else " · NOT verified"),
+            )
+            for s in candidate.schemes
+        ]
+        scale_summary.value = scheme_summary(candidate, scheme)
+        problems = [*scheme.label_problems(), *scheme.issues]
+        scale_issues.controls = [
+            ft.Text("Check: " + text, size=11, color="#936022", selectable=True)
+            for text in problems[:30]
+        ]
+        rows = []
+        for k, label in enumerate(scheme.labels):
+            printed = scheme.printed[k] if k < len(scheme.printed) else ""
+            rows.append(ft.Row(wrap=True, spacing=8, controls=[
+                ft.TextField(label=f"Category {k + 1} label", value=label, width=250,
+                             dense=True, tooltip=f"Printed: {printed}" if printed else None),
+                ft.TextField(label=f"Category {k + 1} code", value=scheme.codes[k] or "",
+                             width=170, dense=True, hint_text="as printed"),
+            ]))
+        scale_fields.controls = rows
+        scale_reverse.value = ", ".join(map(str, scheme.reverse_items))
+        scale_reverse_source.value = (
+            f"Source: “{scheme.reverse_evidence[:160]}”" if scheme.reverse_evidence
+            else "No reverse-scoring statement was found for this scale."
+        )
+        scale_confirm_structure.value = scheme.structure_confirmed
+        scale_confirm_codes.value = scheme.codes_confirmed
+        scale_confirm_reverse.value = scheme.reverse_confirmed
+
+    def scale_field_values():
+        labels, codes = [], []
+        for row in scale_fields.controls:
+            label_field, code_field = row.controls
+            labels.append(label_field.value or "")
+            codes.append(code_field.value or "")
+        return labels, codes
+
+    def store_instrument(updated):
+        nonlocal extracted_document
+        collection = list(extracted_document.instruments)
+        collection[int(document_instrument.value)] = updated
+        extracted_document = replace(extracted_document, instruments=tuple(collection))
+        selected = document_question_picker.value
+        refresh_document_review()  # resets every document approval
+        if selected is not None and int(selected) < len(updated.questions):
+            document_question_picker.value = selected
+            show_editable_question()
+
+    def apply_scale_review(event=None):
+        candidate, scheme = current_scheme()
+        if scheme is None:
+            return
+        labels, codes = scale_field_values()
+        try:
+            reverse_items = [int(x) for x in re.findall(r"\d+", scale_reverse.value or "")]
+            updated = review_scheme(
+                candidate, scheme.id, labels=labels, codes=codes,
+                reverse_items=reverse_items,
+                structure=bool(scale_confirm_structure.value),
+                numeric=bool(scale_confirm_codes.value),
+                reverse=bool(scale_confirm_reverse.value),
+            )
+        except (ValueError, KeyError) as error:
+            scale_status.value = f"Scale review not applied: {error}"
+            page.update()
+            return
+        chosen = scheme.id
+        store_instrument(updated)
+        scale_picker.value = chosen
+        show_scale_review()
+        _, applied = current_scheme()
+        count = len(linked_questions(updated, chosen))
+        scale_status.value = (
+            f"Applied to {count} linked questions: "
+            + ("structure confirmed" if applied.structure_confirmed else "structure NOT confirmed")
+            + (", numeric codes confirmed" if applied.codes_confirmed else ", no numeric codes")
+            + (", reverse scoring confirmed" if applied.reverse_confirmed else "")
+            + ". Source unchanged; other approvals were reset."
+        )
+        page.update()
+
+    async def show_scale_on_page(event=None):
+        candidate, scheme = current_scheme()
+        if scheme is None:
+            return
+        linked = linked_questions(candidate, scheme.id)
+        if not linked:
+            return
+        document_question_picker.value = str(linked[0])
+        show_editable_question()
+        if scheme.matrix_id:
+            for k, matrix in enumerate(extracted_document.matrices):
+                if matrix.id == scheme.matrix_id:
+                    spatial.matrix_index = k
+        await spatial.on_question_selected(linked[0])
+        page.update()
+
+    def unlink_current_scale(event=None):
+        candidate, scheme = current_scheme()
+        if scheme is None:
+            return
+        updated = unlink_scheme(candidate, scheme.id)
+        store_instrument(updated)
+        scale_status.value = (
+            f"{scheme.id} removed: its questions stay as free text by your decision."
+        )
+        page.update()
+
+    async def on_scale_select(event=None):
+        show_scale_review()
+        page.update()
+
+    scale_picker.on_select = on_scale_select
+    scale_apply_button.on_click = apply_scale_review
+    scale_show_button.on_click = show_scale_on_page
+    scale_unlink_button.on_click = unlink_current_scale
+
+    # Shared binary answer formats (True/False, Yes/No) found in the source.
+    binary_format_picker = ft.Dropdown(
+        label="Detected binary answer format", width=420, options=[],
+    )
+    binary_format_info = ft.Text("", size=12, selectable=True, color="#536781")
+    binary_label_first = ft.TextField(label="First answer label", width=200, dense=True)
+    binary_label_second = ft.TextField(label="Second answer label", width=200, dense=True)
+    binary_review_confirm = ft.Checkbox(
+        label="I checked the source: these items share this answer format",
+        value=False,
+    )
+    binary_apply_button = ft.Button("Apply binary answers to matching items")
+    binary_panel = ft.Column(
+        visible=False, spacing=8,
+        controls=[
+            ft.Text("BINARY ANSWERS · shared response format", weight="bold", size=13),
+            binary_format_picker, binary_format_info,
+            ft.Row([binary_label_first, binary_label_second], wrap=True, spacing=10),
+            ft.Text(
+                "Labels stay as printed unless you change them. No numeric "
+                "codes, answer key or reverse scoring are assigned.",
+                size=11, color="#936022",
+            ),
+            binary_review_confirm, binary_apply_button,
+        ],
+    )
+
+    def show_binary_formats():
+        candidate = selected_instrument()
+        formats = candidate.response_formats if candidate is not None else ()
+        binary_panel.visible = bool(formats)
+        if not formats:
+            return
+        binary_format_picker.options = [
+            ft.DropdownOption(
+                key=str(i),
+                text=f"{FORMAT_LABELS.get(f.kind, f.kind)} · {' / '.join(f.labels)} · "
+                     f"{f.evidence} evidence, page {f.page}",
+            )
+            for i, f in enumerate(formats)
+        ]
+        if binary_format_picker.value not in {str(i) for i in range(len(formats))}:
+            binary_format_picker.value = "0"
+        fmt = formats[int(binary_format_picker.value)]
+        evidence = {
+            "row": "printed on each item's own row",
+            "header": "a shared column header",
+            "instruction": "the instructions only (weak evidence)",
+        }.get(fmt.evidence, fmt.evidence)
+        binary_format_info.value = (
+            f"Source: “{fmt.printed[:80]}” — {evidence}, page {fmt.page}. "
+            f"Applied to {len(fmt.applied_to)} item(s); "
+            f"{len(fmt.candidates)} text item(s) await review."
+        )
+        binary_label_first.value, binary_label_second.value = fmt.labels
+        binary_review_confirm.value = False
+
+    async def on_binary_format_select(event=None):
+        show_binary_formats()
+        page.update()
+
+    binary_format_picker.on_select = on_binary_format_select
+
+    def apply_binary_format(event=None):
+        nonlocal extracted_document
+        candidate = selected_instrument()
+        if candidate is None or not candidate.response_formats:
+            return
+        if not binary_review_confirm.value:
+            document_import_status.value = (
+                "Check the source first and confirm that these items share "
+                "the binary answer format."
+            )
+            page.update()
+            return
+        try:
+            index = int(binary_format_picker.value or "0")
+            updated = apply_response_format(
+                candidate, index,
+                (binary_label_first.value or "", binary_label_second.value or ""),
+            )
+        except (ValueError, IndexError) as error:
+            document_import_status.value = f"Binary answers not applied: {error}"
+            page.update()
+            return
+        changed = sum(1 for a, b in zip(candidate.questions, updated.questions) if a != b)
+        collection = list(extracted_document.instruments)
+        collection[int(document_instrument.value)] = updated
+        extracted_document = replace(extracted_document, instruments=tuple(collection))
+        selected = document_question_picker.value
+        refresh_document_review()  # also resets every approval
+        if selected is not None:
+            document_question_picker.value = selected
+            show_editable_question()
+        document_import_status.value = (
+            f"Binary answers {binary_label_first.value} / {binary_label_second.value} "
+            f"applied to {changed} item(s). Source unchanged; approvals were reset."
+        )
+        page.update()
+
+    binary_apply_button.on_click = apply_binary_format
+
     def selected_instrument():
         if extracted_document is None or not document_instrument.value:
             return None
@@ -565,18 +874,24 @@ def build_survey_workspace(
             f"{item.excerpt[:250]}. Corrections update the draft proposal, "
             "not the original document."
         )
-        if imported_source_name and Path(imported_source_name).suffix.lower() == ".pdf":
-            document_page_picker.value = str(item.page)
 
-    async def refresh_document_page(event=None):
+    def is_pdf_source():
+        return bool(
+            imported_source_name
+            and Path(imported_source_name).suffix.lower() == ".pdf"
+        )
+
+    async def render_source_page(number, rotation=0):
+        """Render one page for the spatial viewer; returns PNG or None."""
         if imported_source_bytes is None or not imported_source_name:
-            return
+            return None
+        document_page_picker.value = str(number)
         try:
-            number = int(document_page_picker.value or "1")
             source = imported_source_bytes
             filename = imported_source_name
             image_bytes = await asyncio.to_thread(
                 render_document_page, source, filename, number,
+                rotation=rotation if is_pdf_source() else 0,
             )
             document_page_image.src = image_bytes
             document_page_image.visible = True
@@ -589,16 +904,34 @@ def build_survey_workspace(
                     else "Compare every question against this page."
                 )
             )
+            return image_bytes
         except Exception as error:
             document_page_image.visible = False
             document_page_status.value = f"Cannot render document page: {error}"
+            return None
+
+    async def refresh_document_page(event=None):
+        if imported_source_bytes is None or not imported_source_name:
+            return
+        try:
+            number = int(document_page_picker.value or "1")
+        except ValueError:
+            number = 1
+        png = await render_source_page(number, spatial.view_rotation)
+        if png:
+            spatial.show_rendered(number, png)
         page.update()
 
     document_page_picker.on_select = refresh_document_page
 
     async def on_document_question_select(event):
         show_editable_question()
-        await refresh_document_page()
+        try:
+            index = int(document_question_picker.value)
+        except (TypeError, ValueError):
+            index = None
+        await spatial.on_question_selected(index)
+        page.update()
 
     document_question_picker.on_select = on_document_question_select
 
@@ -627,6 +960,8 @@ def build_survey_workspace(
             refresh_document_review()
             document_question_picker.value = str(index)
             show_editable_question()
+            spatial.selected_index = index
+            spatial.relayout()
             document_import_status.value = (
                 f"Correction saved to question {index+1}. "
                 "Source file unchanged; verify the complete proposal "
@@ -665,6 +1000,11 @@ def build_survey_workspace(
             )
             page.update()
             return
+        cancel = threading.Event()
+        ocr_cancel_event["event"] = cancel
+        document_ocr_cancel.disabled = False
+        document_ocr_button.disabled = True
+        document_ocr_all_button.disabled = True
         try:
             count = pdf_page_count(imported_source_bytes)
             target = (
@@ -672,14 +1012,16 @@ def build_survey_workspace(
                 if batch else [int(document_page_picker.value or "1")]
             )
             document_ocr_status.value = (
-                f"Running local OCR on {len(target)} PDF page(s). "
-                "The imported form is not saved or published."
+                f"Running local OCR on {len(target)} PDF page(s) at "
+                f"{spatial.view_rotation}° view rotation. You can cancel; "
+                "the imported form is not saved or published."
             )
             page.update()
             review = await asyncio.to_thread(
                 ocr_scientific_pdf,
                 imported_source_bytes, imported_source_name,
                 target, document_ocr_language.value or "eng",
+                rotation=spatial.view_rotation, cancel=cancel,
             )
             extracted_document = review
             document_instrument.options = [
@@ -701,13 +1043,43 @@ def build_survey_workspace(
                     "Manually verify every recognized question."
                 )
             )
+            spatial.selected_index = 0 if selected_instrument() and selected_instrument().questions else None
+            spatial.matrix_index = None
             await refresh_document_page()
+        except OCRCancelled:
+            document_ocr_status.value = (
+                "OCR cancelled. Existing extracted proposals were not changed."
+            )
+            page.update()
         except Exception as error:
             document_ocr_status.value = (
                 f"OCR did not produce an importable questionnaire: {error}. "
                 "Existing extracted proposals were not changed."
             )
             page.update()
+        finally:
+            ocr_cancel_event["event"] = None
+            document_ocr_cancel.disabled = True
+            document_ocr_button.disabled = not is_pdf_source()
+            document_ocr_all_button.disabled = not is_pdf_source()
+            page.update()
+
+    def cancel_ocr(event=None):
+        current = ocr_cancel_event["event"]
+        if current is not None:
+            current.set()
+            document_ocr_status.value = "Cancelling local OCR…"
+            page.update()
+
+    async def check_ocr_engine(event=None):
+        document_ocr_engine.value = "Checking the local OCR engine…"
+        page.update()
+        ready = await asyncio.to_thread(ocr_readiness, full_hash=True, use_cache=False)
+        document_ocr_engine.value = "OCR engine: " + ready.summary()
+        page.update()
+
+    document_ocr_cancel.on_click = cancel_ocr
+    document_ocr_check.on_click = check_ocr_engine
 
     async def ocr_current_page(event):
         await run_document_ocr(event, batch=False)
@@ -723,6 +1095,9 @@ def build_survey_workspace(
         document_import_preview.controls = []
         document_commit_button.disabled = candidate is None
         if candidate is None:
+            binary_panel.visible = False
+            scale_panel.visible = False
+            scale_banner.visible = False
             page.update()
             return
         document_review_confirm.value = False
@@ -740,6 +1115,8 @@ def build_survey_workspace(
         )
         document_question_picker.disabled = not candidate.questions
         show_editable_question()
+        show_binary_formats()
+        show_scale_review()
         sources = ft.Column(
             controls=[
                 ft.Text("SOURCE · original extracted lines",
@@ -820,6 +1197,12 @@ def build_survey_workspace(
 
     async def on_instrument_select(event):
         refresh_document_review()
+        chosen = selected_instrument()
+        spatial.selected_index = 0 if chosen and chosen.questions else None
+        if chosen is not None and is_pdf_source():
+            # Show the selected version's own page, never another version's.
+            document_page_picker.value = str(chosen.questions[0].page if chosen.questions
+                                             else chosen.first_page)
         await refresh_document_page()
 
     document_instrument.on_select = on_instrument_select
@@ -846,6 +1229,9 @@ def build_survey_workspace(
         document_question_picker.options = []
         document_question_picker.value = None
         document_editor_panel.visible = False
+        binary_panel.visible = False
+        scale_panel.visible = False
+        scale_banner.visible = False
         document_page_image.visible = False
         document_page_picker.options = []
         document_page_picker.disabled = True
@@ -854,6 +1240,7 @@ def build_survey_workspace(
         document_review_confirm.value = False
         document_numeric_confirm.value = False
         document_reverse_confirm.value = False
+        spatial.reset()
         try:
             if suffix not in {".docx", ".doc", ".pdf"}:
                 raise ValueError("Choose a DOCX, DOC or PDF document.")
@@ -906,7 +1293,35 @@ def build_survey_workspace(
                     "The source remains available in the visual viewer. "
                     "For scanned PDF pages use the local OCR buttons."
                 )
+                if suffix == ".docx":
+                    # A pure rating-matrix table may have no numbered lines.
+                    empty = ScientificDocumentReview(
+                        filename, (), (
+                            "Only Word-table matrix proposals were found; "
+                            "verify them in the matrix editor.",
+                        ), 1,
+                    )
+                    matrices_only = await asyncio.to_thread(
+                        attach_docx_matrices, empty, binary,
+                    )
+                    if matrices_only.matrices:
+                        extracted_document = matrices_only
+                        document_import_status.value += (
+                            f" {len(matrices_only.matrices)} Word-table "
+                            "matrix proposal(s) are available for review."
+                        )
             else:
+                try:
+                    if suffix == ".pdf":
+                        parsed = await asyncio.to_thread(
+                            attach_text_layer_geometry, parsed, binary,
+                        )
+                    elif suffix == ".docx":
+                        parsed = await asyncio.to_thread(
+                            attach_docx_matrices, parsed, binary,
+                        )
+                except Exception:
+                    pass  # spatial evidence is optional; never block import
                 extracted_document = parsed
                 document_instrument.options = [
                     ft.DropdownOption(
@@ -922,7 +1337,13 @@ def build_survey_workspace(
                     f"{sum(len(x.questions) for x in parsed.instruments)} "
                     f"candidate questions from {filename}. "
                     "Review the original page and correct items before use."
+                    + (
+                        f" {len(parsed.matrices)} response-matrix proposal(s) "
+                        "need verification in the matrix editor."
+                        if parsed.matrices else ""
+                    )
                 )
+                spatial.selected_index = 0 if parsed.instruments and parsed.instruments[0].questions else None
             await refresh_document_page()
         except Exception as error:
             document_import_status.value = f"Document import failed: {error}"
@@ -958,13 +1379,7 @@ def build_survey_workspace(
             )
             page.update()
             return
-        if draft and not document_replace_confirm.value:
-            document_import_status.value = (
-                "Your current draft has unsaved questions. Check the "
-                "replace confirmation to overwrite it. Published surveys "
-                "and responses are not changed."
-            )
-            page.update()
+        if not draft_replace_allowed():
             return
         try:
             candidate_draft = reviewed_draft(
@@ -998,6 +1413,92 @@ def build_survey_workspace(
 
     document_commit_button.on_click = commit_document_draft
 
+    def draft_replace_allowed():
+        if draft and not document_replace_confirm.value:
+            document_import_status.value = (
+                "Your current draft has unsaved questions. Check the "
+                "replace confirmation to overwrite it. Published surveys "
+                "and responses are not changed."
+            )
+            page.update()
+            return False
+        return True
+
+    def commit_matrix_draft(questions, matrix_title):
+        """Install verified matrix rows; same safeguards as candidates."""
+        if extracted_document is None:
+            return False
+        if not document_review_confirm.value:
+            document_import_status.value = (
+                "Review the original, version and permissions, then check "
+                "the scientific review confirmation before using the matrix."
+            )
+            page.update()
+            return False
+        if not draft_replace_allowed():
+            return False
+        draft[:] = questions
+        title.value = matrix_title[:120]
+        description.value = (
+            f"Imported matrix draft from {extracted_document.source_name}. "
+            "Confirm licensing, exact version, wording, scoring and "
+            "translation before using this instrument in research."
+        )[:500]
+        new_editor()
+        update_draft()
+        document_import_status.value = (
+            f"Imported {len(questions)} editable matrix questions from "
+            f"{matrix_title}. Verify scoring, consent and omissions before "
+            "publishing."
+        )
+        document_replace_confirm.value = False
+        document_review_confirm.value = False
+        page.update()
+        return True
+
+    def get_review():
+        return extracted_document
+
+    def set_review(review):
+        nonlocal extracted_document
+        extracted_document = review
+
+    def get_instrument_index():
+        if extracted_document is None or not document_instrument.value:
+            return None
+        try:
+            index = int(document_instrument.value)
+        except ValueError:
+            return None
+        return index if 0 <= index < len(extracted_document.instruments) else None
+
+    def focus_question(index):
+        document_question_picker.value = str(index)
+        show_editable_question()
+
+    def invalidate_approvals(message):
+        document_review_confirm.value = False
+        document_numeric_confirm.value = False
+        document_reverse_confirm.value = False
+        document_import_status.value = message
+
+    def source_page_count():
+        if not is_pdf_source():
+            return 0
+        return len(document_page_picker.options)
+
+    def set_page_value(number):
+        document_page_picker.value = str(number)
+
+    spatial = SpatialReviewController(
+        page, document_page_image,
+        get_review=get_review, set_review=set_review,
+        get_instrument=get_instrument_index, focus_question=focus_question,
+        render_page=render_source_page, page_count=source_page_count,
+        set_page_value=set_page_value, on_invalidate=invalidate_approvals,
+        on_matrix_commit=commit_matrix_draft,
+    )
+
     document_import_tile = ft.ExpansionTile(
         title=ft.Text("Scientific importer · Word / PDF questionnaires"),
         expanded=False,
@@ -1014,45 +1515,59 @@ def build_survey_workspace(
                 "Choose Word / PDF questionnaire", action=document_action,
             ),
             document_import_status,
+            scale_banner,
             document_instrument,
-            ft.Row(
+            # Responsive split screen: source left, review/editing right.
+            ft.ResponsiveRow(
                 controls=[
                     ft.Container(
-                        width=515, padding=12,
+                        col={"xs": 12, "lg": 6}, padding=12,
                         border=ft.Border.all(1, "#D7E1EE"),
                         content=ft.Column(
                             controls=[
                                 ft.Text("SOURCE · rendered PDF page / Word text",
                                         weight="bold", size=13),
-                                document_page_picker,
+                                ft.Row(
+                                    controls=[document_page_picker],
+                                    wrap=True, spacing=10,
+                                ),
                                 document_page_status,
-                                document_page_image,
+                                spatial.left_tools,
+                                spatial.viewer,
                                 document_ocr_language,
                                 ft.Row(
                                     controls=[
                                         document_ocr_button,
                                         document_ocr_all_button,
+                                        document_ocr_cancel,
+                                        document_ocr_check,
                                     ],
                                     wrap=True, spacing=10,
                                 ),
                                 document_ocr_status,
+                                document_ocr_engine,
                             ],
-                            spacing=9, scroll=ft.ScrollMode.AUTO,
+                            spacing=9,
                         ),
                     ),
                     ft.Container(
-                        width=540, padding=12,
+                        col={"xs": 12, "lg": 6}, padding=12,
                         border=ft.Border.all(1, "#D7E1EE"),
                         content=ft.Column(
                             controls=[
                                 ft.Text("EDIT · recognized questions",
                                         weight="bold", size=13),
+                                scale_panel,
                                 document_editor_panel,
+                                binary_panel,
+                                spatial.question_panel,
+                                spatial.queue_panel,
+                                spatial.matrix.panel,
                             ], spacing=9,
                         ),
                     ),
                 ],
-                wrap=True, spacing=12,
+                spacing=12, run_spacing=12,
             ),
             document_import_preview,
             document_review_confirm,

@@ -210,6 +210,35 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(menu.controls[0].content.value, "Файл")
         self.assertEqual(menu.controls[4].content.value, "База данных")
 
+    def test_settings_menu_reports_offline_ocr_readiness(self):
+        import asyncio
+        import os
+        from unittest.mock import patch
+        import ocr_runtime
+
+        controls = {name: ft.Text(name) for name in CONTROL_NAMES}
+        actions = {name: (lambda e: None) for name in ACTION_NAMES}
+        root = build_interface(DummyPage(), controls, actions)
+        menu = root.controls[1].content.controls[0].content.controls[0]
+        settings = menu.controls[5]
+        item = next(x for x in settings.controls
+                    if x.content.value == "Offline OCR engine…")
+        ocr_runtime._READINESS_CACHE.clear()
+        with patch.dict(os.environ, {"SRA_DISABLE_OCR": "1"}):
+            asyncio.run(item.on_click(None))
+        texts = []
+        def walk(control):
+            if isinstance(control, ft.Text) and isinstance(control.value, str):
+                texts.append(control.value)
+            for name in ("controls", "content"):
+                child = getattr(control, name, None)
+                for sub in (child if isinstance(child, list) else [child]):
+                    if isinstance(sub, ft.Control):
+                        walk(sub)
+        walk(root)
+        self.assertTrue(any("Local OCR (no uploads): Local OCR unavailable" in t
+                            and "disabled" in t for t in texts), texts)
+
     def test_default_is_english_and_language_switch_is_live(self):
         controls = {name: ft.Text(name) for name in CONTROL_NAMES}
         actions = {name: (lambda e: None) for name in ACTION_NAMES}
