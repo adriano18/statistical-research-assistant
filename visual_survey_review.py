@@ -11,7 +11,6 @@ from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import re
 import shutil
 import subprocess
 import textwrap
@@ -31,8 +30,9 @@ from ocr_runtime import (
 )
 
 from scientific_survey_import import (
-    Candidate, InstrumentCandidate, ScientificDocumentReview,
-    MAX_BYTES, MAX_PAGES, parse_scientific_lines,
+    InstrumentCandidate, LEGACY_DOC_FAILED, LEGACY_DOC_UNREADABLE,
+    LegacyDocUnavailable, ScientificDocumentReview, MAX_BYTES, MAX_PAGES,
+    parse_scientific_lines,
 )
 from survey_storage import validate_questions
 
@@ -76,6 +76,40 @@ def pdf_page_count(source: bytes) -> int:
         if n > MAX_PAGES:
             raise ValueError("PDF exceeds the 80-page review limit.")
         return n
+    finally:
+        pdf.close()
+
+
+def pdf_image_coverage(source: bytes) -> dict[int, float]:
+    """Share of each page's area covered by the raster images it DRAWS.
+
+    1-based page → share in (0, 1]; pages without images are absent.
+    Unlike pypdf's ``page.images``, which lists every image of a resource
+    dictionary that several pages may share, this measures placed images,
+    so a page-sized scan and a small logo can be told apart.
+    """
+    import pypdfium2.raw as pdfium_c
+
+    pdf = _pdf(source)
+    try:
+        if len(pdf) > MAX_PAGES:
+            raise ValueError("PDF exceeds the 80-page review limit.")
+        shares = {}
+        for index in range(len(pdf)):
+            page = pdf[index]
+            try:
+                width, height = page.get_size()
+                area = 0.0
+                for image in page.get_objects(filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=3):
+                    # pypdfium2 5 renamed PdfObject.get_pos() to get_bounds().
+                    bounds = getattr(image, "get_bounds", None) or image.get_pos
+                    left, bottom, right, top = bounds()
+                    area += max(0.0, right - left) * max(0.0, top - bottom)
+                if area > 0 and width > 0 and height > 0:
+                    shares[index + 1] = min(1.0, area / (width * height))
+            finally:
+                page.close()
+        return shares
     finally:
         pdf.close()
 
@@ -157,21 +191,26 @@ def _word_text(source: bytes, suffix: str) -> list[str]:
         return lines
     if suffix.lower() != ".doc":
         raise ValueError("Unsupported Word document.")
+    # The only converter is a locally installed antiword; packaged Windows
+    # builds have none, so the error must say how to continue.
     tesseract_independent = shutil.which("antiword")
     if tesseract_independent is None:
-        raise ValueError("For .doc visual review, install antiword or save as .docx.")
+        raise LegacyDocUnavailable(LEGACY_DOC_UNREADABLE)
     # antiword is more reliable with a real filename, including on Windows.
     # The local temporary source is removed immediately after extraction.
     with TemporaryDirectory(prefix="word-review-") as folder:
         target = Path(folder) / "source.doc"
         target.write_bytes(source)
-        proc = subprocess.run(
-            [tesseract_independent, "-w", "110", str(target)],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            timeout=15, check=False,
-        )
+        try:
+            proc = subprocess.run(
+                [tesseract_independent, "-w", "110", str(target)],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=15, check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            raise LegacyDocUnavailable(LEGACY_DOC_FAILED) from error
     if proc.returncode:
-        raise ValueError("Could not decode this .doc; convert to .docx.")
+        raise LegacyDocUnavailable(LEGACY_DOC_FAILED)
     return proc.stdout.decode("utf-8", errors="replace").splitlines()
 
 
@@ -547,7 +586,7 @@ def ocr_scientific_pdf(
         review = parse_scientific_lines(
             lines, filename, page_count=count,
         )
-    except ValueError:
+    except ValueError as error:
         if not matrices:
             raise
         # Grid rows without recognizable numbering: keep matrix proposals.
@@ -555,7 +594,8 @@ def ocr_scientific_pdf(
             filename, (), (
                 "No numbered question lines were recognized; only response-"
                 "matrix proposals are available. Verify them manually.",
-            ), count,
+            ), count, non_items=getattr(error, "non_items", ()),
+            expected_count=getattr(error, "expected_count", None),
         )
     from shared_scales import link_matrices
 
