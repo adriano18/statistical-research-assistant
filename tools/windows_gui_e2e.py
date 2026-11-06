@@ -956,7 +956,11 @@ def save_via_dialog(gui: Gui, journey: Journey, button: str, target: Path, *, ki
     with journey.step(f"save {target.name} with '{button}'"):
         gui.click(button, control_type=("Button", "Text"))
         gui.file_dialog(target, save=True)
-        gui.wait_text(str(target) if kind != "sra" else target.name, timeout=40)
+        # "Saved: <path>" in the status line; the file name, so that a short
+        # or long form of the folder (RUNNER~1 / runneradmin) both count.
+        gui.wait_text(T("save.saved", path="").strip(), timeout=40)
+        gui.wait_text(target.name if kind == "sra" or target.suffix else target.name + ".",
+                      timeout=10)
         facts = verify_saved(target, kind=kind, contains=contains)
         journey.facts[target.name] = facts
         return facts
@@ -1285,7 +1289,9 @@ def main(argv=None) -> int:
         return 2
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    work = Path(tempfile.mkdtemp(prefix="sra-e2e-files-"))
+    # resolve(): the long form of the folder. TEMP on the runner is an 8.3
+    # short path (RUNNER~1) while the Save dialog returns the long one.
+    work = Path(tempfile.mkdtemp(prefix="sra-e2e-files-")).resolve()
     data = Path(tempfile.mkdtemp(prefix="sra-e2e-data-"))
     preferences = Path.home() / ".statistical_research_assistant" / "preferences.json"
     with contextlib.suppress(OSError):
