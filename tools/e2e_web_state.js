@@ -98,25 +98,28 @@ async function typeCheck(url, text) {
   }
 }
 
-async function nodeByLabel(page, fragment) {
-  return page.evaluate((wanted) => {
-    const node = Array.from(document.querySelectorAll('flt-semantics'))
-      .find((n) => (n.getAttribute('aria-label') || n.textContent || '').includes(wanted)
-                   && n.getAttribute('role') === 'button');
-    if (!node) return null;
-    const r = node.getBoundingClientRect();
+async function nodeByLabel(page, fragment, rightmost = false) {
+  return page.evaluate(([wanted, last]) => {
+    const nodes = Array.from(document.querySelectorAll('flt-semantics'))
+      .filter((n) => (n.getAttribute('aria-label') || n.textContent || '').includes(wanted)
+                     && n.getAttribute('role') === 'button')
+      .map((n) => ({ n, r: n.getBoundingClientRect() }));
+    if (!nodes.length) return null;
+    const pick = last ? nodes.reduce((a, b) => (b.r.x > a.r.x ? b : a)) : nodes[0];
+    const r = pick.r;
     return { x: r.x + Math.min(r.width / 2, 120), y: r.y + r.height / 2 };
-  }, fragment);
+  }, [fragment, rightmost]);
 }
 
 // list: scroll a long questionnaire list to <target>, select it, then edit its
 //   wording: the selected row must stay where it was and the caret must stay
 //   in the wording field while typing.
-async function listCheck(url, target, suffix, fieldLabel = 'Question text') {
+async function listCheck(url, target, suffix, fieldLabel = 'Question text',
+                         anchor = 'Fictional statement 1.') {
   const { browser, page } = await openPage(url);
   try {
     let node = await nodeByLabel(page, target);
-    const first = await nodeByLabel(page, 'Fictional statement 1.');
+    const first = await nodeByLabel(page, anchor);
     if (!first) throw new Error('questionnaire list not found');
     await page.mouse.move(first.x, first.y + 120);
     for (let i = 0; i < 80 && (!node || node.y > 700 || node.y < 120); i += 1) {
@@ -199,8 +202,46 @@ async function expandCheck(url, header) {
   }
 }
 
+// toggle: clicks the button labelled <first>, then the one labelled <second>
+//   (the same button after it changed kind, e.g. "Add to report" → "In
+//   report" → back) and saves a screenshot: a patched button must not turn
+//   into Flutter's grey error box.
+async function toggleCheck(url, first, second, shot) {
+  const { browser, page } = await openPage(url);
+  try {
+    const clicked = [];
+    for (const label of [first, second]) {
+      // The header button is the rightmost one with this label (the result
+      // list repeats "In report" as a chip).
+      let node = await nodeByLabel(page, label, true);
+      await page.mouse.move(900, 500);
+      for (let i = 0; i < 40 && (!node || node.y > 820 || node.y < 80); i += 1) {
+        await page.mouse.wheel(0, node && node.y < 80 ? -200 : 200);
+        await page.waitForTimeout(150);
+        node = await nodeByLabel(page, label, true);
+      }
+      if (!node) throw new Error(`${label} not found`);
+      await page.mouse.click(node.x, node.y);
+      await page.waitForTimeout(2500);
+      clicked.push(label);
+    }
+    await page.waitForTimeout(1500);
+    const back = await nodeByLabel(page, first, true);
+    await page.screenshot({ path: shot, fullPage: false });
+    return { clicked, found_after: Boolean(back), screenshot: shot };
+  } finally {
+    await browser.close();
+  }
+}
+
 (async () => {
-  const [mode, url, out, text = 'Fictional stress study'] = process.argv.slice(2);
+  const [mode, url, out, text = 'Fictional stress study', fieldLabel, anchor] = process.argv.slice(2);
+  if (mode === 'toggle') {
+    const result = await toggleCheck(url, text, fieldLabel, out.replace(/\.json$/, '.png'));
+    require('fs').writeFileSync(out, JSON.stringify(result, null, 1));
+    console.log(JSON.stringify(result));
+    return;
+  }
   if (mode === 'expand') {
     const result = await expandCheck(url, text);
     require('fs').writeFileSync(out, JSON.stringify(result, null, 1));
@@ -208,7 +249,8 @@ async function expandCheck(url, header) {
     return;
   }
   const result = mode === 'scroll' ? await scrollCheck(url)
-    : mode === 'list' ? await listCheck(url, text, ' (edited)')
+    : mode === 'list' ? await listCheck(url, text, ' (edited)', fieldLabel || undefined,
+                                         anchor || undefined)
       : await typeCheck(url, text);
   require('fs').writeFileSync(out, JSON.stringify(result, null, 1));
   console.log(JSON.stringify(result));

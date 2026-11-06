@@ -21,9 +21,10 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+for _path in (ROOT, ROOT / "tools"):
+    sys.path.insert(0, str(_path))
 
-from workspace_screenshot_suite import _free_port, _wait  # noqa: E402
+from workspace_screenshot_suite import _free_port, _wait, check_image  # noqa: E402
 
 TOLERANCE = 30   # px a re-laid-out row may shift (scrollbar, fonts)
 
@@ -32,7 +33,15 @@ def _near(value) -> bool:
     return value is not None and abs(value) <= TOLERANCE
 
 
-# name, scenario, mode, text, what must hold
+def _labels(*keys: str):
+    def arguments() -> list[str]:
+        from workspace_text import T
+
+        return [T[key][0] for key in keys]
+    return arguments
+
+
+# name, scenario, mode, text (or a function giving the arguments), what must hold
 CHECKS = (
     ("results-scroll-then-check", "results", "scroll", "",
      lambda r: _near(r["moved_by"]) and r["checked_after"] == "true"),
@@ -42,6 +51,10 @@ CHECKS = (
      lambda r: _near(r["moved_by"]) and r["kept_typing"]),
     ("results-section-stays-open", "results", "expand", "Interpretation",
      lambda r: r["still_open"]),
+    # A button that changes kind is patched, not replaced: it must still draw.
+    ("results-add-report-twice", "results", "toggle", _labels("results.add_report",
+                                                              "results.in_report"),
+     lambda r: r["found_after"] and not r["image_problems"]),
 )
 
 
@@ -62,8 +75,9 @@ def run(check, out: Path) -> dict:
                                               text=True, check=False).stdout.strip()
         except FileNotFoundError:
             pass
+        arguments = text() if callable(text) else ([text] if text else [])
         command = ["node", str(ROOT / "tools" / "e2e_web_state.js"), mode,
-                   f"http://127.0.0.1:{port}/", str(target)] + ([text] if text else [])
+                   f"http://127.0.0.1:{port}/", str(target)] + arguments
         result = subprocess.run(command, cwd="/tmp" if os.name != "nt" else None, env=env,
                                 capture_output=True, text=True, timeout=400, check=False)
     finally:
@@ -71,6 +85,8 @@ def run(check, out: Path) -> dict:
     if result.returncode or not target.is_file():
         return {"name": name, "ok": False, "problem": (result.stderr or result.stdout)[-600:]}
     measured = json.loads(target.read_text(encoding="utf-8"))
+    if measured.get("screenshot"):
+        measured["image_problems"] = check_image(Path(measured["screenshot"]))
     return {"name": name, "scenario": scenario, "mode": mode, "ok": bool(holds(measured)),
             "measured": measured}
 

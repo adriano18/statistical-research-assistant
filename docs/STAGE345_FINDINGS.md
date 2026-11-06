@@ -29,6 +29,12 @@ findings in `tests/test_import_integrity.py`.
 | 10 | Legacy DOC fails without useful guidance | The document was half-opened (`source` kept, viewer shown) with "install antiword or save as .docx" — not actionable on Windows, English only, nothing in the status bar | `UnreadableDocumentTests` (3) |
 | 11 | An imported questionnaire mixes with the draft | `load_draft()` replaced the builder's draft without asking and **kept the previous draft's title** (`if title and not self.title`); loading a template also replaced it (its confirmation was dead code) | `DraftGuardTests` (2 of 3; the empty-builder case already worked) |
 
+### Found while fixing
+
+| # | Symptom | Root cause | Check |
+|---|---|---|---|
+| 12 | After the stable rendering (1–4), a button that changes kind — "In report" → "Add to report", "Create project" after closing a project, the import wizard's current step — is drawn as Flutter's grey error box | The rebuilt button is now *patched* instead of replaced. Flet 1.x breaks the control when a patch **adds a key** to a per-state colour map: secondary buttons had `{default, hovered}`, primary `{default, hovered, disabled}`. A minimal Flet page reproduces it; with equal key sets it draws correctly | browser: `results-add-report-twice` (42.8 % grey, the button gone); `StableRenderTests.test_buttons_that_change_kind_can_be_patched` |
+
 ## Fixes
 
 1–4. **Stable reconciliation.** The page sits in a list
@@ -74,6 +80,8 @@ findings in `tests/test_import_integrity.py`.
 11. **Drafts are never mixed.** Importing or loading a template into a builder
     that holds an unsaved draft asks first; a confirmed replacement replaces
     questions, title and instructions together.
+12. **Patch-safe button styles.** Every button kind uses the same keys in its
+    per-state colour maps (`wc._states`), so a kind change is patched cleanly.
 
 ## Verification
 
@@ -88,6 +96,7 @@ findings in `tests/test_import_integrity.py`.
   | reports-type-title | focus lost, text lost | all 22 characters kept, focus in the field |
   | questionnaire-120-item-60 | selected row left the view | row stayed (0 px), caret kept while editing |
   | results-section-stays-open | collapsed again | still open |
+  | results-add-report-twice | (not applicable before the stable rendering) | grey error box without the style fix; draws correctly with it |
 
 * The full suite runs on Linux and Windows CI; statistics are untouched (the
   engine, `analysis_runs` and the parity tests are unchanged).

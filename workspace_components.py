@@ -71,31 +71,37 @@ def caption(ui: Ui, value: str, **kwargs) -> ft.Text:
     return text(ui, value, tk.TYPE_CAPTION, color=kwargs.pop("color", ui.p.text_muted), **kwargs)
 
 
+def _states(default: str, hovered: str, disabled: str) -> dict:
+    """A per-state colour map that always has the same keys.
+
+    Re-rendering reconciles a button instead of replacing it, so a primary
+    button that becomes secondary (or back) is *patched*. Flet 1.x breaks
+    the control (Flutter shows a grey error box) when a patch adds a key to
+    such a map, so every kind uses all three keys (Stage 34.5)."""
+    return {ft.ControlState.DEFAULT: default, ft.ControlState.HOVERED: hovered,
+            ft.ControlState.DISABLED: disabled}
+
+
 def _button_style(ui: Ui, *, kind: str) -> ft.ButtonStyle:
     shape = ft.RoundedRectangleBorder(radius=ui.radius("control"))
     padding = ft.Padding.symmetric(horizontal=tk.SPACE_4, vertical=tk.SPACE_2)
     text_style = ft.TextStyle(size=14, weight=ft.FontWeight.W_500)
     if kind == "primary":
         return ft.ButtonStyle(
-            bgcolor={ft.ControlState.DEFAULT: ui.p.accent,
-                     ft.ControlState.HOVERED: ui.p.accent_hover,
-                     ft.ControlState.DISABLED: ui.p.surface_hover},
-            color={ft.ControlState.DEFAULT: ui.p.on_accent,
-                   ft.ControlState.DISABLED: ui.p.text_muted},
+            bgcolor=_states(ui.p.accent, ui.p.accent_hover, ui.p.surface_hover),
+            color=_states(ui.p.on_accent, ui.p.on_accent, ui.p.text_muted),
+            side=ft.BorderSide(1, ui.p.accent),
             shape=shape, padding=padding, elevation=0, text_style=text_style,
         )
     if kind == "secondary":
         return ft.ButtonStyle(
-            bgcolor={ft.ControlState.DEFAULT: ui.p.surface,
-                     ft.ControlState.HOVERED: ui.p.surface_hover},
-            color={ft.ControlState.DEFAULT: ui.p.text,
-                   ft.ControlState.DISABLED: ui.p.text_muted},
+            bgcolor=_states(ui.p.surface, ui.p.surface_hover, ui.p.surface),
+            color=_states(ui.p.text, ui.p.text, ui.p.text_muted),
             side=ft.BorderSide(1, ui.p.border_strong),
             shape=shape, padding=padding, elevation=0, text_style=text_style,
         )
     return ft.ButtonStyle(  # quiet
-        color={ft.ControlState.DEFAULT: ui.p.accent,
-               ft.ControlState.DISABLED: ui.p.text_muted},
+        color=_states(ui.p.accent, ui.p.accent, ui.p.text_muted),
         overlay_color=ft.Colors.with_opacity(0.08, ui.p.accent),
         shape=shape, padding=padding, text_style=text_style,
     )
