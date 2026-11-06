@@ -354,17 +354,42 @@ class Gui:
         mouse.scroll(coords=(x, y), wheel_dist=clicks)
         time.sleep(0.35)
 
-    # The bottom of the content can be covered by a sticky footer (the import
-    # review's actions) and the status line: a click there lands on them.
-    COVERED_BOTTOM = 150
+    # The bottom of the content can be covered by the status line and, in the
+    # import review, by its sticky footer: a click there lands on them.
+    STATUS_LINE = 45
+    _footer_cache = (0.0, None)
+
+    def footer_top(self):
+        """Where the import review's sticky footer starts (None: no footer)."""
+        stamp, top = self._footer_cache
+        if time.monotonic() - stamp < 2.0:
+            return top
+        top = None
+        with contextlib.suppress(Exception):
+            _, _, _, bottom = self.window_box()
+            tops = [e.element_info.rectangle.top
+                    for name in (T("imp.back"), T("imp.next"))
+                    for e in self.query(name, control_type="Button")
+                    if e.element_info.rectangle.top > bottom - 260]
+            top = min(tops) - 12 if tops else None
+        self._footer_cache = (time.monotonic(), top)
+        return top
 
     def clickable(self, element) -> bool:
         if not self.on_screen(element):
             return False
-        rect = element.element_info.rectangle
-        _, _, _, bottom = self.window_box()
-        sidebar = rect.right <= self.window_box()[0] + 260      # fixed, never covered
-        return sidebar or rect.bottom <= bottom - self.COVERED_BOTTOM
+        info = element.element_info
+        rect = info.rectangle
+        left, _, _, bottom = self.window_box()
+        if rect.right <= left + 260:
+            return True                       # the sidebar never scrolls
+        if (info.name or "") in (T("imp.back"), T("imp.next"), T("imp.create_draft")):
+            return True                       # the sticky footer itself
+        limit = bottom - self.STATUS_LINE
+        footer = self.footer_top()
+        if footer is not None:
+            limit = min(limit, footer)
+        return rect.bottom <= limit
 
     def scroll_into_view(self, element, attempts: int = 30):
         for _ in range(attempts):
@@ -989,8 +1014,9 @@ def import_document(gui: Gui, journey: Journey, pdf: Path, *, expected_items: in
 
 
 def wizard_step(gui: Gui, number: int) -> None:
-    """Open step ``number`` of the review wizard by its step button."""
-    gui.click(regex=rf"^{number}\. ", control_type=("Button", "Text"))
+    """Open step ``number`` of the review wizard by its step button, named
+    "N. Title · detail" (an item's text may also start with "N. ")."""
+    gui.click(regex=rf"^{number}\. [^\n]* · ", control_type="Button")
 
 
 def finish_import(gui: Gui, journey: Journey) -> None:
