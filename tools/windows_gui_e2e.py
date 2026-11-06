@@ -412,9 +412,20 @@ class Gui:
         self.scroll_into_view(field)
         field.click_input()
         time.sleep(0.9)
-        item = self.find(option, control_type=("MenuItem", "ListItem", "Button", "Text",
-                                               "Custom", "Group"), scroll=False, timeout=8)
-        item.click_input()
+        try:
+            item = self.find(option, control_type=("MenuItem", "ListItem", "Button", "Text",
+                                                   "Custom", "Group"), scroll=False, timeout=8)
+            item.click_input()
+        except StepFailure:
+            # The menu may expose its entries differently: choose like a
+            # keyboard user, typing the start of the entry and Enter.
+            from pywinauto import keyboard
+
+            print(f"  [choose] {option!r} not listed after opening {label!r}; using the keyboard",
+                  flush=True)
+            keyboard.send_keys(escape_keys(option.split(" · ")[0]), with_spaces=True, pause=0.03)
+            time.sleep(0.6)
+            keyboard.send_keys("{DOWN}{ENTER}")
         time.sleep(0.9)
 
     def keys(self, keys: str):
