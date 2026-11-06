@@ -681,7 +681,7 @@ class QuestionnairesPage:
             try:
                 submit_response(self.app.survey_root, survey.survey_id, answers)
             except ValueError as error:
-                message.value = str(error)
+                wc.set_text(message, str(error))
                 self.app.page.update()
                 return
             self.app.page.pop_dialog()

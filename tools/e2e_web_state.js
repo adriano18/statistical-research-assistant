@@ -245,8 +245,57 @@ async function toggleCheck(url, first, second, shot) {
   }
 }
 
+// announce: ticks the checkbox and clicks the button named on the command
+//   line, like a keyboard or screen-reader user, and reports what Flutter
+//   announced through its live-region announcer (the status line). Before
+//   the selectable status text had an accessible name nothing was announced.
+async function announceCheck(url, checkLabel, buttonLabel) {
+  const { browser, page } = await openPage(url);
+  try {
+    await page.evaluate(() => {
+      window.__said = [];
+      for (const el of document.querySelectorAll('flt-announcement-polite, flt-announcement-assertive')) {
+        new MutationObserver(() => { if (el.innerText) window.__said.push(el.innerText.trim()); })
+          .observe(el, { childList: true, subtree: true, characterData: true });
+      }
+    });
+    const locate = (role, label) => page.evaluate(([kind, name]) => {
+      const node = Array.from(document.querySelectorAll('flt-semantics'))
+        .find((n) => n.getAttribute('role') === kind
+                     && (n.getAttribute('aria-label') || n.innerText || '').includes(name));
+      if (!node) return null;
+      const r = node.getBoundingClientRect();
+      return { x: r.x + Math.min(r.width / 2, 24), y: r.y + r.height / 2 };
+    }, [role, label]);
+    const clicked = [];
+    for (const [role, label] of [['checkbox', checkLabel], ['button', buttonLabel]]) {
+      let box = await locate(role, label);
+      await page.mouse.move(900, 500);
+      for (let i = 0; i < 40 && (!box || box.y > 860 || box.y < 70); i += 1) {
+        await page.mouse.wheel(0, box && box.y < 70 ? -200 : 200);
+        await page.waitForTimeout(150);
+        box = await locate(role, label);
+      }
+      if (!box) throw new Error(`${role} ${label} not found`);
+      await page.mouse.click(box.x, box.y);
+      await page.waitForTimeout(1500);
+      clicked.push(label);
+    }
+    await page.waitForTimeout(1000);
+    return { clicked, announced: await page.evaluate(() => window.__said) };
+  } finally {
+    await browser.close();
+  }
+}
+
 (async () => {
   const [mode, url, out, text = 'Fictional stress study', fieldLabel, anchor] = process.argv.slice(2);
+  if (mode === 'announce') {
+    const result = await announceCheck(url, text, fieldLabel);
+    require('fs').writeFileSync(out, JSON.stringify(result, null, 1));
+    console.log(JSON.stringify(result));
+    return;
+  }
   if (mode === 'toggle') {
     const result = await toggleCheck(url, text, fieldLabel, out.replace(/\.json$/, '.png'));
     require('fs').writeFileSync(out, JSON.stringify(result, null, 1));

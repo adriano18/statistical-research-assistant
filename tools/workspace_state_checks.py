@@ -67,6 +67,11 @@ CHECKS = (
     ("results-add-report-twice", "results", "toggle", _labels("results.add_report",
                                                               "results.in_report"),
      lambda r: r["found_after"] and not r["image_problems"]),
+    # The status line is announced to screen readers (selectable text needs
+    # an explicit accessible name; found by the packaged-EXE journeys).
+    ("data-status-announced", "data", "announce",
+     _labels("data.accept_confirm", "data.accept_suggestions"),
+     lambda r: any("levels confirmed from suggestions" in said for said in r["announced"])),
 )
 
 

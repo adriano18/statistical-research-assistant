@@ -60,7 +60,17 @@ def text(ui: Ui, value: str, kind=tk.TYPE_BODY, *, color: str | None = None,
         overflow=ft.TextOverflow.ELLIPSIS if max_lines else None,
         style=ft.TextStyle(height=height / size, italic=italic),
         data=data, text_align=align,
+        # Flutter leaves selectable text out of the accessibility tree: screen
+        # readers (and UI Automation) only get it through an explicit label.
+        semantics_label=(value or None) if selectable else None,
     )
+
+
+def set_text(control: ft.Text, value: str) -> None:
+    """Change a text in place; a selectable text keeps its accessible name."""
+    control.value = value
+    if control.selectable:
+        control.semantics_label = value or None
 
 
 def heading(ui: Ui, value: str, kind=tk.TYPE_TITLE_S, **kwargs) -> ft.Text:

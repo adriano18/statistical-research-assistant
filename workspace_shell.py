@@ -386,7 +386,7 @@ class WorkspaceApp:
         if self.status_text is None:
             return
         _, fg, icon = wc.TONES[tone]
-        self.status_text.value = message
+        wc.set_text(self.status_text, message)
         self.status_text.color = self.ui.p.text
         self.status_icon.name = icon
         self.status_icon.color = getattr(self.ui.p, fg)

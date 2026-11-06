@@ -147,6 +147,61 @@ class ShellTests(unittest.TestCase):
         self.assertTrue(self.ws.has_text("Prototype"))
 
 
+class SelectableTextAccessibilityTests(unittest.TestCase):
+    """Flutter leaves selectable text out of the accessibility tree, so screen
+    readers (and Windows UI Automation) never got the status line, notices,
+    the dataset name or the provenance values. Found by the packaged-EXE GUI
+    journeys; before the fix none of these texts had an accessible name and a
+    status change was never announced."""
+
+    def setUp(self):
+        self.ws = Workspace()
+        self.addCleanup(self.ws.close)
+
+    def selectable_texts(self):
+        return [c for c in self.ws.controls()
+                if isinstance(c, ft.Text) and c.selectable and c.value]
+
+    def test_every_selectable_text_carries_its_text_as_accessible_name(self):
+        self.ws.run(self.ws.app.load_sample("sample_scale.csv"))
+        self.ws.app.session.confirm_level("stress_q1", "ordinal")
+        self.ws.app.session.confirm_level("group", "nominal")
+        self.ws.run(self.ws.app.pages["analyze"]._execute(
+            "groups", {"outcome": "stress_q1", "group": "group"}, {}, {"independent": True}))
+        checked = set()
+        for route in ROUTES:
+            self.ws.app.navigate(route)
+            for text in self.selectable_texts():
+                self.assertEqual(text.semantics_label, text.value,
+                                 (route, text.data, text.value[:60]))
+                checked.add(text.value)
+        # The dataset name, the notices and the result texts are among them.
+        self.assertIn("sample_scale.csv", checked)
+        self.assertGreater(len(checked), 15)
+
+    def test_the_status_line_is_announced_with_its_message(self):
+        self.ws.run(self.ws.app.load_sample("sample_scale.csv"))
+        status = self.ws.app.status_text
+        self.assertEqual(status.semantics_label, "Loaded sample_scale.csv.")
+        self.ws.app.status("Fictional outcome", "success")
+        self.assertEqual(status.semantics_label, "Fictional outcome")
+        self.ws.app.status("", "info")
+        self.assertIsNone(status.semantics_label)
+
+    def test_text_changed_in_place_keeps_its_accessible_name(self):
+        self.ws.run(self.ws.app.load_sample("sample_scale.csv"))
+        self.ws.app.session.confirm_level("stress_q1", "ordinal")
+        self.ws.app.session.confirm_level("group", "nominal")
+        entry = self.ws.run(self.ws.app.pages["analyze"]._execute(
+            "groups", {"outcome": "stress_q1", "group": "group"}, {}, {"independent": True}))
+        self.ws.app.session.toggle_report(entry.id)
+        self.ws.app.navigate("reports")
+        self.ws.type("reports-study-title", "Fictional study")
+        preview = self.ws.find("reports-preview-text")
+        self.assertTrue(preview.value.startswith("Fictional study"))
+        self.assertEqual(preview.semantics_label, preview.value)
+
+
 class ClassicIntegrationTests(unittest.TestCase):
     def test_classic_home_opens_the_workspace_and_returns_with_the_dataset(self):
         import sys
