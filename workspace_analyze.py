@@ -682,6 +682,8 @@ class ResultsPage:
         sections.append(ft.Container(ft.ExpansionTile(
             title=wc.heading(ui, ui.t("results.interpretation"), tk.TYPE_TITLE_S),
             subtitle=wc.caption(ui, ui.t("results.interpretation_hint")),
+            expanded=self.app.profile.explanations == "detailed",
+            data="result-interpretation-section",
             controls=[ft.Container(ft.Column([
                 wc.text(ui, interpretation_summary(evidence, reviewed,
                                                    self.notes.get(entry.id, "")),

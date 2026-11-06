@@ -50,5 +50,31 @@
   "theme": "light",
   "ok": true,
   "problems": []
+ },
+ {
+  "name": "settings_profile",
+  "scenario": "settings-profile",
+  "size": [
+   1440,
+   2600
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
+  "name": "settings_profile_ru",
+  "scenario": "settings-profile",
+  "size": [
+   1280,
+   2600
+  ],
+  "scale": 1.25,
+  "language": "ru",
+  "theme": "light",
+  "ok": true,
+  "problems": []
  }
 ]

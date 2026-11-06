@@ -26,7 +26,7 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 SCENARIOS = (
     "home", "data", "guided", "results", "catalog", "form", "reports",
     "questionnaires", "phone-preview", "import", "help", "settings",
-    "projects", "results-stale", "classic-home", "classic-groups",
+    "projects", "results-stale", "settings-profile", "classic-home", "classic-groups",
 )
 
 
@@ -63,6 +63,16 @@ async def apply(app, name: str) -> None:
         await projects(app)
         app.pages["home"].hide_onboarding = True
         app.navigate("home" if name == "projects" else "results")
+        return
+    if name == "settings-profile":
+        from researcher_profile import ResearcherProfile
+
+        await projects(app)
+        app.pages["settings"].profile.draft = ResearcherProfile(
+            display_name="Fictional researcher", study_level="master",
+            research_field="Educational psychology", experience="some",
+            explanations="standard")
+        app.navigate("settings")
         return
     if name in {"data", "guided", "results", "catalog", "form", "reports"}:
         await app.load_sample("sample_scale.csv")

@@ -84,11 +84,12 @@ source of truth that can disagree with the folders after a crash or a manual
 copy. Listing reads one small row per project (milliseconds each), and search
 filters titles, descriptions and research areas.
 
-## 4. Schema (version 1, `PRAGMA user_version = 1`)
+## 4. Schema (format 2, `PRAGMA user_version = 2`)
 
 `project` (one row) · `research_questions` · `datasets` · `dataset_versions` ·
 `variables` · `transformations` · `questionnaires` · `runs` · `report_items` ·
-`events`. Foreign keys are enforced; deleting a dataset keeps its runs (their
+`events` (format 1), plus `ai_permissions` and `project.data_anonymous`
+(format 2, §12). Foreign keys are enforced; deleting a dataset keeps its runs (their
 `dataset_id` becomes NULL, which makes them stale, never silently gone).
 
 ## 5. Integrity
@@ -112,12 +113,21 @@ filters titles, descriptions and research areas.
 - On open the lock is taken first, then `migrate()` compares `user_version`
   with `SCHEMA_VERSION`.
 - Older: the database is copied to `.backups/<id>-v<old>-<time>.sqlite3` with
-  the SQLite backup API, then all migrations run in **one** transaction.
+  the SQLite backup API, then all migrations run in **one explicit
+  transaction** (`BEGIN IMMEDIATE` … `COMMIT`, `ROLLBACK` on any error).
+  Python's `sqlite3` does not open a transaction before `CREATE`/`ALTER`, so
+  without the explicit `BEGIN` a failure halfway left a half-changed database
+  still marked with the old format, which then could not be opened again
+  (found by `test_a_failed_migration_leaves_the_old_format_untouched`).
+- Format 1 → 2 is a real migration (`_migrate_v2`): it adds the AI permission
+  table and the anonymity statement, all off; a project written by format 1
+  opens with its data unchanged (`test_a_format_1_project_is_migrated_to_format_2_with_everything_off`).
+  A format-1 application refuses a format-2 project with the message above.
 - Newer (saved by a later version): refused with a clear message; nothing is
   changed. Read-only opening stays possible.
 - Rule for future versions: a migration is a function `(db) -> None` using
-  `execute()` only (so it stays inside the transaction); tests simulate a v2
-  migration and verify the backup and the data.
+  `execute()` only (`executescript()` would commit the transaction); tests
+  simulate the next format and verify the backup and the data.
 
 ## 7. Provenance, staleness, reproduction
 
@@ -184,17 +194,32 @@ The first-run experience offers, explicitly, "Link your existing questionnaires
 to a project"; nothing happens automatically. Tests verify byte-identical
 survey files after linking, exporting, duplicating and deleting projects.
 
-## 10. Researcher profile (separate PR)
+## 10. Researcher profile (`researcher_profile.py`, Settings)
 
-A single optional local file (`profile/profile.json` beside `projects/`):
-display name, study level (bachelor/master/doctoral/faculty/other/not said),
-research field, methodological experience (new/some/experienced), preferred
-language, explanation depth (brief/standard/detailed), reporting style,
-accessibility preferences (theme, text size, reduced motion). Every field is
-optional and the profile may stay empty. It never stores institution IDs,
-e-mail addresses or sensitive demographics. Deleting it does not touch any
-project; projects never write into it. A project's own language/design fields
-override profile preferences for that project.
+A single optional local file, `profile/profile.json` beside `projects/`
+(`{"format": 1, "profile": {...}}`, written atomically). Fields, all optional:
+name to show, study level (bachelor/master/doctoral/academic staff/other/
+prefer not to say), research field, experience with statistics
+(new/some/experienced), preferred language, explanations
+(brief/standard/detailed). An empty profile keeps no file. Values outside the
+offered choices, line breaks, more than 80/120 characters and anything that
+looks like an e-mail address are refused with a message; it never stores
+institution or student IDs or sensitive demographics. A damaged or newer file
+is read as far as it is understood and never stops the application.
+
+What it changes — and nothing else:
+
+| Field | Effect |
+|---|---|
+| experience = experienced | Home starts without the "How it works" introduction (still in Help) |
+| explanations = detailed | each result's interpretation section starts open |
+| language | the interface language; the language switch keeps it equal |
+| study level, research field | stored only; never used to judge work, choose a method or change a result |
+
+Deleting the profile changes no project, and projects never write into it
+(`test_deleting_the_profile_leaves_every_project_untouched`). Reporting style
+and accessibility preferences (text size, reduced motion) are not in this
+version.
 
 ## 11. Privacy and security
 
@@ -206,10 +231,17 @@ override profile preferences for that project.
   recovery story (a lost passphrase loses the data) and review; not in scope.
 - Backups may contain personal response data; the export dialog must say so.
 
-## 12. AI context permissions (design only — AI is not connected)
+## 12. AI context permissions (`ai_context.py` — AI is not connected)
 
-The interface will show "AI assistance: not available in this version". The
-data model prepares explicit, project-scoped, per-transfer consent:
+Settings shows **"AI assistance — not available in this version"**, the six
+context sources with their state for the open project (all "Off") and, for
+each, a preview of exactly what it would contain now, built locally (the test
+blocks every socket while building it). `AI_AVAILABLE = False`, so
+`check_request()` refuses every request; nothing in the application sends
+project content anywhere. Decisions are stored per project (format 2:
+`ai_permissions`, `project.data_anonymous`), travel with `.sra` backups and are
+logged in the activity log. The interface has no switches for them yet: they
+belong to the version that adds an assistant. The contract:
 
 | Context source | Default | Notes |
 |---|---|---|
@@ -218,7 +250,7 @@ data model prepares explicit, project-scoped, per-transfer consent:
 | Aggregated results (reports, tables) | off | numbers already in reports |
 | Questionnaire wording | off | may be copyrighted; licence reminder |
 | Raw data rows | off, cannot be enabled together with any remote provider unless the project's privacy note says the data is anonymous | |
-| Profile fields | off | explanation preferences only, never used to infer ability |
+| Profile fields | off | explanations, experience and language only — never the name or study level, never used to infer ability |
 
 Rules: nothing is sent without a visible, editable context preview and a
 confirmation per request; the provider and region are shown; every transfer
@@ -277,6 +309,8 @@ account or role), and novice/advanced explanations from the profile.
 | Questionnaire responses as a versioned dataset; questionnaires untouched | `test_questionnaire_responses_are_one_dataset_with_versions` |
 | Exact table round trip; unreproducible results never become Word files | `test_stored_copies_read_back_as_exactly_the_same_table`, `test_a_result_that_cannot_be_reproduced_is_not_exported_as_word` |
 | No result filed against the wrong data | `test_a_result_finished_after_switching_projects_is_not_filed_in_the_new_one`, `test_work_started_without_a_project_moves_into_the_first_one_created` |
-| Profile independence, accessibility, packaged smoke | profile pull request; screenshot suite (`home_projects`) |
+| Optional local profile, independent of projects | `test_the_profile_is_optional_and_round_trips`, `test_values_outside_the_offered_choices_or_personal_identifiers_are_refused`, `test_deleting_the_profile_leaves_every_project_untouched`, `test_the_profile_is_filled_saved_and_applied_after_a_restart` |
+| AI permissions: project-scoped, off, nothing sent | `test_every_source_is_off_and_no_request_can_be_made_in_this_version`, `test_rules_a_future_assistant_must_pass`, `test_permissions_travel_with_the_project_backup`, `test_previews_show_exactly_what_would_be_shared_and_use_no_network` |
+| Accessibility, packaged smoke | screenshot suite (`home_projects`, `settings_profile`); Windows CI runs `test_project_*.py` |
 
 The project tests also run on the Windows CI runner (locks, renames, file URIs).

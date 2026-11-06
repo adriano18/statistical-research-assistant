@@ -474,19 +474,65 @@ class MigrationTests(StoreCase):
         with self.store.open(info.id) as project:
             project.add_question("Kept across versions?")
 
-        def to_v2(db):
+        current, following = ps.SCHEMA_VERSION, ps.SCHEMA_VERSION + 1
+
+        def to_next(db):
             db.execute("ALTER TABLE project ADD COLUMN supervisor_note TEXT NOT NULL DEFAULT ''")
 
-        with mock.patch.object(ps, "SCHEMA_VERSION", 2), \
-                mock.patch.dict(ps.MIGRATIONS, {2: to_v2}):
+        with mock.patch.object(ps, "SCHEMA_VERSION", following), \
+                mock.patch.dict(ps.MIGRATIONS, {following: to_next}):
             with self.store.open(info.id) as project:
                 self.assertEqual(project.questions()[0]["text"], "Kept across versions?")
             with closing(sqlite3.connect(info.path / ps.DB_NAME)) as db, db:
-                self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 2)
-        backups = list((self.store.root / ps.BACKUPS).glob(f"{info.id}-v1-*.sqlite3"))
+                self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], following)
+        backups = list((self.store.root / ps.BACKUPS).glob(f"{info.id}-v{current}-*.sqlite3"))
         self.assertEqual(len(backups), 1)
         with closing(sqlite3.connect(backups[0])) as db:
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], current)
+
+    def test_a_format_1_project_is_migrated_to_format_2_with_everything_off(self):
+        """A real migration: a project written by the format-1 code opens in
+        this version, keeps its data and gains AI permissions that are all off."""
+        info = self.store.create("Format one")
+        with self.store.open(info.id) as project:
+            project.add_question("Does sleep relate to stress?")
+            dataset = project.import_dataset(EXAMPLES / "sample_scale.csv", mode="copy")
+        database = info.path / ps.DB_NAME
+        with closing(sqlite3.connect(database)) as db, db:   # back to what format 1 wrote
+            db.execute("DROP TABLE ai_permissions")
+            db.execute("ALTER TABLE project DROP COLUMN data_anonymous")
+            db.execute("PRAGMA user_version = 1")
+        with self.restart().open(info.id) as project:
+            self.assertEqual(project.questions()[0]["text"], "Does sleep relate to stress?")
+            self.assertEqual(project.dataset(dataset.id).sha256, dataset.sha256)
+            self.assertEqual(project.ai_permissions(), {})
+            self.assertFalse(project.data_anonymous)
+        with closing(sqlite3.connect(database)) as db:
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 2)
+        self.assertEqual(len(list((self.store.root / ps.BACKUPS).glob(f"{info.id}-v1-*.sqlite3"))), 1)
+
+    def test_a_failed_migration_leaves_the_old_format_untouched(self):
+        info = self.store.create("Interrupted")
+        database = info.path / ps.DB_NAME
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute("DROP TABLE ai_permissions")
+            db.execute("ALTER TABLE project DROP COLUMN data_anonymous")
+            db.execute("PRAGMA user_version = 1")
+
+        def broken(db):
+            db.execute("CREATE TABLE ai_permissions (source TEXT PRIMARY KEY, allowed INTEGER,"
+                       " changed_at TEXT)")
+            raise sqlite3.OperationalError("disk I/O error (simulated)")
+
+        with mock.patch.dict(ps.MIGRATIONS, {2: broken}):
+            with self.assertRaises(sqlite3.OperationalError):
+                self.store.open(info.id)
+        with closing(sqlite3.connect(database)) as db:
             self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 1)
+            tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.assertNotIn("ai_permissions", tables, "the half-done change was rolled back")
+        with self.store.open(info.id) as project:          # and opens normally afterwards
+            self.assertEqual(project.ai_permissions(), {})
 
 
 class LargeDatasetTests(StoreCase):

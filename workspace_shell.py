@@ -103,6 +103,13 @@ class WorkspaceApp:
         # before the chrome so the context bar shows the saved state.
         self.projects = ProjectBinding(self.session, self.project_root)
         self._shown_project_message = None
+        # Optional local researcher profile (beside the projects folder).
+        from researcher_profile import load_profile, profile_path
+
+        self.profile_path = profile_path(self.project_root.parent)
+        self.profile = load_profile(self.profile_path)
+        if self.profile.language:
+            self.session.language = self.profile.language
         self.area = "home"
         self.route = "home"          # sub-route (e.g. "import" under questionnaires)
         # Narrow windows start with the icon rail; the user's toggle wins afterwards.
@@ -559,6 +566,17 @@ class WorkspaceApp:
         self.session.language = language
         if self.bridge.store_language is not None:
             self.bridge.store_language(language)
+        if self.profile.language and self.profile.language != language:
+            # The profile's language is the interface language; keep them equal.
+            from dataclasses import replace
+
+            from researcher_profile import save_profile
+
+            try:
+                self.profile = save_profile(self.profile_path,
+                                            replace(self.profile, language=language))
+            except (OSError, ValueError):
+                pass
         self.render()
 
     def set_corners(self, corners: str):
@@ -592,7 +610,8 @@ class WorkspaceApp:
 class HomePage:
     def __init__(self, app: WorkspaceApp):
         self.app = app
-        self.hide_onboarding = False
+        # Experienced researchers (optional profile) start without the introduction.
+        self.hide_onboarding = app.profile.experience == "experienced"
 
     def build(self) -> ft.Control:
         app, ui = self.app, self.app.ui
@@ -1010,8 +1029,11 @@ class DataPage:
 
 class SettingsPage:
     def __init__(self, app: WorkspaceApp):
+        from workspace_profile import ProfileSettings
+
         self.app = app
         self.ocr_summary = ""
+        self.profile = ProfileSettings(app)
 
     def build(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session
@@ -1036,6 +1058,8 @@ class SettingsPage:
                          wc.section_label(ui, ui.t("settings.theme")), rows[1],
                          wc.section_label(ui, ui.t("settings.corners")), rows[2]],
                     title=ui.t("settings.title")),
+            self.profile.profile_card(),
+            self.profile.ai_card(),
             wc.card(ui, ocr, title=ui.t("settings.ocr")),
         ]
         if app.bridge.return_to_classic is not None:
