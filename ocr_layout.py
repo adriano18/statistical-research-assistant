@@ -493,13 +493,35 @@ def _similar(a: str, b: str) -> float:
 LINK_THRESHOLD = 0.8
 
 
+def line_segments(line: OCRLine) -> list[tuple[str, BBox]]:
+    """Parts of a line separated by column-sized horizontal gaps.
+
+    A prompt and the answer labels printed beside it often share one text
+    line; each part is matched on its own.
+    """
+    words = sorted(line.words, key=lambda w: w.box[0])
+    if len(words) < 2:
+        return [(line.text, line.box)]
+    heights = sorted(w.box[3] - w.box[1] for w in words)
+    height = heights[len(heights) // 2]
+    parts = [[words[0]]]
+    for prev, word in zip(words, words[1:]):
+        if word.box[0] - prev.box[2] > max(2.0 * height, 0.02):
+            parts.append([word])
+        else:
+            parts[-1].append(word)
+    return [(" ".join(w.text for w in part), union_box(w.box for w in part)) for part in parts]
+
+
 def link_candidates(review, pages: Iterable[OCRPage]) -> SpatialEvidence:
     """Conservatively link scientific-import candidates to page lines.
 
     A candidate is linked only when one line on its recorded page matches
-    its source excerpt with similarity ≥ 0.8. Following lines are attached
-    only when they occur verbatim inside the candidate's (wrapped) prompt.
-    Each line is used once; unmatched candidates remain unlinked.
+    its source excerpt with similarity ≥ 0.8 — or, when no whole line does,
+    one column-separated part of a line (prompt beside its answer labels).
+    Following lines are attached only when they occur verbatim inside the
+    candidate's (wrapped) prompt. Each line is used once; unmatched
+    candidates remain unlinked.
     """
     page_list = tuple(sorted(pages, key=lambda p: p.page_number))
     by_number = {p.page_number: p for p in page_list}
@@ -530,7 +552,23 @@ def link_candidates(review, pages: Iterable[OCRPage]) -> SpatialEvidence:
                 if best is not None:
                     break
             if best is None:
-                links.append((ref, ()))
+                part = None
+                for k, line in enumerate(lines):
+                    if line.id in used:
+                        continue
+                    for text, box in line_segments(line)[:4]:
+                        score = _similar(text, candidate.excerpt)
+                        if score >= LINK_THRESHOLD and (part is None or score > part[0]):
+                            part = (score, k, box)
+                if part is None:
+                    links.append((ref, ()))
+                    continue
+                _score, k, box = part
+                used.add(lines[k].id)
+                cursor[page.page_number] = k + 1
+                links.append((ref, (Region(f"r{counter}", page.page_number, box,
+                                           (lines[k].id,), "detected"),)))
+                counter += 1
                 continue
             k = best[1]
             chosen = [lines[k]]

@@ -10,6 +10,9 @@ on:
       - "binary_responses.py"
       - "response_scales.py"
       - "shared_scales.py"
+      - "letter_spacing.py"
+      - "repeated_choices.py"
+      - "scoring_evidence.py"
       - "pyproject.toml"
       - "ocr_*.py"
       - "visual_survey_review.py"
@@ -31,6 +34,7 @@ on:
       - "tests/test_distribution_tools.py"
       - "tests/test_true_false_import.py"
       - "tests/test_shared_scales.py"
+      - "tests/test_brief_cope_import.py"
       - "tests/test_app_startup.py"
       - "tests/test_real_tesseract_ocr.py"
       - "tests/test_analysis_runs.py"
@@ -104,6 +108,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "True/False import tests failed" }
           & $python -m unittest discover -s tests -p "test_shared_scales.py" -v
           if ($LASTEXITCODE -ne 0) { throw "shared scale tests failed" }
+          & $python -m unittest discover -s tests -p "test_brief_cope_import.py" -v
+          if ($LASTEXITCODE -ne 0) { throw "repeated answer choice tests failed" }
           & $python -m unittest discover -s tests -p "test_app_startup.py" -v
           if ($LASTEXITCODE -ne 0) { throw "startup tests failed" }
           & $python -m unittest discover -s tests -p "test_analysis_runs.py" -v

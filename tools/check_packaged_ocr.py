@@ -64,7 +64,8 @@ def main() -> int:
                 raise SystemExit(f"Packaged runtime lacks {required}")
         modules = {p.stem.split(".")[0] for p in root.iterdir() if p.suffix in {".py", ".pyc"}}
         for module in ("app", "research_app", "startup_diagnostics", "binary_responses",
-                       "response_scales", "shared_scales",
+                       "response_scales", "shared_scales", "letter_spacing",
+                       "repeated_choices", "scoring_evidence", "matrix_reconstruction",
                        "ocr_runtime", "ocr_selftest", "analysis_selftest", "visual_survey_review",
                        "analysis_runs", "import_session", "workspace_shell",
                        "workspace_analyze", "workspace_questionnaires", "workspace_methods",

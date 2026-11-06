@@ -548,13 +548,331 @@ def _nearest(x: float, centers: list[float]) -> int:
     return min(range(len(centers)), key=lambda k: abs(centers[k] - x))
 
 
+# ------------------------------------------- labelled choice cells (repeated)
+
+CIRCLED = {chr(0x2460 + k): str(k + 1) for k in range(20)}
+CIRCLED.update({chr(0x2776 + k): str(k + 1) for k in range(10)})
+CIRCLED.update({chr(0x2780 + k): str(k + 1) for k in range(10)})
+
+
+def _code_value(text: str) -> int | None:
+    t = text.strip().strip("()[].:,")
+    t = CIRCLED.get(t, t)
+    return int(t) if re.fullmatch(r"\d{1,2}", t) and int(t) <= 10 else None
+
+
+# OCR look-alikes of a large printed "1" ("|", "iL", "il" …); accepted only at
+# the position of code 1 in front of an evenly spaced 2, 3, 4 … run.
+_ONE_LOOKALIKE = re.compile(r"^(?=.*[|lIi!\]])[|lIi!\]\[L1r]{1,3}$")
+
+
+def _ordered(words, rank) -> list:
+    """Words in reading order: source line (top to bottom), then left to right."""
+    return sorted(words, key=lambda w: (rank.get(w.line_id, (box_center(w.box)[1], 0)), w.box[0]))
+
+
+def _text_by_line(words, rank) -> list[str]:
+    lines: dict[str, list] = {}
+    for word in _ordered(words, rank):
+        lines.setdefault(word.line_id, []).append(word.text)
+    return [" ".join(parts) for parts in lines.values()]
+
+
+def _label_text(words, rank) -> str:
+    from repeated_choices import printed_label
+
+    return printed_label(" ".join(_text_by_line(words, rank)))
+
+
+def _label_key(text: str) -> str:
+    return re.sub(r"\s+", "", text).casefold()
+
+
+def _label_similarity(a: str, b: str) -> float:
+    from difflib import SequenceMatcher
+
+    return SequenceMatcher(None, a, b, autojunk=False).ratio() if a and b else 0.0
+
+
+@dataclass(frozen=True)
+class GridRow:
+    number: int | None
+    number_word: OCRWord | None
+    prompt_words: tuple[OCRWord, ...]      # in reading order
+    prompt_lines: tuple[str, ...]
+    cells: tuple[tuple[OCRWord | None, tuple[OCRWord, ...], tuple[str, ...]], ...]
+    band: tuple[float, float]
+
+    @property
+    def prompt(self) -> str:
+        return _clean(" ".join(self.prompt_lines))
+
+
+@dataclass(frozen=True)
+class ChoiceGrid:
+    """Rows whose answer cells each print a code AND its label (repeated)."""
+    page: int
+    codes: tuple[str, ...]
+    labels: tuple[str, ...]
+    centers: tuple[float, ...]
+    bounds: tuple[tuple[float, float], ...]
+    rows: tuple[GridRow, ...]
+    top: float
+    bottom: float
+    deviations: tuple[tuple[int, int, str], ...] = ()  # (row index, column, label read)
+    unreadable_labels: bool = False  # OCR found cell text but no repeated label
+
+
+def _code_rows(page: OCRPage):
+    codes = [(value, w) for w in page.words if (value := _code_value(w.text)) is not None]
+    if len(codes) < 6:
+        return [], 0.0
+    height = median(w.box[3] - w.box[1] for _, w in codes)
+    if page.source == "tesseract_tsv":
+        codes += [(1, w) for w in page.words if _ONE_LOOKALIKE.fullmatch(w.text.strip())]
+    rows: list[list] = []
+    for value, word in sorted(codes, key=lambda item: box_center(item[1].box)[1]):
+        if rows and abs(box_center(word.box)[1] - box_center(rows[-1][-1][1].box)[1]) <= 0.6 * height:
+            rows[-1].append((value, word))
+        else:
+            rows.append([(value, word)])
+    found = []
+    for row in rows:
+        row.sort(key=lambda item: item[1].box[0])
+        best: list = []
+        run: list = []
+        for value, word in row:
+            if run and value == run[-1][0] + 1:
+                run.append((value, word))
+            else:
+                run = [(value, word)] if value in (0, 1) else []
+            if len(run) > len(best):
+                best = list(run)
+        if len(best) < 2 or (len(best) == 2 and _code_value(best[0][1].text) is None):
+            continue
+        xs = [box_center(w.box)[0] for _, w in best]
+        gaps = [b - a for a, b in zip(xs, xs[1:])]
+        if min(gaps) <= 0 or max(gaps) > 1.5 * min(gaps):
+            continue
+        found.append(best)
+    return found, height
+
+
+def choice_cell_grid(page: OCRPage) -> ChoiceGrid | None:
+    """Detect answer cells printing a code plus its label after every item.
+
+    Requires at least three rows with the same ascending codes in aligned
+    columns, a label under the codes in most rows, and item text to the left
+    of the cells. Returns ``None`` for any other layout (ordinary matrices
+    with a header row are reconstructed by :func:`geometric_matrices`).
+    """
+    if not page.has_geometry:
+        return None
+    rows, height = _code_rows(page)
+    if len(rows) < 3:
+        return None
+    signatures = [tuple(v for v, _ in row) for row in rows]
+    dominant = max(signatures, key=signatures.count)  # ties: first row wins
+    rows = [row for row, sig in zip(rows, signatures) if sig == dominant]
+    if len(rows) < 3:
+        return None
+    centers = [median(box_center(row[k][1].box)[0] for row in rows) for k in range(len(dominant))]
+    spacing = median(b - a for a, b in zip(centers, centers[1:]))
+    tolerance = max(0.25 * spacing, 1.5 * height)
+    rows = [row for row in rows
+            if all(abs(box_center(w.box)[0] - c) <= tolerance for (_, w), c in zip(row, centers))]
+    if len(rows) < 3 or centers[0] < 0.2:
+        return None
+    rows.sort(key=lambda row: min(w.box[1] for _, w in row))
+    tops = [min(w.box[1] for _, w in row) for row in rows]
+    pitches = [b - a for a, b in zip(tops, tops[1:])]
+    pitch = median(pitches)
+    band_tops = [tops[0] - 0.35 * pitch] + [t - 0.35 * p for t, p in zip(tops[1:], pitches)]
+    band_ends = band_tops[1:] + [tops[-1] + 0.65 * max(pitches)]
+    bounds = [(c - spacing / 2, c + spacing / 2) for c in centers]
+    left_edge = bounds[0][0]
+    code_ids = {w.id for row in rows for _, w in row}
+    rank = {line.id: (line.box[1], i) for i, line in enumerate(page.lines)}
+    grid_rows, labels_by_column = [], [[] for _ in centers]
+    for row, top, end in zip(rows, band_tops, band_ends):
+        band = [w for w in page.words if top <= box_center(w.box)[1] < end]
+        cells = []
+        for k, (lo, hi) in enumerate(bounds):
+            label_words = tuple(
+                w for w in band if lo <= box_center(w.box)[0] < hi and w.id not in code_ids
+            )
+            cells.append((row[k][1], label_words, tuple(_text_by_line(label_words, rank))))
+            labels_by_column[k].append(_label_text(label_words, rank))
+        left = [w for w in band if box_center(w.box)[0] < left_edge and w.id not in code_ids]
+        number, number_word = None, None
+        if left:
+            first = min(left, key=lambda w: w.box[0])
+            others = [w for w in left if w is not first]
+            text = first.text.strip()
+            value = _code_value(text) if len(text) <= 4 else None
+            if value is None and re.fullmatch(r"\d{1,3}[.)]?", text):
+                value = int(re.match(r"\d+", text).group())
+            apart = not others or first.box[2] + 0.6 * height < min(w.box[0] for w in others)
+            if value is not None and (not others or first.box[2] < min(w.box[0] for w in others)):
+                number, number_word = value, first
+                left = others
+            elif apart and len(text) <= 3 and re.search(r"\d", text):
+                number_word = first  # an unreadable item number ("W7"): not prompt text
+                left = others
+        grid_rows.append([number, number_word, left, cells, (top, end)])
+    # Words in the item-number column of a row whose number OCR could not
+    # read ("g _", "W7") are not prompt text.
+    numbered = [row for row in grid_rows if row[0] is not None and row[2]]
+    if numbered:
+        number_right = median(row[1].box[2] for row in numbered)
+        prompt_left = median(min(w.box[0] for w in row[2]) for row in numbered)
+        cut = (number_right + prompt_left) / 2
+        for row in grid_rows:
+            if row[1] is None and row[2]:
+                stray = [w for w in row[2] if w.box[2] <= cut and len(w.text.strip()) <= 3]
+                if stray:
+                    row[1] = min(stray, key=lambda w: w.box[0])
+                    row[2] = [w for w in row[2] if w not in stray]
+    grid_rows = [
+        GridRow(number, number_word, tuple(_ordered(left, rank)),
+                tuple(_text_by_line(left, rank)), tuple(cells), band)
+        for number, number_word, left, cells, band in grid_rows
+    ]
+    labels, deviations, labelled = [], [], 0
+    for k, column in enumerate(labels_by_column):
+        present = [text for text in column if re.search(r"[^\W\d_]{2}", text)]
+        if not present:
+            labels.append("")
+            continue
+        # OCR may drop a space ("AFAIR") or misread a letter: group spellings
+        # that agree without whitespace or are very similar.
+        keys = [_label_key(text) for text in present]
+        common = max(keys, key=keys.count)
+        agreeing = [text for text, key in zip(present, keys)
+                    if key == common or _label_similarity(key, common) >= 0.8]
+        from repeated_choices import preferred_spelling
+
+        spellings = [text for text in agreeing if _label_key(text) == common]
+        consensus = preferred_spelling(spellings)
+        labels.append(consensus)
+        if len(agreeing) >= 0.6 * len(grid_rows):
+            labelled += 1
+        for r, text in enumerate(column):
+            if text and text.casefold() != consensus.casefold():
+                deviations.append((r, k, text))
+    if not any(r.prompt_words for r in grid_rows):
+        return None
+    unreadable = False
+    if labelled < max(2, len(labels) - 1):
+        # OCR of very small labels: every cell prints words, but no spelling
+        # repeats. Keep codes and rows; the labels must be entered by hand.
+        lettered = sum(
+            1 for column in labels_by_column
+            if sum(1 for text in column if re.search(r"[^\W\d_]{2}", text)) >= 0.6 * len(grid_rows)
+        )
+        if page.source != "tesseract_tsv" or lettered < max(2, len(labels) - 1):
+            return None
+        unreadable, labels, deviations = True, [""] * len(labels), []
+    return ChoiceGrid(
+        page.page_number, tuple(str(v) for v in dominant), tuple(labels), tuple(centers),
+        tuple(bounds), tuple(grid_rows), band_tops[0], band_ends[-1], tuple(deviations),
+        unreadable,
+    )
+
+
+def choice_grid_lines(page: OCRPage, grid: ChoiceGrid) -> list[str]:
+    """Page text in item order: number, prompt lines, then each code + label.
+
+    OCR reads a row of answer cells left to right together with the prompt;
+    this restores the order of a printed item followed by its choices.
+    """
+    out = []
+    for line in page.lines:
+        if box_center(line.box)[1] < grid.top:
+            out.append(line.text)
+    for row in grid.rows:
+        if row.number is not None:
+            out.append(str(row.number))
+        out.extend(row.prompt_lines)
+        for code, (_word, _labels, label_lines) in zip(grid.codes, row.cells):
+            out.append(code)
+            if not grid.unreadable_labels:
+                out.extend(label_lines)
+    for line in page.lines:
+        if box_center(line.box)[1] >= grid.bottom:
+            out.append(line.text)
+    return out
+
+
+def _grid_proposal(grid: ChoiceGrid, page: OCRPage, pid: str) -> MatrixProposal:
+    columns = [
+        MatrixColumn(f"c{k+1}", grid.labels[k], grid.codes[k], "",
+                     (lo, grid.top, hi, grid.bottom))
+        for k, (lo, hi) in enumerate(grid.bounds)
+    ]
+    rows = []
+    for r, row in enumerate(grid.rows):
+        cells = tuple(
+            MatrixCell(code if code_word is not None else "",
+                       "filled" if code_word is not None else "missing",
+                       code_word.box if code_word is not None else (lo, row.band[0], hi, row.band[1]),
+                       f"page {page.page_number} ({page.source})")
+            for code, (code_word, _, _), (lo, hi) in zip(grid.codes, row.cells, grid.bounds)
+        )
+        words = [*row.prompt_words, *([row.number_word] if row.number_word else [])]
+        rows.append(MatrixRow(
+            f"r{r+1}", row.number, row.prompt[:300], cells, page.page_number,
+            union_box(w.box for w in words) if words else None,
+            f"page {page.page_number} choice row {r+1}", False,
+            len({w.line_id for w in row.prompt_words}) > 1,
+        ))
+    extra = ["Every row prints its own answer codes and labels; the column labels are the "
+             "labels repeated in the cells."]
+    if grid.unreadable_labels:
+        extra.append("OCR could not read the small labels printed in the answer cells; "
+                     "enter every column label from the source.")
+    for r, k, text in grid.deviations[:12]:
+        number = grid.rows[r].number
+        extra.append(f"Item {number if number is not None else r + 1}, column {k + 1}: "
+                     f"label reads “{text}” (most rows: “{grid.labels[k]}”).")
+    return _build(pid, f"Matrix on page {page.page_number}", page.source,
+                  (page.page_number,), columns, rows, extra)
+
+
 def geometric_matrices(pages: Iterable[OCRPage]) -> tuple[MatrixProposal, ...]:
     """Reconstruct matrices from positioned words (OCR or PDF text layer)."""
     proposals: list[MatrixProposal] = []
     previous = None  # (proposal index, centers, bounds, last_number)
+    grid_previous = None  # (proposal index, codes, labels, last number)
     for page in sorted(pages, key=lambda p: p.page_number):
         if not page.has_geometry:
             continue
+        grid = choice_cell_grid(page)
+        if grid is not None:
+            previous = None
+            proposal = _grid_proposal(grid, page, f"{page.source}-p{page.page_number}")
+            numbers = [r.number for r in grid.rows if r.number is not None]
+            if (grid_previous is not None and grid_previous[1] == grid.codes
+                    and [l.casefold() for l in grid_previous[2]] == [l.casefold() for l in grid.labels]
+                    and numbers and numbers[0] == grid_previous[3] + 1):
+                index = grid_previous[0]
+                old = proposals[index]
+                merged = list(old.rows) + [
+                    replace(r, id=f"r{len(old.rows)+n+1}") for n, r in enumerate(proposal.rows)
+                ]
+                proposals[index] = _build(
+                    old.id, old.title, old.source_kind, (*old.pages, page.page_number),
+                    list(old.columns), merged,
+                    (*old.issues, *proposal.issues[1:],
+                     f"Rows on page {page.page_number} continue the answer cells of page "
+                     f"{old.pages[0]}; verify the page break."),
+                )
+            else:
+                proposals.append(proposal)
+                index = len(proposals) - 1
+            grid_previous = (index, grid.codes, grid.labels, numbers[-1] if numbers else 0)
+            continue
+        grid_previous = None
         layout = _page_layout(page)
         if layout is None:
             continue

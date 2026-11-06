@@ -23,6 +23,7 @@ from scientific_survey_import import (
     Candidate, InstrumentCandidate, ResponseScheme, ScientificDocumentReview,
     linked_questions, proposed_scheme_question,
 )
+from repeated_choices import printed_label
 from survey_storage import validate_questions
 
 MATCH_THRESHOLD = 0.6
@@ -30,6 +31,11 @@ MATCH_THRESHOLD = 0.6
 
 def _norm(text: str) -> str:
     return re.sub(r"[^\w]+", " ", str(text).casefold()).strip()
+
+
+def _compact(label: str) -> str:
+    """Label comparison form: case, whitespace and apostrophe variants ignored."""
+    return re.sub(r"\s+", "", printed_label(label)).casefold()
 
 
 def _similar(a: str, b: str) -> float:
@@ -139,8 +145,10 @@ def _merge_matrix(instrument: InstrumentCandidate, matrix, pairs) -> InstrumentC
         new_labels = target.labels
         if target.label_problems() and not label_issues and len(labels) == target.size:
             new_labels = labels  # the matrix header supplies missing labels
-        elif len(labels) == target.size and [l.casefold() for l in labels] != [
-            l.casefold() for l in target.labels
+            merged_issues = [issue for issue in merged_issues
+                             if "no printed label" not in issue and "not printed" not in issue]
+        elif len(labels) == target.size and [_compact(l) for l in labels] != [
+            _compact(l) for l in target.labels
         ] and not label_issues:
             merged_issues.append(
                 "Matrix columns (" + " / ".join(labels) + ") differ from the header text; "
@@ -257,8 +265,8 @@ def review_scheme(
     schemes[scheme_id] = updated
     result = replace(candidate, questions=tuple(questions), schemes=tuple(schemes.values()))
     if structure:
-        from scientific_survey_import import reviewed_draft
-        reviewed_draft(result)  # validates the full draft with these settings
+        from scientific_survey_import import draft_questions
+        draft_questions(result)  # validates the full draft with these settings
     return result
 
 
