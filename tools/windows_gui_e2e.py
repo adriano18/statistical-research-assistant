@@ -61,6 +61,10 @@ CONTROL_TYPES_CLICKABLE = ("Button", "MenuItem", "ListItem", "TabItem", "Hyperli
                            "CheckBox", "RadioButton", "Text", "Group", "Custom", "Pane")
 
 
+# Control types whose text is their value (Flutter's selectable text, fields).
+TEXT_FIELDS = ("Edit", "Document")
+
+
 def T(key: str, **values) -> str:
     """The English interface text for ``key`` (the app runs in English)."""
     from workspace_text import T as TABLE
@@ -256,15 +260,21 @@ class Gui:
                 where = f"{rect.left},{rect.top},{rect.width()}x{rect.height()}"
             except Exception:
                 where = "?"
+            value = ""
+            if info.control_type in TEXT_FIELDS:
+                value = Gui.value(element)
             lines.append(f"    {info.control_type:<12} | {(info.name or '')[:70]!r} | "
-                         f"{info.automation_id or ''} | {info.class_name or ''} | {where}")
+                         f"{info.automation_id or ''} | {info.class_name or ''} | {where}"
+                         + (f" | value {value[:70]!r}" if value else ""))
         return "\n".join(lines)
 
     def log_screen(self, title: str) -> None:
         """What is on screen now, printed into the CI log (artifacts may not be
         reachable when diagnosing a failure)."""
         try:
-            visible = [e for e in self.elements() if (e.element_info.name or "").strip()
+            visible = [e for e in self.elements()
+                       if ((e.element_info.name or "").strip()
+                           or e.element_info.control_type in TEXT_FIELDS)
                        and self.on_screen(e)]
             print(f"  [screen: {title}] {len(visible)} named elements on screen", flush=True)
             print(self.describe(visible, 90), flush=True)
@@ -292,7 +302,18 @@ class Gui:
         return found
 
     def texts(self) -> list[str]:
-        return [e.element_info.name or "" for e in self.elements()]
+        """Every name on screen, and the text of read-only text fields: Flutter
+        exposes selectable text (notices, messages) as an Edit whose text is
+        its value, not its name."""
+        found = []
+        for element in self.elements():
+            info = element.element_info
+            found.append(info.name or "")
+            if info.control_type in TEXT_FIELDS:
+                value = self.value(element)
+                if value:
+                    found.append(value)
+        return found
 
     def has_text(self, fragment: str) -> bool:
         return any(fragment in text for text in self.texts())
@@ -384,7 +405,8 @@ class Gui:
         time.sleep(0.8)
         return field
 
-    def value(self, element) -> str:
+    @staticmethod
+    def value(element) -> str:
         with contextlib.suppress(Exception):
             return element.get_value() or ""
         with contextlib.suppress(Exception):
@@ -447,14 +469,26 @@ class Gui:
         texts = self.texts()
         return " | ".join(t for t in texts if t)[-4000:]
 
-    def wait_text(self, fragment: str, timeout: float = 30) -> None:
+    def wait_text(self, fragment: str, timeout: float = 30, *, scroll: bool = True) -> None:
+        """Wait for ``fragment`` on screen. After a few seconds also look below
+        and above the visible part, as a person scrolls to a message: Flutter
+        exposes to UI Automation only what is near the visible part."""
         deadline = time.monotonic() + timeout
+        settle_until = time.monotonic() + min(4.0, timeout / 2)
+        moves, direction = 0, -1
         while time.monotonic() < deadline:
             if self.has_text(fragment):
                 return
-            time.sleep(0.5)
+            if scroll and time.monotonic() > settle_until and moves < 40:
+                self.wheel(3 * direction)
+                moves += 1
+                if moves == 20:
+                    direction = 1
+            else:
+                time.sleep(0.5)
         self.dump(f"no-text-{fragment}")
         self.shot(f"no-text-{fragment}")
+        self.log_screen(f"text never appeared: {fragment[:50]!r}")
         raise StepFailure(f"text never appeared: {fragment!r}")
 
     # --------------------------------------------------------- file dialogs
@@ -885,7 +919,7 @@ def answer_form(gui: Gui, group: str, stress: str, age: int) -> None:
         gui.click(labels[int(stress)], control_type=("RadioButton", "Text"), index=item)
 
 
-def journey_responses(gui: Gui, work: Path, journey: Journey) -> None:
+def open_project_a(gui: Gui, journey: Journey) -> None:
     with journey.step("open project A (its dataset is in use)"):
         gui.click(T("nav.home"), control_type=("Button", "Text"))
         opened = False
@@ -896,6 +930,10 @@ def journey_responses(gui: Gui, work: Path, journey: Journey) -> None:
                     opened = True
                     break
         expect(opened or gui.has_text("Fictional study A"), "project A did not open")
+
+
+def journey_responses(gui: Gui, work: Path, journey: Journey) -> None:
+    open_project_a(gui, journey)
     with journey.step("start a small questionnaire from a template"):
         gui.click(T("nav.questionnaires"), control_type=("Button", "Text"))
         # Narrow windows show one pane at a time: the list holds the templates.
@@ -935,12 +973,47 @@ def journey_responses(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text(T("source.now_using", name="sample_ancova.csv"))
 
 
+# Interface identifiers that must never reach the screen untranslated.
+RAW_KEY = re.compile(r"\b(?:block|why|alt|design|role|rec|goal|disabled|level)\.[a-z_]+\b")
+
+
+def journey_blocked_design(gui: Gui, work: Path, journey: Journey) -> None:
+    """A design the methods cannot accept is refused in words (never a raw
+    identifier such as ``block.level_mismatch``) and nothing can be run;
+    choosing a suitable variable lifts the refusal."""
+    open_project_a(gui, journey)
+    with journey.step("guided analysis: compare groups"):
+        gui.click(T("nav.analyze"), control_type=("Button", "Text"))
+        gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
+        with contextlib.suppress(StepFailure):     # a question is already chosen
+            gui.click(T("analyze.change_goal"), control_type=("Button", "Text"), timeout=4)
+        gui.click(T("goal.compare"), control_type=("Button", "Text", "Group", "Custom"))
+    with journey.step("a quantitative group variable is refused in words"):
+        gui.choose(T("role.outcome"), option_label("wellbeing", "scale"))
+        gui.choose(T("role.group"), option_label("age", "scale"))
+        gui.wait_text(T("design.blocked"))
+        gui.wait_text("age is quantitative")
+        raw = [text for text in gui.texts() if RAW_KEY.search(text)]
+        expect(not raw, f"untranslated identifiers on screen: {raw[:3]}")
+        expect(not gui.query(regex=r"^" + re.escape(T("rec.run", method="")).strip(),
+                             control_type="Button"),
+               "a run button is offered for a refused design")
+        gui.shot("blocked-design")
+    with journey.step("a categorical group lifts the refusal"):
+        gui.choose(T("role.group"), option_label("group", "nominal"))
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and gui.has_text(T("design.blocked")):
+            time.sleep(0.5)
+        expect(not gui.has_text(T("design.blocked")), "the refusal stayed after the correction")
+
+
 JOURNEYS = {
     "project-a": journey_project_a,
     "project-b": journey_project_b,
     "import-30": journey_import_30,
     "review-120": journey_review_120,
     "responses": journey_responses,
+    "blocked-design": journey_blocked_design,
 }
 
 
