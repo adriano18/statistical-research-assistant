@@ -311,9 +311,33 @@ class Gui:
             return False
         return True
 
+    region = None     # (left, top, right, bottom): only elements inside it, see within()
+
     def query(self, name=None, *, regex=None, control_type=None):
         found = [e for e in self.elements() if self._matches(e, name, regex, control_type)]
+        if self.region is not None:
+            left, top, right, bottom = self.region
+
+            def inside(element):
+                with contextlib.suppress(Exception):
+                    r = element.element_info.rectangle
+                    x, y = (r.left + r.right) // 2, (r.top + r.bottom) // 2
+                    return left <= x <= right and top <= y <= bottom
+                return False
+
+            found = [e for e in found if inside(e)]
         return found
+
+    @contextlib.contextmanager
+    def within(self, region):
+        """Look for controls only inside ``region`` (an open dialog): the page
+        behind a non-modal dialog may hold controls with the same names, and a
+        click on them dismisses the dialog."""
+        previous, self.region = self.region, region
+        try:
+            yield
+        finally:
+            self.region = previous
 
     def texts(self) -> list[str]:
         """Every name on screen, and the text of read-only text fields: Flutter
@@ -357,6 +381,7 @@ class Gui:
     # The bottom of the content can be covered by the status line and, in the
     # import review, by its sticky footer: a click there lands on them.
     STATUS_LINE = 45
+    CONTEXT_BAR = 115
     _footer_cache = (0.0, None)
 
     def footer_top(self):
@@ -389,7 +414,10 @@ class Gui:
         footer = self.footer_top()
         if footer is not None:
             limit = min(limit, footer)
-        return rect.bottom <= limit
+        # Content scrolled under the title bar and the context bar (to y ~105)
+        # is reported on screen, but a click there lands on the bar.
+        _, top, _, _ = self.window_box()
+        return rect.bottom <= limit and rect.top >= top + self.CONTEXT_BAR
 
     def scroll_into_view(self, element, attempts: int = 30):
         for _ in range(attempts):
@@ -543,13 +571,16 @@ class Gui:
             return "click"
 
     def choose(self, label: str, option: str, *, index: int = 0, options=None):
-        """Pick ``option`` in the dropdown named ``label``. The dropdown is
-        opened through UI Automation (a mouse click on it opened the window's
-        system menu on the runner) and the entry is one that appeared with the
-        open menu: a checkbox elsewhere on the page may carry the same name."""
+        """Pick ``option`` in the dropdown named ``label``. The entry chosen is
+        one that appeared with the open menu: the page may hold a checkbox of
+        the same name (the ANCOVA form lists the covariates)."""
         from pywinauto import keyboard
 
         kinds_menu = ("MenuItem", "ListItem", "Button", "Text", "Custom", "Group")
+        # Leave Windows' menu mode if something put the window in it: the next
+        # key or click would go to the system menu. The app does not use Esc.
+        keyboard.send_keys("{ESC}{ESC}")
+        time.sleep(0.3)
         self.close_menus()
         field = None
         for kinds in (("ComboBox",), ("Edit",), ("Button", "Group", "Custom", "Pane", "Text")):
@@ -560,37 +591,48 @@ class Gui:
         if field is None:
             field = self.find(label, index=index)
         self.scroll_into_view(field)
-        before = {self.element_id(e) for e in self.query(option)}
-        how = self.activate(field)
-        time.sleep(1.0)
-        self.close_menus()
-        appeared = [e for e in self.query(option, control_type=kinds_menu)
-                    if self.element_id(e) not in before
-                    and e.element_info.automation_id not in self.SYSTEM_MENU_IDS]
-        if not appeared and how == "invoke":
-            field.click_input()                      # open it with the mouse instead
-            time.sleep(1.0)
-            self.close_menus()
-            appeared = [e for e in self.query(option, control_type=kinds_menu)
-                        if self.element_id(e) not in before
-                        and e.element_info.automation_id not in self.SYSTEM_MENU_IDS]
-        if appeared:
-            print(f"  [choose] {label!r}: opened by {how}; picking {option!r}", flush=True)
-            self.activate(appeared[-1])
-            time.sleep(1.0)
-            return
-        new = [e for e in self.elements() if self.element_id(e) not in before
-               and (e.element_info.name or "").strip()][:15]
-        print(f"  [choose] {label!r} opened by {how}; no entry {option!r}; new elements:\n"
-              + self.describe(new, 15), flush=True)
+        before = {self.element_id(e) for e in self.elements()}
+
+        def entries(wait: float = 4.0):
+            deadline = time.monotonic() + wait
+            while True:
+                self.close_menus()
+                found = [e for e in self.query(option, control_type=kinds_menu)
+                         if self.element_id(e) not in before
+                         and e.element_info.automation_id not in self.SYSTEM_MENU_IDS]
+                if found or time.monotonic() > deadline:
+                    return found
+                time.sleep(0.5)
+
+        tried = []
+        for how in ("click", "invoke"):
+            if how == "click":
+                field.click_input()
+            else:
+                with contextlib.suppress(Exception):
+                    field.invoke()
+            tried.append(how)
+            appeared = entries()
+            if appeared:
+                print(f"  [choose] {label!r}: opened by {how}; picking {option!r}", flush=True)
+                self.activate(appeared[-1])
+                time.sleep(1.0)
+                return
+        everything = [e for e in self.elements()]
+        new = [e for e in everything if self.element_id(e) not in before
+               and (e.element_info.name or "").strip()][:25]
+        print(f"  [choose] {label!r} (tried {', '.join(tried)}): no entry {option!r}; "
+              f"{len(everything)} elements, {len(new)} new named ones:\n"
+              + self.describe(new, 25), flush=True)
         if options is None or option not in options:
             raise StepFailure(f"{option!r} is not listed in the dropdown {label!r}")
-        # Keyboard: the dropdown has the focus with its menu open. The entry
-        # already chosen is highlighted (none: Down goes to the first one);
-        # each Down/Up moves one entry and Enter chooses it.
+        # Keyboard, only while the dropdown itself has the focus: the entry
+        # already chosen is highlighted (none: Down goes to the first one).
         focused = self.focused()
-        expect(focused.process_id == self.window_pid and not self.system_menu_open(),
-               f"the dropdown {label!r} does not have the keyboard focus")
+        expect(focused.process_id == self.window_pid and not self.system_menu_open()
+               and (focused.name or "").startswith(label),
+               f"the dropdown {label!r} does not have the keyboard focus "
+               f"({focused.control_type} {focused.name!r})")
         current = self.value(field)
         start = options.index(current) if current in options else -1
         moves = options.index(option) - start
@@ -722,6 +764,15 @@ class Gui:
             print(self.describe(self.dialogs()[0].descendants(), 60), flush=True)
             raise StepFailure("the Windows file dialog stayed open after Enter")
         time.sleep(1.0)
+
+    def print_app_log(self, lines: int = 40) -> None:
+        """The application's own log (exceptions in handlers land there)."""
+        logs = sorted((self.out / "app-logs").glob("**/*"), key=lambda p: p.stat().st_mtime)
+        for log in [p for p in logs if p.is_file()][-2:]:
+            text = log.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:]
+            print(f"  [app log] {log.name} (last {len(text)} lines)", flush=True)
+            for line in text:
+                print("    " + line[:220], flush=True)
 
     def recover(self) -> None:
         """After a failed journey: close menus and dialogs, show the window
@@ -1130,9 +1181,21 @@ def journey_responses(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text(T("q.publish_ok", title="Fictional wellbeing pilot"))
     for respondent, (group, stress) in enumerate((("A", "2"), ("B", "4"), ("A", "3"))):
         with journey.step(f"collect response {respondent + 1} in the form"):
+            before = {gui.element_id(e) for e in gui.query(T("q.collect"), control_type="Button")}
             gui.click(T("q.collect"), control_type=("Button", "Text"), index=0)
-            answer_form(gui, group, stress, 30 + respondent)
-            gui.click(T("q.collect"), control_type="Button", index=0)
+            # The dialog's own submit button is the new "Collect a response".
+            deadline, submit = time.monotonic() + 15, None
+            while time.monotonic() < deadline and submit is None:
+                submit = next((e for e in gui.query(T("q.collect"), control_type="Button")
+                               if gui.element_id(e) not in before), None)
+                time.sleep(0.5)
+            expect(submit is not None, "the response form did not open")
+            r = submit.element_info.rectangle
+            dialog = (r.right - 720, r.top - 640, r.right + 30, r.bottom + 10)
+            print(f"  [form] the response form is open around {dialog}", flush=True)
+            with gui.within(dialog):
+                answer_form(gui, group, stress, 30 + respondent)
+                gui.click(T("q.collect"), control_type="Button")
             gui.wait_text(T("run.done"))
     save_via_dialog(gui, journey, T("q.export_responses"), work / "pilot_responses.csv",
                     kind="csv", contains=("stress_q1",))
@@ -1245,6 +1308,8 @@ def main(argv=None) -> int:
                     outcome["ok"] = True
                 except Exception as error:
                     outcome["error"] = f"{type(error).__name__}: {error}"
+                    with contextlib.suppress(Exception):
+                        gui.print_app_log()
                     with contextlib.suppress(Exception):
                         gui.recover()
             outcome.update(steps=journey.steps, facts=journey.facts)
