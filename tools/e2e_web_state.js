@@ -2,6 +2,7 @@
 //
 //   node tools/e2e_web_state.js scroll <url> <out.json>
 //   node tools/e2e_web_state.js type   <url> <out.json> <text>
+//   node tools/e2e_web_state.js affordance <url> <out.json> <role:label>...
 //
 // Drives a running Flet web preview with Playwright Chromium through Flutter's
 // accessibility tree (the same semantics a screen reader uses), like a user:
@@ -245,8 +246,85 @@ async function toggleCheck(url, first, second, shot) {
   }
 }
 
+// affordance: hovers each named control the way a person does and reports
+//   the mouse cursor the application sets over it (a pointer for anything
+//   that can be clicked) and whether the control visibly changes under the
+//   pointer (its hover state). A target is "<role>:<label>", the role being
+//   button or checkbox; a label starting with "=" must match exactly. A
+//   target starting with "!" names a disabled control, which must not offer
+//   a pointer.
+async function nodeFor(page, role, wanted, exact) {
+  return page.evaluate(([kind, label, whole]) => {
+    const node = Array.from(document.querySelectorAll('flt-semantics'))
+      .filter((n) => n.getAttribute('role') === kind)
+      .find((n) => {
+        const name = (n.getAttribute('aria-label') || n.textContent || '').trim();
+        return whole ? name === label : name.includes(label);
+      });
+    if (!node) return null;
+    const r = node.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  }, [role, wanted, exact]);
+}
+
+async function cursorNow(page) {
+  return page.evaluate(() => {
+    const view = document.querySelector('flutter-view') || document.body;
+    return view.style.cursor || getComputedStyle(view).cursor;
+  });
+}
+
+async function affordanceCheck(url, targets) {
+  const { browser, page } = await openPage(url);
+  try {
+    const rest = { x: 120, y: 600 };   // the empty middle of the sidebar
+    const controls = [];
+    for (const target of targets) {
+      const negative = target.startsWith('!');
+      const spec = negative ? target.slice(1) : target;
+      const split = spec.indexOf(':');
+      const role = spec.slice(0, split);
+      let label = spec.slice(split + 1);
+      const exact = label.startsWith('=');
+      if (exact) label = label.slice(1);
+      await page.mouse.move(900, 500);
+      let box = await nodeFor(page, role, label, exact);
+      for (let i = 0; i < 40 && (!box || box.y + box.h > 860 || box.y < 70); i += 1) {
+        await page.mouse.wheel(0, box && box.y < 70 ? -200 : 200);
+        await page.waitForTimeout(150);
+        box = await nodeFor(page, role, label, exact);
+      }
+      if (!box) {
+        controls.push({ target, found: false });
+        continue;
+      }
+      await page.mouse.move(rest.x, rest.y);
+      await page.waitForTimeout(700);
+      const resting = await cursorNow(page);
+      const clip = { x: Math.max(0, box.x - 2), y: Math.max(0, box.y - 2),
+                     width: box.w + 4, height: box.h + 4 };
+      const before = await page.screenshot({ clip });
+      await page.mouse.move(box.x + Math.min(box.w / 2, 24), box.y + box.h / 2);
+      await page.waitForTimeout(700);
+      const cursor = await cursorNow(page);
+      const after = await page.screenshot({ clip });
+      controls.push({ target, negative, found: true, resting_cursor: resting, cursor,
+                      hover_visible: !before.equals(after) });
+    }
+    return { controls };
+  } finally {
+    await browser.close();
+  }
+}
+
 (async () => {
   const [mode, url, out, text = 'Fictional stress study', fieldLabel, anchor] = process.argv.slice(2);
+  if (mode === 'affordance') {
+    const result = await affordanceCheck(url, process.argv.slice(5));
+    require('fs').writeFileSync(out, JSON.stringify(result, null, 1));
+    console.log(JSON.stringify(result));
+    return;
+  }
   if (mode === 'toggle') {
     const result = await toggleCheck(url, text, fieldLabel, out.replace(/\.json$/, '.png'));
     require('fs').writeFileSync(out, JSON.stringify(result, null, 1));
