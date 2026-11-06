@@ -23,8 +23,9 @@ class ShellTests(unittest.TestCase):
 
     def assert_page_ok(self, route):
         self.assertFalse(self.ws.has_text("This page could not be shown"), route)
-        body = self.ws.app.content_host.content
+        body = self.ws.app.page_control
         self.assertEqual(body.data, f"workspace-page-{route}")
+        self.assertEqual(body.key, f"workspace-page-{route}")
 
     def test_every_route_renders_empty_and_with_data(self):
         for route in ROUTES:
@@ -108,6 +109,32 @@ class ShellTests(unittest.TestCase):
                 self.assertFalse(ws.has_text("This page could not be shown"), (width, route))
             ws.app.navigate("questionnaires")
             self.assertTrue(ws.find_all("q-pane"))  # compact layouts switch panes
+
+    def test_no_expanding_child_in_a_wrapping_row(self):
+        """Flutter cannot lay out an expanding child inside a wrapping row and
+        shows a grey error box instead (found by the dark 1100 px screenshot
+        of the project page). Every scenario, at a compact and a wide width."""
+        import sys
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+        from workspace_scenarios import SCENARIOS, apply
+
+        found = []
+        for width in (1100, 1440):
+            for name in [s for s in SCENARIOS if not s.startswith("classic")]:
+                ws = Workspace(width)
+                try:
+                    ws.run(apply(ws.app, name))
+                    for control in ws.controls():
+                        if isinstance(control, ft.Row) and control.wrap:
+                            for child in control.controls:
+                                if getattr(child, "expand", None):
+                                    found.append((width, name, getattr(child, "data", None)
+                                                  or type(child).__name__))
+                finally:
+                    ws.close()
+        self.assertEqual(found, [])
 
     def test_status_line_is_a_live_region(self):
         live = [c for c in self.ws.controls() if isinstance(c, ft.Semantics) and c.live_region]

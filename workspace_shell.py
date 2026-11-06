@@ -118,21 +118,25 @@ class WorkspaceApp:
         self.root: ft.Control | None = None
         self.status_text: ft.Text | None = None
         self.status_icon: ft.Icon | None = None
-        self.content_host = ft.Container(expand=True)
+        # The page sits in a list so that Flet's keyed list reconciliation
+        # applies (a single `content` field is always replaced wholesale).
+        self._page_stack = ft.Column(expand=True, spacing=0)
+        self.content_host = ft.Container(self._page_stack, expand=True)
         self.sidebar_host = ft.Container()
         self.context_host = ft.Container()
         self._classic_seen = None      # id() of the classic dataframe last exchanged
         self._handed_over = None       # id() of the workspace dataframe last handed over
         self._rendered_width = None
+        self.last_folder: str | None = None   # the next save dialog opens here
         self._install_services()
         from workspace_analyze import AnalyzePage, ReportsPage, ResultsPage
-        from workspace_projects import ProjectHub
+        from workspace_projects import ProjectHub, ProjectPage
         from workspace_questionnaires import ImportPage, QuestionnairesPage
 
         self.hub = ProjectHub(self)
 
         self.pages = {
-            "home": HomePage(self), "data": DataPage(self),
+            "home": HomePage(self), "project": ProjectPage(self), "data": DataPage(self),
             "questionnaires": QuestionnairesPage(self), "import": ImportPage(self),
             "analyze": AnalyzePage(self), "results": ResultsPage(self),
             "reports": ReportsPage(self), "settings": SettingsPage(self),
@@ -201,8 +205,47 @@ class WorkspaceApp:
 
     async def save_dialog(self, title: str, file_name: str, extension: str) -> str | None:
         return await self.save_picker.save_file(
-            dialog_title=title, file_name=file_name,
+            dialog_title=title, file_name=file_name, initial_directory=self.last_folder,
             file_type=ft.FilePickerFileType.CUSTOM, allowed_extensions=[extension])
+
+    async def save_file(self, title: str, file_name: str, extension: str, writer, *,
+                        announce=None):
+        """Ask where to save, write there and say what happened.
+
+        ``writer(path)`` writes the file (in a worker thread) and may return
+        the path it wrote. The outcome (cancelled, saved with the full path
+        of the verified file, or an actionable explanation) is shown in the
+        status bar and returned for the page to show next to the action;
+        ``announce(path)`` may word the success message.
+        """
+        import workspace_files as wf
+
+        since = wf.now()
+        try:
+            chosen = await self.save_dialog(title, file_name, extension)
+        except Exception as error:  # pragma: no cover - client dependent
+            outcome = wf.SaveOutcome(None, self.t("save.dialog_failed", reason=str(error)
+                                                  or type(error).__name__), "danger")
+            self.status(outcome.message, outcome.tone)
+            return outcome
+        if not chosen:
+            outcome = wf.SaveOutcome(None, self.t("save.cancelled"), "info")
+            self.status(outcome.message, outcome.tone)
+            return outcome
+        typed = Path(str(chosen)).expanduser()
+        path = wf.with_extension(typed, extension)
+        try:
+            written = await asyncio.to_thread(wf.write_verified, path, writer)
+        except Exception as error:
+            outcome = wf.SaveOutcome(None, wf.explain(error, path, self.t), "danger")
+        else:
+            wf.remove_placeholder(typed, written, since)
+            self.last_folder = str(written.parent)
+            outcome = wf.SaveOutcome(
+                written, announce(written) if announce else self.t("save.saved", path=written),
+                "success")
+        self.status(outcome.message, outcome.tone)
+        return outcome
 
     # ------------------------------------------------------------ datasets
     async def import_files(self, files) -> bool:
@@ -284,10 +327,17 @@ class WorkspaceApp:
 
     # --------------------------------------------------------- navigation
     def navigate(self, route: str, *, refresh: bool = True):
+        if route == "project" and not self.projects.active:
+            route = "home"            # the project page needs an open project
         self.route = route
         self.area = "questionnaires" if route == "import" else route
         if refresh:
             self.render()
+
+    @property
+    def page_control(self) -> ft.Control | None:
+        """The page currently on screen (its scroll container)."""
+        return self._page_stack.controls[0] if self._page_stack.controls else None
 
     def _on_session_change(self, what: str):
         # Context bar and sidebar badges follow the session.
@@ -308,10 +358,14 @@ class WorkspaceApp:
         except Exception as error:  # a page bug must not blank the window
             body = wc.notice(self.ui, f"{type(error).__name__}: {error}", "danger",
                              title="This page could not be shown")
-        self.content_host.content = ft.Column(
+        # A stable key per route makes Flet reconcile the rebuilt page with the
+        # one on screen (same control identities) instead of replacing it, so
+        # the scroll position, keyboard focus, caret and expanded sections
+        # survive a re-render; another route gets a fresh page.
+        self._page_stack.controls = [ft.Column(
             [body], scroll=ft.ScrollMode.AUTO, expand=True,
-            data=f"workspace-page-{self.route}",
-        )
+            data=f"workspace-page-{self.route}", key=f"workspace-page-{self.route}",
+        )]
         self.content_host.bgcolor = self.ui.p.canvas
         self.root.bgcolor = self.ui.p.canvas
         self._rendered_width = int(getattr(self.page, "width", None) or 1280)
@@ -441,6 +495,11 @@ class WorkspaceApp:
                            on_click=lambda e, k=key: self.navigate(k), badge=badges.get(key))
             for key in AREAS
         ]
+        if self.projects.active:
+            # The open project's own page, right under Home.
+            items.insert(1, self._nav_item(
+                "project", ft.Icons.FOLDER_OUTLINED, ui.t("nav.project"),
+                selected=self.area == "project", on_click=lambda e: self.navigate("project")))
         bottom = [
             self._nav_item("settings", ft.Icons.SETTINGS_OUTLINED, ui.t("nav.settings"),
                            selected=self.area == "settings",
@@ -546,7 +605,7 @@ class WorkspaceApp:
         stale = self.projects.stale_count()
         return wc.chip(ui, ui.t("context.project", title=info.title), "warning" if stale else "info",
                        icon=ft.Icons.FOLDER_OUTLINED, tooltip=ui.t("context.project_tip"),
-                       on_click=lambda e: self.navigate("home"), data="context-project")
+                       on_click=lambda e: self.navigate("project"), data="context-project")
 
     # ------------------------------------------------------------ actions
     def toggle_sidebar(self):
@@ -758,6 +817,7 @@ class DataPage:
         self.app = app
         self.show_preparation = False
         self.accept_checked = False
+        self.opened: set[str] = set()
         self.sample = SAMPLES[0][0]
         self._preparation = None
         self.options = {"sheet": None, "header_row": "1", "data_start": "", "separator": "auto",
@@ -781,6 +841,15 @@ class DataPage:
                 self._path_fallback(),
             ], spacing=tk.SPACE_5))
         df = s.df
+        if app.projects.active:
+            # Every dataset of the project stays available; this one is in use.
+            datasets = app.projects.project.datasets()
+            if len(datasets) > 1:
+                header.controls[1].controls.insert(0, wc.dropdown(
+                    ui, ui.t("source.in_use"), [(d.id, d.name) for d in datasets],
+                    app.projects.dataset_id,
+                    on_select=lambda e: self._use_source(e.control.value), width=300,
+                    data="data-source"))
         stats = ft.ResponsiveRow([
             wc.stat(ui, ui.t("data.source"), s.source_name, col={"xs": 12, "md": 6, "lg": 3}),
             wc.stat(ui, ui.t("data.rows"), str(len(df)), col={"xs": 6, "md": 3, "lg": 3}),
@@ -790,9 +859,27 @@ class DataPage:
                     col={"xs": 12, "md": 6, "lg": 3}),
         ], spacing=tk.SPACE_3, run_spacing=tk.SPACE_3)
         return app.constrained(ft.Column([
-            header, stats, self._dictionary(), self._preview(), self._import_options(),
-            self._preparation_card(), self._sample_picker(),
+            header, stats, self._next_step(), self._dictionary(), self._preview(),
+            self._import_options(), self._preparation_card(), self._sample_picker(),
         ], spacing=tk.SPACE_5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
+
+    async def _use_source(self, dataset_id: str | None):
+        if dataset_id and dataset_id != self.app.projects.dataset_id:
+            await self.app.pages["project"].use(dataset_id)
+
+    def _next_step(self) -> ft.Control:
+        """What to do with this dataset now: confirm levels, then analyze."""
+        app, ui, s = self.app, self.app.ui, self.app.session
+        pending, total = s.pending_levels(), len(s.variables)
+        if pending:
+            return wc.notice(ui, ui.t("data.next_levels_body", count=pending, total=total), "info",
+                             title=ui.t("next.levels"), data="data-next")
+        return wc.notice(ui, ui.t("data.next_analyze_body", total=total), "success",
+                         title=ui.t("next.analyze"), actions=[
+                             wc.button(ui, ui.t("next.choose_analysis"),
+                                       lambda e: app.navigate("analyze"), kind="primary",
+                                       icon=ft.Icons.QUERY_STATS, data="data-next-analyze")],
+                         data="data-next")
 
     # ------------------------------------------------------------ dictionary
     def _dictionary(self) -> ft.Control:
@@ -828,12 +915,20 @@ class DataPage:
             heading_row_color=ui.p.surface_alt, data="data-dictionary",
         )
         pending = s.pending_levels()
-        accept = ft.Row([
-            wc.checkbox(ui, ui.t("data.accept_confirm"), self.accept_checked,
-                        on_change=self._accept_checked, data="data-accept-confirm"),
-            wc.button(ui, ui.t("data.accept_suggestions"), self._accept,
-                      disabled=not (self.accept_checked and pending), data="data-accept"),
-        ], wrap=True, spacing=tk.SPACE_3)
+        # A disabled button says why, and what to do instead.
+        reason = (ui.t("data.accept_none_left") if not pending else
+                  None if self.accept_checked else ui.t("data.accept_tick_first"))
+        accept = ft.Column([
+            wc.caption(ui, ui.t("data.accept_explain")),
+            ft.Row([
+                wc.checkbox(ui, ui.t("data.accept_confirm"), self.accept_checked,
+                            on_change=self._accept_checked, data="data-accept-confirm"),
+                wc.button(ui, ui.t("data.accept_suggestions"), self._accept,
+                          disabled=not (self.accept_checked and pending), tooltip=reason,
+                          data="data-accept"),
+            ], wrap=True, spacing=tk.SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            *([wc.caption(ui, reason, data="data-accept-reason")] if reason else []),
+        ], spacing=tk.SPACE_2)
         return wc.card(ui, [ft.Row([table], scroll=ft.ScrollMode.AUTO), accept],
                        title=ui.t("data.dictionary"), description=ui.t("data.dictionary.help"))
 
@@ -920,10 +1015,14 @@ class DataPage:
         tile = ft.ExpansionTile(
             title=wc.heading(ui, ui.t("data.import_options"), tk.TYPE_TITLE_S),
             subtitle=wc.caption(ui, ui.t("data.import_options.body")),
+            expanded="data-import-options" in self.opened, key="data-import-options",
+            on_change=wc.expansion_handler(self.opened, "data-import-options"),
             controls=[ft.Container(ft.Column([
                 ft.Row(fields, wrap=True, spacing=tk.SPACE_3, run_spacing=tk.SPACE_3),
                 wc.button(ui, ui.t("data.reimport"), self._reimport,
-                          disabled=not s.source_path, data="data-reimport"),
+                          disabled=not s.source_path,
+                          tooltip=None if s.source_path else ui.t("disabled.no_source_file"),
+                          data="data-reimport"),
                 *diagnostics,
             ], spacing=tk.SPACE_3), padding=tk.SPACE_4)],
             collapsed_bgcolor=ui.p.surface, bgcolor=ui.p.surface,

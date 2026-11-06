@@ -422,3 +422,32 @@ def constrained(content: ft.Control, max_width: int = tk.CONTENT_MAX_WIDTH) -> f
                       constraints=ft.BoxConstraints(max_width=max_width))],
         alignment=ft.MainAxisAlignment.CENTER,
     )
+
+
+def expansion_handler(opened: set, key: str):
+    """``on_change`` for an ExpansionTile that records its state in ``opened``."""
+
+    def remember(e):
+        value = None
+        if isinstance(getattr(e, "data", None), str) and e.data in ("true", "false"):
+            value = e.data == "true"
+        elif isinstance(getattr(e, "data", None), bool):
+            value = e.data
+        if value is None:
+            value = bool(getattr(e.control, "expanded", key not in opened))
+        (opened.add if value else opened.discard)(key)
+
+    return remember
+
+
+def expansion(ui: Ui, title: ft.Control, controls: list[ft.Control], *, key: str,
+              opened: set, subtitle: ft.Control | None = None, data=None) -> ft.Container:
+    """A collapsible section whose open/closed state lives in ``opened`` (a set
+    the page keeps), so a re-render never closes what the researcher opened."""
+    tile = ft.ExpansionTile(
+        title=title, subtitle=subtitle, controls=controls, expanded=key in opened,
+        on_change=expansion_handler(opened, key), bgcolor=ui.p.surface,
+        collapsed_bgcolor=ui.p.surface, key=key, data=data,
+    )
+    return ft.Container(tile, border=ft.Border.all(1, ui.p.border),
+                        border_radius=ui.radius("card"))

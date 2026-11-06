@@ -26,9 +26,16 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 SCENARIOS = (
     "home", "data", "guided", "results", "catalog", "form", "reports",
     "questionnaires", "phone-preview", "import", "help", "settings",
-    "projects", "results-stale", "settings-profile", "import-zoom", "classic-home",
-    "classic-groups",
+    "projects", "results-stale", "settings-profile", "import-zoom", "questionnaire-120",
+    "project", "classic-home", "classic-groups",
 )
+
+
+def long_questionnaire(count: int = 120) -> list[dict]:
+    """A fictional questionnaire with ``count`` five-point items."""
+    return [{"key": f"item_{n:03d}", "kind": "likert5", "required": False,
+             "prompt": f"Fictional statement {n}. I feel rested among fictional neighbours."}
+            for n in range(1, count + 1)]
 
 
 async def projects(app) -> None:
@@ -54,11 +61,48 @@ async def projects(app) -> None:
     app.status("")
 
 
+async def project_page(app) -> None:
+    """The open project's page: a data file with a result in the report, and a
+    published questionnaire whose responses are their own dataset."""
+    from survey_storage import create_survey, responses_dataframe, submit_response
+
+    s = app.session
+    app.projects.create("Sleep and stress (fictional)")
+    await app.load_sample("sample_scale.csv")
+    page = app.pages["analyze"]
+    page.mode = "guided"
+    page._set_goal("compare")
+    page.selection = {"outcome": "stress_q1", "group": "group"}
+    s.confirm_level("stress_q1", "ordinal", "analyze")
+    s.confirm_level("group", "nominal", "analyze")
+    page.confirms = {"independent": True}
+    await page._run_guided()
+    s.toggle_report(s.results[-1].id)
+    survey = create_survey(app.survey_root, "Fictional wellbeing check", "Fictional items", [
+        {"key": "group", "kind": "single_choice", "prompt": "Fictional group", "required": True,
+         "options": ["A", "B"]},
+        {"key": "rested", "kind": "likert5", "prompt": "I wake up rested (fictional).",
+         "required": True, "options": []},
+    ])
+    for group, value in (("A", "2"), ("A", "3"), ("B", "4"), ("B", "5"), ("B", "4")):
+        submit_response(app.survey_root, survey.survey_id, {"group": group, "rested": value})
+    app.projects.link_questionnaire(survey.survey_id, survey.title, "published")
+    app.pages["questionnaires"]._use_responses(
+        survey, responses_dataframe(app.survey_root, survey.survey_id),
+        app.t("responses.name", title=survey.title))
+    app.projects.activate_dataset(app.projects.project.datasets()[0].id)
+    app.status("")
+    app.navigate("project")
+
+
 async def apply(app, name: str) -> None:
     """Drive ``app`` (a WorkspaceApp) into the named state."""
     s = app.session
     if name in {"home", "help", "settings"}:
         app.navigate(name)
+        return
+    if name == "project":
+        await project_page(app)
         return
     if name in {"projects", "results-stale"}:
         await projects(app)
@@ -120,6 +164,12 @@ async def apply(app, name: str) -> None:
         builder._load_template()
         builder.title = "Fictional wellbeing pilot"
         builder.selected = 1
+        app.navigate("questionnaires")
+        return
+    if name == "questionnaire-120":
+        builder = app.pages["questionnaires"]
+        builder.load_draft(long_questionnaire(120), title="Fictional 120-item inventory")
+        builder.selected = None
         app.navigate("questionnaires")
         return
     if name == "import-zoom":

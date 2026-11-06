@@ -66,6 +66,7 @@ class ProjectHub:
         self.show_all = False
         self.feedback: tuple[str, str] | None = None
         self.restored_id: str | None = None
+        self.opened: set[str] = set()
         self.backup_picker = ft.FilePicker(on_result=self._on_backup_picked)
         app.page.services.append(self.backup_picker)
         self.restore_action = ft.PickFiles(
@@ -184,13 +185,11 @@ class ProjectHub:
                           lambda e, p=d.path: self.restore_deleted(p), kind="quiet",
                           icon=ft.Icons.RESTORE_FROM_TRASH, data=f"project-undelete-{index}"),
             ], vertical_alignment=ft.CrossAxisAlignment.CENTER) for index, d in enumerate(deleted[:10])]
-            content.append(ft.Container(ft.ExpansionTile(
-                title=wc.text(ui, f"{ui.t('project.recently_deleted')} ({len(deleted)})",
-                              tk.TYPE_LABEL, weight=ft.FontWeight.W_600),
-                controls=[ft.Container(ft.Column(rows, spacing=tk.SPACE_2), padding=tk.SPACE_3)],
-                bgcolor=ui.p.surface, collapsed_bgcolor=ui.p.surface,
-            ), border=ft.Border.all(1, ui.p.border), border_radius=ui.radius("card"),
-                data="project-deleted"))
+            content.append(wc.expansion(
+                ui, wc.text(ui, f"{ui.t('project.recently_deleted')} ({len(deleted)})",
+                            tk.TYPE_LABEL, weight=ft.FontWeight.W_600),
+                [ft.Container(ft.Column(rows, spacing=tk.SPACE_2), padding=tk.SPACE_3)],
+                key="project-deleted", opened=self.opened, data="project-deleted"))
         return wc.card(ui, content, data="project-list")
 
     @staticmethod
@@ -214,7 +213,8 @@ class ProjectHub:
                     data=f"project-current-{info.id}") if current else
             wc.button(ui, ui.t("project.open"), lambda e, i=info.id: self.open(i),
                       kind="secondary", icon=ft.Icons.FOLDER_OPEN_OUTLINED,
-                      tooltip=ui.t("project.open_named", title=info.title),
+                      tooltip=(ui.t("disabled.archived") if info.archived
+                               else ui.t("project.open_named", title=info.title)),
                       data=f"project-open-{info.id}", disabled=info.archived),
             wc.icon_button(ui, ft.Icons.CONTENT_COPY, ui.t("project.duplicate"),
                            lambda e, i=info.id: self.duplicate(i), data=f"project-duplicate-{info.id}"),
@@ -245,11 +245,17 @@ class ProjectHub:
         )
 
     # ---------------------------------------------------------- actions
-    def _done(self, message: str, tone: str = "success", *, restored: str | None = None):
+    def _done(self, message: str, tone: str = "success", *, restored: str | None = None,
+              route: str | None = None):
         self.feedback = (message, tone)
         self.restored_id = restored
         self.app.status(message, tone)
-        self.app.render()
+        if route is None and self.app.route == "project" and not self.binding.active:
+            route = "home"            # the project on screen was closed, archived or deleted
+        if route:
+            self.app.navigate(route)
+        else:
+            self.app.render()
 
     def _failed(self, error: Exception):
         self._done(self.app.t("project.failed", error=error), "danger")
@@ -265,7 +271,8 @@ class ProjectHub:
             self._failed(error)
             return
         self.new_title = ""
-        self._done(self.app.t("project.created", title=info.title))
+        # The new project opens on its own page, with the first step offered.
+        self._done(self.app.t("project.created", title=info.title), route="project")
 
     async def open(self, project_id: str):
         try:
@@ -274,7 +281,7 @@ class ProjectHub:
             self._failed(error)
             return
         self.app.pages["analyze"].reset()
-        self._done(self.app.t("project.opened", title=info.title))
+        self._done(self.app.t("project.opened", title=info.title), route="project")
         await self.verify()
 
     async def verify(self):
@@ -344,16 +351,11 @@ class ProjectHub:
 
     async def backup(self, project_id: str, title: str):
         app = self.app
-        try:
-            destination = await app.save_dialog(app.t("project.backup_title"), _file_name(title), "sra")
-            if not destination:
-                return
-            saved = await asyncio.to_thread(self.binding.export, project_id, Path(destination),
-                                            app.survey_root)
-        except Exception as error:
-            self._failed(error)
-            return
-        self._done(app.t("project.backup_saved", path=saved))
+        outcome = await app.save_file(
+            app.t("project.backup_title"), _file_name(title), "sra",
+            lambda path: self.binding.export(project_id, path, app.survey_root),
+            announce=lambda path: app.t("project.backup_saved", path=path))
+        self._done(outcome.message, outcome.tone)
 
     async def _on_backup_picked(self, e):
         await self.restore_files(getattr(e, "files", None))
@@ -391,3 +393,261 @@ class ProjectHub:
     def _toggle_all(self, e=None):
         self.show_all = not self.show_all
         self.app.render()
+
+
+# ================================================================ dashboard
+def source_kind(ui: wc.Ui, record, names: dict[str, str]) -> tuple[str, str, str]:
+    """(label, tone, detail) saying what kind of data source a dataset is."""
+    if record.origin == "survey":
+        return ui.t("source.responses"), "info", ui.t("source.responses_detail")
+    if record.origin == "derived":
+        parent = names.get(record.parent_id or "", "")
+        return (ui.t("source.derived"), "neutral",
+                ui.t("source.derived_from", name=parent) if parent else ui.t("source.derived_detail"))
+    if record.origin == "link":
+        return ui.t("source.linked"), "neutral", Path(record.source_path or "").name
+    if record.source_path:
+        return ui.t("source.file"), "neutral", Path(record.source_path).name
+    return ui.t("source.copy"), "neutral", ui.t("source.copy_detail")
+
+
+class ProjectPage:
+    """The open project: what it contains, kept apart by kind (data sources,
+    questionnaires and their responses, results, report), which dataset is
+    in use, and the next step (Stage 34.5, issue #30)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    def build(self) -> ft.Control:
+        app, ui, binding = self.app, self.app.ui, self.app.projects
+        if not binding.active:
+            return wc.empty_state(ui, ft.Icons.FOLDER_OFF_OUTLINED, ui.t("context.no_project"),
+                                  ui.t("project.none_open"), actions=[
+                                      wc.button(ui, ui.t("nav.home"), lambda e: app.navigate("home"),
+                                                kind="primary")], data="project-none")
+        hub = app.hub
+        info = binding.info()
+        datasets = binding.project.datasets()
+        header = wc.page_header(ui, info.title, ui.t("project.dashboard_subtitle"), actions=[
+            wc.button(ui, ui.t("project.backup"),
+                      lambda e, i=info.id, t=info.title: hub.backup(i, t),
+                      icon=ft.Icons.SAVE_ALT, data="project-backup-current"),
+            wc.button(ui, ui.t("project.all_projects"), lambda e: app.navigate("home"),
+                      kind="quiet", icon=ft.Icons.FOLDER_COPY_OUTLINED, data="project-all"),
+            wc.button(ui, ui.t("project.close"), hub.close, kind="quiet", icon=ft.Icons.CLOSE,
+                      data="project-close"),
+        ])
+        stale = binding.stale_count()
+        chips = [wc.chip(ui, ui.t("project.saved_auto",
+                                  time=f"{_local_time(info.modified_at):%H:%M}"),
+                         "success", icon=ft.Icons.CHECK_CIRCLE_OUTLINE, data="project-saved"),
+                 wc.caption(ui, hub._counts(info.counts))]
+        if stale:
+            chips.insert(1, wc.chip(ui, ui.t("project.needs_attention", count=stale), "warning",
+                                    icon=ft.Icons.UPDATE, on_click=lambda e: app.navigate("results"),
+                                    data="project-stale"))
+        body: list[ft.Control] = [header, ft.Row(chips, wrap=True, spacing=tk.SPACE_2,
+                                                 vertical_alignment=ft.CrossAxisAlignment.CENTER)]
+        if binding.message:
+            key, tone = binding.message
+            body.append(wc.notice(ui, ui.t(key), tone, data="project-message"))
+        if hub.feedback:
+            body.append(wc.notice(ui, hub.feedback[0], hub.feedback[1], data="project-feedback"))
+        body += [self._next(datasets), self._sources(datasets), self._questionnaires(),
+                 self._results(), self._report()]
+        return app.constrained(ft.Column(body, spacing=tk.SPACE_4, data="project-dashboard",
+                                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
+
+    # ------------------------------------------------------------ next step
+    def next_step(self, datasets) -> tuple[str, str, list[tuple[str, object, str]]]:
+        """(title key, body text, [(label, on_click or action, data)]) for the
+        one thing that moves this project forward now."""
+        app, ui, s = self.app, self.app.ui, self.app.session
+        questionnaires = app.pages["questionnaires"]
+        if not datasets and not s.has_data:
+            return ("next.add_data", ui.t("next.add_data_body"), [
+                (ui.t("data.open"), app.open_data_action, "next-open-data"),
+                (ui.t("next.use_sample"), lambda e: app.navigate("data"), "next-sample"),
+                (ui.t("next.questionnaire"), lambda e: app.navigate("questionnaires"),
+                 "next-questionnaire"),
+            ] + ([(ui.t("next.continue_draft"), lambda e: app.navigate("questionnaires"),
+                   "next-draft")] if questionnaires.draft else []))
+        if s.has_data and s.pending_levels():
+            return ("next.levels", ui.t("next.levels_body", count=s.pending_levels()),
+                    [(ui.t("next.review_levels"), lambda e: app.navigate("data"), "next-levels")])
+        if not s.results:
+            return ("next.analyze", ui.t("next.analyze_body"),
+                    [(ui.t("next.choose_analysis"), lambda e: app.navigate("analyze"),
+                      "next-analyze")])
+        stale = [e for e in s.results if e.stale_reasons]
+        if stale:
+            return ("next.stale", ui.t("next.stale_body", count=len(stale)),
+                    [(ui.t("next.review_results"), lambda e: app.navigate("results"),
+                      "next-results")])
+        if not s.report_order:
+            return ("next.report", ui.t("next.report_body"),
+                    [(ui.t("next.review_results"), lambda e: app.navigate("results"),
+                      "next-results")])
+        return ("next.export", ui.t("next.export_body", count=len(s.report_order)),
+                [(ui.t("next.open_report"), lambda e: app.navigate("reports"), "next-report")])
+
+    def _next(self, datasets) -> ft.Control:
+        ui = self.app.ui
+        title, body, actions = self.next_step(datasets)
+        buttons = []
+        for index, (label, handler, data) in enumerate(actions):
+            kind = "primary" if index == 0 else "secondary"
+            if isinstance(handler, ft.PickFiles):
+                buttons.append(wc.button(ui, label, action=handler, kind=kind, data=data))
+            else:
+                buttons.append(wc.button(ui, label, handler, kind=kind, data=data))
+        return wc.card(ui, [
+            wc.text(ui, body, tk.TYPE_BODY),
+            ft.Row(buttons, wrap=True, spacing=tk.SPACE_2),
+        ], title=ui.t(title), data="project-next-action", border=ui.p.accent)
+
+    # -------------------------------------------------------------- sources
+    def _sources(self, datasets) -> ft.Control:
+        app, ui, binding = self.app, self.app.ui, self.app.projects
+        names = {d.id: d.name for d in datasets}
+        rows: list[ft.Control] = []
+        for record in datasets:
+            label, tone, detail = source_kind(ui, record, names)
+            in_use = app.session.has_data and binding.dataset_id == record.id
+            meta = [count_text(ui.language, record.rows, "rows"),
+                    count_text(ui.language, record.columns, "variables"),
+                    ui.t("source.added", date=_when(record.created_at))]
+            if detail:
+                meta.insert(0, detail)
+            trailing = (wc.chip(ui, ui.t("source.in_use"), "success", icon=ft.Icons.CHECK,
+                                data=f"source-in-use-{record.id}") if in_use else
+                        wc.button(ui, ui.t("source.use"), lambda e, i=record.id: self.use(i),
+                                  icon=ft.Icons.SWAP_HORIZ, tooltip=ui.t("source.use_tip"),
+                                  data=f"source-use-{record.id}"))
+            rows.append(ft.Container(ft.Row([
+                ft.Column([
+                    ft.Row([wc.text(ui, record.name, tk.TYPE_BODY, weight=ft.FontWeight.W_600),
+                            wc.chip(ui, label, tone)], wrap=True, spacing=tk.SPACE_2),
+                    wc.caption(ui, " · ".join(meta)),
+                ], spacing=2, expand=True),
+                trailing,
+            ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                bgcolor=ui.p.accent_subtle if in_use else ui.p.surface,
+                border=ft.Border.all(1, ui.p.accent if in_use else ui.p.border),
+                border_radius=ui.radius("card"), padding=tk.SPACE_3,
+                data=f"source-row-{record.id}"))
+        if not rows:
+            rows.append(wc.caption(ui, ui.t("source.none")))
+        return wc.card(ui, rows, title=ui.t("source.title"), description=ui.t("source.body"),
+                       actions=[wc.button(ui, ui.t("data.open"), action=app.open_data_action,
+                                          kind="quiet", icon=ft.Icons.FOLDER_OPEN_OUTLINED,
+                                          data="project-add-data")],
+                       data="project-sources")
+
+    async def use(self, dataset_id: str):
+        app = self.app
+        try:
+            record = app.projects.activate_dataset(dataset_id)
+        except (ProjectError, OSError, ValueError) as error:
+            app.hub._failed(error)
+            return
+        app.pages["analyze"].reset()
+        app.status(app.t("source.now_using", name=record.name), "success")
+        app.render()
+
+    # ------------------------------------------------------- questionnaires
+    def _questionnaires(self) -> ft.Control:
+        app, ui = self.app, self.app.ui
+        builder = app.pages["questionnaires"]
+        rows: list[ft.Control] = []
+        if builder.draft:
+            rows.append(ft.Row([
+                ft.Icon(ft.Icons.EDIT_NOTE, size=18, color=ui.p.text_secondary),
+                ft.Column([wc.text(ui, builder.title or ui.t("q.untitled"), tk.TYPE_BODY,
+                                   weight=ft.FontWeight.W_600),
+                           wc.caption(ui, count_text(ui.language, len(builder.draft), "questions"))],
+                          spacing=2, expand=True),
+                wc.chip(ui, ui.t("q.unsaved"), "warning", icon=ft.Icons.EDIT_NOTE),
+                wc.button(ui, ui.t("next.continue_draft"), lambda e: app.navigate("questionnaires"),
+                          kind="quiet", data="project-draft-open"),
+            ], vertical_alignment=ft.CrossAxisAlignment.CENTER, data="project-draft"))
+        try:
+            from survey_storage import list_surveys, response_count
+
+            linked = app.projects.questionnaire_ids()
+            surveys = [s for s in list_surveys(app.survey_root) if s.survey_id in linked]
+        except Exception:
+            surveys = []
+        page = app.pages["questionnaires"]
+        for survey in surveys:
+            count = response_count(app.survey_root, survey.survey_id)
+            details = ft.Row([
+                ft.Icon(ft.Icons.ASSIGNMENT_TURNED_IN_OUTLINED, size=18, color=ui.p.text_secondary),
+                ft.Column([wc.text(ui, survey.title, tk.TYPE_BODY, weight=ft.FontWeight.W_600),
+                           wc.caption(ui, f"{count_text(ui.language, len(survey.questions), 'questions')}"
+                                          f" · {ui.t('q.collected', count=count)}")],
+                          spacing=2, expand=True),
+            ], vertical_alignment=ft.CrossAxisAlignment.CENTER, expand=not app.compact)
+            actions = ft.Row([
+                wc.chip(ui, ui.t("q.published_badge"), "success", icon=ft.Icons.PUBLISH),
+                wc.button(ui, ui.t("q.collect"), lambda e, s=survey: page._collect(s),
+                          kind="quiet", data=f"project-collect-{survey.survey_id}"),
+                wc.button(ui, ui.t("q.analyze_responses"), lambda e, s=survey: page._analyze(s),
+                          disabled=count == 0, tooltip=None if count else ui.t("q.no_responses_yet"),
+                          data=f"project-analyze-{survey.survey_id}"),
+            ], spacing=tk.SPACE_2, wrap=app.compact,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            # Narrow windows stack the actions under the title: an expanding
+            # child cannot sit inside a wrapping row (Flutter shows an error box).
+            rows.append(ft.Column([details, actions], spacing=tk.SPACE_2) if app.compact else
+                        ft.Row([details, actions], vertical_alignment=ft.CrossAxisAlignment.CENTER))
+        if not rows:
+            rows.append(wc.caption(ui, ui.t("project.no_questionnaires")))
+        return wc.card(ui, rows, title=ui.t("nav.questionnaires"),
+                       description=ui.t("project.questionnaires_body"),
+                       actions=[wc.button(ui, ui.t("next.questionnaire"),
+                                          lambda e: app.navigate("questionnaires"), kind="quiet",
+                                          icon=ft.Icons.ADD, data="project-new-questionnaire")],
+                       data="project-questionnaires")
+
+    # ------------------------------------------------------ results, report
+    def _results(self) -> ft.Control:
+        app, ui, s = self.app, self.app.ui, self.app.session
+        rows: list[ft.Control] = []
+        for entry in s.results[-8:][::-1]:
+            chips = []
+            if entry.stale_reasons:
+                chips.append(wc.chip(ui, ui.t("results.stale"), "warning", icon=ft.Icons.UPDATE))
+            if entry.in_report:
+                chips.append(wc.chip(ui, ui.t("results.in_report"), "info", icon=ft.Icons.CHECK))
+            rows.append(ft.Row([
+                ft.Column([wc.text(ui, entry.title, tk.TYPE_BODY, weight=ft.FontWeight.W_600),
+                           wc.caption(ui, f"{entry.dataset} · {entry.created:%Y-%m-%d %H:%M}")],
+                          spacing=2, expand=True),
+                *chips,
+                wc.icon_button(ui, ft.Icons.OPEN_IN_NEW, ui.t("reports.open_result"),
+                               lambda e, i=entry.id: self._show(i),
+                               data=f"project-result-{entry.id}"),
+            ], vertical_alignment=ft.CrossAxisAlignment.CENTER))
+        if not rows:
+            rows.append(wc.caption(ui, ui.t("project.no_results")))
+        elif len(s.results) > 8:
+            rows.append(wc.button(ui, ui.t("project.all_results", count=len(s.results)),
+                                  lambda e: app.navigate("results"), kind="quiet"))
+        return wc.card(ui, rows, title=ui.t("nav.results"), data="project-results")
+
+    def _show(self, entry_id: int):
+        self.app.session.selected_result = entry_id
+        self.app.navigate("results")
+
+    def _report(self) -> ft.Control:
+        app, ui, s = self.app, self.app.ui, self.app.session
+        count = len(s.report_order)
+        return wc.card(ui, [
+            wc.text(ui, ui.t("project.report_count", count=count) if count
+                    else ui.t("project.report_empty"), tk.TYPE_BODY),
+        ], title=ui.t("nav.reports"), actions=[
+            wc.button(ui, ui.t("next.open_report"), lambda e: app.navigate("reports"),
+                      kind="quiet", icon=ft.Icons.DESCRIPTION_OUTLINED, disabled=not count,
+                      data="project-report-open")], data="project-report")
