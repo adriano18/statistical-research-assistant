@@ -58,7 +58,7 @@ from typing import Any, Iterable
 import uuid
 import zipfile
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PACKAGE_FORMAT = "sra-project"
 PACKAGE_VERSION = 1
 DB_NAME = "project.sqlite3"
@@ -247,7 +247,18 @@ def _migrate_v2(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE project ADD COLUMN data_anonymous INTEGER NOT NULL DEFAULT 0")
 
 
-MIGRATIONS = {1: _create_v1, 2: _migrate_v2}
+def _migrate_v3(db: sqlite3.Connection) -> None:
+    """Format 3 (#40): a versioned research plan. Every save adds a version
+    (the latest is current); nothing is overwritten. ``runs_before`` is the
+    number of analysis results the project held when the version was saved,
+    which tells planned hypotheses from ones added after results were seen."""
+    db.execute("CREATE TABLE plan_versions ("
+               " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+               " saved_at TEXT NOT NULL, plan TEXT NOT NULL,"
+               " runs_before INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '')")
+
+
+MIGRATIONS = {1: _create_v1, 2: _migrate_v2, 3: _migrate_v3}
 
 
 def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
@@ -410,6 +421,48 @@ def _pid_alive(pid: int) -> bool:
     except PermissionError:
         return True
     return True
+
+
+PLAN_TEXT_FIELDS = ("objectives", "design", "population", "ethics", "preregistration")
+HYPOTHESIS_FIELDS = ("text", "h0", "outcome", "predictors", "covariates", "method", "family",
+                     "exclusions")
+DIRECTIONS = ("two-sided", "greater", "less")
+PRIORITIES = ("primary", "secondary", "exploratory")
+
+
+def normalise_plan(plan: dict) -> dict:
+    """A research plan as stored: known fields only, trimmed, validated."""
+    if not isinstance(plan, dict):
+        raise ProjectError("A research plan is a set of named fields.")
+    clean = {name: str(plan.get(name) or "").strip()[:4000] for name in PLAN_TEXT_FIELDS}
+    hypotheses = []
+    for raw in plan.get("hypotheses") or []:
+        if not isinstance(raw, dict):
+            continue
+        item = {name: str(raw.get(name) or "").strip()[:2000] for name in HYPOTHESIS_FIELDS}
+        if not item["text"]:
+            continue
+        direction = raw.get("direction") or "two-sided"
+        priority = raw.get("priority") or "primary"
+        if direction not in DIRECTIONS:
+            raise ProjectError(f"Unknown direction {direction!r}.")
+        if priority not in PRIORITIES:
+            raise ProjectError(f"Unknown priority {priority!r}.")
+        try:
+            alpha = float(raw.get("alpha", 0.05))
+        except (TypeError, ValueError) as error:
+            raise ProjectError("The significance level must be a number.") from error
+        if not 0 < alpha <= 0.2:
+            raise ProjectError("The significance level must be above 0 and at most 0.2.")
+        hypothesis_id = str(raw.get("id") or "") or uuid.uuid4().hex[:12]
+        if not re.fullmatch(r"[0-9a-f]{12}", hypothesis_id):
+            raise ProjectError("Invalid hypothesis identifier.")
+        hypotheses.append({**item, "id": hypothesis_id, "direction": direction,
+                           "priority": priority, "alpha": alpha})
+    if len(hypotheses) > 100:
+        raise ProjectError("A plan holds at most 100 hypotheses.")
+    clean["hypotheses"] = hypotheses
+    return clean
 
 
 class ProjectStore:
@@ -929,6 +982,70 @@ class Project:
     def questions(self) -> list[dict]:
         with self._db() as db:
             return [dict(r) for r in db.execute("SELECT * FROM research_questions ORDER BY position")]
+
+    # -------------------------------------------------------- research plan
+    def save_plan(self, plan: dict, note: str = "") -> int:
+        """Save the research plan as a new version and return its number.
+
+        Nothing is overwritten: the history keeps every version. Saving the
+        same plan again adds no version. Hypotheses keep their identity
+        across versions (ids are given on first save)."""
+        with self._write() as db:
+            latest = db.execute("SELECT id, plan FROM plan_versions ORDER BY id DESC LIMIT 1").fetchone()
+            previous = json.loads(latest["plan"]) if latest is not None else {"hypotheses": []}
+            # A hypothesis without an id is the one of the same wording, if any.
+            known = {h["text"]: h["id"] for h in previous.get("hypotheses", [])}
+            if isinstance(plan, dict):
+                plan = {**plan, "hypotheses": [
+                    {**h, "id": h.get("id") or known.get(str(h.get("text") or "").strip(), "")}
+                    if isinstance(h, dict) else h for h in plan.get("hypotheses") or []]}
+            clean = normalise_plan(plan)
+            if latest is not None and previous == clean:
+                return int(latest["id"])
+            runs = db.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+            cursor = db.execute(
+                "INSERT INTO plan_versions (saved_at, plan, runs_before, note) VALUES (?, ?, ?, ?)",
+                (now(), json.dumps(clean, ensure_ascii=False, sort_keys=True), runs,
+                 str(note).strip()[:500]))
+            _log(db, "plan_saved", {"version": cursor.lastrowid,
+                                    "hypotheses": len(clean["hypotheses"]), "runs_before": runs})
+            self._touch(db)
+            return int(cursor.lastrowid)
+
+    def plan(self) -> dict | None:
+        history = self.plan_history(limit=1)
+        return history[0] if history else None
+
+    def plan_history(self, *, limit: int | None = None) -> list[dict]:
+        """Plan versions, newest first: version, saved_at, plan, runs_before, note."""
+        query = "SELECT * FROM plan_versions ORDER BY id DESC" + (f" LIMIT {int(limit)}" if limit else "")
+        with self._db() as db:
+            return [{"version": row["id"], "saved_at": row["saved_at"], "plan": json.loads(row["plan"]),
+                     "runs_before": row["runs_before"], "note": row["note"]}
+                    for row in db.execute(query)]
+
+    def hypothesis_status(self) -> dict[str, dict]:
+        """For every hypothesis of the current plan: when it entered the plan
+        and how many results existed then. One that entered after results were
+        calculated is reported as such; it is exploratory unless the
+        researcher justifies otherwise."""
+        history = list(reversed(self.plan_history()))
+        first: dict[str, dict] = {}
+        for version in history:
+            for hypothesis in version["plan"]["hypotheses"]:
+                first.setdefault(hypothesis["id"], {"version": version["version"],
+                                                    "saved_at": version["saved_at"],
+                                                    "runs_before": version["runs_before"]})
+        current = history[-1]["plan"]["hypotheses"] if history else []
+        status = {}
+        for hypothesis in current:
+            entry = first[hypothesis["id"]]
+            planned = entry["runs_before"] == 0
+            status[hypothesis["id"]] = {
+                **entry, "planned_before_results": planned,
+                "standing": ("exploratory" if hypothesis["priority"] == "exploratory"
+                             else "confirmatory" if planned else "added_after_results")}
+        return status
 
     # ------------------------------------------------------------ datasets
     def import_dataset(self, path: Path, *, name: str | None = None, mode: str = "copy",

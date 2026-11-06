@@ -542,6 +542,7 @@ class MigrationTests(StoreCase):
         database = info.path / ps.DB_NAME
         with closing(sqlite3.connect(database)) as db, db:   # back to what format 1 wrote
             db.execute("DROP TABLE ai_permissions")
+            db.execute("DROP TABLE plan_versions")
             db.execute("ALTER TABLE project DROP COLUMN data_anonymous")
             db.execute("PRAGMA user_version = 1")
         with self.restart().open(info.id) as project:
@@ -549,14 +550,31 @@ class MigrationTests(StoreCase):
             self.assertEqual(project.dataset(dataset.id).sha256, dataset.sha256)
             self.assertEqual(project.ai_permissions(), {})
             self.assertFalse(project.data_anonymous)
+            self.assertIsNone(project.plan())
         with closing(sqlite3.connect(database)) as db:
-            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 2)
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], ps.SCHEMA_VERSION)
         self.assertEqual(len(list((self.store.root / ps.BACKUPS).glob(f"{info.id}-v1-*.sqlite3"))), 1)
+
+    def test_a_format_2_project_gains_an_empty_plan_and_keeps_everything(self):
+        """Projects of the Stage 34 builds (format 2) open in format 3 (#40)."""
+        info = self.store.create("Format two")
+        with self.store.open(info.id) as project:
+            project.add_question("Kept?")
+        database = info.path / ps.DB_NAME
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute("DROP TABLE plan_versions")
+            db.execute("PRAGMA user_version = 2")
+        with self.restart().open(info.id) as project:
+            self.assertEqual(project.questions()[0]["text"], "Kept?")
+            self.assertEqual(project.plan_history(), [])
+            self.assertEqual(project.save_plan({"objectives": "Fictional aims"}), 1)
+        self.assertEqual(len(list((self.store.root / ps.BACKUPS).glob(f"{info.id}-v2-*.sqlite3"))), 1)
 
     def test_a_failed_migration_leaves_the_old_format_untouched(self):
         info = self.store.create("Interrupted")
         database = info.path / ps.DB_NAME
         with closing(sqlite3.connect(database)) as db, db:
+            db.execute("DROP TABLE plan_versions")
             db.execute("DROP TABLE ai_permissions")
             db.execute("ALTER TABLE project DROP COLUMN data_anonymous")
             db.execute("PRAGMA user_version = 1")
@@ -575,6 +593,76 @@ class MigrationTests(StoreCase):
         self.assertNotIn("ai_permissions", tables, "the half-done change was rolled back")
         with self.store.open(info.id) as project:          # and opens normally afterwards
             self.assertEqual(project.ai_permissions(), {})
+
+
+class ResearchPlanTests(StoreCase):
+    """#40: a versioned, hypothesis-aware research plan (format 3)."""
+
+    PLAN = {"objectives": "Fictional aims", "design": "Two independent groups",
+            "hypotheses": [{"text": "Group B reports more stress", "h0": "No difference",
+                            "direction": "greater", "priority": "primary", "outcome": "stress_q1",
+                            "predictors": "group", "method": "Mann-Whitney U", "alpha": 0.05}]}
+
+    def test_every_save_is_a_new_version_and_nothing_is_overwritten(self):
+        info = self.store.create("Planned study")
+        with self.store.open(info.id) as project:
+            first = project.save_plan(self.PLAN)
+            self.assertEqual(project.save_plan(self.PLAN), first, "an unchanged plan adds no version")
+            plan = project.plan()["plan"]
+            plan["design"] = "Two independent groups, balanced"
+            second = project.save_plan(plan, note="balanced design")
+            history = project.plan_history()
+        self.assertEqual([v["version"] for v in history], [second, first])
+        self.assertEqual(history[1]["plan"]["design"], "Two independent groups")
+        self.assertEqual(history[0]["note"], "balanced design")
+        self.assertEqual(history[0]["plan"]["hypotheses"][0]["id"],
+                         history[1]["plan"]["hypotheses"][0]["id"], "a hypothesis keeps its id")
+
+    def test_hypotheses_added_after_results_are_not_confirmatory(self):
+        info = self.store.create("Planned study")
+        with self.store.open(info.id) as project:
+            project.save_plan(self.PLAN)
+            dataset = project.import_dataset(EXAMPLES / "sample_scale.csv", mode="copy")
+            self.groups_run(project, dataset)
+            plan = project.plan()["plan"]
+            plan["hypotheses"].append({"text": "Stress relates to age", "priority": "secondary",
+                                       "outcome": "stress_q2"})
+            plan["hypotheses"].append({"text": "Look at subscales", "priority": "exploratory"})
+            project.save_plan(plan)
+            status = project.hypothesis_status()
+            current = project.plan()["plan"]["hypotheses"]
+        standing = {h["text"]: status[h["id"]]["standing"] for h in current}
+        self.assertEqual(standing, {"Group B reports more stress": "confirmatory",
+                                    "Stress relates to age": "added_after_results",
+                                    "Look at subscales": "exploratory"})
+        self.assertEqual(status[current[1]["id"]]["runs_before"], 1)
+
+    def test_invalid_plans_are_refused_in_words(self):
+        info = self.store.create("Planned study")
+        with self.store.open(info.id) as project:
+            for bad in ({"hypotheses": [{"text": "x", "direction": "sideways"}]},
+                        {"hypotheses": [{"text": "x", "priority": "maybe"}]},
+                        {"hypotheses": [{"text": "x", "alpha": 0.5}]},
+                        {"hypotheses": [{"text": "x", "alpha": "five"}]},
+                        {"hypotheses": [{"text": "x", "id": "../../etc"}]}):
+                with self.subTest(plan=bad), self.assertRaises(ProjectError):
+                    project.save_plan(bad)
+            self.assertEqual(project.plan_history(), [])
+            # Empty hypotheses are dropped, unknown fields ignored.
+            project.save_plan({"objectives": " Aims ", "colour": "red",
+                               "hypotheses": [{"text": "  "}]})
+            self.assertEqual(project.plan()["plan"], {**{f: "" for f in ps.PLAN_TEXT_FIELDS},
+                                                      "objectives": "Aims", "hypotheses": []})
+
+    def test_the_plan_travels_in_a_project_backup(self):
+        info = self.store.create("Planned study")
+        with self.store.open(info.id) as project:
+            project.save_plan(self.PLAN)
+        self.store.export_package(info.id, self.base / "plan.sra")
+        restored, _ = self.restart().import_package(self.base / "plan.sra")
+        with self.restart().open(restored.id) as project:
+            self.assertEqual(project.plan()["plan"]["hypotheses"][0]["text"],
+                             "Group B reports more stress")
 
 
 class LargeDatasetTests(StoreCase):

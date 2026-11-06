@@ -417,7 +417,10 @@ class ProjectPage:
     in use, and the next step (Stage 34.5, issue #30)."""
 
     def __init__(self, app):
+        from workspace_plan import ResearchPlanCard
+
         self.app = app
+        self.plan = ResearchPlanCard(app)
 
     def build(self) -> ft.Control:
         app, ui, binding = self.app, self.app.ui, self.app.projects
@@ -454,8 +457,8 @@ class ProjectPage:
             body.append(wc.notice(ui, ui.t(key), tone, data="project-message"))
         if hub.feedback:
             body.append(wc.notice(ui, hub.feedback[0], hub.feedback[1], data="project-feedback"))
-        body += [self._question(), self._next(datasets), self._sources(datasets),
-                 self._questionnaires(), self._results(), self._report()]
+        body += [self._question(), self.plan.build(), self._next(datasets),
+                 self._sources(datasets), self._questionnaires(), self._results(), self._report()]
         return app.constrained(ft.Column(body, spacing=tk.SPACE_4, data="project-dashboard",
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 
