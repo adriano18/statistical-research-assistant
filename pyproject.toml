@@ -4,10 +4,12 @@
 # [project].dependencies, so `flet build` keeps installing requirements.txt.
 
 # Files of the repository that the running application never reads
-# (issue #23; checked with a source search). `examples/` stays: the sample
-# datasets are opened from the interface.
+# (issue #23; checked with a source search), plus the CI diagnostics folders
+# that exist while a build runs. `examples/` stays: the sample datasets are
+# opened from the interface.
 [tool.flet.app]
-exclude = ["tests", "tools", "docs", "packaging", "README.md", "ROADMAP.md"]
+exclude = ["tests", "tools", "docs", "packaging", "README.md", "ROADMAP.md",
+           "diagnostics", "experiments"]
 
 # Extra files removed from the installed packages, on top of serious_python's
 # defaults (C/C++ sources and headers, .pyi/.pxd/.pyx, .a, .pdb, __pycache__).

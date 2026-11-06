@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import package_audit as audit  # noqa: E402
 import prune_packages as prune  # noqa: E402
+import startup_ab  # noqa: E402
 
 
 def write(root: Path, relative: str, data: bytes) -> None:
@@ -196,6 +197,25 @@ class PruneTests(unittest.TestCase):
                 prune.main(["--site-packages", str(site), "--dry-run"])
             self.assertEqual(before, sorted(p.as_posix() for p in site.rglob("*")))
             self.assertIn("scipy/stats/tests", stream.getvalue())
+
+
+class StartupComparisonTests(unittest.TestCase):
+    def test_cold_start_is_separate_and_warm_starts_use_the_median(self):
+        def launch(window, ready, ok=True):
+            return {"ok": ok, "window_visible_after_s": window, "interface_ready_reported_s": ready}
+
+        summary = startup_ab.summarise({
+            "baseline": [launch(2.0, 4.5), launch(1.5, 3.2), launch(1.5, 3.0), launch(1.5, 3.4)],
+            "cleaned": [launch(2.0, 4.1), launch(1.5, 2.9), launch(None, None, ok=False),
+                        launch(1.5, 3.1)],
+        })
+        self.assertEqual(summary["baseline"]["cold"]["interface_ready_reported_s"], 4.5)
+        self.assertEqual(summary["baseline"]["interface_ready_reported_s"]["median"], 3.2)
+        self.assertEqual(summary["cleaned"]["ok"], 3)
+        self.assertEqual(summary["cleaned"]["interface_ready_reported_s"]["median"], 3.0)
+        markdown = startup_ab.to_markdown(summary)
+        self.assertIn("| baseline | 4/4 | 2.00 s / 4.50 s | 1.50 s / 3.20 s | 3.00 s–3.40 s |", markdown)
+        self.assertIn("| cleaned | 3/4 |", markdown)
 
 
 class AnalysisSelftestTests(unittest.TestCase):
