@@ -469,6 +469,38 @@ class MigrationTests(StoreCase):
             self.store.open(info.id)
         self.assertFalse((info.path / ps.LOCK_NAME).exists())
 
+    def test_an_older_version_never_writes_to_a_newer_project(self):
+        """Found while preparing in-app updates (#39, #45): an older version
+        opening a project saved by a newer one switched the database's
+        journal mode before refusing it, so a downgrade changed a database
+        it cannot read. Now nothing is written, and the project stays listed."""
+        for journal in ("delete", "wal"):
+            with self.subTest(journal=journal):
+                info = self.store.create(f"From a newer version ({journal})")
+                database = info.path / ps.DB_NAME
+                with closing(sqlite3.connect(database)) as db:
+                    db.execute(f"PRAGMA journal_mode={journal}")
+                    db.execute(f"PRAGMA user_version = {ps.SCHEMA_VERSION + 1}")
+                    db.commit()
+                before = database.read_bytes()
+                with self.assertRaises(ProjectFormatError) as refused:
+                    self.store.open(info.id)
+                self.assertIn("newer version", str(refused.exception))
+                self.assertEqual(database.read_bytes(), before, "the database was not touched")
+                self.assertFalse((info.path / ps.LOCK_NAME).exists())
+                self.assertEqual(list((self.store.root / ps.BACKUPS).glob(f"{info.id}-*")), [])
+                self.assertIn(info.id, [p.id for p in self.store.list()])
+
+    def test_the_current_format_reopens_without_a_backup(self):
+        """Updating the application without a format change copies nothing."""
+        info = self.store.create("Same format")
+        with self.store.open(info.id) as project:
+            project.add_question("Unchanged by an update?")
+        with self.restart().open(info.id) as project:
+            self.assertEqual(project.questions()[0]["text"], "Unchanged by an update?")
+        self.assertFalse((self.store.root / ps.BACKUPS).exists()
+                         and any((self.store.root / ps.BACKUPS).iterdir()))
+
     def test_migration_backs_up_the_old_database_and_keeps_data(self):
         info = self.store.create("Old format")
         with self.store.open(info.id) as project:
