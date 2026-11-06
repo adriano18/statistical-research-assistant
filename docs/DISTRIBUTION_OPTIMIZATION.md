@@ -15,6 +15,12 @@ apart with `tools/package_audit.py`; nothing is estimated from package lists.
 | Packaged OCR self-test | passed | passed (Tesseract 5.5.4, eng/lav/osd/rus, bundle verified) | |
 | GUI start (one run each, different runners) | window 1.50 s, ready 3.14 s (classic) / 3.04 s (workspace) | window 2.00 s, ready 3.59 s / 3.69 s | not comparable, see §4 |
 
+The same comparison built on **one runner** (experiments run 42200307088:
+*before* = this PR's base commit `266f401`, *after* = its head) gives the same
+result: installed 495,005,439 B (472.1 MiB, 10,735 files) → 394,611,220 B
+(376.3 MiB, 6,616 files), **−20.3 %**; sum of per-file deflate sizes
+180.7 → 145.8 MiB, **−19.3 %**.
+
 Per component (installed MiB; compressed MiB in brackets):
 
 | Component | Before | After | What changed |
@@ -132,15 +138,31 @@ only place that uses it: the same function computes the same alpha (checked
 in `test_pingouin_is_imported_only_when_an_alpha_is_calculated`), and
 scikit-learn, seaborn and xarray are no longer loaded at start. Locally that
 alone saves only about 0.2 s, because statsmodels and SciPy are still loaded
-by other analysis modules; the experiments workflow now measures *before*
-(the pull request's base commit) against *after* (its head) on one runner and
-the result is recorded here when that job has run.
+by other analysis modules.
+
+**This PR as a whole, measured on one runner** (run 42200307088: *before* =
+base commit `266f401`, *after* = head `4e3cb90`, five alternating launches
+each, all fifteen successful):
+
+| Build | Cold: window / ready | Warm median: window / ready | Warm range ready | Interface module imported (median) |
+|---|---:|---:|---:|---:|
+| before | 1.52 s / 2.60 s | 1.01 s / 2.52 s | 2.43–2.61 s | 2.19 s |
+| after | 1.51 s / 2.78 s | 1.02 s / **2.40 s** | 2.36–2.51 s | **2.04 s** |
+
+Warm starts are 0.12 s faster, the same as the shorter import phase
+(−0.15 s), i.e. the deferred pingouin import; the window appears at the same
+time. The single cold launch of each build is within that spread and is not
+read as a difference. This runner was faster than the one above (2.5 s
+instead of 3.9 s for the same builds): runner-to-runner differences are much
+larger than any effect measured here, which is why only same-runner numbers
+are compared.
 
 The larger, still unmeasured opportunity is to load the whole analysis stack
 after the interface is shown (statsmodels, SciPy, matplotlib; together most
-of the 2.97 s), with each analysis waiting for it on first use. That changes
-the import structure of the classic interface and is proposed as its own pull
-request with a same-runner before/after measurement, not as part of this one.
+of the import phase, 2.0–3.0 s depending on the runner), with each analysis
+waiting for it on first use. That changes the import structure of the classic
+interface and is proposed as its own pull request with a same-runner
+before/after measurement, not as part of this one.
 
 ## 5. Distribution and download
 
@@ -189,7 +211,7 @@ Python runtime 10.4 MiB (compressed).
 | Variant | Status |
 |---|---|
 | `flet build windows` (current) | measured above |
-| `flet pack --onedir` (PyInstaller, officially documented by Flet) | Run 42191629552: **`flet pack` itself fails on Windows** with flet-cli 1.1.0 (and the same code is in 1.0.5): after updating the executable's version resource it restores the overlay with `open(exe_path, "ab", encoding="utf-8")`, and binary mode takes no encoding (`ValueError`). `tools/flet_pack_compat.py` runs the unchanged CLI with that one call fixed so the variant can be measured; size, packaged analysis self-test and startup are added here when the experiments job has run. Shipping `flet pack` would depend on this workaround or an upstream fix. |
+| `flet pack --onedir` (PyInstaller, officially documented by Flet) | **Measured, not recommended.** `flet pack` fails on Windows with flet-cli 1.0.5 and 1.1.0: after updating the executable's version resource it restores the overlay with `open(exe_path, "ab", encoding="utf-8")`, and binary mode takes no encoding (`ValueError`). With `tools/flet_pack_compat.py` (the unchanged CLI with that one call fixed) it builds, and its packaged analysis self-test reproduces every report hash. Run 42200307088, same runner: installed 368,703,287 B (351.6 MiB, 1,774 files) but **185.6 MiB** of compressed data against 145.8 MiB for `flet build` (its Flet client is an already-compressed 33.6 MiB archive, unpacked again on first start), and slower: startup screen after 1.25 s instead of 0.26 s, ready after 3.48 s instead of 2.40 s (warm medians; cold 4.59 s). It would also depend on the workaround or an upstream fix. |
 | Nuitka, Briefcase | not evaluated: not part of Flet's supported packaging; would need a separate Flutter client strategy |
 
 ## 9. Server option (study)
