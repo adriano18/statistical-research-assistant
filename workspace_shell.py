@@ -865,7 +865,7 @@ class DataPage:
                 header.controls[1].controls.insert(0, wc.dropdown(
                     ui, ui.t("source.in_use"), [(d.id, d.name) for d in datasets],
                     app.projects.dataset_id,
-                    on_select=lambda e: self._use_source(e.control.value), width=300,
+                    on_select=self._on_source, width=300,
                     data="data-source"))
         stats = ft.ResponsiveRow([
             wc.stat(ui, ui.t("data.source"), s.source_name, col={"xs": 12, "md": 6, "lg": 3}),
@@ -879,6 +879,9 @@ class DataPage:
             header, stats, self._next_step(), self._dictionary(), self._preview(),
             self._import_options(), self._preparation_card(), self._sample_picker(),
         ], spacing=tk.SPACE_5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
+
+    async def _on_source(self, e):
+        await self._use_source(e.control.value)
 
     async def _use_source(self, dataset_id: str | None):
         if dataset_id and dataset_id != self.app.projects.dataset_id:

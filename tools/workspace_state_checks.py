@@ -53,6 +53,15 @@ def _import_120_next_args() -> list[str]:
             f"1. {statements[0][:20]}"]
 
 
+def _labels_with(prefix: str, button: str, expected: str):
+    """A button named exactly (``prefix`` "=") and the text it must bring."""
+    def arguments() -> list[str]:
+        from workspace_text import T
+
+        return [prefix + T[button][0], T[expected][0][:40]]
+    return arguments
+
+
 def _labels(*keys: str):
     def arguments() -> list[str]:
         from workspace_text import T
@@ -86,6 +95,10 @@ CHECKS = (
     ("data-status-announced", "data", "announce",
      _labels("data.accept_confirm", "data.accept_suggestions"),
      lambda r: any("levels confirmed from suggestions" in said for said in r["announced"])),
+    # Open on Home opens the project (a lambda around the coroutine did nothing).
+    ("projects-open-from-home", "projects", "effect",
+     _labels_with("=", "project.open", "project.dashboard_subtitle"),
+     lambda r: not r["shown_before"] and r["shown_after"]),
 )
 
 

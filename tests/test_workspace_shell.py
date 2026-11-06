@@ -202,6 +202,44 @@ class SelectableTextAccessibilityTests(unittest.TestCase):
         self.assertEqual(preview.semantics_label, preview.value)
 
 
+class EventHandlerTests(unittest.TestCase):
+    """Flet 1.x awaits an event handler only when the handler itself is a
+    coroutine function: a lambda around a coroutine function returns a
+    coroutine that Flet drops, so the button does nothing. Found by the
+    packaged-EXE journeys: Open on Home and Save TXT/PNG/Word did nothing,
+    while the harness (which awaited any returned coroutine) passed. The
+    harness now dispatches events the way Flet does."""
+
+    def test_no_lambda_hands_a_coroutine_to_flet(self):
+        import ast
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        trees = {path: ast.parse(path.read_text(encoding="utf-8"))
+                 for path in sorted(root.glob("*.py"))}
+        coroutines = {node.name for tree in trees.values() for node in ast.walk(tree)
+                      if isinstance(node, ast.AsyncFunctionDef)}
+        dropped = []
+        for path, tree in trees.items():
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Lambda) and isinstance(node.body, ast.Call):
+                    func = node.body.func
+                    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+                    if name in coroutines:
+                        dropped.append(f"{path.name}:{node.lineno}: {ast.unparse(node)[:90]}")
+        self.assertEqual(dropped, [], "use wc.handler(fn, *args) or an async def handler")
+
+    def test_the_harness_refuses_a_handler_flet_would_drop(self):
+        ws = Workspace()
+        self.addCleanup(ws.close)
+
+        async def action():
+            return None
+
+        with self.assertRaises(AssertionError):
+            ws.dispatch(lambda e: action(), None)
+
+
 class ClassicIntegrationTests(unittest.TestCase):
     def test_classic_home_opens_the_workspace_and_returns_with_the_dataset(self):
         import sys

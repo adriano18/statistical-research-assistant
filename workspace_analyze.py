@@ -719,7 +719,7 @@ class ResultsPage:
                                        title=table.title, note=ui.t("results.sig_note")))
         if run.section == "omnibus" and not run.tables:
             tables.append(wc.button(ui, ui.t("results.posthoc"),
-                                    lambda e, i=entry.id: self._posthoc(i),
+                                    wc.handler(self._posthoc, entry.id),
                                     icon=ft.Icons.COMPARE_ARROWS, data="result-posthoc"))
         sections.append(wc.card(ui, tables or [wc.caption(ui, ui.t("results.no_table"))],
                                 title=ui.t("results.table"), data="result-table"))
@@ -864,12 +864,12 @@ class ResultsPage:
             wc.button(ui, ui.t("results.copy"), lambda e, i=entry.id: self._copied(i),
                       action=ft.CopyToClipboard(self.complete_report(run)),
                       icon=ft.Icons.CONTENT_COPY, data="export-copy"),
-            wc.button(ui, ui.t("results.save_txt"), lambda e: self._save(entry, "text"),
+            wc.button(ui, ui.t("results.save_txt"), wc.handler(self._save, entry, "text"),
                       icon=ft.Icons.TEXT_SNIPPET_OUTLINED, data="export-txt"),
-            wc.button(ui, ui.t("results.save_png"), lambda e: self._save(entry, "image"),
+            wc.button(ui, ui.t("results.save_png"), wc.handler(self._save, entry, "image"),
                       icon=ft.Icons.IMAGE_OUTLINED, disabled=not run.png,
                       tooltip=None if run.png else ui.t("disabled.no_figure"), data="export-png"),
-            wc.button(ui, ui.t("results.save_docx"), lambda e: self._save(entry, "docx"),
+            wc.button(ui, ui.t("results.save_docx"), wc.handler(self._save, entry, "docx"),
                       icon=ft.Icons.DESCRIPTION_OUTLINED, kind="primary", data="export-docx"),
             figure_number,
         ], wrap=True, spacing=tk.SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER),
