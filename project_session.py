@@ -264,21 +264,9 @@ class ProjectBinding:
             record = project.active_dataset()
             if record is not None:
                 try:
-                    frame = project.load_frame(record.id)
+                    self._show_dataset(record)
                 except Exception:
                     self.message = ("project.dataset_missing", "warning")
-                    frame = None
-                if frame is not None:
-                    origin = "survey" if record.survey_id else (
-                        "file" if record.source_path else "copy")
-                    session.set_dataset(frame, record.name, path=record.source_path,
-                                        origin=origin, survey_id=record.survey_id)
-                    self.dataset_id = record.id
-                    for name, row in project.levels(record.id).items():
-                        level = row.get("level")
-                        if level in LEVELS and level != "unknown" and name in session.variables:
-                            session.confirm_level(name, level, row.get("confirmed_in") or "data")
-                    self._saved_levels = self._current_levels()
             names = {d.id: d.name for d in project.datasets()}
             for run in project.runs():
                 entry = session.add_result(
@@ -298,6 +286,53 @@ class ProjectBinding:
             session.notify("results")
         finally:
             self._restoring = False
+
+    def _show_dataset(self, record) -> None:
+        """Put a stored dataset on screen with exactly its confirmed levels
+        (call with ``_restoring`` set: nothing is saved again)."""
+        project, session = self.project, self.session
+        frame = project.load_frame(record.id)
+        origin = "survey" if record.survey_id else ("file" if record.source_path else "copy")
+        session.set_dataset(frame, record.name, path=record.source_path, origin=origin,
+                            survey_id=record.survey_id)
+        self.dataset_id = record.id
+        saved = project.levels(record.id)
+        for name in list(session.variables):
+            row = saved.get(name) or {}
+            level = row.get("level")
+            if level in LEVELS and level != "unknown":
+                session.confirm_level(name, level, row.get("confirmed_in") or "data")
+            elif session.level(name) != "unknown":
+                # Same column names as the table shown before: its levels are
+                # not this dataset's confirmations.
+                session.confirm_level(name, "unknown")
+        self._saved_levels = self._current_levels()
+
+    def activate_dataset(self, dataset_id: str):
+        """Use another dataset of the open project. Nothing is replaced or
+        lost: the dataset in use stays in the project, and the chosen one
+        comes back with its confirmed measurement levels."""
+        if self.project is None:
+            raise ProjectError("No project is open.")
+        record = self.project.dataset(dataset_id)
+        self._restoring = True
+        try:
+            self._show_dataset(record)
+        finally:
+            self._restoring = False
+        self.project.set_active_dataset(record.id)
+        self._refresh_stale()
+        return record
+
+    def link_questionnaire(self, survey_id: str, title: str, role: str = "published") -> None:
+        """Keep a questionnaire published while this project is open with it."""
+        if self.project is not None:
+            self.project.link_questionnaire(survey_id, title, role)
+
+    def questionnaire_ids(self) -> set[str]:
+        if self.project is None:
+            return set()
+        return {row["survey_id"] for row in self.project.questionnaires()}
 
     def _adopt_session(self) -> None:
         """Save the work already on screen into the (new) project."""

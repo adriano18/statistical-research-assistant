@@ -23,8 +23,9 @@ class ShellTests(unittest.TestCase):
 
     def assert_page_ok(self, route):
         self.assertFalse(self.ws.has_text("This page could not be shown"), route)
-        body = self.ws.app.content_host.content
+        body = self.ws.app.page_control
         self.assertEqual(body.data, f"workspace-page-{route}")
+        self.assertEqual(body.key, f"workspace-page-{route}")
 
     def test_every_route_renders_empty_and_with_data(self):
         for route in ROUTES:
@@ -109,6 +110,32 @@ class ShellTests(unittest.TestCase):
             ws.app.navigate("questionnaires")
             self.assertTrue(ws.find_all("q-pane"))  # compact layouts switch panes
 
+    def test_no_expanding_child_in_a_wrapping_row(self):
+        """Flutter cannot lay out an expanding child inside a wrapping row and
+        shows a grey error box instead (found by the dark 1100 px screenshot
+        of the project page). Every scenario, at a compact and a wide width."""
+        import sys
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+        from workspace_scenarios import SCENARIOS, apply
+
+        found = []
+        for width in (1100, 1440):
+            for name in [s for s in SCENARIOS if not s.startswith("classic")]:
+                ws = Workspace(width)
+                try:
+                    ws.run(apply(ws.app, name))
+                    for control in ws.controls():
+                        if isinstance(control, ft.Row) and control.wrap:
+                            for child in control.controls:
+                                if getattr(child, "expand", None):
+                                    found.append((width, name, getattr(child, "data", None)
+                                                  or type(child).__name__))
+                finally:
+                    ws.close()
+        self.assertEqual(found, [])
+
     def test_status_line_is_a_live_region(self):
         live = [c for c in self.ws.controls() if isinstance(c, ft.Semantics) and c.live_region]
         self.assertTrue(live)
@@ -118,6 +145,44 @@ class ShellTests(unittest.TestCase):
     def test_preview_is_marked_as_prototype(self):
         self.assertTrue(self.ws.has_text("Preview"))
         self.assertTrue(self.ws.has_text("Prototype"))
+
+
+class EventHandlerTests(unittest.TestCase):
+    """Flet 1.x awaits an event handler only when the handler itself is a
+    coroutine function: a lambda around a coroutine function returns a
+    coroutine that Flet drops, so the button does nothing. Found by the
+    packaged-EXE journeys: Open on Home and Save TXT/PNG/Word did nothing,
+    while the harness (which awaited any returned coroutine) passed. The
+    harness now dispatches events the way Flet does."""
+
+    def test_no_lambda_hands_a_coroutine_to_flet(self):
+        import ast
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        trees = {path: ast.parse(path.read_text(encoding="utf-8"))
+                 for path in sorted(root.glob("*.py"))}
+        coroutines = {node.name for tree in trees.values() for node in ast.walk(tree)
+                      if isinstance(node, ast.AsyncFunctionDef)}
+        dropped = []
+        for path, tree in trees.items():
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Lambda) and isinstance(node.body, ast.Call):
+                    func = node.body.func
+                    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+                    if name in coroutines:
+                        dropped.append(f"{path.name}:{node.lineno}: {ast.unparse(node)[:90]}")
+        self.assertEqual(dropped, [], "use wc.handler(fn, *args) or an async def handler")
+
+    def test_the_harness_refuses_a_handler_flet_would_drop(self):
+        ws = Workspace()
+        self.addCleanup(ws.close)
+
+        async def action():
+            return None
+
+        with self.assertRaises(AssertionError):
+            ws.dispatch(lambda e: action(), None)
 
 
 class ClassicIntegrationTests(unittest.TestCase):

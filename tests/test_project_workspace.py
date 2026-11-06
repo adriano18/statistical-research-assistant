@@ -111,11 +111,14 @@ class ProjectHubTests(ProjectWorkspaceCase):
         ws.run(ws.app.load_sample("sample_three_groups.csv"))
         ws.app.navigate("home")
         ws.click(f"project-open-{first.id}")
+        self.assertEqual(ws.app.route, "project", "an opened project shows its own page")
         self.assertEqual(ws.app.session.source_name, "measurements.csv")
         self.assertEqual(len(ws.app.session.results), 1)
+        ws.app.navigate("home")
         ws.click(f"project-open-{second.id}")
         self.assertEqual(ws.app.session.source_name, "sample_three_groups.csv")
         self.assertEqual(ws.app.session.results, [])
+        ws.app.navigate("home")
         self.assertTrue(ws.find(f"project-current-{second.id}"))
 
     def test_duplicate_archive_backup_delete_and_restore_from_home(self):

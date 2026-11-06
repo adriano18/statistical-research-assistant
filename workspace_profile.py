@@ -26,6 +26,7 @@ class ProfileSettings:
         self.app = app
         self.draft = app.profile
         self.feedback: tuple[str, str] | None = None
+        self.opened: set[str] = set()
 
     # ---------------------------------------------------------- profile
     def profile_card(self) -> ft.Control:
@@ -121,14 +122,13 @@ class ProfileSettings:
             if project is not None:
                 text = ai_context.preview(source.key, project=project, session=app.session,
                                           profile=app.profile, survey_root=app.survey_root)
-                block.append(ft.Container(ft.ExpansionTile(
-                    title=wc.text(ui, ui.t("ai.preview"), tk.TYPE_BODY),
-                    controls=[ft.Container(wc.text(
+                block.append(wc.expansion(
+                    ui, wc.text(ui, ui.t("ai.preview"), tk.TYPE_BODY),
+                    [ft.Container(wc.text(
                         ui, text or ui.t("ai.preview_empty"), tk.TYPE_BODY, selectable=True,
                         color=ui.p.text if text else ui.p.text_secondary,
                         data=f"ai-preview-{source.key}"), padding=tk.SPACE_3)],
-                    bgcolor=ui.p.surface, collapsed_bgcolor=ui.p.surface,
-                ), border=ft.Border.all(1, ui.p.border), border_radius=ui.radius("control")))
+                    key=f"ai-preview-tile-{source.key}", opened=self.opened))
             rows.append(ft.Container(ft.Column(block, spacing=tk.SPACE_2), padding=tk.SPACE_3,
                                      border=ft.Border.all(1, ui.p.border),
                                      border_radius=ui.radius("card")))

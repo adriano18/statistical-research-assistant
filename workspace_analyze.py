@@ -15,7 +15,7 @@ import flet as ft
 import workspace_components as wc
 import workspace_tokens as tk
 from workspace_methods import (
-    FAMILIES, GOAL_ROLES, GOALS, METHODS, advise, default_options,
+    FAMILIES, GOAL_ROLES, GOALS, METHODS, RoleProblems, advise, default_options,
     required_confirmations, run_method,
 )
 from workspace_state import LEVELS
@@ -27,6 +27,25 @@ GOAL_ICONS = {
     "predict": ft.Icons.TRENDING_UP, "scale": ft.Icons.FACT_CHECK_OUTLINED,
     "structure": ft.Icons.ACCOUNT_TREE_OUTLINED, "describe": ft.Icons.BAR_CHART,
 }
+
+
+def problem_text(ui, key: str, params: dict) -> str:
+    """A blocker in the researcher's language; parameters that are text keys
+    (roles, measurement levels, "level.a / level.b" lists) are translated too."""
+    from workspace_text import T
+
+    def value(item):
+        if isinstance(item, str):
+            parts = [part.strip() for part in item.split(" / ")]
+            if parts and all(part in T for part in parts):
+                return " / ".join(ui.t(part) for part in parts)
+        return item
+
+    return ui.t(key, **{name: value(item) for name, item in params.items()})
+
+
+def problems_text(ui, problems) -> str:
+    return "\n".join("• " + problem_text(ui, key, params) for key, params in problems)
 
 
 def session_note(app) -> str:
@@ -274,10 +293,8 @@ class AnalyzePage:
                                    run_spacing=tk.SPACE_3))
         if advice.blockers:
             controls.append(wc.notice(
-                ui, "\n".join("• " + ui.t(key, **{k: (ui.t(v) if k == "role" else v)
-                                                  for k, v in params.items()})
-                              for key, params in advice.blockers),
-                "warning", title=ui.t("design.blocked"), data="design-blockers"))
+                ui, problems_text(ui, advice.blockers), "warning", title=ui.t("design.blocked"),
+                data="design-blockers"))
             return controls
         for key, params in advice.reasons[:1]:
             if key == "design.groups_found":
@@ -331,6 +348,7 @@ class AnalyzePage:
                    if not self.confirms.get(c.key)]
         run = wc.button(ui, ui.t("rec.run", method=label), self._run_guided, kind="primary",
                         icon=ft.Icons.PLAY_ARROW, disabled=bool(missing) or self.running,
+                        tooltip=ui.t("disabled.confirm_first") if missing else None,
                         data="guided-run")
         controls: list[ft.Control] = [
             ft.Row([wc.heading(ui, label, tk.TYPE_TITLE_M, data="guided-method"),
@@ -390,6 +408,14 @@ class AnalyzePage:
         started = (app.projects.generation, id(app.session.df))
         try:
             run = await asyncio.to_thread(run_method, key, app.session, roles, options, confirms)
+        except RoleProblems as error:
+            # Explained in the researcher's language, never as internal codes.
+            self.running = False
+            self.message = (app.t("run.blocked") + "\n" + problems_text(app.ui, error.problems),
+                            "warning")
+            app.status(app.t("run.blocked"), "warning")
+            app.render()
+            return None
         except Exception as error:
             self.running = False
             self.message = (app.t("run.failed", error=error), "danger")
@@ -510,12 +536,13 @@ class AnalyzePage:
             content += [wc.section_label(ui, ui.t("form.confirmations")), *confirmations]
         other = [p for p in problems if p[0] != "design.confirm_level"]
         if other:
-            content.append(wc.notice(ui, "\n".join(
-                "• " + ui.t(k, **{a: (ui.t(b) if a == "role" else b) for a, b in p.items()})
-                for k, p in other), "warning"))
+            content.append(wc.notice(ui, problems_text(ui, other), "warning",
+                                     data="form-problems"))
         content.append(ft.Row([
             wc.button(ui, ui.t("form.run"), self._run_form, kind="primary",
                       icon=ft.Icons.PLAY_ARROW, disabled=bool(problems or missing) or self.running,
+                      tooltip=(ui.t("disabled.resolve_first") if problems else
+                               ui.t("disabled.confirm_first") if missing else None),
                       data="form-run"),
             wc.button(ui, ui.t("form.back"), self._back, kind="quiet", icon=ft.Icons.ARROW_BACK),
         ], spacing=tk.SPACE_3))
@@ -557,6 +584,8 @@ class AnalyzePage:
 class ResultsPage:
     def __init__(self, app):
         self.app = app
+        self.opened: set[str] = set()      # expanded sections (kept across renders)
+        self._seen: set[int] = set()
         self.reviewed: dict[int, set[str]] = {}
         self.notes: dict[int, str] = {}
         self.feedback: dict[int, tuple[str, str]] = {}
@@ -690,7 +719,7 @@ class ResultsPage:
                                        title=table.title, note=ui.t("results.sig_note")))
         if run.section == "omnibus" and not run.tables:
             tables.append(wc.button(ui, ui.t("results.posthoc"),
-                                    lambda e, i=entry.id: self._posthoc(i),
+                                    wc.handler(self._posthoc, entry.id),
                                     icon=ft.Icons.COMPARE_ARROWS, data="result-posthoc"))
         sections.append(wc.card(ui, tables or [wc.caption(ui, ui.t("results.no_table"))],
                                 title=ui.t("results.table"), data="result-table"))
@@ -714,25 +743,28 @@ class ResultsPage:
                               self.notes.get(entry.id, ""), multiline=True,
                               on_change=lambda e, i=entry.id: self.notes.__setitem__(
                                   i, e.control.value or ""))
-        sections.append(ft.Container(ft.ExpansionTile(
-            title=wc.heading(ui, ui.t("results.interpretation"), tk.TYPE_TITLE_S),
-            subtitle=wc.caption(ui, ui.t("results.interpretation_hint")),
-            expanded=self.app.profile.explanations == "detailed",
-            data="result-interpretation-section",
-            controls=[ft.Container(ft.Column([
+        if entry.id not in self._seen:
+            # "Detailed" explanations (optional profile) open the interpretation
+            # once; afterwards the researcher's own choice is kept.
+            self._seen.add(entry.id)
+            if self.app.profile.explanations == "detailed":
+                self.opened.add(f"interpretation-{entry.id}")
+        sections.append(wc.expansion(
+            ui, wc.heading(ui, ui.t("results.interpretation"), tk.TYPE_TITLE_S),
+            [ft.Container(ft.Column([
                 wc.text(ui, interpretation_summary(evidence, reviewed,
                                                    self.notes.get(entry.id, "")),
                         tk.TYPE_BODY, selectable=True, data="result-interpretation"),
                 notes,
             ], spacing=tk.SPACE_3), padding=tk.SPACE_4)],
-            bgcolor=ui.p.surface, collapsed_bgcolor=ui.p.surface,
-        ), border=ft.Border.all(1, ui.p.border), border_radius=ui.radius("card")))
-        sections.append(ft.Container(ft.ExpansionTile(
-            title=wc.heading(ui, ui.t("results.report"), tk.TYPE_TITLE_S),
-            controls=[ft.Container(wc.text(ui, run.report, tk.TYPE_BODY, selectable=True,
-                                           data="result-report"), padding=tk.SPACE_4)],
-            bgcolor=ui.p.surface, collapsed_bgcolor=ui.p.surface,
-        ), border=ft.Border.all(1, ui.p.border), border_radius=ui.radius("card")))
+            key=f"interpretation-{entry.id}", opened=self.opened,
+            subtitle=wc.caption(ui, ui.t("results.interpretation_hint")),
+            data="result-interpretation-section"))
+        sections.append(wc.expansion(
+            ui, wc.heading(ui, ui.t("results.report"), tk.TYPE_TITLE_S),
+            [ft.Container(wc.text(ui, run.report, tk.TYPE_BODY, selectable=True,
+                                  data="result-report"), padding=tk.SPACE_4)],
+            key=f"report-{entry.id}", opened=self.opened, data="result-report-section"))
         provenance = [
             wc.labeled(ui, ui.t("results.dataset"),
                        f"{entry.dataset} · {count_text(ui.language, entry.rows, 'rows')}"),
@@ -746,9 +778,6 @@ class ResultsPage:
         sections.append(wc.card(ui, provenance, title=ui.t("results.provenance"),
                                 data="result-provenance"))
         sections.append(self._exports(entry, evidence, reviewed))
-        if entry.id in self.feedback:
-            message, tone = self.feedback[entry.id]
-            sections.append(wc.notice(ui, message, tone, data="result-feedback"))
         return ft.Column(sections, spacing=tk.SPACE_4, data=f"result-detail-{entry.id}",
                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 
@@ -828,19 +857,23 @@ class ResultsPage:
         figure_number = wc.text_field(ui, "Figure number", self.figure_number, width=150,
                                       on_change=lambda e: setattr(self, "figure_number",
                                                                   e.control.value or "1"))
+        # The outcome of the last save or copy sits right under the buttons.
+        feedback = ([wc.notice(ui, *self.feedback[entry.id], data="result-feedback")]
+                    if entry.id in self.feedback else [])
         return wc.card(ui, [ft.Row([
             wc.button(ui, ui.t("results.copy"), lambda e, i=entry.id: self._copied(i),
                       action=ft.CopyToClipboard(self.complete_report(run)),
                       icon=ft.Icons.CONTENT_COPY, data="export-copy"),
-            wc.button(ui, ui.t("results.save_txt"), lambda e: self._save(entry, "text"),
+            wc.button(ui, ui.t("results.save_txt"), wc.handler(self._save, entry, "text"),
                       icon=ft.Icons.TEXT_SNIPPET_OUTLINED, data="export-txt"),
-            wc.button(ui, ui.t("results.save_png"), lambda e: self._save(entry, "image"),
-                      icon=ft.Icons.IMAGE_OUTLINED, disabled=not run.png, data="export-png"),
-            wc.button(ui, ui.t("results.save_docx"), lambda e: self._save(entry, "docx"),
+            wc.button(ui, ui.t("results.save_png"), wc.handler(self._save, entry, "image"),
+                      icon=ft.Icons.IMAGE_OUTLINED, disabled=not run.png,
+                      tooltip=None if run.png else ui.t("disabled.no_figure"), data="export-png"),
+            wc.button(ui, ui.t("results.save_docx"), wc.handler(self._save, entry, "docx"),
                       icon=ft.Icons.DESCRIPTION_OUTLINED, kind="primary", data="export-docx"),
             figure_number,
-        ], wrap=True, spacing=tk.SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER)],
-            title=None, data="result-exports")
+        ], wrap=True, spacing=tk.SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            *feedback], title=None, data="result-exports")
 
     def _copied(self, entry_id: int):
         self.feedback[entry_id] = (self.app.t("results.copied"), "success")
@@ -887,16 +920,10 @@ class ResultsPage:
             return
         name, writer = self.export_payload(entry, kind)
         extension = name.rsplit(".", 1)[-1]
-        try:
-            destination = await app.save_dialog(app.t("results.save_" + (
-                "txt" if kind == "text" else "png" if kind == "image" else "docx")), name,
-                extension)
-            if not destination:
-                return
-            saved = await asyncio.to_thread(writer, destination)
-            self.feedback[entry.id] = (app.t("results.saved", path=saved), "success")
-        except Exception as error:
-            self.feedback[entry.id] = (app.t("results.save_failed", error=error), "danger")
+        outcome = await app.save_file(app.t("results.save_" + (
+            "txt" if kind == "text" else "png" if kind == "image" else "docx")), name,
+            extension, writer)
+        self.feedback[entry.id] = (outcome.message, outcome.tone)
         app.render()
 
 
@@ -906,7 +933,9 @@ class ReportsPage:
         self.app = app
         self.study_title = ""
         self.include_stale = False
+        self.opened: set[str] = set()
         self.feedback: tuple[str, str] | None = None
+        self._preview: ft.Text | None = None   # updated in place while typing
 
     def _blocked(self) -> bool:
         stale = [e for e in self.app.session.report_entries() if e.stale_reasons]
@@ -917,9 +946,13 @@ class ReportsPage:
         header = wc.page_header(ui, ui.t("reports.title"), ui.t("reports.subtitle"), actions=[
             wc.button(ui, ui.t("reports.export_txt"), self._export, kind="primary",
                       icon=ft.Icons.FILE_DOWNLOAD_OUTLINED,
-                      disabled=not s.report_order or self._blocked(), data="reports-export"),
+                      disabled=not s.report_order or self._blocked(),
+                      tooltip=(ui.t("disabled.report_empty") if not s.report_order else
+                               ui.t("disabled.report_stale") if self._blocked() else None),
+                      data="reports-export"),
         ])
         entries = s.report_entries()
+        self._preview = None
         if not entries:
             body = [wc.empty_state(ui, ft.Icons.DESCRIPTION_OUTLINED, ui.t("reports.empty.title"),
                                    ui.t("reports.empty.body"), actions=[
@@ -958,15 +991,14 @@ class ReportsPage:
                     wc.checkbox(ui, ui.t("reports.include_stale"), self.include_stale,
                                 on_change=lambda e: self._include(bool(e.control.value)),
                                 data="reports-include-stale")], data="reports-stale")]
-            preview = ft.Container(ft.ExpansionTile(
-                title=wc.heading(ui, ui.t("reports.preview"), tk.TYPE_TITLE_S),
-                subtitle=wc.caption(ui, ui.t("reports.preview_hint")),
-                controls=[ft.Container(wc.text(
-                    ui, s.combined_report(self.study_title), tk.TYPE_BODY, selectable=True,
-                    data="reports-preview-text"), padding=tk.SPACE_4)],
-                bgcolor=ui.p.surface, collapsed_bgcolor=ui.p.surface,
-            ), border=ft.Border.all(1, ui.p.border), border_radius=ui.radius("card"),
-                data="reports-preview")
+            self._preview = wc.text(
+                ui, s.combined_report(self.study_title), tk.TYPE_BODY, selectable=True,
+                data="reports-preview-text")
+            preview = wc.expansion(
+                ui, wc.heading(ui, ui.t("reports.preview"), tk.TYPE_TITLE_S),
+                [ft.Container(self._preview, padding=tk.SPACE_4)],
+                key="reports-preview", opened=self.opened,
+                subtitle=wc.caption(ui, ui.t("reports.preview_hint")), data="reports-preview")
             body = [
                 wc.text_field(ui, ui.t("reports.study_title"), self.study_title, width=520,
                               on_change=self._set_title, data="reports-study-title"),
@@ -982,8 +1014,15 @@ class ReportsPage:
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH), tk.READING_MAX_WIDTH + 240)
 
     def _set_title(self, e):
+        """The preview shows the title as it will be exported. It is updated
+        in place: re-rendering the page on every keystroke is not needed."""
         self.study_title = e.control.value or ""
-        self.app.render()        # the preview shows the title as it will be exported
+        if self._preview is not None:
+            self._preview.value = self.app.session.combined_report(self.study_title)
+            try:
+                self.app.page.update()
+            except Exception:  # pragma: no cover - page not shown
+                pass
 
     def _include(self, value: bool):
         self.include_stale = value
@@ -1006,18 +1045,12 @@ class ReportsPage:
         if self._blocked():
             return
         text = app.session.combined_report(self.study_title)
-        try:
-            destination = await app.save_dialog(app.t("reports.export_txt"),
-                                                "research_report.txt", "txt")
-            if not destination:
-                return
-            from pathlib import Path
 
-            path = Path(destination)
-            if path.suffix.lower() != ".txt":
-                path = path.with_suffix(".txt")
-            await asyncio.to_thread(path.write_text, text, encoding="utf-8")
-            self.feedback = (app.t("results.saved", path=path), "success")
-        except Exception as error:
-            self.feedback = (app.t("results.save_failed", error=error), "danger")
+        def write(path):
+            path.write_text(text, encoding="utf-8")
+            return path
+
+        outcome = await app.save_file(app.t("reports.export_txt"), "research_report.txt",
+                                      "txt", write)
+        self.feedback = (outcome.message, outcome.tone)
         app.render()
