@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import copy
 from pathlib import Path
+import shutil
 
 import flet as ft
 
@@ -20,6 +21,8 @@ import workspace_components as wc
 import workspace_tokens as tk
 from import_session import ImportSession
 from workspace_text import count_text
+
+IMPORT_SUFFIXES = (".pdf", ".docx", ".doc")
 
 KINDS = ("single_choice", "multiple_choice", "likert5", "likert7", "rating_scale",
          "yes_no", "number", "short_text", "long_text", "date", "consent")
@@ -141,7 +144,9 @@ class QuestionnairesPage:
             wc.button(ui, ui.t("q.import"), action=app.open_document_action,
                       icon=ft.Icons.DOCUMENT_SCANNER_OUTLINED, data="q-import"),
             wc.button(ui, ui.t("q.publish"), self._ask_publish, kind="primary",
-                      icon=ft.Icons.PUBLISH, disabled=not self.draft, data="q-publish"),
+                      icon=ft.Icons.PUBLISH, disabled=not self.draft,
+                      tooltip=None if self.draft else ui.t("disabled.no_questions"),
+                      data="q-publish"),
         ])
         meta = ft.Row([
             wc.text_field(ui, ui.t("q.survey_title"), self.title, width=420,
@@ -282,21 +287,53 @@ class QuestionnairesPage:
     def _load_template(self, e=None):
         from survey_ui import _template_questions
 
-        if self.draft and self.feedback != ("replace", "confirm"):
-            self.feedback = ("replace", "confirm")
-        self.draft = copy.deepcopy(_template_questions(self.template))
-        self.selected = 0 if self.draft else None
-        self.origin = ""
-        self.feedback = None
-        self.app.render()
+        questions = copy.deepcopy(_template_questions(self.template))
+
+        def replace():
+            self.load_draft(questions)
+            self.feedback = None
+            self.app.render()
+
+        self.confirm_replace(self.template, len(questions), replace)
+
+    def confirm_replace(self, incoming: str, count: int, replace) -> None:
+        """Run ``replace`` at once when the builder is empty; otherwise ask
+        first, so an unsaved draft is never silently replaced or mixed with
+        imported questions."""
+        if not self.draft:
+            replace()
+            return
+        app, ui = self.app, self.app.ui
+
+        def confirm(e=None):
+            app.page.pop_dialog()
+            replace()
+
+        app.page.show_dialog(ft.AlertDialog(
+            modal=True,
+            title=wc.heading(ui, ui.t("q.replace_title"), tk.TYPE_TITLE_S),
+            content=ft.Container(wc.text(ui, ui.t(
+                "q.replace_body", current=self.title.strip() or ui.t("q.untitled"),
+                current_count=len(self.draft), incoming=incoming, count=count), tk.TYPE_BODY),
+                width=500),
+            actions=[wc.button(ui, ui.t("common.cancel"), lambda e: app.page.pop_dialog(),
+                               kind="quiet", data="q-replace-cancel"),
+                     wc.button(ui, ui.t("q.replace_confirm"), confirm, kind="primary",
+                               data="q-replace-confirm")],
+        ))
 
     def load_draft(self, questions: list[dict], *, title: str = "", origin: str = ""):
-        """Entry point used by the scientific import workspace."""
+        """Start a new draft from ``questions`` (an import or a template).
+
+        The previous draft, its title and instructions are replaced as a
+        whole: questions of two questionnaires are never mixed."""
         self.draft = copy.deepcopy(questions)
         self.selected = 0 if questions else None
-        if title and not self.title:
-            self.title = title
+        self.title = title
+        self.description = ""
         self.origin = origin
+        self.preview_answers = {}
+        self.editor_error = ""
 
     # ------------------------------------------------------------ editor
     def _editor_pane(self) -> ft.Control:
@@ -548,6 +585,11 @@ class QuestionnairesPage:
             self.feedback = (self.app.t("q.invalid", error=error), "danger")
             self.app.render()
             return None
+        # Published while a project is open: the form belongs to that project.
+        try:
+            self.app.projects.link_questionnaire(survey.survey_id, survey.title, "published")
+        except Exception:
+            pass   # the questionnaire itself is saved; linking is a convenience
         self.feedback = (self.app.t("q.publish_ok", title=survey.title), "success")
         self.app.render()
         return survey
@@ -561,22 +603,33 @@ class QuestionnairesPage:
             surveys = list_surveys(self.app.survey_root)
         except Exception:
             surveys = []
+        linked = self.app.projects.questionnaire_ids()
+        if self.app.projects.active:
+            # This project's questionnaires first, the others under their own label.
+            surveys.sort(key=lambda s: s.survey_id not in linked)
         rows = []
-        for survey in surveys[:12]:
+        label_other = self.app.projects.active
+        for index, survey in enumerate(surveys[:12]):
+            if self.app.projects.active and index == 0 and survey.survey_id in linked:
+                rows.append(wc.section_label(ui, ui.t("q.in_project")))
+            if label_other and survey.survey_id not in linked:
+                rows.append(wc.section_label(ui, ui.t("q.other_surveys")))
+                label_other = False
             count = response_count(self.app.survey_root, survey.survey_id)
             rows.append(ft.Row([
                 ft.Icon(ft.Icons.ASSIGNMENT_TURNED_IN_OUTLINED, size=18, color=ui.p.text_secondary),
                 ft.Column([wc.text(ui, survey.title, tk.TYPE_BODY, weight=ft.FontWeight.W_600),
                            wc.caption(ui, f"{count_text(ui.language, len(survey.questions), 'questions')}"
-                                          f" · {count_text(ui.language, count, 'responses')}")],
+                                          f" · {ui.t('q.collected', count=count)}")],
                           spacing=2, expand=True),
                 wc.button(ui, ui.t("q.collect"), lambda e, s=survey: self._collect(s),
                           kind="quiet", icon=ft.Icons.EDIT_NOTE, data=f"collect-{survey.survey_id}"),
-                wc.button(ui, ui.t("q.export_responses"), lambda e, s=survey: self._export(s),
+                wc.button(ui, ui.t("q.export_responses"), wc.handler(self._export, survey),
                           kind="quiet", icon=ft.Icons.FILE_DOWNLOAD_OUTLINED,
-                          disabled=count == 0),
+                          disabled=count == 0, data=f"export-responses-{survey.survey_id}"),
                 wc.button(ui, ui.t("q.analyze_responses"), lambda e, s=survey: self._analyze(s),
                           icon=ft.Icons.QUERY_STATS, disabled=count == 0,
+                          tooltip=None if count else ui.t("q.no_responses_yet"),
                           data=f"analyze-{survey.survey_id}"),
             ], vertical_alignment=ft.CrossAxisAlignment.CENTER))
         return wc.card(ui, rows or [wc.caption(ui, ui.t("home.saved_none"))],
@@ -631,30 +684,66 @@ class QuestionnairesPage:
     async def _export(self, survey):
         from survey_storage import save_survey_codebook, save_survey_csv
 
-        destination = await self.app.save_dialog(self.app.t("q.export_responses"),
-                                                 f"{survey.survey_id}_responses.csv", "csv")
-        if not destination:
-            return
-        try:
-            csv_path = Path(destination)
-            book = csv_path.with_name(csv_path.stem + "_codebook.json")
-            await asyncio.to_thread(save_survey_csv, self.app.survey_root, survey.survey_id, csv_path)
-            await asyncio.to_thread(save_survey_codebook, self.app.survey_root, survey.survey_id,
-                                    book)
-            self.feedback = (self.app.t("results.saved", path=f"{csv_path} · {book.name}"),
-                             "success")
-        except Exception as error:
-            self.feedback = (self.app.t("results.save_failed", error=error), "danger")
-        self.app.render()
+        app = self.app
+
+        def codebook(csv_path: Path) -> Path:
+            return csv_path.with_name(csv_path.stem + "_codebook.json")
+
+        def write(csv_path: Path) -> Path:
+            written = save_survey_csv(app.survey_root, survey.survey_id, csv_path)
+            save_survey_codebook(app.survey_root, survey.survey_id, codebook(written))
+            return written
+
+        outcome = await app.save_file(
+            app.t("q.export_responses"), f"{survey.survey_id}_responses.csv", "csv", write,
+            announce=lambda path: app.t("q.exported", path=path, codebook=codebook(path).name))
+        self.feedback = (outcome.message, outcome.tone)
+        app.render()
 
     def _analyze(self, survey):
+        """Analyze collected responses as their own, explicitly named dataset.
+
+        The dataset in use is never replaced without asking: in a project it
+        stays among the project's data sources; without one, the researcher
+        is told that it will be closed."""
         from survey_storage import responses_dataframe
 
-        df = responses_dataframe(self.app.survey_root, survey.survey_id)
-        self.app.session.set_dataset(df, survey.title, origin="survey",
-                                     survey_id=survey.survey_id)
-        self.app.status(self.app.t("data.loaded", name=survey.title), "success")
-        self.app.navigate("data")
+        app, s = self.app, self.app.session
+        try:
+            df = responses_dataframe(app.survey_root, survey.survey_id)
+        except (OSError, ValueError) as error:
+            self.feedback = (app.t("data.load_failed", error=error), "danger")
+            app.render()
+            return
+        name = app.t("responses.name", title=survey.title)
+        same = s.dataset_origin == "survey" and s.dataset_survey_id == survey.survey_id
+        if not s.has_data or same:
+            self._use_responses(survey, df, name)
+            return
+        ui = app.ui
+
+        def use(e=None):
+            app.page.pop_dialog()
+            self._use_responses(survey, df, name)
+
+        body = ui.t("responses.body_project" if app.projects.active else "responses.body_alone",
+                    name=name, current=s.source_name, count=len(df))
+        app.page.show_dialog(ft.AlertDialog(
+            modal=True,
+            title=wc.heading(ui, ui.t("responses.title", title=survey.title), tk.TYPE_TITLE_S),
+            content=ft.Container(wc.text(ui, body, tk.TYPE_BODY), width=500),
+            actions=[wc.button(ui, ui.t("common.cancel"), lambda e: app.page.pop_dialog(),
+                               kind="quiet", data="responses-cancel"),
+                     wc.button(ui, ui.t("responses.use"), use, kind="primary",
+                               icon=ft.Icons.QUERY_STATS, data="responses-use")],
+        ))
+
+    def _use_responses(self, survey, df, name: str):
+        app = self.app
+        app.session.set_dataset(df, name, origin="survey", survey_id=survey.survey_id)
+        app.pages["analyze"].reset()
+        app.status(app.t("responses.loaded", name=name, count=len(df)), "success")
+        app.navigate("data")
 
 
 # ================================================================== import
@@ -683,7 +772,24 @@ class ImportPage:
             self.feedback = (self.app.t("imp.read_failed", error=error), "danger")
             self.app.render()
 
+    def unreadable(self, name: str) -> str | None:
+        """Why this document cannot be read here, with what to do instead
+        (checked before anything is replaced)."""
+        suffix = Path(name).suffix.lower()
+        if suffix not in IMPORT_SUFFIXES:
+            return self.app.t("imp.unsupported", name=name)
+        if suffix == ".doc" and shutil.which("antiword") is None:
+            return self.app.t("imp.doc_unavailable", name=name)
+        return None
+
     async def open_bytes(self, binary: bytes, name: str):
+        problem = self.unreadable(name)
+        if problem:
+            # Nothing is opened, and a document already under review stays.
+            self.feedback = (problem, "danger")
+            self.app.status(problem, "danger")
+            self.app.render()
+            return
         self.busy, self.feedback = True, (self.app.t("imp.reading"), "info")
         self.app.render()
         try:
@@ -714,7 +820,12 @@ class ImportPage:
         ])
         body: list[ft.Control] = [header]
         if self.feedback:
-            body.append(wc.notice(ui, self.feedback[0], self.feedback[1], data="imp-feedback"))
+            retry = ([wc.button(ui, ui.t("imp.choose_other"), action=app.open_document_action,
+                                kind="secondary", icon=ft.Icons.UPLOAD_FILE,
+                                data="imp-choose-other")]
+                     if self.feedback[1] == "danger" else [])
+            body.append(wc.notice(ui, self.feedback[0], self.feedback[1], actions=retry,
+                                  data="imp-feedback"))
         if self.session.source is None:
             body.append(wc.empty_state(ui, ft.Icons.DOCUMENT_SCANNER_OUTLINED,
                                        ui.t("imp.empty.title"), ui.t("imp.empty.body"),
@@ -1087,7 +1198,9 @@ class ImportPage:
                                       data="imp-blockers"))
         controls.append(wc.button(ui, ui.t("imp.create_draft"), self._create_draft,
                                   kind="primary", icon=ft.Icons.ARROW_FORWARD,
-                                  disabled=bool(blockers), data="imp-create-draft"))
+                                  disabled=bool(blockers),
+                                  tooltip=ui.t("disabled.resolve_first") if blockers else None,
+                                  data="imp-create-draft"))
         return wc.card(ui, controls, title=ui.t("imp.checklist"), data="imp-checklist")
 
     def _check(self, key: str, value: bool):
@@ -1103,10 +1216,18 @@ class ImportPage:
 
     def _create_draft(self, e=None):
         try:
-            questions = self.create_draft()
+            questions = self.session.draft()
         except ValueError as error:
             self.feedback = (self.app.t("imp.blocked", reason=error), "danger")
             self.app.render()
             return
-        self.app.status(self.app.t("imp.draft_created", count=len(questions)), "success")
-        self.app.navigate("questionnaires")
+        instrument, filename = self.session.instrument, self.session.filename
+        builder = self.app.pages["questionnaires"]
+
+        def replace():
+            builder.load_draft(questions, title=instrument.title,
+                               origin=f"{filename} · {instrument.title}")
+            self.app.status(self.app.t("imp.draft_created", count=len(questions)), "success")
+            self.app.navigate("questionnaires")
+
+        builder.confirm_replace(instrument.title, len(questions), replace)

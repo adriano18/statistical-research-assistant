@@ -53,6 +53,10 @@ MATRIX = (
     ("import_zoom", "import-zoom", 1600, 1100, 1, "en", "light"),
     ("settings_profile", "settings-profile", 1440, 2600, 1, "en", "light"),
     ("settings_profile_ru", "settings-profile", 1280, 2600, 1.25, "ru", "light"),
+    ("project_dashboard", "project", 1440, 1700, 1, "en", "light"),
+    ("project_dashboard_ru_125", "project", 1280, 1900, 1.25, "ru", "light"),
+    ("project_dashboard_lv_dark", "project", 1100, 1900, 1, "lv", "dark"),
+    ("questionnaire_120", "questionnaire-120", 1440, 1100, 1, "en", "light"),
     ("classic_home", "classic-home", 1440, 900, 1, "en", "light"),
     ("classic_groups", "classic-groups", 1440, 2200, 1, "en", "light"),
 )

@@ -139,6 +139,12 @@ jobs:
         env:
           MPLBACKEND: Agg
         run: python tools/workspace_screenshot_suite.py workspace-screenshots --wait 12000
+      - name: Keep the researcher's place (scroll, focus, item 60 of 120, open sections)
+        # Stage 34.5 (issue #30): drives the real page like a user through
+        # Flutter's accessibility tree; fails if a click or keystroke rebuilds it.
+        env:
+          MPLBACKEND: Agg
+        run: python tools/workspace_state_checks.py workspace-screenshots/state
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
