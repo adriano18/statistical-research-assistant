@@ -179,6 +179,11 @@ T: dict[str, tuple[str, str, str]] = {
     "project.backup": ("Back up…", "Rezerves kopija…", "Резервная копия…"),
     "project.backup_title": ("Save a project backup", "Saglabāt projekta rezerves kopiju",
                              "Сохранить резервную копию проекта"),
+    "project.backup_note": (
+        "A backup contains the project’s data, including any personal responses. Keep it as carefully as the original data.",
+        "Rezerves kopijā ir projekta dati, arī personiskas atbildes, ja tādas ir. Glabājiet to tikpat rūpīgi kā oriģinālos datus.",
+        "Резервная копия содержит данные проекта, в том числе личные ответы, если они есть. Храните её так же бережно, как исходные данные.",
+    ),
     "project.backup_saved": ("Backup saved: {path}", "Rezerves kopija saglabāta: {path}",
                              "Резервная копия сохранена: {path}"),
     "project.archive": ("Archive", "Arhivēt", "В архив"),

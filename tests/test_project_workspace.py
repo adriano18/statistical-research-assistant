@@ -135,6 +135,7 @@ class ProjectHubTests(ProjectWorkspaceCase):
         ws.click(f"project-archive-{copy.id}")      # back from the archive
         self.assertIn("Lifecycle (copy)", [p.title for p in ws.app.projects.projects()])
 
+        self.assertTrue(ws.has_text("including any personal responses"))
         ws.click(f"project-backup-{info.id}")
         backup = ws.saved[-1]
         self.assertEqual(backup.suffix, ".sra")

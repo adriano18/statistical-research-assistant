@@ -125,6 +125,7 @@ class ProjectHub:
             wc.heading(ui, info.title, tk.TYPE_TITLE_S, data="project-current-title"),
             wc.caption(ui, self._counts(info.counts)),
             ft.Row(chips, wrap=True, spacing=tk.SPACE_2),
+            wc.caption(ui, ui.t("project.backup_note"), data="project-backup-note"),
         ], title=ui.t("project.current"), actions=[
             wc.button(ui, ui.t("project.backup"), lambda e, i=info.id, t=info.title: self.backup(i, t),
                       icon=ft.Icons.SAVE_ALT, data="project-backup-current"),
@@ -171,6 +172,8 @@ class ProjectHub:
         ]
         content.append(ft.Row(footer, wrap=True, spacing=tk.SPACE_3,
                               vertical_alignment=ft.CrossAxisAlignment.CENTER))
+        if projects and not binding.active:
+            content.append(wc.caption(ui, ui.t("project.backup_note")))
         deleted = binding.deleted_projects()
         if deleted:
             rows = [ft.Row([
