@@ -347,6 +347,22 @@ class StableRenderTests(Case):
         self.assertIn(second, ws.app._page_stack.controls)
         self.assertIsInstance(ws.app._page_stack, ft.Column)
 
+    def test_buttons_that_change_kind_can_be_patched(self):
+        """A reconciled button is patched when its kind changes ("Add to
+        report" → "In report" → back). Flet 1.x breaks the control when a
+        patch adds a key to a per-state colour map, so every kind of
+        ``ft.Button`` uses the same keys (found by a real-browser check)."""
+        import workspace_components as wc
+
+        ui = ws_ui = self.workspace().app.ui
+        del ws_ui
+        styles = [wc._button_style(ui, kind=kind) for kind in ("primary", "secondary")]
+        for name in ("bgcolor", "color", "overlay_color"):
+            keys = [set(value) if isinstance(value, dict) else type(value).__name__
+                    for value in (getattr(style, name) for style in styles)]
+            self.assertEqual(keys[0], keys[1], name)
+        self.assertEqual([s.side is not None for s in styles], [True, True])
+
     def test_typing_a_study_title_does_not_rebuild_the_page(self):
         ws = self.workspace()
         entry = self.groups_result(ws)

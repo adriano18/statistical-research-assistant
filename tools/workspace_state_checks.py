@@ -21,9 +21,10 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+for _path in (ROOT, ROOT / "tools"):
+    sys.path.insert(0, str(_path))
 
-from workspace_screenshot_suite import _free_port, _wait  # noqa: E402
+from workspace_screenshot_suite import _free_port, _wait, check_image  # noqa: E402
 
 TOLERANCE = 30   # px a re-laid-out row may shift (scrollbar, fonts)
 
@@ -42,7 +43,15 @@ def _import_120_args() -> list[str]:
     return [f"60. {statements[59][:28]}", T["imp.edit_wording"][0], f"1. {statements[0][:20]}"]
 
 
-# name, scenario, mode, text (or a list of arguments), what must hold
+def _labels(*keys: str):
+    def arguments() -> list[str]:
+        from workspace_text import T
+
+        return [T[key][0] for key in keys]
+    return arguments
+
+
+# name, scenario, mode, text (or a function giving the arguments), what must hold
 CHECKS = (
     ("results-scroll-then-check", "results", "scroll", "",
      lambda r: _near(r["moved_by"]) and r["checked_after"] == "true"),
@@ -54,6 +63,10 @@ CHECKS = (
      lambda r: r["still_open"]),
     ("import-120-item-60", "import-120", "list", _import_120_args,
      lambda r: _near(r["moved_by"]) and r["kept_typing"]),
+    # A button that changes kind is patched, not replaced: it must still draw.
+    ("results-add-report-twice", "results", "toggle", _labels("results.add_report",
+                                                              "results.in_report"),
+     lambda r: r["found_after"] and not r["image_problems"]),
 )
 
 
@@ -84,6 +97,8 @@ def run(check, out: Path) -> dict:
     if result.returncode or not target.is_file():
         return {"name": name, "ok": False, "problem": (result.stderr or result.stdout)[-600:]}
     measured = json.loads(target.read_text(encoding="utf-8"))
+    if measured.get("screenshot"):
+        measured["image_problems"] = check_image(Path(measured["screenshot"]))
     return {"name": name, "scenario": scenario, "mode": mode, "ok": bool(holds(measured)),
             "measured": measured}
 
