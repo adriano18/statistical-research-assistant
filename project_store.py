@@ -168,7 +168,8 @@ def _create_v1(db: sqlite3.Connection) -> None:
             source_path TEXT, stored_path TEXT, sha256 TEXT NOT NULL,
             rows INTEGER NOT NULL, columns INTEGER NOT NULL,
             created_at TEXT NOT NULL, modified_at TEXT NOT NULL,
-            parent_id TEXT REFERENCES datasets(id), survey_id TEXT, notes TEXT NOT NULL DEFAULT ''
+            parent_id TEXT REFERENCES datasets(id), survey_id TEXT, notes TEXT NOT NULL DEFAULT '',
+            source_sha256 TEXT
         );
         CREATE TABLE dataset_versions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -200,7 +201,8 @@ def _create_v1(db: sqlite3.Connection) -> None:
             report TEXT NOT NULL, report_sha256 TEXT NOT NULL, summary TEXT NOT NULL,
             interpretation TEXT NOT NULL, warnings TEXT NOT NULL, tables TEXT NOT NULL,
             figure TEXT, provenance TEXT NOT NULL, created_at TEXT NOT NULL,
-            note TEXT NOT NULL DEFAULT ''
+            note TEXT NOT NULL DEFAULT '', descriptives TEXT NOT NULL DEFAULT '',
+            guide TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE report_items (
             position INTEGER PRIMARY KEY, run_id TEXT NOT NULL UNIQUE REFERENCES runs(id) ON DELETE CASCADE
@@ -288,6 +290,7 @@ class DatasetRecord:
     modified_at: str
     parent_id: str | None = None
     survey_id: str | None = None
+    source_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -320,6 +323,8 @@ class RunRecord:
     provenance: dict
     created_at: str
     note: str = ""
+    descriptives: str = ""
+    guide: str = ""
 
 
 @dataclass(frozen=True)
@@ -894,11 +899,30 @@ class Project:
                 _atomic_write(self.path / stored, data)
         return self._insert_dataset(name or path.stem, mode, str(path.resolve()), stored, digest, frame)
 
+    def import_table(self, frame, name: str, *, source_path: str | Path | None = None) -> DatasetRecord:
+        """Store the table exactly as it was loaded (import options applied) and
+        remember which file it came from, with that file's SHA-256."""
+        source = Path(source_path).resolve() if source_path else None
+        source_hash = sha256_file(source) if source is not None and source.is_file() else None
+        record = self.add_frame(frame, name, origin="copy")
+        with self._write() as db:
+            db.execute("UPDATE datasets SET source_path = ?, source_sha256 = ? WHERE id = ?",
+                       (str(source) if source else None, source_hash, record.id))
+        return self.dataset(record.id)
+
+    def find_by_source(self, source_path: str | Path) -> DatasetRecord | None:
+        """The dataset imported from this file earlier, if any."""
+        wanted = str(Path(source_path).resolve())
+        for record in self.datasets():
+            if record.source_path == wanted:
+                return record
+        return None
+
     def add_frame(self, frame, name: str, *, origin: str = "derived", parent_id: str | None = None,
                   survey_id: str | None = None) -> DatasetRecord:
         """Store an in-memory table (prepared data, questionnaire responses) as CSV."""
-        if origin not in ("derived", "survey"):
-            raise ProjectError("origin must be 'derived' or 'survey'")
+        if origin not in ("copy", "derived", "survey"):
+            raise ProjectError("origin must be 'copy', 'derived' or 'survey'")
         data = frame.to_csv(index=False, lineterminator="\n").encode("utf-8")
         digest = sha256_bytes(data)
         stored = f"datasets/{digest}.csv"
@@ -1117,14 +1141,15 @@ class Project:
             db.execute(
                 "INSERT INTO runs (id, method, section, title, dataset_id, dataset_sha256, roles,"
                 " options, confirms, confirmations, levels, report, report_sha256, summary,"
-                " interpretation, warnings, tables, figure, provenance, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " interpretation, warnings, tables, figure, provenance, created_at, descriptives,"
+                " guide) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (run_id, method, run.section, run.title, dataset_id, dataset_sha,
                  json.dumps(roles, default=str), json.dumps(options, default=str),
                  json.dumps(confirms, default=str), json.dumps(list(confirmations)),
                  json.dumps(levels or {}), run.report, sha256_bytes(run.report.encode("utf-8")),
                  run.summary, run.interpretation, json.dumps(list(run.warnings)),
-                 json.dumps(tables), figure, json.dumps(provenance, default=str), now()))
+                 json.dumps(tables), figure, json.dumps(provenance, default=str), now(),
+                 run.descriptives or "", run.guide or ""))
             self._touch(db)
             _log(db, "run", {"run": run_id, "method": method, "dataset": dataset_id})
         return self.run(run_id)
@@ -1264,7 +1289,8 @@ def _load_frame(path: Path):
 def _dataset(row: sqlite3.Row) -> DatasetRecord:
     return DatasetRecord(row["id"], row["name"], row["origin"], row["source_path"],
                          row["stored_path"], row["sha256"], row["rows"], row["columns"],
-                         row["created_at"], row["modified_at"], row["parent_id"], row["survey_id"])
+                         row["created_at"], row["modified_at"], row["parent_id"], row["survey_id"],
+                         row["source_sha256"])
 
 
 def _run(row: sqlite3.Row) -> RunRecord:
@@ -1275,4 +1301,4 @@ def _run(row: sqlite3.Row) -> RunRecord:
         json.loads(row["levels"]), row["report"], row["report_sha256"], row["summary"],
         row["interpretation"], tuple(json.loads(row["warnings"])),
         tuple(json.loads(row["tables"])), row["figure"], json.loads(row["provenance"]),
-        row["created_at"], row["note"])
+        row["created_at"], row["note"], row["descriptives"], row["guide"])

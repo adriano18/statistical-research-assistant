@@ -161,6 +161,26 @@ class ProjectLifecycleTests(StoreCase):
             self.assertIn("not closed properly", project.recovered)
             self.assertEqual(project.events(1)[0]["kind"], "recovered")
 
+    def test_an_imported_table_keeps_its_source_file_and_run_texts(self):
+        from data_loader import load_dataset
+
+        source = self.base / "survey export.csv"
+        shutil.copy(EXAMPLES / "sample_scale.csv", source)
+        frame = load_dataset(source)
+        info = self.store.create("Snapshot")
+        with self.store.open(info.id) as project:
+            record = project.import_table(frame, "survey export", source_path=source)
+            self.assertEqual(record.origin, "copy")
+            self.assertEqual(record.source_sha256, ps.sha256_file(source))
+            self.assertEqual(project.find_by_source(source).id, record.id)
+            self.assertIsNone(project.find_by_source(self.base / "other.csv"))
+            pd.testing.assert_frame_equal(project.load_frame(record.id), frame, check_dtype=False)
+            run = runs.run_descriptive(frame, "stress_q2", "ordinal")
+            saved = project.record_run(run, method="descriptive", dataset_id=record.id,
+                                       roles={"variable": "stress_q2"}, options={}, confirms={})
+            self.assertEqual(saved.descriptives, run.descriptives)
+            self.assertEqual(saved.guide, run.guide)
+
     def test_project_data_root_follows_the_questionnaire_storage(self):
         with mock.patch.dict(os.environ, {"SRA_DATA_DIR": str(self.base / "custom")}):
             self.assertEqual(ps.project_data_root(ROOT), self.base / "custom" / "projects")
