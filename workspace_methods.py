@@ -16,7 +16,7 @@ researcher still has to make.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable
 
 import analysis_runs as runs
@@ -378,12 +378,23 @@ def role_problems(spec: MethodSpec, roles: dict, session) -> list[tuple[str, dic
             elif info.confirmed == "unknown":
                 problems.append(("design.confirm_level", {"name": name}))
             elif info.confirmed not in role.levels:
-                problems.append(("block.level_mismatch", {"name": name}))
+                problems.append(("block.level_for_role", {
+                    "name": name, "level": f"level.{info.confirmed}", "role": role.label,
+                    "allowed": allowed_levels(role.levels)}))
             elif role.binary and not info.binary:
                 problems.append(("block.binary", {"name": name}))
     if len(chosen) != len(set(chosen)):
         problems.append(("block.same_variable", {}))
     return problems
+
+
+class RoleProblems(ValueError):
+    """Variables that do not suit a method: (text key, params) pairs for the
+    interface to explain in the researcher's language (never shown raw)."""
+
+    def __init__(self, problems: list[tuple[str, dict]]):
+        self.problems = list(problems)
+        super().__init__("; ".join(k for k, _ in self.problems))
 
 
 def run_method(key: str, session, roles: dict, options: dict, confirms: dict):
@@ -392,7 +403,7 @@ def run_method(key: str, session, roles: dict, options: dict, confirms: dict):
         raise ValueError("Open a dataset first.")
     problems = role_problems(spec, roles, session)
     if problems:
-        raise ValueError("; ".join(k for k, _ in problems))
+        raise RoleProblems(problems)
     return spec.runner(session.df, roles, {**default_options(spec), **options}, confirms, session)
 
 
@@ -441,6 +452,11 @@ def _names(value) -> list[str]:
     return list(value) if isinstance(value, (list, tuple)) else [value]
 
 
+def allowed_levels(levels) -> str:
+    """Text keys of the levels a role accepts, joined for the interface."""
+    return " / ".join(f"level.{level}" for level in levels)
+
+
 def _level_blockers(session, names) -> list[tuple[str, dict]]:
     blockers = []
     for name in names:
@@ -478,11 +494,28 @@ def advise(goal: str, selection: dict, session) -> Advice:
     if blockers:
         return Advice(blockers=tuple(blockers))
     level = session.level
-    return {
+    advice = {
         "compare": _compare, "change": _change, "relate": _relate,
         "associate": _associate, "predict": _predict, "scale": _scale,
         "structure": _structure, "describe": _describe,
     }[goal](selection, session, level)
+    if advice.blockers:
+        return advice           # the question's own, most specific explanation
+    for role in roles:          # each question accepts certain measurement levels
+        for name in _names(selection.get(role.key)):
+            confirmed = session.variables[name].confirmed
+            if confirmed not in role.levels:
+                blockers.append(("block.level_for_role", {
+                    "name": name, "level": f"level.{confirmed}", "role": role.label,
+                    "allowed": allowed_levels(role.levels)}))
+    if blockers:
+        return Advice(blockers=tuple(blockers))
+    if advice.method:
+        # Never offer a method its own variable checks would refuse.
+        problems = role_problems(METHODS[advice.method], advice.roles, session)
+        if problems:
+            return replace(advice, blockers=tuple(problems))
+    return advice
 
 
 def _compare(sel, session, level):
