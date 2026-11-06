@@ -104,6 +104,19 @@
   "problems": []
  },
  {
+  "name": "import_zoom",
+  "scenario": "import-zoom",
+  "size": [
+   1600,
+   1100
+  ],
+  "scale": 1,
+  "language": "en",
+  "theme": "light",
+  "ok": true,
+  "problems": []
+ },
+ {
   "name": "settings_profile",
   "scenario": "settings-profile",
   "size": [

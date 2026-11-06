@@ -119,3 +119,36 @@ class ReportPreviewTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ImportViewerTests(unittest.TestCase):
+    def test_the_source_page_opens_large_with_zoom_and_page_turning(self):
+        import io
+
+        from PIL import Image
+        from synthetic_documents import connectedness_text_pdf
+
+        ws = Workspace()
+        self.addCleanup(ws.close)
+        page = ws.app.pages["import"]
+        ws.app.navigate("import")
+        ws.run(page.open_bytes(connectedness_text_pdf(), "synthetic_two_versions.pdf"))
+        ws.click("imp-enlarge")
+        self.assertIsNotNone(ws.page.dialog)
+        fit = ws.find("imp-viewer-image")
+
+        def pixels(src) -> int:
+            with Image.open(io.BytesIO(src)) as image:
+                return image.width
+
+        ws.segment("imp-zoom", "200")
+        zoomed = ws.find("imp-viewer-image")
+        self.assertGreater(pixels(zoomed.src), pixels(fit.src), "rendered sharper, not stretched")
+        self.assertGreater(zoomed.width, fit.width)
+        if page.session.page_count > 1:
+            ws.click("imp-viewer-next")
+            self.assertEqual(page.page_number, 2)
+            self.assertEqual(ws.find("imp-viewer-page").value, f"Page 2 of {page.session.page_count}")
+        ws.click("imp-viewer-close")
+        self.assertIsNone(ws.page.dialog)
+        self.assertEqual(page.zoom, "200", "the chosen zoom is kept for the next look")

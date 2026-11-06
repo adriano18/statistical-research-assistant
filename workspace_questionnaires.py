@@ -668,6 +668,7 @@ class ImportPage:
         self.feedback: tuple[str, str] | None = None
         self.scale_edits: dict = {}
         self._page_cache: dict = {}
+        self.zoom = "fit"           # enlarged page view: fit, 150 or 200 (%)
 
     async def open_files(self, files):
         picked = files[0]
@@ -763,6 +764,8 @@ class ImportPage:
                         data="imp-page"),
                 wc.icon_button(ui, ft.Icons.CHEVRON_RIGHT, ui.t("imp.next_page"),
                                lambda e: self._page(1), disabled=self.page_number >= count),
+                wc.icon_button(ui, ft.Icons.OPEN_IN_FULL, ui.t("imp.enlarge"),
+                               self.enlarge_page, disabled=png is None, data="imp-enlarge"),
                 *chips,
             ], wrap=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             ft.Container(
@@ -785,6 +788,83 @@ class ImportPage:
     def _page(self, step: int):
         self.page_number += step
         self.app.render()
+
+    # --------------------------------------------------- enlarged viewer
+    ZOOMS = {"fit": 1.0, "150": 1.5, "200": 2.0}
+
+    def _page_image(self, zoom: str) -> bytes | None:
+        key = (self.page_number, 0) if zoom == "fit" else (self.page_number, 0, zoom)
+        if key not in self._page_cache:
+            try:
+                self._page_cache[key] = self.session.render_page(
+                    self.page_number, zoom=self.ZOOMS[zoom])
+            except Exception:
+                self._page_cache[key] = None
+        return self._page_cache[key]
+
+    def enlarge_page(self, e=None):
+        """The source page in a large view with page turning and zoom, to
+        compare small print with the draft (nothing is changed here)."""
+        self.app.page.show_dialog(self._viewer_dialog())
+
+    def _viewer_dialog(self) -> ft.AlertDialog:
+        ui, s = self.app.ui, self.session
+        count = max(1, s.page_count)
+        width = int(min(1200, max(480, int(getattr(self.app.page, "width", None) or 1280) - 160)))
+        height = int(min(900, max(360, int(getattr(self.app.page, "height", None) or 900) - 240)))
+        png = self._page_image(self.zoom)
+        factor = self.ZOOMS[self.zoom]
+        if png is None:
+            view: ft.Control = wc.caption(ui, ui.t("common.not_available"))
+        elif self.zoom == "fit":
+            view = ft.Image(src=png, fit=ft.BoxFit.CONTAIN, width=width - 32, height=height - 16,
+                            semantics_label=s.filename, data="imp-viewer-image")
+        else:
+            # Wider than the dialog: scroll sideways and down to any part.
+            view = ft.Column([ft.Row([ft.Image(
+                src=png, fit=ft.BoxFit.FIT_WIDTH, width=int((width - 32) * factor),
+                semantics_label=s.filename, data="imp-viewer-image")],
+                scroll=ft.ScrollMode.AUTO)], scroll=ft.ScrollMode.AUTO, height=height - 16)
+        controls = ft.Row([
+            wc.icon_button(ui, ft.Icons.CHEVRON_LEFT, ui.t("imp.prev_page"),
+                           lambda e: self._viewer_page(-1), disabled=self.page_number <= 1,
+                           data="imp-viewer-prev"),
+            wc.text(ui, ui.t("imp.page", page=self.page_number, count=count), tk.TYPE_LABEL,
+                    data="imp-viewer-page"),
+            wc.icon_button(ui, ft.Icons.CHEVRON_RIGHT, ui.t("imp.next_page"),
+                           lambda e: self._viewer_page(1), disabled=self.page_number >= count,
+                           data="imp-viewer-next"),
+            ft.Container(expand=True),
+            wc.segmented(ui, [("fit", ui.t("imp.zoom_fit")), ("150", "150 %"), ("200", "200 %")],
+                         self.zoom, self._set_zoom, compact=True, data="imp-zoom"),
+        ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        return ft.AlertDialog(
+            title=wc.heading(ui, f"{ui.t('imp.source')} · {s.filename}", tk.TYPE_TITLE_S),
+            content=ft.Container(ft.Column([controls, ft.Container(
+                view, bgcolor="#FFFFFF", border=ft.Border.all(1, ui.p.border),
+                border_radius=ui.radius("card"), padding=tk.SPACE_1)], spacing=tk.SPACE_3),
+                width=width, data="imp-viewer"),
+            actions=[wc.button(ui, ui.t("common.close"), self._close_viewer,
+                               data="imp-viewer-close")],
+        )
+
+    def _refresh_viewer(self):
+        self.app.page.pop_dialog()
+        self.app.page.show_dialog(self._viewer_dialog())
+        self.app.render()          # the source pane follows the page shown
+
+    def _viewer_page(self, step: int):
+        count = max(1, self.session.page_count)
+        self.page_number = max(1, min(count, self.page_number + step))
+        self._refresh_viewer()
+
+    def _set_zoom(self, zoom: str):
+        if zoom in self.ZOOMS:
+            self.zoom = zoom
+            self._refresh_viewer()
+
+    def _close_viewer(self, e=None):
+        self.app.page.pop_dialog()
 
     async def _ocr_page(self, e=None):
         self.busy, self.feedback = True, (self.app.t("run.running"), "info")

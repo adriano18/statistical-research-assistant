@@ -50,6 +50,7 @@ MATRIX = (
     ("results_stale", "results-stale", 1440, 1500, 1, "en", "light"),
     ("results_wide", "results", 1920, 1100, 1, "en", "light"),
     ("analyze_guided_fold", "guided", 1440, 900, 1, "en", "light"),
+    ("import_zoom", "import-zoom", 1600, 1100, 1, "en", "light"),
     ("settings_profile", "settings-profile", 1440, 2600, 1, "en", "light"),
     ("settings_profile_ru", "settings-profile", 1280, 2600, 1.25, "ru", "light"),
     ("classic_home", "classic-home", 1440, 900, 1, "en", "light"),

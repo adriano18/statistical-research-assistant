@@ -98,9 +98,14 @@ class ImportSession:
         self.message = f"Local OCR completed for {len(pages)} page(s)."
         return self.message
 
-    def render_page(self, number: int, rotation: int = 0) -> bytes:
-        from visual_survey_review import render_document_page
+    def render_page(self, number: int, rotation: int = 0, *, zoom: float = 1.0) -> bytes:
+        """The page as PNG; ``zoom`` > 1 renders a PDF page with more pixels
+        (for the enlarged viewer) so small print stays sharp."""
+        from visual_survey_review import render_document_page, render_pdf_page
 
+        if zoom > 1.0 and self.filename.lower().endswith(".pdf"):
+            return render_pdf_page(self.source, number, scale=min(3.0, 1.4 * zoom),
+                                   max_width=int(1300 * zoom), rotation=rotation)
         return render_document_page(self.source, self.filename, number, rotation=rotation)
 
     @property
