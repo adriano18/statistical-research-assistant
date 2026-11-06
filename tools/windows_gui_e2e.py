@@ -687,6 +687,24 @@ def option_label(name: str, level: str) -> str:
     return f"{name} · {T('level.' + level)}"
 
 
+def open_project(gui: Gui, title: str) -> None:
+    """Open the project ``title`` from Home with its own Open button (its
+    accessible name carries the tooltip "Open “title”"), then check that it
+    is the open project: the project page, with this title as its heading."""
+    gui.click(T("nav.home"), control_type=("Button", "Text"))
+    try:
+        # Windows exposes the tooltip as an element over the button itself.
+        gui.click(regex=re.escape(T("project.open_named", title=title)),
+                  control_type=("Button", "Group", "Custom", "Text"), timeout=10)
+    except StepFailure:
+        # Already the open project: its row says "Open now" instead.
+        gui.click(T("nav.project"), control_type=("Button", "Text"), timeout=8)
+    gui.wait_text(T("project.dashboard_subtitle"), timeout=20, scroll=False)
+    heading = [e for e in gui.query(title, control_type="Text")
+               if e.element_info.rectangle.top < gui.window_box()[1] + 200]
+    expect(heading, f"{title} is not the open project")
+
+
 def create_project(gui: Gui, journey: Journey, title: str) -> None:
     with journey.step(f"create project {title}"):
         gui.click(T("nav.home"), control_type=("Button", "Text"))
@@ -735,7 +753,9 @@ def journey_project_a(gui: Gui, work: Path, journey: Journey) -> None:
         gui.click(T("analyze.mode.all"), control_type=("Button", "Text"))
         from workspace_methods import METHODS
 
-        gui.click(METHODS["ancova"].title)
+        # A method card is named by its title and its summary.
+        gui.click(regex="^" + re.escape(METHODS["ancova"].title) + r"(\n|$)",
+                  control_type=("Button", "Text", "Group", "Custom"))
     with journey.step("choose outcome, group and covariate"):
         gui.choose(T("role.outcome"), option_label("wellbeing", "scale"))
         gui.choose(T("role.group"), option_label("group", "nominal"))
@@ -776,9 +796,7 @@ def journey_project_a(gui: Gui, work: Path, journey: Journey) -> None:
         gui.stop()
         gui.start()
     with journey.step("reopen project A after the restart"):
-        gui.click(T("nav.home"), control_type=("Button", "Text"))
-        gui.click(T("project.open"), control_type="Button")
-        gui.wait_text("Fictional study A")
+        open_project(gui, "Fictional study A")
         gui.wait_text("sample_ancova.csv")
         gui.wait_text(expected.title)
     with journey.step("open the restored result"):
@@ -786,7 +804,9 @@ def journey_project_a(gui: Gui, work: Path, journey: Journey) -> None:
             gui.click(T("reports.open_result"), control_type=("Button", "Text"), timeout=6)
         except StepFailure:   # the icon's name may be its tooltip or nothing
             gui.click(T("nav.results"), control_type=("Button", "Text"))
-            gui.click(expected.title, control_type=("Button", "Text", "ListItem"))
+            # A result in the list is named by its title and its details.
+            gui.click(regex="^" + re.escape(expected.title),
+                      control_type=("Button", "Text", "ListItem", "Group", "Custom"))
         gui.wait_text(T("results.save_docx"), timeout=60)
     time.sleep(4)   # restored results are recalculated in the background
     save_via_dialog(gui, journey, T("results.save_docx"), work / "ancova_after_restart.docx",
@@ -802,15 +822,11 @@ def journey_project_b(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text(T("project.no_results"))
     open_data(gui, journey, csv)
     with journey.step("switch to project A: only its own data and results"):
-        gui.click(T("nav.home"), control_type=("Button", "Text"))
-        gui.click(T("project.open"), control_type="Button", index=0)
-        gui.wait_text("Fictional study A")
+        open_project(gui, "Fictional study A")
         gui.wait_text("sample_ancova.csv")
         expect(not gui.has_text("sample_three_groups.csv"), "project A shows B's data")
     with journey.step("switch back to project B: only its own data"):
-        gui.click(T("nav.home"), control_type=("Button", "Text"))
-        gui.click(T("project.open"), control_type="Button", index=0)
-        gui.wait_text("Fictional study B")
+        open_project(gui, "Fictional study B")
         gui.wait_text("sample_three_groups.csv")
         expect(not gui.has_text("sample_ancova.csv"), "project B shows A's data")
         expect(gui.has_text(T("project.no_results")), "project B shows A's results")
@@ -921,15 +937,8 @@ def answer_form(gui: Gui, group: str, stress: str, age: int) -> None:
 
 def open_project_a(gui: Gui, journey: Journey) -> None:
     with journey.step("open project A (its dataset is in use)"):
-        gui.click(T("nav.home"), control_type=("Button", "Text"))
-        opened = False
-        for index in range(3):
-            with contextlib.suppress(StepFailure):
-                gui.click(T("project.open"), control_type="Button", index=index, timeout=5)
-                if gui.has_text("Fictional study A"):
-                    opened = True
-                    break
-        expect(opened or gui.has_text("Fictional study A"), "project A did not open")
+        open_project(gui, "Fictional study A")
+        gui.wait_text("sample_ancova.csv")
 
 
 def journey_responses(gui: Gui, work: Path, journey: Journey) -> None:
@@ -987,7 +996,9 @@ def journey_blocked_design(gui: Gui, work: Path, journey: Journey) -> None:
         gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
         with contextlib.suppress(StepFailure):     # a question is already chosen
             gui.click(T("analyze.change_goal"), control_type=("Button", "Text"), timeout=4)
-        gui.click(T("goal.compare"), control_type=("Button", "Text", "Group", "Custom"))
+        # A question tile is named by its title, its explanation and its tooltip.
+        gui.click(regex="^" + re.escape(T("goal.compare")) + r"\b",
+                  control_type=("Button", "Text", "Group", "Custom"))
     with journey.step("a quantitative group variable is refused in words"):
         gui.choose(T("role.outcome"), option_label("wellbeing", "scale"))
         gui.choose(T("role.group"), option_label("age", "scale"))
