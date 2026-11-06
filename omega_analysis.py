@@ -7,6 +7,7 @@ confirmation of unidimensionality, model fit or construct validity.
 """
 
 from dataclasses import dataclass
+import inspect
 import math
 import warnings
 
@@ -17,6 +18,21 @@ from statsmodels.multivariate.factor import Factor
 from threadpoolctl import threadpool_limits
 
 from variable_rules import looks_like_identifier
+
+# The ML fit starts from EM iterations seeded with random loadings.
+# statsmodels 0.14 always seeded them with RandomState(3427); 0.15 draws
+# them from fresh OS entropy unless a generator is passed, so the same data
+# (and a fixed-seed bootstrap) could give different estimates per run.
+# Passing the 0.14 seed keeps every fit reproducible and identical to 0.14.
+ML_START_SEED = 3427
+_FIT_TAKES_RNG = "rng" in inspect.signature(Factor.fit).parameters
+
+
+def _fit_one_factor(correlation: np.ndarray, nobs: int):
+    model = Factor(corr=correlation, n_factor=1, method="ml", nobs=nobs)
+    if _FIT_TAKES_RNG:
+        return model.fit(rng=np.random.RandomState(ML_START_SEED))
+    return model.fit()
 
 
 @dataclass
@@ -92,9 +108,7 @@ def analyze_omega(df: pd.DataFrame, item_names: list[str]) -> OmegaResult:
         with threadpool_limits(limits=1, user_api="blas"):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
-                fit = Factor(
-                    corr=correlation, n_factor=1, method="ml", nobs=n,
-                ).fit()
+                fit = _fit_one_factor(correlation, n)
         loadings = np.asarray(fit.loadings, dtype=float).reshape(-1)
         uniqueness = np.asarray(fit.uniqueness, dtype=float).reshape(-1)
     except (ValueError, np.linalg.LinAlgError, RuntimeError, OverflowError) as error:
