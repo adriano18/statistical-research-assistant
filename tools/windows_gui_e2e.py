@@ -960,11 +960,10 @@ def save_via_dialog(gui: Gui, journey: Journey, button: str, target: Path, *, ki
     with journey.step(f"save {target.name} with '{button}'"):
         gui.click(button, control_type=("Button", "Text"))
         gui.file_dialog(target, save=True)
-        # "Saved: <path>" in the status line; the file name, so that a short
-        # or long form of the folder (RUNNER~1 / runneradmin) both count.
-        gui.wait_text(T("save.saved", path="").strip(), timeout=40)
-        gui.wait_text(target.name if kind == "sra" or target.suffix else target.name + ".",
-                      timeout=10)
+        # The announcement ("Saved: <path>", "Backup saved: <path>") names the
+        # file; the name, so that a short or long form of the folder
+        # (RUNNER~1 / runneradmin) both count. The file itself is checked next.
+        gui.wait_text(target.name if target.suffix else target.name + ".", timeout=40)
         # A name typed without its extension is saved with it (``with_extension``).
         written = target if target.suffix else target.with_name(target.name + "." + kind)
         facts = verify_saved(written, kind=kind, contains=contains)
@@ -1164,8 +1163,29 @@ def answer_form(gui: Gui, group: str, stress: str, age: int) -> None:
     gui.type_into(T("q.your_answer"), str(age), index=0)
     gui.click(group, control_type=("RadioButton", "Text"), index=0)
     gui.click(T("common.no"), control_type=("RadioButton", "Text"), index=0)
-    for item in range(3):
-        gui.click(labels[int(stress)], control_type=("RadioButton", "Text"), index=item)
+    # Each rating under its own question ("6. Fictional stress statement 1 *"):
+    # the form scrolls, so the n-th "4 — Often" on screen is not item n.
+    numbers = [i + 1 for i, q in enumerate(_template_questions("psychology"))
+               if str(q.get("key", "")).startswith("stress_q")]
+    for number in numbers:
+        rate(gui, number, labels[int(stress)])
+
+
+def rate(gui: Gui, number: int, option: str) -> None:
+    """Click ``option`` of question ``number`` in the open form."""
+    heading = gui.find(regex=rf"^{number}\. ", control_type="Text")
+    for _ in range(12):
+        top = heading.element_info.rectangle.bottom
+        below = sorted((e for e in gui.query(option, control_type="RadioButton")
+                        if e.element_info.rectangle.top >= top),
+                       key=lambda e: e.element_info.rectangle.top)
+        if below and gui.clickable(below[0]):
+            rect = below[0].element_info.rectangle
+            below[0].click_input(coords=(min(20, rect.width() // 2), rect.height() // 2))
+            time.sleep(0.6)
+            return
+        gui.wheel(-2)                     # bring the options of this question up
+    raise StepFailure(f"{option!r} of question {number} is not on screen")
 
 
 def open_project_a(gui: Gui, journey: Journey) -> None:
