@@ -1,0 +1,168 @@
+name: Windows packaging experiments (size and startup on one runner)
+
+# Issue #23: measured before/after comparison. Every variant is built and
+# launched on the SAME runner, because startup times of identical builds
+# differ by up to a second between runners. Nothing here is published; the
+# job uploads size reports and startup measurements only.
+#
+#   before  the pull request's base commit (what users have today)
+#   after   the pull request's head (this change)
+#   pack    `flet pack --onedir` (PyInstaller) of the head, best effort
+#
+# Build outputs go to the runner's temporary folder, never into a source
+# tree, so no variant can package another one.
+on:
+  workflow_dispatch:
+    inputs:
+      before:
+        description: "Commit or branch to compare against (the 'before' build)"
+        required: true
+        default: claude/stage33-research-workspace
+  pull_request:
+    paths:
+      - ".github/workflows/windows-packaging-experiments.yml"
+      - "tools/startup_ab.py"
+      - "tools/check_gui_startup.py"
+      - "tools/flet_pack_compat.py"
+      - "reliability.py"
+
+permissions:
+  contents: read
+
+jobs:
+  packaging-ab:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    env:
+      PYTHONUTF8: "1"
+      MPLBACKEND: Agg
+      RUNTIME_DIR: bundled_ocr\windows-x64
+      BEFORE_REF: ${{ github.event.pull_request.base.sha || inputs.before }}
+    steps:
+      - name: Check out repository (full history for the 'before' commit)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install direct project dependencies
+        run: python -m pip install -r requirements.txt "zstandard>=0.23,<1"
+      - name: Cache pinned OCR packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\ocr-cache
+          key: ocr-msys2-${{ hashFiles('packaging/windows_ocr_runtime.lock.json') }}
+      - name: Prepare pinned Tesseract runtime (SHA-256 verified)
+        run: python tools/prepare_windows_ocr_runtime.py fetch --out "${{ env.RUNTIME_DIR }}" --cache "${{ runner.temp }}\ocr-cache"
+
+      - name: Source of the 'before' build
+        shell: pwsh
+        run: |
+          $before = Join-Path $env:RUNNER_TEMP "src-before"
+          git worktree add --detach $before $env:BEFORE_REF
+          if ($LASTEXITCODE -ne 0) { git worktree add --detach $before "origin/$env:BEFORE_REF" }
+          if ($LASTEXITCODE -ne 0) { throw "cannot check out $env:BEFORE_REF" }
+          Copy-Item -Recurse bundled_ocr (Join-Path $before "bundled_ocr")
+          "before = $(git -C $before rev-parse HEAD)"
+          "after  = $(git rev-parse HEAD)"
+
+      - name: Build 'before' (base commit, its own pyproject.toml)
+        shell: pwsh
+        run: |
+          Push-Location (Join-Path $env:RUNNER_TEMP "src-before")
+          flet build windows . --module-name app --python-version 3.12 `
+            --product "Statistical Research Assistant" --artifact "StatisticalResearchAssistant" `
+            --no-rich-output --yes
+          if ($LASTEXITCODE -ne 0) { throw "before build failed" }
+          Move-Item build/windows (Join-Path $env:RUNNER_TEMP "variant-before")
+          Pop-Location
+
+      - name: Build 'after' (this pull request)
+        shell: pwsh
+        run: |
+          flet build windows . --module-name app --python-version 3.12 `
+            --product "Statistical Research Assistant" --artifact "StatisticalResearchAssistant" `
+            --no-rich-output --yes
+          if ($LASTEXITCODE -ne 0) { throw "after build failed" }
+          Move-Item build/windows (Join-Path $env:RUNNER_TEMP "variant-after")
+
+      - name: Build 'pack' - flet pack --onedir (PyInstaller), best effort
+        id: pack
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m pip install "pyinstaller>=6.10,<7"
+          # tools/flet_pack_compat.py works around a flet-cli bug that stops
+          # `flet pack` on Windows (see the module docstring).
+          python tools/flet_pack_compat.py app.py --onedir --name StatisticalResearchAssistantPack `
+            --product-name "Statistical Research Assistant" `
+            --distpath (Join-Path $env:RUNNER_TEMP "variant-pack") `
+            --add-data "examples:examples" --add-data "bundled_ocr:bundled_ocr" `
+            --hidden-import research_app --hidden-import workspace_shell `
+            --hidden-import analysis_selftest --hidden-import ocr_selftest -y
+          if ($LASTEXITCODE -ne 0) { throw "flet pack failed" }
+          Get-ChildItem (Join-Path $env:RUNNER_TEMP "variant-pack") -Recurse -Filter *.exe | Select-Object -First 3 | ForEach-Object { $_.FullName }
+
+      - name: Measure every variant
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force experiments | Out-Null
+          foreach ($name in "before", "after") {
+            python tools/package_audit.py (Join-Path $env:RUNNER_TEMP "variant-$name") --level 9 --title "flet build - $name" `
+              --json "experiments/size-$name.json" --markdown "experiments/size-$name.md" | Out-Null
+            Get-Content "experiments/size-$name.md" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+          $pack = Get-ChildItem (Join-Path $env:RUNNER_TEMP "variant-pack") -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($pack) {
+            python tools/package_audit.py $pack.FullName --level 9 --title "flet pack --onedir" `
+              --json experiments/size-pack.json --markdown experiments/size-pack.md | Out-Null
+            Get-Content experiments/size-pack.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
+      - name: Packaged analysis self-test ('after' and 'pack'; 'before' has no hook)
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          python analysis_selftest.py experiments/source-analysis-selftest.json
+          $python = (Get-Command python).Source
+          $variants = @{ after = (Join-Path $env:RUNNER_TEMP "variant-after/StatisticalResearchAssistant.exe") }
+          $packExe = Get-ChildItem (Join-Path $env:RUNNER_TEMP "variant-pack") -Recurse -Filter StatisticalResearchAssistantPack.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($packExe) { $variants["pack"] = $packExe.FullName }
+          foreach ($name in $variants.Keys) {
+            $result = Join-Path (Resolve-Path experiments) "analysis-$name.json"
+            $env:SRA_ANALYSIS_SELFTEST = $result
+            $process = Start-Process -FilePath $variants[$name] -PassThru
+            $deadline = (Get-Date).AddMinutes(8)
+            while (-not (Test-Path $result) -and (Get-Date) -lt $deadline -and -not $process.HasExited) { Start-Sleep -Seconds 2 }
+            Start-Sleep -Seconds 2
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+            Remove-Item Env:SRA_ANALYSIS_SELFTEST
+            if (Test-Path $result) {
+              & $python analysis_selftest.py --compare experiments/source-analysis-selftest.json $result
+              "$name analysis self-test compared (exit $LASTEXITCODE)"
+            } else { "$name wrote no analysis self-test result" }
+          }
+
+      - name: Startup on one runner, alternating launches
+        shell: pwsh
+        timeout-minutes: 40
+        run: |
+          $args = @("--variant", "before=$(Join-Path $env:RUNNER_TEMP 'variant-before/StatisticalResearchAssistant.exe')",
+                    "--variant", "after=$(Join-Path $env:RUNNER_TEMP 'variant-after/StatisticalResearchAssistant.exe')")
+          $packExe = Get-ChildItem (Join-Path $env:RUNNER_TEMP "variant-pack") -Recurse -Filter StatisticalResearchAssistantPack.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($packExe) { $args += @("--variant", "pack=$($packExe.FullName)") }
+          python tools/startup_ab.py @args --rounds 5 --out experiments/startup
+          $code = $LASTEXITCODE
+          Get-Content experiments/startup/startup-ab.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "startup A/B exit code: $code"
+
+      - name: Upload measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packaging-experiments
+          path: experiments/
+          retention-days: 14
