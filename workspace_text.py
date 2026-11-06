@@ -1010,10 +1010,12 @@ T: dict[str, tuple[str, str, str]] = {
                            "Нажмите «Добавить в отчёт» у любого результата."),
     "reports.export_txt": ("Export combined TXT…", "Eksportēt apvienoto TXT…",
                            "Экспортировать общий TXT…"),
+    "reports.export_docx": ("Export Word report…", "Eksportēt Word atskaiti…",
+                            "Экспортировать отчёт Word…"),
     "reports.export_docx_note": (
-        "A combined Word document is planned. Today each result can be saved as its own editable Word report.",
-        "Apvienots Word dokuments ir plānots. Pašlaik katru rezultātu var saglabāt kā atsevišķu rediģējamu Word atskaiti.",
-        "Общий документ Word запланирован. Сейчас каждый результат можно сохранить отдельным редактируемым отчётом Word.",
+        "The Word report holds every result above in this order: the engine's text, editable Word tables numbered Table 1…n, figures numbered Figure 1…n, page numbers and an appendix with where each result comes from. Each export is a new file, so your edits in an earlier file are never replaced.",
+        "Word atskaitē ir visi iepriekš minētie rezultāti šādā secībā: dzinēja teksts, rediģējamas Word tabulas (Tabula 1…n), attēli (Attēls 1…n), lappušu numuri un pielikums ar katra rezultāta izcelsmi. Katrs eksports ir jauns fails, tāpēc jūsu labojumi iepriekšējā failā netiek aizstāti.",
+        "Отчёт Word содержит все результаты выше в этом порядке: текст движка, редактируемые таблицы Word (Таблица 1…n), рисунки (Рисунок 1…n), номера страниц и приложение о происхождении каждого результата. Каждый экспорт — новый файл, поэтому ваши правки в прежнем файле никогда не заменяются.",
     ),
     "reports.stale_block": (
         "Results in this report that need review: {count}. Recalculate or remove them, or include them labelled as needing review.",

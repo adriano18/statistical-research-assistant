@@ -1032,12 +1032,15 @@ class ReportsPage:
 
     def build(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session
+        disabled = not s.report_order or self._blocked()
+        why = (ui.t("disabled.report_empty") if not s.report_order else
+               ui.t("disabled.report_stale") if self._blocked() else None)
         header = wc.page_header(ui, ui.t("reports.title"), ui.t("reports.subtitle"), actions=[
-            wc.button(ui, ui.t("reports.export_txt"), self._export, kind="primary",
-                      icon=ft.Icons.FILE_DOWNLOAD_OUTLINED,
-                      disabled=not s.report_order or self._blocked(),
-                      tooltip=(ui.t("disabled.report_empty") if not s.report_order else
-                               ui.t("disabled.report_stale") if self._blocked() else None),
+            wc.button(ui, ui.t("reports.export_docx"), self._export_docx, kind="primary",
+                      icon=ft.Icons.DESCRIPTION_OUTLINED, disabled=disabled, tooltip=why,
+                      data="reports-export-docx"),
+            wc.button(ui, ui.t("reports.export_txt"), self._export,
+                      icon=ft.Icons.FILE_DOWNLOAD_OUTLINED, disabled=disabled, tooltip=why,
                       data="reports-export"),
         ])
         entries = s.report_entries()
@@ -1128,6 +1131,31 @@ class ReportsPage:
     def _remove(self, entry_id: int):
         self.app.session.toggle_report(entry_id)
         self.app.render()
+
+    async def _export_docx(self, e=None):
+        """One editable Word document with every result in report order (#42)."""
+        import app_identity
+        import report_docx
+
+        app = self.app
+        if self._blocked():
+            return
+        blocks = report_docx.blocks_from_entries(app.session.report_entries())
+        info = app.projects.info() if app.projects.active else None
+        project = info.title if info is not None else ""
+        language, title = app.session.language, self.study_title
+        version = app_identity.build_info().version
+
+        def write(path):
+            document = report_docx.build_report_docx(
+                blocks, title=title, language=language, project=project, version=version,
+                allow_stale=self.include_stale)
+            return report_docx.save_report_docx(path, document)
+
+        outcome = await app.save_file(app.t("reports.export_docx"),
+                                      report_docx.default_file_name(title or project), "docx", write)
+        self.feedback = (outcome.message, outcome.tone)
+        app.render()
 
     async def _export(self, e=None):
         app = self.app

@@ -1071,6 +1071,11 @@ def journey_project_a(gui: Gui, work: Path, journey: Journey) -> None:
                f"typed title kept: {gui.value(field)!r}")
     save_via_dialog(gui, journey, T("reports.export_txt"), work / "combined_report.txt",
                     kind="txt", contains=("Fictional ANCOVA study", expected.report.strip()))
+    # The combined Word report (#42): one editable document, real tables.
+    save_via_dialog(gui, journey, T("reports.export_docx"), work / "combined_report.docx",
+                    kind="docx", contains=("Fictional ANCOVA study", f"1. {expected.title}",
+                                           "Table 1", "Appendix: provenance of the results",
+                                           "sample_ancova.csv"))
     with journey.step("back up the project"):
         nav(gui, "nav.project")
     save_via_dialog(gui, journey, T("project.backup"), work / "study_a_backup.sra", kind="sra",
