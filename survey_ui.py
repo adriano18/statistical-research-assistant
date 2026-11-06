@@ -27,7 +27,9 @@ from visual_survey_review import (
     attach_text_layer_geometry, attach_docx_matrices, apply_response_format,
 )
 from binary_responses import FORMAT_LABELS
-from scientific_survey_import import linked_questions, scheme_banner
+from scientific_survey_import import (
+    acknowledge_missing_items, linked_questions, missing_items_banner, review_banner,
+)
 from shared_scales import review_scheme, scheme_summary, unlink_scheme
 from ocr_runtime import OCRCancelled, ocr_readiness
 from spatial_review_ui import SpatialReviewController
@@ -440,6 +442,10 @@ def build_survey_workspace(
         label="Also apply proposed reverse-key flags (reviewed by researcher)",
         value=False,
     )
+    document_missing_confirm = ft.Checkbox(
+        label="I checked the source: the missing item number(s) are not printed there",
+        value=False, visible=False,
+    )
     document_replace_confirm = ft.Checkbox(
         label="Replace existing unsaved draft questions",
         value=False,
@@ -610,7 +616,10 @@ def build_survey_workspace(
 
     def show_scale_review():
         candidate, scheme = current_scheme()
-        banner = scheme_banner(candidate) if candidate is not None else None
+        banner = review_banner(candidate) if candidate is not None else None
+        document_missing_confirm.visible = bool(
+            candidate is not None and missing_items_banner(candidate)
+        )
         scale_banner.visible = bool(banner)
         scale_banner.content.value = ("⚠ " + banner) if banner else ""
         scale_panel.visible = scheme is not None
@@ -1103,6 +1112,7 @@ def build_survey_workspace(
         document_review_confirm.value = False
         document_numeric_confirm.value = False
         document_reverse_confirm.value = False
+        document_missing_confirm.value = False
         document_question_picker.options = [
             ft.DropdownOption(
                 key=str(i),
@@ -1382,6 +1392,8 @@ def build_survey_workspace(
         if not draft_replace_allowed():
             return
         try:
+            if document_missing_confirm.value and missing_items_banner(candidate):
+                candidate = acknowledge_missing_items(candidate)
             candidate_draft = reviewed_draft(
                 candidate,
                 accept_numeric=bool(document_numeric_confirm.value),
@@ -1571,6 +1583,7 @@ def build_survey_workspace(
             ),
             document_import_preview,
             document_review_confirm,
+            document_missing_confirm,
             document_numeric_confirm,
             document_reverse_confirm,
             document_replace_confirm,

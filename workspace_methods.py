@@ -411,7 +411,10 @@ def run_method(key: str, session, roles: dict, options: dict, confirms: dict):
 GOALS = ("compare", "change", "relate", "associate", "predict", "scale", "structure", "describe")
 
 GOAL_ROLES: dict[str, tuple[Role, ...]] = {
-    "compare": (Role("outcome", "role.outcome", ANY), Role("group", "role.group", CATEGORICAL)),
+    # Optional covariates turn the comparison into ANCOVA (adjusted means).
+    "compare": (Role("outcome", "role.outcome", ANY), Role("group", "role.group", CATEGORICAL),
+                Role("covariates", "role.adjust_for", ("scale",), multiple=True, optional=True,
+                     maximum=3)),
     "change": (Role("measures", "role.measures", ORDERED, multiple=True, minimum=2, maximum=8),),
     "relate": (Role("x", "role.x", ANY), Role("y", "role.y", ANY)),
     "associate": (Role("a", "role.a", CATEGORICAL), Role("b", "role.b", CATEGORICAL)),
@@ -525,6 +528,9 @@ def _compare(sel, session, level):
     out_level = level(outcome)
     if level(group) == "scale":
         return Advice(blockers=(("block.group_quantitative", {"name": group}),))
+    covariates = _names(sel.get("covariates"))
+    if covariates:
+        return _compare_adjusted(outcome, group, covariates, labels, out_level)
     if out_level == "nominal":
         return Advice(
             "chi", {}, {"a": group, "b": outcome},
@@ -556,6 +562,30 @@ def _compare(sel, session, level):
         alternatives=(Alternative("omnibus", {"method": "anova"}, "alt.anova"),
                       Alternative("omnibus", {"method": "kruskal"}, "alt.kruskal")),
         design_checks=("independent", "assumptions"))
+
+
+def _compare_adjusted(outcome, group, covariates, labels, out_level) -> Advice:
+    """Groups compared on adjusted means (ANCOVA): a hypothesis test whose
+    assumptions are about the design, not only about the data."""
+    count = len(labels)
+    if out_level != "scale":
+        return Advice(blockers=(("block.adjust_outcome", {"name": outcome,
+                                                          "level": f"level.{out_level}"}),))
+    if count < 2 or count > 6:
+        return Advice(blockers=(("block.group_count_adjusted", {"name": group, "count": count}),))
+    facts = ("design.groups_found", {"name": group, "count": count,
+                                     "labels": ", ".join(labels[:8])})
+    unadjusted = (Alternative("groups", {"method": "welch"}, "alt.unadjusted") if count == 2 else
+                  Alternative("omnibus", {"method": "welch"}, "alt.unadjusted"))
+    return Advice(
+        "ancova", {"mode": "ancova"},
+        {"outcome": outcome, "group": group, "covariates": list(covariates)},
+        reasons=(facts, ("why.ancova_adjusted", {"outcome": outcome, "group": group,
+                                                "covariates": ", ".join(covariates)}),
+                 ("why.ancova_design", {})),
+        alternatives=(Alternative("ancova", {"mode": "interaction"}, "alt.interaction"),
+                      unadjusted),
+        design_checks=("model",))
 
 
 def _change(sel, session, level):

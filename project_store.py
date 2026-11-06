@@ -270,7 +270,21 @@ def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
 
 
 def migrate(path: Path, backups: Path) -> int:
-    """Bring a project database to SCHEMA_VERSION; returns the version found."""
+    """Bring a project database to SCHEMA_VERSION; returns the version found.
+
+    The format is read through a read-only connection first: a database
+    written by a newer version (after a downgrade or a failed update) is
+    refused without any write, not even the journal-mode switch that a
+    read-write connection makes."""
+    if Path(path).exists():
+        with closing(_connect(path, read_only=True)) as db:
+            found = db.execute("PRAGMA user_version").fetchone()[0]
+        if found > SCHEMA_VERSION:
+            raise ProjectFormatError(
+                f"This project was saved by a newer version (format {found}); "
+                f"this version reads up to format {SCHEMA_VERSION}.")
+        if found == SCHEMA_VERSION:
+            return found
     with closing(_connect(path)) as db:
         found = db.execute("PRAGMA user_version").fetchone()[0]
         if found > SCHEMA_VERSION:

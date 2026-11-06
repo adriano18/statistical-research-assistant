@@ -30,11 +30,15 @@ from startup_diagnostics import StartupTimeline, write_startup_record, writable_
 
 TIMELINE = StartupTimeline(_PROCESS_T0)
 
+from analysis_selftest import maybe_run_from_environment as maybe_run_analysis_selftest
 from ocr_selftest import maybe_run_from_environment
 
 # Packaging CI / support diagnostics only: when SRA_OCR_SELFTEST is set the
-# bundled OCR engine is exercised on a synthetic scan and the process exits.
+# bundled OCR engine is exercised on a synthetic scan and the process exits;
+# SRA_ANALYSIS_SELFTEST runs every statistical procedure on the bundled
+# fictional examples the same way and exits.
 maybe_run_from_environment()
+maybe_run_analysis_selftest()
 
 import flet as ft
 

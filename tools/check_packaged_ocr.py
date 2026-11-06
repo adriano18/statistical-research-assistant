@@ -64,14 +64,18 @@ def main() -> int:
                 raise SystemExit(f"Packaged runtime lacks {required}")
         modules = {p.stem.split(".")[0] for p in root.iterdir() if p.suffix in {".py", ".pyc"}}
         for module in ("app", "research_app", "startup_diagnostics", "binary_responses",
-                       "response_scales", "shared_scales",
-                       "ocr_runtime", "ocr_selftest", "visual_survey_review",
+                       "response_scales", "shared_scales", "letter_spacing",
+                       "repeated_choices", "scoring_evidence", "matrix_reconstruction",
+                       "ocr_runtime", "ocr_selftest", "analysis_selftest", "visual_survey_review",
                        "analysis_runs", "import_session", "workspace_shell",
                        "workspace_analyze", "workspace_questionnaires", "workspace_methods",
                        "workspace_components", "workspace_tokens", "workspace_text",
                        "workspace_state", "workspace_routes"):
             if module not in modules:
                 raise SystemExit(f"Packaged application lacks module {module}")
+        # The interface opens these; [tool.flet.app].exclude must never drop them.
+        if not (root / "examples" / "sample_scale.csv").is_file():
+            raise SystemExit("Packaged application lacks the example datasets")
         manifest = json.loads((bundle / "MANIFEST.json").read_text(encoding="utf-8"))
         print(f"Runtime files: {len(manifest['files'])}; Tesseract {manifest['tesseract_version']}")
         result = Path(temp) / "selftest.json"

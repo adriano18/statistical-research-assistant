@@ -112,6 +112,23 @@ DARK = Palette(
 
 PALETTES = {"light": LIGHT, "dark": DARK}
 
+# Accent presets (Stage 34.5, issue #32): blue is the default. Each one
+# replaces only the accent roles and passes the same contrast checks as the
+# base palettes in both themes (tests/test_workspace_accents.py).
+ACCENT_ROLES = ("accent", "accent_hover", "on_accent", "accent_subtle", "on_accent_subtle",
+                "focus")
+ACCENTS: dict[str, dict[str, tuple[str, ...]]] = {
+    "blue": {"light": ("#1F5BC4", "#1A4EA8", "#FFFFFF", "#E7EEFB", "#173F86", "#1F5BC4"),
+             "dark": ("#8AB0F7", "#A3C1F9", "#0E1830", "#22314D", "#CFDDFB", "#8AB0F7")},
+    "teal": {"light": ("#0F766E", "#115E59", "#FFFFFF", "#E0F2F0", "#134E4A", "#0F766E"),
+             "dark": ("#5EEAD4", "#99F6E4", "#042F2E", "#123B38", "#CCFBF1", "#5EEAD4")},
+    "violet": {"light": ("#6D28D9", "#5B21B6", "#FFFFFF", "#EDE9FE", "#4C1D95", "#6D28D9"),
+               "dark": ("#C4B5FD", "#DDD6FE", "#2E1065", "#2E2350", "#EDE9FE", "#C4B5FD")},
+    "graphite": {"light": ("#374151", "#1F2937", "#FFFFFF", "#E5E7EB", "#111827", "#374151"),
+                 "dark": ("#D1D5DB", "#E5E7EB", "#111827", "#2D333D", "#F3F4F6", "#D1D5DB")},
+}
+DEFAULT_ACCENT = "blue"
+
 # Text-on-background pairs that must meet WCAG AA (4.5:1 normal text).
 TEXT_PAIRS = (
     ("text", "canvas"), ("text", "surface"), ("text", "surface_alt"),
@@ -151,8 +168,12 @@ def contrast_ratio(foreground: str, background: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
-def palette(mode: str) -> Palette:
-    return PALETTES.get(mode, LIGHT)
+def palette(mode: str, accent: str = DEFAULT_ACCENT) -> Palette:
+    from dataclasses import replace
+
+    base = PALETTES.get(mode, LIGHT)
+    preset = ACCENTS.get(accent, ACCENTS[DEFAULT_ACCENT])[base.mode]
+    return replace(base, **dict(zip(ACCENT_ROLES, preset)))
 
 
 def text_style(token, color: str | None = None) -> ft.TextStyle:
@@ -180,9 +201,9 @@ def _color_scheme(p: Palette) -> ft.ColorScheme:
     )
 
 
-def build_theme(mode: str) -> ft.Theme:
+def build_theme(mode: str, accent: str = DEFAULT_ACCENT) -> ft.Theme:
     """Material 3 theme whose colour roles are the Stage 33 tokens."""
-    p = palette(mode)
+    p = palette(mode, accent)
     return ft.Theme(
         color_scheme=_color_scheme(p),
         use_material3=True,

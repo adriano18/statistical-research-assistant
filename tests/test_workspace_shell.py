@@ -210,24 +210,78 @@ class EventHandlerTests(unittest.TestCase):
     while the harness (which awaited any returned coroutine) passed. The
     harness now dispatches events the way Flet does."""
 
-    def test_no_lambda_hands_a_coroutine_to_flet(self):
+    @staticmethod
+    def _dropped(sources: dict[str, str]) -> list[str]:
+        """Lambdas whose body calls a coroutine function. An attribute call
+        (``self.save()``, ``runs.run_x()``) may reach a coroutine method or a
+        module-level coroutine of any module; a bare name (``action()``) only
+        a coroutine of the same module, also one nested in a function. So a
+        plain function that shares its name with a coroutine elsewhere (a
+        nested closure of the classic window, a method of the workspace) is
+        not mistaken for it."""
         import ast
+
+        trees = {name: ast.parse(text) for name, text in sources.items()}
+        local = {name: {node.name for node in ast.walk(tree)
+                        if isinstance(node, ast.AsyncFunctionDef)}
+                 for name, tree in trees.items()}
+        anywhere = {child.name for tree in trees.values() for node in ast.walk(tree)
+                    if isinstance(node, (ast.Module, ast.ClassDef))
+                    for child in node.body if isinstance(child, ast.AsyncFunctionDef)}
+        # A module-level coroutine imported by name ("from m import f") is
+        # called by its bare (local) name too.
+        top = {name.removesuffix(".py"): {child.name for child in tree.body
+                                          if isinstance(child, ast.AsyncFunctionDef)}
+               for name, tree in trees.items()}
+        for name, tree in trees.items():
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module in top:
+                    local[name] |= {alias.asname or alias.name for alias in node.names
+                                    if alias.name in top[node.module]}
+        dropped = []
+        for name, tree in trees.items():
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Lambda) and isinstance(node.body, ast.Call)):
+                    continue
+                func = node.body.func
+                if isinstance(func, ast.Attribute):
+                    hit = func.attr in anywhere
+                else:
+                    hit = getattr(func, "id", None) in local[name]
+                if hit:
+                    dropped.append(f"{name}:{node.lineno}: {ast.unparse(node)[:90]}")
+        return dropped
+
+    def test_no_lambda_hands_a_coroutine_to_flet(self):
         from pathlib import Path
 
         root = Path(__file__).resolve().parents[1]
-        trees = {path: ast.parse(path.read_text(encoding="utf-8"))
-                 for path in sorted(root.glob("*.py"))}
-        coroutines = {node.name for tree in trees.values() for node in ast.walk(tree)
-                      if isinstance(node, ast.AsyncFunctionDef)}
-        dropped = []
-        for path, tree in trees.items():
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Lambda) and isinstance(node.body, ast.Call):
-                    func = node.body.func
-                    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
-                    if name in coroutines:
-                        dropped.append(f"{path.name}:{node.lineno}: {ast.unparse(node)[:90]}")
-        self.assertEqual(dropped, [], "use wc.handler(fn, *args) or an async def handler")
+        sources = {path.name: path.read_text(encoding="utf-8")
+                   for path in sorted(root.glob("*.py"))}
+        self.assertEqual(self._dropped(sources), [],
+                         "use wc.handler(fn, *args) or an async def handler")
+
+    def test_the_scan_finds_dropped_coroutines_and_only_those(self):
+        """Found when #25 met #33: analysis_selftest._sample (a plain
+        function) was reported because WorkspaceShell._sample is async."""
+        flagged = self._dropped({
+            "shell.py": "class Shell:\n"
+                        "    async def save(self): pass\n"
+                        "    async def _sample(self): pass\n"
+                        "    def build(self):\n"
+                        "        b.on_click = lambda e: self.save()\n"
+                        "        async def go(): pass\n"
+                        "        c.on_click = lambda e: go()\n",
+            "selftest.py": "def _sample(name): pass\n"
+                           "steps = [lambda: _sample('a.csv'), lambda: runs.run_explore()]\n",
+            "classic.py": "def main(page):\n"
+                          "    async def run_explore(e): pass\n",
+            "files.py": "async def save_as(page): pass\n",
+            "page.py": "from files import save_as as keep\n"
+                       "b.on_click = lambda e: keep(page)\n",
+        })
+        self.assertEqual(sorted(line.split(":")[:2] for line in flagged),
+                         [["page.py", "2"], ["shell.py", "5"], ["shell.py", "7"]])
 
     def test_the_harness_refuses_a_handler_flet_would_drop(self):
         ws = Workspace()

@@ -98,6 +98,10 @@ class ResultEntry:
     record_id: str | None = None    # saved analysis run in the open project
     restored: bool = False          # loaded from the project, not calculated now
     stale_reasons: tuple[str, ...] = ()
+    # What the result was calculated on (Issue #32): the dataset version
+    # (SHA-256 of its table), the confirmed level of every variable used,
+    # group labels, and how many rows were complete for those variables.
+    provenance: dict = field(default_factory=dict)
 
     @property
     def title(self) -> str:
@@ -122,6 +126,7 @@ class ResearchSession:
     language: str = "en"
     theme: str = "light"
     corners: str = "windows"
+    accent: str = "blue"           # accent colour preset (workspace_tokens.ACCENTS)
     _ids: itertools.count = field(default_factory=lambda: itertools.count(1), repr=False)
     _listeners: list[Callable[[str], None]] = field(default_factory=list, repr=False)
 
@@ -203,6 +208,32 @@ class ResearchSession:
     def missing_cells(self) -> int:
         return int(self.df.isna().sum().sum()) if self.has_data else 0
 
+    def value_summary(self, name: str, language: str = "en") -> str:
+        """What a column holds, to confirm its level by its content (Issue #32):
+        categories with counts, the codes of a short numeric scale, or the
+        range of a quantitative score — never the storage type alone."""
+        if not self.has_data or name not in self.df.columns:
+            return ""
+        series = self.df[name].dropna()
+        if series.empty:
+            return "—"
+        distinct = series.nunique()
+        numeric = pd.api.types.is_numeric_dtype(series)
+        if distinct == len(series) and distinct > 20:
+            return f"{distinct} unique"
+        if numeric and distinct > 12:
+            low, high = series.min(), series.max()
+            fmt = (lambda v: f"{v:g}")
+            return f"{fmt(low)} – {fmt(high)}"
+        counts = series.value_counts() if numeric else series.astype(str).value_counts()
+        order = sorted(counts.index)
+
+        def show(value) -> str:     # 4 rather than 4.0 for the codes of a scale
+            return f"{value:g}" if numeric else str(value)
+
+        shown = [f"{show(value)} ({counts[value]})" for value in order[:8]]
+        return ", ".join(shown) + (" …" if distinct > 8 else "")
+
     def group_labels(self, name: str) -> list[str]:
         if not self.has_data or name not in self.df.columns:
             return []
@@ -214,18 +245,42 @@ class ResearchSession:
                    roles: dict | None = None, options: dict | None = None,
                    confirms: dict | None = None, dataset: str | None = None,
                    rows: int | None = None, created: datetime | None = None,
-                   record_id: str | None = None, restored: bool = False) -> ResultEntry:
+                   record_id: str | None = None, restored: bool = False,
+                   provenance: dict | None = None) -> ResultEntry:
+        if provenance is None:
+            provenance = {} if restored else self.provenance_for(roles)
         entry = ResultEntry(
             id=next(self._ids), run=run, dataset=self.source_name if dataset is None else dataset,
             rows=(0 if self.df is None else len(self.df)) if rows is None else rows,
             created=created or datetime.now(), confirmations=tuple(confirmations),
             method=method, roles=roles, options=options, confirms=confirms,
-            record_id=record_id, restored=restored,
+            record_id=record_id, restored=restored, provenance=provenance,
         )
         self.results.append(entry)
         self.selected_result = entry.id
         self.notify("results")
         return entry
+
+    def provenance_for(self, roles: dict | None) -> dict:
+        """The facts a result rests on, taken from the table on screen."""
+        import hashlib
+
+        if self.df is None:
+            return {}
+        used = []
+        for value in (roles or {}).values():
+            for name in (value if isinstance(value, (list, tuple)) else [value]):
+                if isinstance(name, str) and name in self.df.columns and name not in used:
+                    used.append(name)
+        table = self.df.to_csv(index=False, lineterminator="\n").encode("utf-8")
+        levels = {name: self.level(name) for name in used}
+        groups = {name: self.group_labels(name)[:12] for name in used
+                  if levels[name] in ("nominal", "ordinal")}
+        complete = int(self.df[used].notna().all(axis=1).sum()) if used else len(self.df)
+        how = {name: self.variables[name].confirmed_in for name in used if name in self.variables}
+        return {"dataset_sha256": hashlib.sha256(table).hexdigest(), "variables": used,
+                "levels": levels, "groups": groups, "complete": complete,
+                "rows": len(self.df), "confirmed_in": how}
 
     def result(self, entry_id: int | None) -> ResultEntry | None:
         return next((r for r in self.results if r.id == entry_id), None)

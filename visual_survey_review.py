@@ -19,11 +19,14 @@ from typing import Callable
 
 from PIL import Image, ImageDraw, ImageFont
 
+from letter_spacing import repair_pdf_text, spurious_space_indices
 from ocr_layout import (
     OCRPage, PSYCHOMETRIC_NOTICE, aggregate_confidence, link_candidates,
     page_from_plain_text, page_from_positioned_words, parse_tesseract_tsv,
 )
-from matrix_reconstruction import docx_matrices, geometric_matrices
+from matrix_reconstruction import (
+    choice_cell_grid, choice_grid_lines, docx_matrices, geometric_matrices,
+)
 from ocr_runtime import (
     OCRCancelled, OCRConfigurationError, resolve_tesseract, run_tesseract,
     tesseract_available as _runtime_available,
@@ -32,7 +35,7 @@ from ocr_runtime import (
 from scientific_survey_import import (
     InstrumentCandidate, LEGACY_DOC_FAILED, LEGACY_DOC_UNREADABLE,
     LegacyDocUnavailable, ScientificDocumentReview, MAX_BYTES, MAX_PAGES,
-    parse_scientific_lines,
+    parse_scientific_lines, with_spacing_repairs,
 )
 from survey_storage import validate_questions
 
@@ -400,14 +403,26 @@ def pdf_text_layer_page(
         page = pdf[page_number - 1]
         try:
             width, height = page.get_size()
-            view = (page.get_rotation() + rotation) % 360
+            page_rotation = page.get_rotation()
+            if page_rotation in (90, 270):
+                # get_size() is the displayed size; character boxes use the
+                # page's unrotated user space.
+                width, height = height, width
+            view = (page_rotation + rotation) % 360
             textpage = page.get_textpage()
             try:
                 count = min(textpage.count_chars(), MAX_TEXT_LAYER_CHARS)
+                # Whitespace that splits a word spuriously ("sched ule" in a
+                # letter-spaced text layer) does not end the word.
+                try:
+                    spurious = spurious_space_indices(textpage, max_chars=count)
+                except Exception:
+                    spurious = set()
                 words: list[tuple[str, tuple]] = []
                 current, box = [], None
-                previous_right = None
+                previous_right = previous_loose_right = None
                 word_height = 0.0
+                rejoined = False
 
                 def flush():
                     nonlocal current, box
@@ -418,6 +433,9 @@ def pdf_text_layer_page(
                 for index in range(count):
                     char = chr(pdfium_c.FPDFText_GetUnicode(textpage.raw, index) or 32)
                     if char.isspace() or char == "\x00":
+                        if index in spurious and current:
+                            rejoined = True
+                            continue
                         flush()
                         previous_right = None
                         word_height = 0.0
@@ -425,20 +443,25 @@ def pdf_text_layer_page(
                     left, bottom, right, top = textpage.get_charbox(index)
                     if right <= left or top <= bottom:
                         continue
-                    if previous_right is not None and (
+                    # Advance ("loose") boxes measure the gap between glyph
+                    # positions; ink boxes of narrow glyphs (', i, l) leave
+                    # wide gaps inside a word.
+                    try:
+                        loose_left, _, loose_right, _ = textpage.get_charbox(index, loose=True)
+                    except TypeError:
+                        loose_left, loose_right = left, right
+                    if previous_right is not None and not rejoined and (
                         left < previous_right - 2
-                        or left > previous_right + 0.3 * max(top - bottom, word_height)
+                        or loose_left > previous_loose_right + 0.3 * max(top - bottom, word_height)
                     ):
                         flush()  # new line or a visible gap without a space
                         word_height = 0.0
-                    corners = [
-                        _rotate_point(left / width, 1 - top / height, view),
-                        _rotate_point(right / width, 1 - bottom / height, view),
-                    ]
-                    char_box = (
-                        min(c[0] for c in corners), min(c[1] for c in corners),
-                        max(c[0] for c in corners), max(c[1] for c in corners),
-                    )
+                    rejoined = False
+                    previous_loose_right = loose_right
+                    # Unrotated page fractions: lines are grouped in reading
+                    # orientation first and rotated into the view afterwards.
+                    char_box = (left / width, 1 - top / height,
+                                right / width, 1 - bottom / height)
                     box = char_box if box is None else (
                         min(box[0], char_box[0]), min(box[1], char_box[1]),
                         max(box[2], char_box[2]), max(box[3], char_box[3]),
@@ -456,15 +479,35 @@ def pdf_text_layer_page(
     shown = (height, width) if view in (90, 270) else (width, height)
     safe = []
     for text, (x0, y0, x1, y1) in words:
+        x0, y0, x1, y1 = (min(1.0, max(0.0, v)) for v in (x0, y0, x1, y1))
         if x1 - x0 < 0.002:
-            x1 = min(1.0, x0 + 0.002)
+            x0, x1 = (x0, x0 + 0.002) if x0 <= 0.998 else (0.998, 1.0)
         if y1 - y0 < 0.002:
-            y1 = min(1.0, y0 + 0.002)
+            y0, y1 = (y0, y0 + 0.002) if y0 <= 0.998 else (0.998, 1.0)
         safe.append((text, (x0, y0, x1, y1)))
-    return page_from_positioned_words(
+    layer = page_from_positioned_words(
         page_number, safe, pixel_width=int(shown[0]), pixel_height=int(shown[1]),
         rotation=rotation,
     )
+    return _rotated_layer(layer, view) if view else layer
+
+
+def _rotate_box(box, view: int):
+    a = _rotate_point(box[0], box[1], view)
+    b = _rotate_point(box[2], box[3], view)
+    return (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
+
+
+def _rotated_layer(layer: OCRPage, view: int) -> OCRPage:
+    """Map every box of an upright text layer into the rotated page view."""
+    blocks = []
+    for block in layer.blocks:
+        lines = []
+        for line in block.lines:
+            words = tuple(replace(word, box=_rotate_box(word.box, view)) for word in line.words)
+            lines.append(replace(line, words=words, box=_rotate_box(line.box, view)))
+        blocks.append(replace(block, lines=tuple(lines), box=_rotate_box(block.box, view)))
+    return replace(layer, blocks=tuple(blocks))
 
 
 def attach_text_layer_geometry(
@@ -545,7 +588,8 @@ def ocr_scientific_pdf(
     reader = PdfReader(BytesIO(source))
     if reader.is_encrypted:
         raise ValueError("Cannot OCR an encrypted PDF.")
-    lines = []
+    page_lines: list[tuple[int, list[str]]] = []
+    text_pages: list[tuple[int, list[str]]] = []
     geometry: list[OCRPage] = []
     done = 0
     for n in range(1, count + 1):
@@ -569,23 +613,36 @@ def ocr_scientific_pdf(
             else:
                 page_layout = page_from_plain_text(n, str(result))
             geometry.append(page_layout)
-            lines.extend((n, line.text) for line in page_layout.lines)
+            # OCR reads a row of labelled answer cells together with the item
+            # text; restore "item, then its printed choices" from the boxes.
+            grid = choice_cell_grid(page_layout)
+            page_lines.append((n, choice_grid_lines(page_layout, grid) if grid is not None
+                               else [line.text for line in page_layout.lines]))
             done += 1
             if progress is not None:
                 progress(done, len(pages))
         else:
             extracted = reader.pages[n-1].extract_text() or ""
-            lines.extend((n, line) for line in extracted.splitlines())
+            page_lines.append((n, extracted.splitlines()))
             if extracted.strip():
+                text_pages.append((n, extracted.splitlines()))
                 try:
                     geometry.append(pdf_text_layer_page(source, n))
                 except (ValueError, RuntimeError):
                     pass
+    repairs = ()
+    if text_pages:
+        fixed, repairs = repair_pdf_text(source, text_pages)
+        repaired = dict(fixed)
+        page_lines = [(n, repaired.get(n, text)) for n, text in page_lines]
+    lines = [(n, line) for n, text in page_lines for line in text]
     matrices = geometric_matrices(geometry)
     try:
         review = parse_scientific_lines(
-            lines, filename, page_count=count,
+            lines, filename, page_count=count, ocr_pages=tuple(pages),
+            text_source="pdf_text_layer",
         )
+        review = with_spacing_repairs(review, repairs)
     except ValueError as error:
         if not matrices:
             raise

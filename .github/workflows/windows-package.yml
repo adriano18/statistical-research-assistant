@@ -10,6 +10,9 @@ on:
       - "binary_responses.py"
       - "response_scales.py"
       - "shared_scales.py"
+      - "letter_spacing.py"
+      - "repeated_choices.py"
+      - "scoring_evidence.py"
       - "pyproject.toml"
       - "ocr_*.py"
       - "visual_survey_review.py"
@@ -19,14 +22,19 @@ on:
       - "survey_ui.py"
       - "interface_layout.py"
       - "analysis_runs.py"
+      - "analysis_selftest.py"
       - "import_session.py"
       - "workspace_*.py"
       - "requirements.txt"
       - "packaging/**"
       - "tools/prepare_windows_ocr_runtime.py"
       - "tools/check_gui_startup.py"
+      - "tools/package_audit.py"
+      - "tools/prune_packages.py"
+      - "tests/test_distribution_tools.py"
       - "tests/test_true_false_import.py"
       - "tests/test_shared_scales.py"
+      - "tests/test_brief_cope_import.py"
       - "tests/test_app_startup.py"
       - "tests/test_real_tesseract_ocr.py"
       - "tests/test_analysis_runs.py"
@@ -100,12 +108,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "True/False import tests failed" }
           & $python -m unittest discover -s tests -p "test_shared_scales.py" -v
           if ($LASTEXITCODE -ne 0) { throw "shared scale tests failed" }
+          & $python -m unittest discover -s tests -p "test_brief_cope_import.py" -v
+          if ($LASTEXITCODE -ne 0) { throw "repeated answer choice tests failed" }
           & $python -m unittest discover -s tests -p "test_app_startup.py" -v
           if ($LASTEXITCODE -ne 0) { throw "startup tests failed" }
           & $python -m unittest discover -s tests -p "test_analysis_runs.py" -v
           if ($LASTEXITCODE -ne 0) { throw "classic parity tests failed" }
           & $python -m unittest discover -s tests -p "test_workspace_*.py" -v
           if ($LASTEXITCODE -ne 0) { throw "Stage 33 workspace tests failed" }
+          & $python -m unittest discover -s tests -p "test_distribution_tools.py" -v
+          if ($LASTEXITCODE -ne 0) { throw "distribution tool tests failed" }
+
+      - name: Analysis self-test from source (reference report hashes)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+          python analysis_selftest.py diagnostics/source-analysis-selftest.json
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content diagnostics/source-analysis-selftest.json
+            throw "analysis self-test from source failed"
+          }
 
       - name: Build unsigned Windows desktop bundle
         run: >-
@@ -149,7 +171,7 @@ jobs:
           $json = Get-Content $result -Raw | ConvertFrom-Json
           if (-not $json.ok) { throw "Packaged OCR self-test failed: $($json.errors -join '; ')" }
           if ($json.origin -ne "bundled") { throw "Packaged app did not use the bundled engine: $($json.origin)" }
-          Copy-Item $result build/windows/ocr-selftest-result.json
+          Copy-Item $result diagnostics/packaged-ocr-selftest.json
 
       - name: Normal GUI startup (no Python/Tesseract on PATH, screenshots)
         shell: pwsh
@@ -168,20 +190,74 @@ jobs:
           python tools/check_gui_startup.py "$env:EXE_PATH" gui-workspace --workspace
           if ($LASTEXITCODE -ne 0) { throw "Packaged workspace preview startup check failed" }
 
-      - name: Create distributable ZIP
+      - name: Run analysis self-test inside the packaged application
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          # Every statistical procedure, chart, Word/XLSX export and the survey
+          # database, in the packaged (cleaned) app; the report hashes must equal
+          # the source checkout's, i.e. the cleanup changed no reported number.
+          $python = (Get-Command python).Source
+          $result = Join-Path $env:RUNNER_TEMP "packaged-analysis-selftest.json"
+          if (Test-Path $result) { Remove-Item $result }
+          $env:SRA_ANALYSIS_SELFTEST = $result
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\Wbem"
+          $process = Start-Process -FilePath $env:EXE_PATH -PassThru
+          $deadline = (Get-Date).AddMinutes(10)
+          while (-not (Test-Path $result) -and (Get-Date) -lt $deadline -and -not $process.HasExited) {
+            Start-Sleep -Seconds 3
+          }
+          Start-Sleep -Seconds 2
+          if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+          if (-not (Test-Path $result)) { throw "Packaged app wrote no analysis self-test result (exit: $($process.ExitCode))" }
+          Copy-Item $result diagnostics/packaged-analysis-selftest.json
+          $json = Get-Content $result -Raw | ConvertFrom-Json
+          "Packaged analysis self-test: ok=$($json.ok), import $($json.import_seconds) s, total $($json.seconds) s"
+          if (-not $json.ok) { throw "Packaged analysis self-test failed: $($json.errors -join '; ')" }
+          & $python analysis_selftest.py --compare diagnostics/source-analysis-selftest.json diagnostics/packaged-analysis-selftest.json
+          if ($LASTEXITCODE -ne 0) { throw "Packaged reports differ from the source checkout" }
+
+      - name: Measure package composition and size budget
         shell: pwsh
         run: |
+          # Level 9 = the compression of the uploaded artifact below.
           $source = Split-Path $env:EXE_PATH
-          Compress-Archive -Path "$source\*" -DestinationPath StatisticalResearchAssistant-Windows-x64.zip -CompressionLevel Optimal
-          Get-FileHash StatisticalResearchAssistant-Windows-x64.zip -Algorithm SHA256 | Format-List
-      - name: Upload unsigned portable preview bundle
+          python tools/package_audit.py $source --level 9 --title "Windows package composition (${{ github.sha }})" `
+            --json diagnostics/package-size.json --markdown diagnostics/package-size.md `
+            --budget-installed-mib 400 --budget-zip-mib 160 | Out-Null
+          $code = $LASTEXITCODE
+          Get-Content diagnostics/package-size.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if ($code -ne 0) { throw "Package size budget exceeded (see the job summary)" }
+
+      # The application folder itself is the artifact: one ZIP to download and
+      # extract, no ZIP inside a ZIP (issue #23). Diagnostics travel separately.
+      - name: Upload unsigned portable preview (application folder)
+        id: upload-app
         uses: actions/upload-artifact@v4
         with:
           name: StatisticalResearchAssistant-Windows-x64-unsigned-preview
+          path: build/windows/
+          compression-level: 9
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload build diagnostics (self-tests, size report, screenshots)
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-diagnostics
           path: |
-            StatisticalResearchAssistant-Windows-x64.zip
-            build/windows/ocr-selftest-result.json
+            diagnostics/
             gui-startup/
             gui-workspace/
           if-no-files-found: error
           retention-days: 14
+      - name: Report download size and checksum
+        shell: pwsh
+        run: |
+          $lines = @(
+            "",
+            "### Download",
+            "- Artifact: ${{ steps.upload-app.outputs.artifact-url }}",
+            "- SHA-256 of the downloaded ZIP: ``${{ steps.upload-app.outputs.artifact-digest }}``"
+          )
+          $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          $lines

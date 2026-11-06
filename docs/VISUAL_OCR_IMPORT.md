@@ -91,6 +91,169 @@ importer treats them as **questions sharing one response scale**:
 * Text-layer PDFs show "PDF text layer — OCR confidence does not apply"; only
   scanned pages report OCR word confidence.
 
+### Answer choices printed after every item (coping-inventory layouts, #20)
+
+Some inventories print the complete answer set again under or beside EVERY
+item, so that respondents circle a code — for example a 28-item coping
+checklist with four cells per row (`1` *NOT AT ALL* · `2` *A SMALL AMOUNT* ·
+`3` *A FAIR AMOUNT* · `4` *VERY MUCH*; the labels are often tiny, uppercase
+and wrapped over two lines). Read as text, the codes look like item
+numbers. The importer handles this layout as follows:
+
+* **Repeated block by consensus.** An ascending run of codes (`0`/`1`, `2`, …)
+  each followed by 0–4 label lines is accepted as the answer block only when
+  the same codes and labels follow at least three items. Every copy is
+  removed from the item text; the codes and labels may also share a line
+  (`1 NOT AT ALL`) or use circled digits (`①`). Each choice's label is the
+  spelling most copies print; on OCR pages near-identical spellings are
+  grouped first and the group's most frequent spelling wins, so a garbled
+  copy (`NOT AT An`) cannot outvote the printed label just because it
+  resembles several other garbles.
+* **Numbers joined with their prompts.** A standalone number line (`1`), a
+  number on the prompt's first line (`17 During …`), a circled number (`①`)
+  or a number drawn inside a circle (text-layer `1`) is joined with the
+  1–6 prompt lines that follow it (sequence logic — no geometry needed, so
+  the same rules work for text layers, OCR text and Word tables). A number
+  OCR cannot read is inferred from the order and flagged on that item.
+  Page headers/footers between items stay outside the prompts; item order
+  (1-based) and the page of every item are kept.
+* **One shared scale.** All items with the common block are linked to ONE
+  `ResponseScheme` (evidence `item_block`, `+matrix` when the page geometry
+  or a Word table also yields the grid). Labels stay exactly as printed —
+  only whitespace and apostrophe variants (`ʼ`, `’` → `'`) are normalised and
+  uppercase is kept; codes are proposed only because they are printed. The
+  items are proposed as `single_choice`, never as free text, and the usual
+  banner ("28 questions use an unverified 4-choice scale …") blocks the
+  draft until **Response scale review** confirms the structure (and,
+  separately, the numeric codes). When the repeated blocks print codes
+  only, a code legend (`1 = …  2 = …`) or a scale header of the same
+  instrument supplies the labels (evidence `item_block+legend` /
+  `item_block+header`); a legend that disagrees with labels printed after
+  the items is reported as an issue.
+* **Differences are reported, never unified silently.** If the block printed
+  after an item differs (another label, a missing choice, an OCR variant),
+  the scale's issues name the items ("Printed answer choices differ on
+  item(s) 7 (item 7: choice 3 reads “RATHER OFTEN” instead of …)") and the
+  item carries the flag `answer choices differ from the common scale`. A
+  different block repeated identically after two or more items becomes a
+  separate scale.
+* **Missing items block the draft.** Item numbers absent from an otherwise
+  consecutive sequence (or named by a documented scoring rule but not
+  found) are reported: "Item 14 is missing from the numbered sequence
+  1–28. Check the source page, add the item(s) or confirm that the source
+  omits them before importing." The banner shows it, and the draft is
+  refused until the item is added or **I checked the source: the missing
+  item number(s) are not printed there** is ticked.
+* **Form fields are not items.** Lines such as *PARTICIPANT NAME · DATE ·
+  RATER* or a link to an online version are never items and never
+  become the instrument title.
+* **Word tables.** Rows `No. | Statement | four cells` work with a code and
+  label in every cell (two paragraphs) or with the labels as column
+  headers and codes in the cells (then the Word-table matrix supplies the
+  labels).
+* **Scans.** Tesseract reads a row of answer cells together with the prompt,
+  left to right. When at least three rows print the same ascending codes in
+  aligned columns with labels under them, the page boxes are regrouped into
+  "number, prompt, then each code with its label" before parsing. Label
+  spellings are compared tolerantly on OCR pages (and every OCR variant is
+  still listed as an issue). If OCR cannot read the small labels at all, the
+  codes and rows are kept and the labels must be entered.
+
+#### Letter-spaced PDF text layers
+
+Designed forms often position every glyph separately. Text extractors then
+either split words (`sched ule`, `m arked`, `A FA IR`) or put a space between
+every glyph (`s c h e d u l e  f o r`). The importer repairs only
+whitespace, conservatively, from PDFium character boxes:
+
+* two fragments are joined only when both neighbouring characters are
+  letters on the same baseline and the gap between their advance boxes is
+  small — below 0.16 of the line's median advance width, or below 70 % of
+  the real word spaces of the same line when that line has space
+  characters; a gap of ≥ 0.45 advance widths is never closed, nor is a
+  line or column change. This holds whether PDFium or another extractor
+  put the space there (their space thresholds differ);
+* when an extractor glues text across a real line change without any
+  whitespace (pypdf 6.21 groups text at nearby baselines into one line:
+  `inventedgarden`, `1NOT ATALL`), the line is cut at PDFium's line
+  changes. On `/Rotate` pages PDFium lists the lines in another order, so
+  the line is matched piece by piece; a piece that runs on into another
+  line and stops inside it is cut back to that line change, because
+  wording repeated on every item would otherwise match a neighbouring item;
+* for an extractor line with a space between every glyph, single spaces
+  join and runs of two spaces separate words, but a wide gap in the glyph
+  geometry (an item number before its prompt, form-field columns) always
+  stays a space;
+* without usable geometry a text-only rule handles such lines (single
+  spaces join, double spaces separate, a digit next to a letter keeps its
+  space);
+* every changed line is kept as a `SpacingRepair` (page, original,
+  repaired, joins, restored gaps, method `geometry`/`text`) in
+  `ScientificDocumentReview.spacing_repairs`; affected items get the flag
+  `spacing repaired` and a note, and a document warning summarises the
+  repair. Ordinary text layers are left unchanged.
+
+#### Documented scoring — review-only evidence
+
+Instrument editions and translations document different scoring (for
+example a few broad groups averaged over their items in one edition, many
+two-item subscales in another). The importer keeps
+the verified response scale separate from any scoring recipe and only
+records what THIS document states: group name, listed items, aggregation
+word (mean/sum), stated number of values, printed range, page, source line
+and whether it came from the text layer, a Word file or OCR. It never
+infers subscale pairings, totals, reverse keys or norms, and nothing is
+applied to questions, codes or exports — not even after approval.
+
+#### Interface for the Stage 33 review UI
+
+`InstrumentCandidate.evidence` is a frozen `scoring_evidence.ReviewEvidence`:
+
+| Field / member | Meaning |
+|---|---|
+| `scoring_groups: tuple[ScoringGroup, ...]` | documented groups: `id`, `name`, `items`, `aggregation` (`mean`/`sum`/`unspecified`), `stated_count`, `value_range`, `page`, `source_line`, `evidence` (`pdf_text_layer`/`docx`/`doc`/`text`/`ocr`), `issues` (unknown items, count mismatch, OCR only), `approved`, `ocr_only` |
+| `scoring_statements: tuple[ScoringStatement, ...]` | other scoring sentences (`page`, `text`, `evidence`) |
+| `missing_items: tuple[int, ...]` | numbers missing from the item sequence |
+| `item_flags: tuple[(number, flags), ...]`, `flags_for(n)` | per-item flags: `item number inferred from order`, `answer choices differ from the common scale`, `prompt joined from N lines`, `spacing repaired`, `read by OCR` |
+| `issues` | instrument-level notes (items in several groups, review-only reminder) |
+| `missing_acknowledged`, `has_scoring`, `ocr_only`, `scoring_approved`, `unassigned_items(numbers)` | state and helpers |
+
+Functions in `scientific_survey_import`:
+
+* `missing_items_banner(candidate)` / `review_banner(candidate)` — blocking
+  texts (scale, then sequence), `None` when nothing blocks;
+* `acknowledge_missing_items(candidate)` — researcher confirms the numbers
+  are absent in the source;
+* `approve_scoring_evidence(candidate, group_ids=None, *, ocr_checked=False)`
+  — marks groups as checked; requires confirmed numeric codes for every
+  listed item and `ocr_checked=True` for OCR-only evidence; changes nothing
+  else;
+* `reviewed_draft(...)` refuses unconfirmed scales and unacknowledged
+  missing items; `draft_questions(...)` validates a partial review without
+  these gates.
+
+`ScientificDocumentReview.choice_layout` (`repeated_choices.ChoiceLayout`)
+holds the common block (`template`: codes, labels, page) and every item's
+own printed block (`items`: `BlockItem` with `number`, `prompt`, `page`,
+`block`, `number_source` `standalone`/`inline`/`circled`/`inferred`,
+`prompt_lines`, `deviations`).
+
+#### Checking a private copy without sharing its wording
+
+~~~powershell
+python tools/audit_local_survey_docs.py "C:\Research\coping-form.pdf"
+python tools/audit_local_survey_docs.py --ocr eng --items "C:\Research\coping-form.pdf"
+~~~
+
+The report lists pages, spacing repairs, the repeated block (codes, label
+lengths and a hash), how numbers were printed, item numbers found and
+missing, question types, scales, documented scoring groups, item flags,
+what blocks the draft, linked page regions and matrices — for the text
+layer and, with `--ocr`, separately for local OCR. Titles, labels and names
+appear only as a hash prefix and a length (for example `#1a2b3c4d/42`), so the output
+can be shared to discuss a discrepancy. `--show-titles` adds titles and
+warnings, which may contain source text.
+
 ### True/False, T/F and Yes/No answers
 
 Binary answer formats are recognized from evidence in the source:
@@ -194,7 +357,9 @@ If no text is detected in a scanned PDF, the original source is still displayed.
 ## Known limitations
 
 - Word layout is a **reconstruction**, not a pixel-perfect render of the original page. Convert a Word document to PDF locally if precise visual pagination is necessary.
-- Layouts that repeat multi-line option labels inside every item (for example a coping inventory printing "1 I haven't been doing this at all … 4 I've been doing this a lot" under each statement) and letter-spaced text layers are not reconstructed yet; enter such scales manually.
+- Answer choices repeated after every item are recognized only as an ascending run of codes starting at 0 or 1 that repeats after at least three items; descending blocks (`4 … 1`), choices printed inline on the item's own line (`… 1 NOT AT ALL 2 …`) and blocks without codes are not reconstructed. On scans, at least three rows must print the codes in aligned columns.
+- OCR renders PDF pages at a bounded resolution: very small answer labels (about 4 pt) and small or circled item numbers may be unreadable (circled digits are often read as `@`). Then the labels must be entered and unreadable numbers are inferred from the order (flagged); a whole row missed by OCR shifts inferred numbers until the next readable one. Prefer the text layer when the PDF has one.
+- Letter-spacing repair only changes whitespace and never guesses words: a space the text layer does not encode at all (a word gap no wider than the letter tracking) cannot be restored from geometry, and widely tracked title lines may keep extra spaces. Text drawn rotated inside an upright page is not repaired; whole pages with a `/Rotate` entry are supported.
 - Matrix reconstruction is conservative: printed codes/markers or clear header labels are required to find columns; transposed grids (items as columns), rotated header text and hand-drawn tables are not reconstructed and must be entered manually. Ticked answers on filled-in forms are not interpreted.
 - Matrix rows become ordinary questions sharing one scale (rating scale or single choice); a dedicated respondent-facing grid control is not part of this stage.
 - OCR quality depends on scan resolution, skew, image contrast and language packs; full fidelity is not guaranteed. Small skew is handled by Tesseract; larger skew is not corrected automatically. Some multi-page questionnaires need all relevant pages OCRed in sequence.
@@ -215,6 +380,7 @@ python -m unittest discover -s tests -p "test_ocr_*.py" -v
 python -m unittest discover -s tests -p "test_matrix_reconstruction.py" -v
 python -m unittest discover -s tests -p "test_spatial_review_ui.py" -v
 python -m unittest discover -s tests -p "test_real_tesseract_ocr.py" -v
+python -m unittest discover -s tests -p "test_brief_cope_import.py" -v
 ~~~
 
 ## Manual Windows check (packaged app)
