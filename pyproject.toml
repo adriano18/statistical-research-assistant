@@ -3,6 +3,25 @@
 # Python dependencies intentionally stay in requirements.txt: this file has no
 # [project].dependencies, so `flet build` keeps installing requirements.txt.
 
+# Files of the repository that the running application never reads
+# (issue #23; checked with a source search). `examples/` stays: the sample
+# datasets are opened from the interface.
+[tool.flet.app]
+exclude = ["tests", "tools", "docs", "packaging", "README.md", "ROADMAP.md"]
+
+# Extra files removed from the installed packages, on top of serious_python's
+# defaults (C/C++ sources and headers, .pyi/.pxd/.pyx, .a, .pdb, __pycache__).
+# Globs are relative to site-packages; a matching folder is removed whole.
+# - `tests` / `test`: package test suites, never imported at runtime; the
+#   `testing` modules libraries do import (numpy.testing, pandas._testing,
+#   xarray.testing, sklearn.utils._testing) have other names and stay.
+# - `.lib` / `.pxi`: import libraries and Cython includes, build-time only.
+# - Pillow's AVIF codec: the application never reads or writes AVIF images.
+# `tools/prune_packages.py` applies the same list to a Python environment so
+# the full test suite can prove nothing at runtime needs these files.
+[tool.flet.cleanup]
+package_files = ["**/tests", "**/test", "**.lib", "**.pxi", "PIL/_avif.*"]
+
 # Native boot screen shown by the Flutter shell while the embedded Python
 # interpreter starts (before app.py can draw its own startup screen). Flet's
 # default boot screen has no spinner or text and follows the OS theme, which
