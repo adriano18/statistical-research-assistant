@@ -15,10 +15,10 @@ application.
 
 | Gate | Status | Evidence |
 |---|---|---|
-| Reported failures reproduced before fixing; each root cause and the test that failed before the fix recorded | done | `docs/STAGE345_FINDINGS.md`: 12 root causes (#33). On `c840571`, 25 tests failed (19 failures, 9 errors) and 4 real-browser checks failed; all pass now. Root cause 13 was found by the packaged-EXE journeys (#36): selectable text was invisible to screen readers. 3 tests and 1 browser check fail before its fix |
+| Reported failures reproduced before fixing; each root cause and the test that failed before the fix recorded | done | `docs/STAGE345_FINDINGS.md`. **#33:** 12 root causes; on `c840571`, 25 tests failed (19 failures, 9 errors) and 4 real-browser checks failed, and all pass now. **Found by the packaged-EXE journeys (#36):** <ul><li>the primary cause of symptoms 5 and 6: Save TXT/PNG/Word, Open on Home and 10 more buttons handed Flet a coroutine and did nothing. Fixed in #33; 18 tests and 1 browser check fail before the fix.</li><li>Root cause 13: selectable text was invisible to screen readers. 3 tests and 1 browser check fail before the fix.</li><li>Root cause 14: the next item jumped about 560 px in the import review. 1 test and 1 browser check fail before the fix.</li></ul> |
 | No full page rebuild after a checkbox or text input; scroll, focus, caret, item 60 of 120 and open sections kept | done | `tools/workspace_state_checks.py` in a real browser, in CI (job *workspace-screenshots*); `StableRenderTests` |
-| Windows save dialogs: TXT, PNG, DOCX, CSV and SRA actually written | done (Python + browser) · open (packaged EXE) | `SaveOutcomeTests`, `tests/test_workspace_files.py` (#33); native dialogs on the EXE: `tools/windows_gui_e2e.py` (#36) |
-| Project creation and opening lead to the project workspace | done | `ProjectWorkspaceTests`, `ProjectPageTests` (#33) |
+| Windows save dialogs: TXT, PNG, DOCX, CSV and SRA actually written | done | `SaveOutcomeTests`, `tests/test_workspace_files.py` (#33). On the packaged EXE, through the native Save dialog: TXT, PNG, Word (typed without an extension), the combined report, the `.sra` backup and CSV + JSON codebook were written. Each was opened and checked (#36) |
+| Project creation and opening lead to the project workspace | done | `ProjectWorkspaceTests`, `ProjectPageTests`, browser check *projects-open-from-home* (#33); projects created, opened, switched and reopened after a restart on the EXE (#36) |
 | Datasets, drafts, published forms, responses and derived datasets kept apart; Analyze Responses never replaces a source silently | done | `DataSourceTests` (#33); the responses journey (#36) |
 | PSQ-like import: the bibliography never becomes items; image pages are read by OCR; the stated item count is checked | done | `tests/test_import_integrity.py` (19 tests, #34). Private PDFs were compared locally only, never committed: PSQ 2 → 30 items, Holmes–Rahe 0 → 43, PSS/UCLA/F2 unchanged |
 | Legacy DOC and unsupported formats explained and actionable; imports never mix with an unsaved draft | done | `UnreadableDocumentTests`, `DraftGuardTests` (#33); wizard tests (#35) |
@@ -27,14 +27,16 @@ application.
 | Windows CI: workspace, SQLite, research journey | done | *windows-sqlite*, *windows-research-journey* — green |
 | Bundled OCR regression on Windows | done | *windows-ocr-bundle*: real OCR regression against the bundled engine, then the OCR self-test inside the packaged application |
 | Project migrations (format 2, atomic writes) | done | `tests/test_project_store.py` on Linux and Windows |
-| Real GUI E2E on the packaged Windows EXE (UI Automation, native dialogs, restart) | open | #36, workflow *Windows packaged GUI journeys*, artifact `windows-gui-e2e` (screenshots, one GIF per journey, `gui-e2e-result.json`) |
+| Real GUI E2E on the packaged Windows EXE (UI Automation, native dialogs, restart) | done | #36: all 6 journeys (61 steps) pass, run [42277191526](https://github.com/adriano18/statistical-research-assistant/actions/runs/42277191526) on `24cc255`. Artifact [`windows-gui-e2e`](https://github.com/adriano18/statistical-research-assistant/actions/runs/42277191526/artifacts/13533774749): a screenshot of every step, one GIF per journey, `gui-e2e-result.json` |
 | Numerical parity with the validated engine | done | `tests/test_analysis_runs.py` (workspace = classic) and `tests/test_engine_ground_truth.py` (33 tests against independent references, #38). No discrepancies found |
 | Synthetic fixtures only; no private questionnaires or participant data | done | `tests/synthetic_documents.py`, `examples/`; private PDFs never committed |
 | Classic interface kept until the new one is equivalent | done | unchanged; reachable from the workspace sidebar |
 | Screenshots at 100/125/150 %, light/dark, EN/LV/RU | done | artifact `workspace-screenshots` |
-| Signed Windows installer | later | by request, after the GUI journeys pass |
+| Signed Windows installer | later | by request; the GUI journeys now pass |
 
 ## Packaged-EXE journeys (#36)
+
+All six pass on the distributed executable (run 42277191526).
 
 | Journey | What it does on the real executable |
 |---|---|
@@ -53,6 +55,6 @@ application.
 | Guided ANCOVA design next to expert access to all 15 methods | done | `tests/test_workspace_guided_design.py`; no method is chosen from a Shapiro–Wilk p |
 | Interpretation at student and professor depth; unverified decisions labelled | done | `result-depth`, `result-unverified` (#37) |
 | Result provenance: source hash, N/missingness, coding, options, export settings | done | `tests/test_workspace_provenance.py` (#37) |
-| Scientific Import layout: sticky actions, counts, progress, large source view, focused editing | done | #35 wizard; browser check *import-120-item-60* |
+| Scientific Import layout: sticky actions, counts, progress, large source view, focused editing | done | #35 wizard; browser checks *import-120-item-60* and *import-120-next-item*; the 120-item review on the EXE (#36) |
 | Pointer cursors, hover and focus states, tooltips | done | browser checks *results-pointer-affordances* and *import-pointer-affordances* (#37) |
 | Accent presets (blue default), light/dark, WCAG AA contrast | done | `tests/test_workspace_accents.py` (#37) |
