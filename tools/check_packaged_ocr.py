@@ -70,7 +70,8 @@ def main() -> int:
                        "analysis_runs", "import_session", "workspace_shell",
                        "workspace_analyze", "workspace_questionnaires", "workspace_methods",
                        "workspace_components", "workspace_tokens", "workspace_text",
-                       "workspace_state", "workspace_routes"):
+                       "workspace_state", "workspace_routes", "app_identity", "app_paths",
+                       "legacy_data", "data_ui"):
             if module not in modules:
                 raise SystemExit(f"Packaged application lacks module {module}")
         # The interface opens these; [tool.flet.app].exclude must never drop them.

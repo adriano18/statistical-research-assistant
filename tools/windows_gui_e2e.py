@@ -90,8 +90,11 @@ class StepFailure(AssertionError):
 class Gui:
     """One running instance of the packaged application."""
 
-    def __init__(self, exe: Path, data_dir: Path, out: Path):
+    def __init__(self, exe: Path, data_dir: Path, out: Path, *, real_data: bool = False):
         self.exe, self.data_dir, self.out = exe, data_dir, out
+        # Installed-application journeys use the real per-user data folder
+        # (%LOCALAPPDATA%\StatisticalResearchAssistant) instead of a temporary one.
+        self.real_data = real_data
         self.process: subprocess.Popen | None = None
         self.win = None
         self.handle, self.window_pid = None, None
@@ -110,12 +113,13 @@ class Gui:
             # A clean machine: neither the runner's Python nor Tesseract.
             "PATH": f"{system}\\System32;{system};{system}\\System32\\Wbem",
             "SRA_UI": "workspace",
-            "SRA_DATA_DIR": str(self.data_dir),
             "SRA_LOG_DIR": str(self.out / "app-logs"),
         })
+        if not self.real_data:
+            env["SRA_DATA_DIR"] = str(self.data_dir)
         return env
 
-    def start(self, timeout: float = 300) -> None:
+    def start(self, timeout: float = 300, *, ready: str | None = None) -> None:
         from pywinauto import Desktop
         from pywinauto.application import Application
 
@@ -142,9 +146,14 @@ class Gui:
             raise StepFailure("the application window never appeared")
         app = Application(backend="uia").connect(handle=self.handle)
         self.win = app.window(handle=self.handle)
-        # The workspace is ready when its Home page offers to create a project.
-        self.find(T("project.create"), timeout=max(30, deadline - time.monotonic()),
-                  scroll=False, visible=False)
+        # The workspace is ready when its Home page offers to create a project
+        # (or, when given, when ``ready`` is shown, e.g. a dialog over Home).
+        if ready:
+            self.find(regex=re.escape(ready), timeout=max(30, deadline - time.monotonic()),
+                      scroll=False, visible=False)
+        else:
+            self.find(T("project.create"), timeout=max(30, deadline - time.monotonic()),
+                      scroll=False, visible=False)
         # Maximize only now: the application sets its window size (1200 x 720)
         # while it starts, which undid an earlier maximize (runs 5-9 worked in
         # 1200 x 720 inside a maximized frame). No set_focus(): pywinauto
@@ -1300,6 +1309,124 @@ def journey_blocked_design(gui: Gui, work: Path, journey: Journey) -> None:
         expect(not gui.has_text(T("design.blocked")), "the refusal stayed after the correction")
 
 
+# ------------------------------------------- installed application (#44)
+PREVIEW_PROJECT = "Preview-era study (fictional)"
+PREVIEW_SURVEY = "Preview-era questionnaire (fictional)"
+INSTALLED_PROJECT = "Installed study (fictional)"
+
+
+def _snapshot(folder: Path) -> dict[str, str]:
+    import hashlib
+
+    return {p.relative_to(folder).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(folder.rglob("*")) if p.is_file()
+            and not p.name.endswith("-shm") and not (p.name.endswith("-wal") and p.stat().st_size == 0)}
+
+
+def seed_preview_data() -> tuple[Path, str]:
+    """What a preview build left in Flet's per-user folder ("Your Company"):
+    a project with a dataset and a questionnaire with a response. Synthetic."""
+    import legacy_data
+    import project_store as ps
+    from survey_storage import create_survey, submit_response
+
+    folder = Path(os.environ["APPDATA"]).joinpath(*legacy_data.PREVIEW_FOLDER)
+    store = ps.ProjectStore(folder / "projects")
+    info = store.create(PREVIEW_PROJECT)
+    with store.open(info.id) as project:
+        project.add_question("Does a fictional routine relate to stress?")
+        project.import_dataset(ROOT / "examples" / "sample_scale.csv", mode="copy")
+    ps._OPEN.clear()
+    questions = [{"key": "group", "kind": "single_choice", "prompt": "Synthetic group",
+                  "required": True, "options": ["A", "B"]}]
+    survey = create_survey(folder / "surveys", PREVIEW_SURVEY, "Fictional", questions)
+    submit_response(folder / "surveys", survey.survey_id, {"group": "A"})
+    return folder, info.id
+
+
+def journey_legacy_migration(gui: Gui, work: Path, journey: Journey) -> None:
+    """A researcher who used a preview build installs the application: the
+    first start offers to copy the earlier data, copies and checks it, and
+    leaves the originals as they were."""
+    import data_ui
+
+    expect(gui.real_data, "run installed journeys with --real-data")
+    with journey.step("leave data where a preview build kept it"):
+        gui.stop()
+        folder, project_id = seed_preview_data()
+        before = _snapshot(folder)
+        journey.facts["preview_folder"] = str(folder)
+    with journey.step("the first start offers to copy it"):
+        gui.start(ready=data_ui.t("en", "title"))
+        gui.wait_text(PREVIEW_PROJECT, scroll=False)
+        gui.wait_text(PREVIEW_SURVEY, scroll=False)
+        gui.shot("earlier data offered")
+    with journey.step("copy it and see every copy checked"):
+        gui.click(data_ui.t("en", "copy"), control_type="Button")
+        gui.wait_text("Each copy was checked against its original", timeout=90, scroll=False)
+        gui.shot("earlier data copied")
+        gui.click(data_ui.t("en", "close"), control_type="Button")
+    with journey.step("the copied project opens"):
+        open_project(gui, PREVIEW_PROJECT)
+    with journey.step("the copies are in the data folder, the originals unchanged"):
+        data = Path(os.environ["LOCALAPPDATA"]) / "StatisticalResearchAssistant"
+        expect((data / "projects" / project_id / "project.sqlite3").is_file(),
+               f"no copy of the project in {data}")
+        expect(len(list((data / "surveys").glob("survey_*.sqlite3"))) == 1,
+               "the questionnaire was not copied")
+        expect(_snapshot(folder) == before, "the preview folder changed")
+        journey.facts.update(data_folder=str(data), copied_project=project_id)
+    with journey.step("the next start does not ask again"):
+        gui.stop()
+        gui.start()
+        expect(not gui.has_text(data_ui.t("en", "title")), "the copy was offered again")
+
+
+def journey_installed_data(gui: Gui, work: Path, journey: Journey) -> None:
+    """A project created in the installed application lives in the per-user
+    data folder; the program folder gains nothing (updates and uninstalling
+    can therefore never touch research data)."""
+    expect(gui.real_data, "run installed journeys with --real-data")
+    program = gui.exe.parent
+    data = Path(os.environ["LOCALAPPDATA"]) / "StatisticalResearchAssistant"
+    before = {p.relative_to(program).as_posix() for p in program.rglob("*")
+              if p.is_file() and "__pycache__" not in p.parts}
+    create_project(gui, journey, INSTALLED_PROJECT)
+    with journey.step("the project is in the per-user data folder"):
+        gui.stop()
+        import sqlite3
+
+        titles = []
+        for db in (data / "projects").glob("*/project.sqlite3"):
+            with contextlib.closing(sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True)) as con:
+                titles.append(con.execute("SELECT title FROM project").fetchone()[0])
+        expect(INSTALLED_PROJECT in titles, f"{INSTALLED_PROJECT} is not in {data}: {titles}")
+        after = {p.relative_to(program).as_posix() for p in program.rglob("*")
+                 if p.is_file() and "__pycache__" not in p.parts}
+        expect(after == before, f"the program folder gained files: {sorted(after - before)[:10]}")
+        journey.facts.update(data_folder=str(data), projects=titles)
+    with journey.step("it reopens after a restart"):
+        gui.start()
+        open_project(gui, INSTALLED_PROJECT)
+
+
+def journey_installed_reopen(gui: Gui, work: Path, journey: Journey) -> None:
+    """After an update (or a reinstall) the same projects open again."""
+    expect(gui.real_data, "run installed journeys with --real-data")
+    gui.stop()
+    gui.start()
+    for title in (INSTALLED_PROJECT, PREVIEW_PROJECT):
+        with journey.step(f"open {title}"):
+            open_project(gui, title)
+
+
+INSTALLED_JOURNEYS = {
+    "legacy-migration": journey_legacy_migration,
+    "installed-data": journey_installed_data,
+    "installed-reopen": journey_installed_reopen,
+}
+
+
 JOURNEYS = {
     "project-a": journey_project_a,
     "project-b": journey_project_b,
@@ -1324,9 +1451,12 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("exe", type=Path)
     parser.add_argument("out", type=Path)
-    parser.add_argument("--only", nargs="*", choices=sorted(JOURNEYS))
+    parser.add_argument("--only", nargs="*", choices=sorted(JOURNEYS) + sorted(INSTALLED_JOURNEYS))
     parser.add_argument("--probe", action="store_true")
+    parser.add_argument("--real-data", action="store_true",
+                        help="use the real per-user data folder (installed application)")
     args = parser.parse_args(argv)
+    journeys = {**JOURNEYS, **INSTALLED_JOURNEYS}
     if os.name != "nt":
         print("The packaged GUI journeys run on Windows only.")
         return 2
@@ -1339,21 +1469,26 @@ def main(argv=None) -> int:
     preferences = Path.home() / ".statistical_research_assistant" / "preferences.json"
     with contextlib.suppress(OSError):
         preferences.unlink()        # default (English) preferences
-    gui = Gui(args.exe.resolve(), data, out)
+    gui = Gui(args.exe.resolve(), data, out, real_data=args.real_data)
     report = {"exe": str(args.exe), "journeys": []}
     started = time.monotonic()
     try:
-        gui.start()
+        selected = args.only or list(JOURNEYS)
+        # Installed journeys start the application themselves when they need
+        # to prepare the machine first.
+        if not any(name in INSTALLED_JOURNEYS for name in selected[:1]):
+            gui.start()
         if args.probe:
             probe(gui)
-        for name in args.only or list(JOURNEYS):
+        for name in selected:
             journey = Journey(name, gui)
             outcome = {"journey": name, "ok": False}
             with gui.record(name):
                 try:
-                    if gui.process is None or gui.process.poll() is not None:
+                    if name not in INSTALLED_JOURNEYS and (
+                            gui.process is None or gui.process.poll() is not None):
                         gui.start()
-                    JOURNEYS[name](gui, work, journey)
+                    journeys[name](gui, work, journey)
                     outcome["ok"] = True
                 except Exception as error:
                     outcome["error"] = f"{type(error).__name__}: {error}"

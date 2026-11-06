@@ -28,6 +28,29 @@ from pathlib import Path
 
 from startup_diagnostics import StartupTimeline, write_startup_record, writable_log_directory
 
+
+def _hold_instance_mutex():
+    """Windows: hold a named mutex while the application runs. The installer
+    waits for it to disappear before it replaces the program files, so an
+    update never overwrites a running program (#44, #45)."""
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        from app_identity import MUTEX
+
+        create = ctypes.windll.kernel32.CreateMutexW
+        create.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+        create.restype = ctypes.c_void_p
+        return create(None, False, MUTEX) or None
+    except Exception:   # never prevent the start
+        return None
+
+
+_INSTANCE_MUTEX = _hold_instance_mutex()
+
 TIMELINE = StartupTimeline(_PROCESS_T0)
 
 from analysis_selftest import maybe_run_from_environment as maybe_run_analysis_selftest
@@ -168,6 +191,7 @@ async def start(page, *, import_workspace=None, timeline: StartupTimeline = TIME
         await workspace.main(page, startup=timeline)
         timeline.mark("interface_ready")
         timeline.succeed()
+        _after_start(page, language)
     except Exception as error:  # never leave a blank/black window
         timeline.fail(error)
         show_failure(page, language, writable_log_directory(), error)
@@ -182,6 +206,19 @@ async def start(page, *, import_workspace=None, timeline: StartupTimeline = TIME
             Path(smoke).write_text(json.dumps(result, indent=1), encoding="utf-8")
             hold = float(os.environ.get("SRA_STARTUP_SMOKE_HOLD", "10") or 10)
             asyncio.get_running_loop().call_later(hold, os._exit, 0 if timeline.outcome == "ok" else 1)
+
+
+def _after_start(page, language: str) -> None:
+    """Work that waits until the window is usable and never blocks it: offer
+    to copy research data an earlier version kept elsewhere (#44)."""
+    if os.environ.get("SRA_STARTUP_SMOKE", "").strip():
+        return   # startup measurements only
+    try:
+        import data_ui
+
+        page.run_task(data_ui.offer_at_startup, page, Path(__file__).resolve().parent, language)
+    except Exception:
+        pass
 
 
 async def main(page: ft.Page):
