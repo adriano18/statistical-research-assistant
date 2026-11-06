@@ -153,6 +153,7 @@ class Gui:
             self.win.set_focus()
         with contextlib.suppress(Exception):
             print(f"  [window] {self.win.window_text()!r} at {self.window_box()}", flush=True)
+        self.close_menus()
         # The workspace is ready when its Home page offers to create a project.
         self.find(T("project.create"), timeout=max(30, deadline - time.monotonic()),
                   scroll=False, visible=False)
@@ -207,8 +208,9 @@ class Gui:
                     while not self.stop.is_set() and len(self.frames) < 400:
                         try:
                             image = gui.grab()
-                            image.thumbnail((960, 960))
-                            self.frames.append(image.convert("P", palette=1, colors=128))
+                            if image.width > 1 and image.height > 1:
+                                image.thumbnail((960, 960))
+                                self.frames.append(image.convert("P", palette=1, colors=128))
                         except Exception:
                             pass
                         self.stop.wait(0.8)
@@ -222,8 +224,12 @@ class Gui:
                 self.thread.join(timeout=5)
                 if self.frames:
                     target = gui.out / f"{name}.gif"
-                    self.frames[0].save(target, save_all=True, append_images=self.frames[1:],
-                                        duration=400, loop=0, optimize=True)
+                    try:
+                        self.frames[0].save(target, save_all=True,
+                                            append_images=self.frames[1:],
+                                            duration=400, loop=0, optimize=True)
+                    except Exception as error:   # a recording never fails a journey
+                        print(f"  [record] {name}: {error!r}", flush=True)
                 return False
 
         return Recorder()
@@ -429,33 +435,76 @@ class Gui:
             time.sleep(0.8)
         return box
 
-    def choose(self, label: str, option: str, *, index: int = 0):
-        """Pick ``option`` in the dropdown named ``label`` (mouse only)."""
-        field = None
-        for kinds in (("ComboBox",), ("Edit",), ("Button", "Group", "Custom", "Pane", "Text")):
-            found = self.query(label, control_type=kinds)
-            if len(found) > index:
-                field = found[index]
-                break
-        if field is None:
-            field = self.find(label, index=index)
-        self.scroll_into_view(field)
-        field.click_input()
-        time.sleep(0.9)
-        try:
-            item = self.find(option, control_type=("MenuItem", "ListItem", "Button", "Text",
-                                                   "Custom", "Group"), scroll=False, timeout=8)
-            item.click_input()
-        except StepFailure:
-            # The menu may expose its entries differently: choose like a
-            # keyboard user, typing the start of the entry and Enter.
-            from pywinauto import keyboard
+    # The window's system menu (Restore, Move, Size, Minimize, Maximize, Close).
+    SYSTEM_MENU_IDS = {"61728", "61456", "61440", "61472", "61488", "61536"}
 
-            print(f"  [choose] {option!r} not listed after opening {label!r}; using the keyboard",
-                  flush=True)
-            keyboard.send_keys(escape_keys(option.split(" · ")[0]), with_spaces=True, pause=0.03)
-            time.sleep(0.6)
-            keyboard.send_keys("{DOWN}{ENTER}")
+    def system_menu_open(self) -> bool:
+        with contextlib.suppress(Exception):
+            return any(e.element_info.automation_id in self.SYSTEM_MENU_IDS
+                       and self.on_screen(e)
+                       for e in self.query(control_type="MenuItem"))
+        return False
+
+    def close_menus(self) -> None:
+        """Close the window's system menu if something opened it: typing into
+        it could minimize or close the application."""
+        from pywinauto import keyboard
+
+        for _ in range(3):
+            if not self.system_menu_open():
+                return
+            print("  [menu] the window's system menu is open; closing it", flush=True)
+            keyboard.send_keys("{ESC}")
+            time.sleep(0.5)
+
+    def choose(self, label: str, option: str, *, index: int = 0, options=None):
+        """Pick ``option`` in the dropdown named ``label``: open it with the
+        mouse and click the entry. If the open menu does not expose its
+        entries, choose like a keyboard user, by the entry's position in
+        ``options`` (the dropdown's entries in order)."""
+        from pywinauto import keyboard
+
+        kinds_menu = ("MenuItem", "ListItem", "Button", "Text", "Custom", "Group")
+        for attempt in range(2):
+            self.close_menus()
+            field = None
+            for kinds in (("ComboBox",), ("Edit",), ("Button", "Group", "Custom", "Pane", "Text")):
+                found = self.query(label, control_type=kinds)
+                if len(found) > index:
+                    field = found[index]
+                    break
+            if field is None:
+                field = self.find(label, index=index)
+            self.scroll_into_view(field)
+            field.click_input()
+            time.sleep(0.9)
+            if self.system_menu_open():
+                self.close_menus()
+                continue                       # the click went to the system menu: again
+            entries = [e for e in self.query(option, control_type=kinds_menu)
+                       if e.element_info.automation_id not in self.SYSTEM_MENU_IDS]
+            if entries:
+                entries[-1].click_input()      # the menu is drawn above the page
+                time.sleep(0.9)
+                return
+            break
+        if options is None or option not in options:
+            raise StepFailure(f"{option!r} is not listed in the dropdown {label!r}")
+        # Keyboard: the dropdown has the focus with its menu open. The entry
+        # already chosen is highlighted (none: Down goes to the first one);
+        # each Down/Up moves one entry and Enter chooses it.
+        focused = self.focused()
+        expect(focused.process_id == self.window_pid and not self.system_menu_open(),
+               f"the dropdown {label!r} does not have the keyboard focus")
+        current = self.value(field)
+        start = options.index(current) if current in options else -1
+        moves = options.index(option) - start
+        print(f"  [choose] {option!r} not listed after opening {label!r}; choosing entry "
+              f"{options.index(option) + 1} of {len(options)} by keyboard (from {current!r})",
+              flush=True)
+        keyboard.send_keys(("{DOWN}" if moves > 0 else "{UP}") * abs(moves))
+        time.sleep(0.4)
+        keyboard.send_keys("{ENTER}")
         time.sleep(0.9)
 
     def keys(self, keys: str):
@@ -548,8 +597,8 @@ class Gui:
               f"{(edit.element_info.automation_id if edit else 'keyboard focus')!r}", flush=True)
         if edit is None:
             print(self.describe(dialog.descendants(), 80), flush=True)
-        with contextlib.suppress(Exception):
-            dialog.set_focus()
+        # No set_focus(): pywinauto presses Alt to take the foreground, which
+        # can leave the window's system menu waiting for the next key.
         if edit is not None:
             with contextlib.suppress(Exception):
                 edit.click_input()
@@ -579,9 +628,16 @@ class Gui:
         time.sleep(1.0)
 
     def recover(self) -> None:
-        """After a failed journey: close dialogs and return to Home."""
+        """After a failed journey: close menus and dialogs, show the window
+        maximized again and return to Home."""
         from pywinauto import keyboard
 
+        self.close_menus()
+        with contextlib.suppress(Exception):
+            import ctypes
+
+            ctypes.windll.user32.ShowWindow(self.handle, 3)      # SW_MAXIMIZE
+            time.sleep(1.0)
         for _ in range(3):
             for window in self.dialogs():
                 with contextlib.suppress(Exception):
@@ -687,6 +743,12 @@ def option_label(name: str, level: str) -> str:
     return f"{name} · {T('level.' + level)}"
 
 
+# The variable dropdowns of sample_ancova.csv after its levels are confirmed:
+# every variable but the identifier, in column order.
+ANCOVA_OPTIONS = [option_label("group", "nominal"), option_label("age", "scale"),
+                  option_label("baseline_score", "scale"), option_label("wellbeing", "scale")]
+
+
 def open_project(gui: Gui, title: str) -> None:
     """Open the project ``title`` from Home with its own Open button (its
     accessible name carries the tooltip "Open “title”"), then check that it
@@ -757,8 +819,8 @@ def journey_project_a(gui: Gui, work: Path, journey: Journey) -> None:
         gui.click(regex="^" + re.escape(METHODS["ancova"].title) + r"(\n|$)",
                   control_type=("Button", "Text", "Group", "Custom"))
     with journey.step("choose outcome, group and covariate"):
-        gui.choose(T("role.outcome"), option_label("wellbeing", "scale"))
-        gui.choose(T("role.group"), option_label("group", "nominal"))
+        gui.choose(T("role.outcome"), option_label("wellbeing", "scale"), options=ANCOVA_OPTIONS)
+        gui.choose(T("role.group"), option_label("group", "nominal"), options=ANCOVA_OPTIONS)
         gui.check(option_label("baseline_score", "scale"))
         from workspace_methods import METHODS, default_options, required_confirmations
         from workspace_text import label as engine_label
@@ -1000,8 +1062,8 @@ def journey_blocked_design(gui: Gui, work: Path, journey: Journey) -> None:
         gui.click(regex="^" + re.escape(T("goal.compare")) + r"\b",
                   control_type=("Button", "Text", "Group", "Custom"))
     with journey.step("a quantitative group variable is refused in words"):
-        gui.choose(T("role.outcome"), option_label("wellbeing", "scale"))
-        gui.choose(T("role.group"), option_label("age", "scale"))
+        gui.choose(T("role.outcome"), option_label("wellbeing", "scale"), options=ANCOVA_OPTIONS)
+        gui.choose(T("role.group"), option_label("age", "scale"), options=ANCOVA_OPTIONS)
         gui.wait_text(T("design.blocked"))
         gui.wait_text("age is quantitative")
         raw = [text for text in gui.texts() if RAW_KEY.search(text)]
@@ -1011,7 +1073,7 @@ def journey_blocked_design(gui: Gui, work: Path, journey: Journey) -> None:
                "a run button is offered for a refused design")
         gui.shot("blocked-design")
     with journey.step("a categorical group lifts the refusal"):
-        gui.choose(T("role.group"), option_label("group", "nominal"))
+        gui.choose(T("role.group"), option_label("group", "nominal"), options=ANCOVA_OPTIONS)
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline and gui.has_text(T("design.blocked")):
             time.sleep(0.5)
