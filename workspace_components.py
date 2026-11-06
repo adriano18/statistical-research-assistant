@@ -12,6 +12,7 @@ Rules every component follows (docs/UX_STAGE33_SPEC.md §7):
 from __future__ import annotations
 
 from dataclasses import dataclass
+import inspect
 from typing import Callable, Iterable
 
 import flet as ft
@@ -61,6 +62,21 @@ def text(ui: Ui, value: str, kind=tk.TYPE_BODY, *, color: str | None = None,
         style=ft.TextStyle(height=height / size, italic=italic),
         data=data, text_align=align,
     )
+
+
+def handler(fn: Callable, *args) -> Callable:
+    """An event handler that calls ``fn(*args)``.
+
+    Flet 1.x awaits a handler only when the handler itself is a coroutine
+    function: a ``lambda`` around a coroutine function returns a coroutine that
+    Flet drops, and the button silently does nothing."""
+    if inspect.iscoroutinefunction(fn):
+        async def run(e=None):
+            await fn(*args)
+    else:
+        def run(e=None):
+            fn(*args)
+    return run
 
 
 def heading(ui: Ui, value: str, kind=tk.TYPE_TITLE_S, **kwargs) -> ft.Text:

@@ -624,7 +624,7 @@ class QuestionnairesPage:
                           spacing=2, expand=True),
                 wc.button(ui, ui.t("q.collect"), lambda e, s=survey: self._collect(s),
                           kind="quiet", icon=ft.Icons.EDIT_NOTE, data=f"collect-{survey.survey_id}"),
-                wc.button(ui, ui.t("q.export_responses"), lambda e, s=survey: self._export(s),
+                wc.button(ui, ui.t("q.export_responses"), wc.handler(self._export, survey),
                           kind="quiet", icon=ft.Icons.FILE_DOWNLOAD_OUTLINED,
                           disabled=count == 0, data=f"export-responses-{survey.survey_id}"),
                 wc.button(ui, ui.t("q.analyze_responses"), lambda e, s=survey: self._analyze(s),
