@@ -142,21 +142,29 @@ class Gui:
             raise StepFailure("the application window never appeared")
         app = Application(backend="uia").connect(handle=self.handle)
         self.win = app.window(handle=self.handle)
-        with contextlib.suppress(Exception):
-            self.win.maximize()
-        with contextlib.suppress(Exception):
-            import ctypes
-
-            ctypes.windll.user32.ShowWindow(self.handle, 3)      # SW_MAXIMIZE
-        time.sleep(1.0)
-        with contextlib.suppress(Exception):
-            self.win.set_focus()
-        with contextlib.suppress(Exception):
-            print(f"  [window] {self.win.window_text()!r} at {self.window_box()}", flush=True)
-        self.close_menus()
         # The workspace is ready when its Home page offers to create a project.
         self.find(T("project.create"), timeout=max(30, deadline - time.monotonic()),
                   scroll=False, visible=False)
+        # Maximize only now: the application sets its window size (1200 x 720)
+        # while it starts, which undid an earlier maximize (runs 5-9 worked in
+        # 1200 x 720 inside a maximized frame). No set_focus(): pywinauto
+        # presses Alt for it, which can leave the system menu waiting.
+        self.maximize()
+
+    def maximize(self) -> None:
+        import ctypes
+
+        with contextlib.suppress(Exception):
+            ctypes.windll.user32.ShowWindow(self.handle, 3)      # SW_MAXIMIZE
+        time.sleep(1.5)
+        self.close_menus()
+        bottom = 0
+        with contextlib.suppress(Exception):
+            bottom = max(e.element_info.rectangle.bottom for e in self.elements()
+                         if (e.element_info.name or "").strip())
+        with contextlib.suppress(Exception):
+            print(f"  [window] {self.win.window_text()!r} at {self.window_box()}; "
+                  f"content reaches y={bottom}", flush=True)
 
     def stop(self, *, graceful: bool = True) -> None:
         if self.process is None:
@@ -346,9 +354,21 @@ class Gui:
         mouse.scroll(coords=(x, y), wheel_dist=clicks)
         time.sleep(0.35)
 
+    # The bottom of the content can be covered by a sticky footer (the import
+    # review's actions) and the status line: a click there lands on them.
+    COVERED_BOTTOM = 150
+
+    def clickable(self, element) -> bool:
+        if not self.on_screen(element):
+            return False
+        rect = element.element_info.rectangle
+        _, _, _, bottom = self.window_box()
+        sidebar = rect.right <= self.window_box()[0] + 260      # fixed, never covered
+        return sidebar or rect.bottom <= bottom - self.COVERED_BOTTOM
+
     def scroll_into_view(self, element, attempts: int = 30):
         for _ in range(attempts):
-            if self.on_screen(element):
+            if self.clickable(element):
                 return element
             rect = element.element_info.rectangle
             _, top, _, bottom = self.content_box()
@@ -369,11 +389,11 @@ class Gui:
             found = self.query(name, regex=regex, control_type=control_type)
             if len(found) > index:
                 element = found[index]
-                if not visible or self.on_screen(element):
+                if not visible or self.clickable(element):
                     return element
                 if scroll:
                     self.scroll_into_view(element)
-                    if self.on_screen(element):
+                    if self.clickable(element):
                         return element
             now = time.monotonic()
             if now > deadline:
@@ -457,37 +477,66 @@ class Gui:
             keyboard.send_keys("{ESC}")
             time.sleep(0.5)
 
+    @staticmethod
+    def element_id(element):
+        info = element.element_info
+        with contextlib.suppress(Exception):
+            return tuple(info.runtime_id)
+        rect = info.rectangle
+        return (info.control_type, info.name, rect.left, rect.top)
+
+    @staticmethod
+    def activate(element) -> str:
+        """Press a control through UI Automation's Invoke pattern (what a
+        screen reader or a switch device does); a mouse click otherwise."""
+        try:
+            element.invoke()
+            return "invoke"
+        except Exception:
+            element.click_input()
+            return "click"
+
     def choose(self, label: str, option: str, *, index: int = 0, options=None):
-        """Pick ``option`` in the dropdown named ``label``: open it with the
-        mouse and click the entry. If the open menu does not expose its
-        entries, choose like a keyboard user, by the entry's position in
-        ``options`` (the dropdown's entries in order)."""
+        """Pick ``option`` in the dropdown named ``label``. The dropdown is
+        opened through UI Automation (a mouse click on it opened the window's
+        system menu on the runner) and the entry is one that appeared with the
+        open menu: a checkbox elsewhere on the page may carry the same name."""
         from pywinauto import keyboard
 
         kinds_menu = ("MenuItem", "ListItem", "Button", "Text", "Custom", "Group")
-        for attempt in range(2):
+        self.close_menus()
+        field = None
+        for kinds in (("ComboBox",), ("Edit",), ("Button", "Group", "Custom", "Pane", "Text")):
+            found = self.query(label, control_type=kinds)
+            if len(found) > index:
+                field = found[index]
+                break
+        if field is None:
+            field = self.find(label, index=index)
+        self.scroll_into_view(field)
+        before = {self.element_id(e) for e in self.query(option)}
+        how = self.activate(field)
+        time.sleep(1.0)
+        self.close_menus()
+        appeared = [e for e in self.query(option, control_type=kinds_menu)
+                    if self.element_id(e) not in before
+                    and e.element_info.automation_id not in self.SYSTEM_MENU_IDS]
+        if not appeared and how == "invoke":
+            field.click_input()                      # open it with the mouse instead
+            time.sleep(1.0)
             self.close_menus()
-            field = None
-            for kinds in (("ComboBox",), ("Edit",), ("Button", "Group", "Custom", "Pane", "Text")):
-                found = self.query(label, control_type=kinds)
-                if len(found) > index:
-                    field = found[index]
-                    break
-            if field is None:
-                field = self.find(label, index=index)
-            self.scroll_into_view(field)
-            field.click_input()
-            time.sleep(0.9)
-            if self.system_menu_open():
-                self.close_menus()
-                continue                       # the click went to the system menu: again
-            entries = [e for e in self.query(option, control_type=kinds_menu)
-                       if e.element_info.automation_id not in self.SYSTEM_MENU_IDS]
-            if entries:
-                entries[-1].click_input()      # the menu is drawn above the page
-                time.sleep(0.9)
-                return
-            break
+            appeared = [e for e in self.query(option, control_type=kinds_menu)
+                        if self.element_id(e) not in before
+                        and e.element_info.automation_id not in self.SYSTEM_MENU_IDS]
+        if appeared:
+            print(f"  [choose] {label!r}: opened by {how}; picking {option!r}", flush=True)
+            self.activate(appeared[-1])
+            time.sleep(1.0)
+            return
+        new = [e for e in self.elements() if self.element_id(e) not in before
+               and (e.element_info.name or "").strip()][:15]
+        print(f"  [choose] {label!r} opened by {how}; no entry {option!r}; new elements:\n"
+              + self.describe(new, 15), flush=True)
         if options is None or option not in options:
             raise StepFailure(f"{option!r} is not listed in the dropdown {label!r}")
         # Keyboard: the dropdown has the focus with its menu open. The entry
@@ -499,9 +548,8 @@ class Gui:
         current = self.value(field)
         start = options.index(current) if current in options else -1
         moves = options.index(option) - start
-        print(f"  [choose] {option!r} not listed after opening {label!r}; choosing entry "
-              f"{options.index(option) + 1} of {len(options)} by keyboard (from {current!r})",
-              flush=True)
+        print(f"  [choose] choosing entry {options.index(option) + 1} of {len(options)} by "
+              f"keyboard (from {current!r})", flush=True)
         keyboard.send_keys(("{DOWN}" if moves > 0 else "{UP}") * abs(moves))
         time.sleep(0.4)
         keyboard.send_keys("{ENTER}")
@@ -754,14 +802,27 @@ def open_project(gui: Gui, title: str) -> None:
     accessible name carries the tooltip "Open “title”"), then check that it
     is the open project: the project page, with this title as its heading."""
     gui.click(T("nav.home"), control_type=("Button", "Text"))
+    subtitle = T("project.dashboard_subtitle")
     try:
         # Windows exposes the tooltip as an element over the button itself.
-        gui.click(regex=re.escape(T("project.open_named", title=title)),
-                  control_type=("Button", "Group", "Custom", "Text"), timeout=10)
+        holder = gui.find(regex=re.escape(T("project.open_named", title=title)),
+                          control_type=("Button", "Group", "Custom", "Text"), timeout=10)
     except StepFailure:
         # Already the open project: its row says "Open now" instead.
         gui.click(T("nav.project"), control_type=("Button", "Text"), timeout=8)
-    gui.wait_text(T("project.dashboard_subtitle"), timeout=20, scroll=False)
+    else:
+        rect = holder.element_info.rectangle
+        button = next((b for b in gui.query(T("project.open"), control_type="Button")
+                       if b.element_info.rectangle == rect), holder)
+        button.click_input()
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline and not gui.has_text(subtitle):
+            time.sleep(0.5)
+        if not gui.has_text(subtitle):
+            print(f"  [open] the click on Open did not open {title!r}; pressing it through "
+                  f"UI Automation", flush=True)
+            Gui.activate(button)
+    gui.wait_text(subtitle, timeout=20, scroll=False)
     heading = [e for e in gui.query(title, control_type="Text")
                if e.element_info.rectangle.top < gui.window_box()[1] + 200]
     expect(heading, f"{title} is not the open project")
