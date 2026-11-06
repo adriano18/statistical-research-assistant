@@ -71,6 +71,39 @@ class ClassicBridge:
     preparation: Callable[[], tuple[ft.Control, Callable]] | None = None
 
 
+def workspace_settings_path() -> Path:
+    """Workspace-only appearance choices, beside the classic preferences file."""
+    from app_preferences import preferences_path
+
+    return preferences_path().parent / "workspace.json"
+
+
+def load_workspace_settings() -> dict:
+    import json
+
+    try:
+        data = json.loads(workspace_settings_path().read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_workspace_settings(values: dict) -> None:
+    """Merge ``values`` into the workspace settings (a convenience: never fatal)."""
+    import json
+    import os
+
+    try:
+        target = workspace_settings_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        data = {**load_workspace_settings(), **values}
+        temporary = target.with_suffix(".tmp")
+        temporary.write_text(json.dumps(data, indent=1), encoding="utf-8")
+        os.replace(temporary, target)
+    except OSError:
+        pass
+
+
 def _cell(value) -> str:
     """Display form of a data cell: blank for missing, 4 instead of 4.0."""
     if pd.isna(value):
@@ -128,6 +161,10 @@ class WorkspaceApp:
         self._handed_over = None       # id() of the workspace dataframe last handed over
         self._rendered_width = None
         self.last_folder: str | None = None   # the next save dialog opens here
+        accent = load_workspace_settings().get("accent")
+        if accent in tk.ACCENTS:
+            self.session.accent = accent
+        self.question_draft = ""      # research question without a project
         self._install_services()
         from workspace_analyze import AnalyzePage, ReportsPage, ResultsPage
         from workspace_projects import ProjectHub, ProjectPage
@@ -147,7 +184,7 @@ class WorkspaceApp:
     # ------------------------------------------------------------ context
     @property
     def ui(self) -> wc.Ui:
-        return wc.Ui(tk.palette(self.session.theme), self.session.language,
+        return wc.Ui(tk.palette(self.session.theme, self.session.accent), self.session.language,
                      self.session.corners)
 
     def t(self, key: str, **values) -> str:
@@ -348,6 +385,51 @@ class WorkspaceApp:
             self._shown_project_message = message
             self.status(self.t(message[0]), message[1])
 
+    # The research journey (Issue #32): where the researcher is, what is done.
+    JOURNEY = (("question", "project"), ("data", "data"), ("variables", "data"),
+               ("design", "analyze"), ("method", "analyze"), ("result", "results"),
+               ("report", "reports"))
+    JOURNEY_ROUTES = {"project": "question", "data": "data", "analyze": "design",
+                      "results": "result", "reports": "report"}
+
+    def journey_status(self) -> dict[str, bool]:
+        s = self.session
+        analyzed = bool(s.results)
+        return {
+            "question": bool(self.research_question()),
+            "data": s.has_data,
+            "variables": s.has_data and not s.pending_levels(),
+            "design": analyzed, "method": analyzed, "result": analyzed,
+            "report": bool(s.report_order),
+        }
+
+    def research_question(self) -> str:
+        if self.projects.active:
+            try:
+                return self.projects.research_question()
+            except Exception:
+                return ""
+        return self.question_draft
+
+    def _journey(self) -> ft.Control:
+        ui = self.ui
+        status = self.journey_status()
+        current = self.JOURNEY_ROUTES.get(self.route)
+        if current == "data" and self.session.has_data and self.session.pending_levels():
+            current = "variables"
+        chips = []
+        for number, (key, route) in enumerate(self.JOURNEY, start=1):
+            done = status[key]
+            tone = "info" if key == current else "success" if done else "neutral"
+            target = route if route != "project" or self.projects.active else "home"
+            chips.append(wc.chip(
+                ui, f"{number}. {ui.t('journey.' + key)}", tone,
+                icon=ft.Icons.CHECK_CIRCLE if done else (
+                    ft.Icons.ARROW_CIRCLE_RIGHT if key == current else ft.Icons.CIRCLE_OUTLINED),
+                tooltip=ui.t("journey." + key + ".tip"),
+                on_click=lambda e, r=target: self.navigate(r), data=f"journey-{key}"))
+        return ft.Row(chips, wrap=True, spacing=tk.SPACE_1, data="journey")
+
     def render(self):
         if self.root is None:
             return
@@ -358,6 +440,9 @@ class WorkspaceApp:
         except Exception as error:  # a page bug must not blank the window
             body = wc.notice(self.ui, f"{type(error).__name__}: {error}", "danger",
                              title="This page could not be shown")
+        if self.route in self.JOURNEY_ROUTES:
+            body = ft.Column([self.constrained(self._journey()), body], spacing=tk.SPACE_3,
+                             horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
         # A stable key per route makes Flet reconcile the rebuilt page with the
         # one on screen (same control identities) instead of replacing it, so
         # the scroll position, keyboard focus, caret and expanded sections
@@ -399,8 +484,8 @@ class WorkspaceApp:
     # ------------------------------------------------------------- chrome
     def build(self) -> ft.Control:
         ui = self.ui
-        self.page.theme = tk.build_theme("light")
-        self.page.dark_theme = tk.build_theme("dark")
+        self.page.theme = tk.build_theme("light", self.session.accent)
+        self.page.dark_theme = tk.build_theme("dark", self.session.accent)
         self.page.theme_mode = (ft.ThemeMode.DARK if self.session.theme == "dark"
                                 else ft.ThemeMode.LIGHT)
         self.page.bgcolor = ui.p.canvas
@@ -649,6 +734,16 @@ class WorkspaceApp:
         if corners in ("windows", "macos"):
             self.session.corners = corners
             self.render()
+
+    def set_accent(self, accent: str):
+        """Change the accent colour preset; kept for the next start."""
+        if accent not in tk.ACCENTS:
+            return
+        self.session.accent = accent
+        self.page.theme = tk.build_theme("light", accent)
+        self.page.dark_theme = tk.build_theme("dark", accent)
+        save_workspace_settings({"accent": accent})
+        self.render()
 
     async def return_to_classic(self, e=None):
         if self.bridge.return_to_classic is None:
@@ -1154,6 +1249,8 @@ class SettingsPage:
             wc.segmented(ui, [("windows", ui.t("settings.corners.windows")),
                               ("macos", ui.t("settings.corners.macos"))], s.corners,
                          app.set_corners, data="settings-corners"),
+            wc.segmented(ui, [(key, ui.t(f"accent.{key}")) for key in tk.ACCENTS], s.accent,
+                         app.set_accent, data="settings-accent"),
         ]
         ocr = [wc.button(ui, ui.t("settings.ocr_check"), self._check_ocr,
                          icon=ft.Icons.DOCUMENT_SCANNER_OUTLINED, data="settings-ocr")]
@@ -1162,7 +1259,9 @@ class SettingsPage:
         cards = [
             wc.card(ui, [wc.section_label(ui, ui.t("settings.language")), rows[0],
                          wc.section_label(ui, ui.t("settings.theme")), rows[1],
-                         wc.section_label(ui, ui.t("settings.corners")), rows[2]],
+                         wc.section_label(ui, ui.t("settings.corners")), rows[2],
+                         wc.section_label(ui, ui.t("settings.accent")), rows[3],
+                         wc.caption(ui, ui.t("settings.accent_note"))],
                     title=ui.t("settings.title")),
             self.profile.profile_card(),
             self.profile.ai_card(),

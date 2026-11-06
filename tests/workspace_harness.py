@@ -42,6 +42,13 @@ class Workspace:
 
         self.temp = None if root is not None else TemporaryDirectory()
         self.root = Path(root) if root is not None else Path(self.temp.name)
+        # Workspace appearance settings live in the test folder, not in $HOME.
+        from unittest import mock
+        import workspace_shell
+
+        self._settings = mock.patch.object(workspace_shell, "workspace_settings_path",
+                                           lambda: self.root / "workspace.json")
+        self._settings.start()
         self.page = FakePage(width)
         self._token = _context_page.set(self.page)
         self.app = WorkspaceApp(
@@ -65,6 +72,7 @@ class Workspace:
             return
         self._closed = True
         self.app.projects.close(clear=False)
+        self._settings.stop()
         _context_page.reset(self._token)
         if self.temp is not None:
             self.temp.cleanup()
