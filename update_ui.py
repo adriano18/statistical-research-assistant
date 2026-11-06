@@ -249,9 +249,24 @@ def error_text(language: str, reason: str) -> str:
 
 
 def register_before_exit(callback) -> None:
-    """The workspace registers how to close its open project before an update."""
-    if callback not in BEFORE_EXIT:
-        BEFORE_EXIT.append(callback)
+    """The workspace registers how to close its open project before an update
+    (held weakly: a closed workspace does not stay alive for it)."""
+    import weakref
+
+    reference = weakref.WeakMethod(callback) if hasattr(callback, "__self__") else (lambda: callback)
+    BEFORE_EXIT.append(reference)
+
+
+def run_before_exit() -> None:
+    for reference in list(BEFORE_EXIT):
+        callback = reference()
+        if callback is None:
+            BEFORE_EXIT.remove(reference)
+            continue
+        try:
+            callback()
+        except Exception:
+            pass
 
 
 def _data_root(source_root: Path) -> Path:
@@ -418,11 +433,7 @@ class UpdateDialog:
             await asyncio.to_thread(uc.verify_installer, installer, manifest, self.build)
             self.status.value = t(self.language, "preparing")
             self._refresh()
-            for callback in list(BEFORE_EXIT):
-                try:
-                    callback()
-                except Exception:
-                    pass
+            run_before_exit()
             record = await asyncio.to_thread(uc.prepare, self.data_root, installer, manifest,
                                              self.build)
             try:
@@ -453,8 +464,9 @@ class UpdateDialog:
 
 
 async def close_application(page) -> None:
-    """Close the window so the installer can replace the program."""
-    await asyncio.sleep(1.5)
+    """Close the window so the installer can replace the program (after a
+    moment in which the researcher can read why it closes)."""
+    await asyncio.sleep(4)
     try:
         await page.window.destroy()
     except Exception:
@@ -576,6 +588,8 @@ async def after_start(page, source_root: Path, language: str) -> str:
     data_root = _data_root(source_root)
     try:
         outcome = await asyncio.to_thread(uc.finish, data_root)
+        if outcome is None:
+            await asyncio.to_thread(uc.clean_cache, data_root)
     except Exception:
         outcome = None
     shown = ""

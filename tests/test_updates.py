@@ -359,6 +359,25 @@ class HandoffTests(unittest.TestCase):
         history = json.loads((self.root / "updates" / uc.HISTORY).read_text(encoding="utf-8"))
         self.assertEqual(history["updates"][-1]["state"], "updated")
 
+    def test_an_installer_still_running_does_not_hide_the_outcome(self):
+        """On Windows the installer that started the new version may still be
+        running, so its file cannot be deleted yet: the outcome is reported
+        anyway and the file is removed on a later start."""
+        uc.prepare(self.root, self.installer, self.manifest, build(port=1))
+        real_unlink = Path.unlink
+
+        def locked(path, *args, **kwargs):
+            if path.suffix == ".exe":
+                raise PermissionError(32, "The process cannot access the file")
+            return real_unlink(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "unlink", locked):
+            outcome = uc.finish(self.root, build(version="1.0.1-test.1", port=1))
+        self.assertEqual(outcome["state"], "updated")
+        self.assertTrue(self.installer.exists())
+        self.assertEqual(uc.clean_cache(self.root), [self.installer.name])
+        self.assertFalse(self.installer.exists())
+
     def test_an_update_that_did_not_happen_is_reported_and_nothing_is_lost(self):
         uc.prepare(self.root, self.installer, self.manifest, build(port=1))
         outcome = uc.finish(self.root, build(version="1.0.0-test.1", port=1))
@@ -491,6 +510,22 @@ class InterfaceTests(unittest.TestCase):
         launch.assert_not_called()
         closing.assert_not_awaited()
         self.assertIn("does not match the published checksum", texts(dialog.dialog))
+
+    def test_open_projects_are_closed_before_the_handoff(self):
+        closed = []
+
+        class Shell:
+            def close_project_for_update(self):
+                closed.append(True)
+
+        shell = Shell()
+        update_ui.register_before_exit(shell.close_project_for_update)
+        update_ui.run_before_exit()
+        self.assertEqual(closed, [True])
+        del shell                       # a closed workspace is not kept alive
+        __import__("gc").collect()
+        update_ui.run_before_exit()
+        self.assertEqual(closed, [True])
 
     def test_after_the_restart_the_outcome_is_shown(self):
         installer = self.data / "updates" / "StatisticalResearchAssistant-1.0.1-test.1-Setup.exe"

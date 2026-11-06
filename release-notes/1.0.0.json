@@ -1,0 +1,12 @@
+{
+ "changelog": {
+  "en": "First installable version. Install once with the setup program; later versions are offered inside the application (Settings → About and updates) and installed with one click. Research data is kept in your user folder and survives updates and uninstalling. Data of earlier preview versions is found and copied on request. Includes the research workspace with projects, the scientific questionnaire importer with local OCR (English, Latvian, Russian) and every analysis of the validated engine.",
+  "lv": "Pirmā instalējamā versija. Instalējiet vienreiz ar instalēšanas programmu; jaunākas versijas tiek piedāvātas lietotnē (Iestatījumi → Par programmu un atjauninājumi) un instalētas ar vienu klikšķi. Pētījuma dati glabājas jūsu lietotāja mapē un saglabājas pēc atjaunināšanas un atinstalēšanas. Iepriekšējo priekšskatījuma versiju dati tiek atrasti un pēc pieprasījuma nokopēti.",
+  "ru": "Первая устанавливаемая версия. Установите один раз программой установки; новые версии предлагаются внутри приложения (Настройки → О программе и обновления) и устанавливаются одним щелчком. Исследовательские данные хранятся в папке пользователя и сохраняются при обновлении и удалении программы. Данные прежних предварительных версий находятся и копируются по запросу."
+ },
+ "known_limitations": {
+  "en": "Native Windows display scaling of 125 % and 150 % is not yet verified on hardware. The AI assistant is not connected in this version.",
+  "lv": "Windows mērogošana 125 % un 150 % vēl nav pārbaudīta uz aparatūras. AI asistents šajā versijā nav pievienots.",
+  "ru": "Масштабирование Windows 125 % и 150 % ещё не проверено на оборудовании. AI-помощник в этой версии не подключён."
+ }
+}

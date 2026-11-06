@@ -1,0 +1,229 @@
+name: Release (draft) — installer and signed update manifest
+
+# Stage 35 (#44, #45). Builds the installer for a version, smoke-tests it
+# installed, writes the Ed25519-signed update manifest and creates a DRAFT
+# GitHub release. Nothing is public until the owner publishes the draft:
+#   - stable: publishing makes it GitHub's "latest" release, whose
+#     sra-update-stable.json every stable installation checks;
+#   - preview: publishing copies sra-update-preview.json to the
+#     "preview-channel" pre-release that preview installations check.
+# A stable release requires a code-signing certificate; without one only
+# a clearly labelled unsigned preview can be built.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SemVer: 1.0.0 (stable) or 1.1.0-preview.1 (preview)"
+        required: true
+      channel:
+        description: "Release channel"
+        type: choice
+        options: [preview, stable]
+        default: preview
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      PYTHONUTF8: "1"
+      MPLBACKEND: Agg
+      RUNTIME_DIR: bundled_ocr\windows-x64
+      VERSION: ${{ inputs.version }}
+      CHANNEL: ${{ inputs.channel }}
+      TAG: v${{ inputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt "zstandard>=0.23,<1" "pywinauto==0.6.9"
+      - name: The update-signing key is configured
+        shell: pwsh
+        env:
+          SRA_UPDATE_SIGNING_KEY: ${{ secrets.SRA_UPDATE_SIGNING_KEY }}
+        run: |
+          if (-not $env:SRA_UPDATE_SIGNING_KEY) {
+            throw "The repository secret SRA_UPDATE_SIGNING_KEY is missing. Create it once (docs/IN_APP_UPDATES.md): python tools/update_signing.py new-key --private-out update-signing.key. No release is built without it, so no build ships that cannot verify its own updates."
+          }
+          $public = python tools/update_signing.py public-key
+          if ($LASTEXITCODE -ne 0) { throw "the update-signing key is not a valid Ed25519 key" }
+          "UPDATE_PUBLIC_KEY=$public" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Code-signing certificate (required for stable)
+        shell: pwsh
+        env:
+          PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        run: |
+          if (-not $env:PFX_BASE64) {
+            if ($env:CHANNEL -eq "stable") {
+              throw "A stable release needs a code-signing certificate (secrets WINDOWS_SIGNING_PFX_BASE64 and WINDOWS_SIGNING_PFX_PASSWORD). Build a preview release instead, or add the certificate."
+            }
+            "SIGNED=0" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "No certificate: building an UNSIGNED PREVIEW."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))
+          $cert = Get-PfxData -FilePath $pfx -Password (ConvertTo-SecureString $env:PFX_PASSWORD -AsPlainText -Force)
+          $leaf = $cert.EndEntityCertificates[0]
+          "SIGNED=1" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PFX_PATH=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PUBLISHER=$($leaf.Subject)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "THUMBPRINT=$($leaf.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "Signing as $($leaf.Subject)"
+      - name: Cache pinned OCR packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\ocr-cache
+          key: ocr-msys2-${{ hashFiles('packaging/windows_ocr_runtime.lock.json') }}
+      - name: Prepare pinned Tesseract runtime (SHA-256 verified)
+        run: python tools/prepare_windows_ocr_runtime.py fetch --out "${{ env.RUNTIME_DIR }}" --cache "${{ runner.temp }}\ocr-cache"
+      - name: Version identity
+        shell: pwsh
+        run: |
+          $args = @("--channel", $env:CHANNEL, "--version", $env:VERSION, "--build", "${{ github.run_number }}",
+                    "--commit", "${{ github.sha }}", "--update-key", $env:UPDATE_PUBLIC_KEY)
+          if ($env:SIGNED -eq "1") {
+            $args += @("--signed", "--require-signature", "--publisher", $env:PUBLISHER, "--publisher-thumbprint", $env:THUMBPRINT)
+          }
+          python tools/write_build_info.py @args
+          if ($LASTEXITCODE -ne 0) { throw "the version does not fit the channel" }
+          $numeric = python -c "import app_identity as a; v = a.parse_version('$env:VERSION'); print(f'{v.major}.{v.minor}.{v.patch}')"
+          "NUMERIC=$numeric" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Build the Windows application
+        run: >-
+          flet build windows .
+          --module-name app
+          --python-version 3.12
+          --product "Statistical Research Assistant"
+          --artifact "StatisticalResearchAssistant"
+          --build-version ${{ env.NUMERIC }}
+          --build-number ${{ github.run_number }}
+          --no-rich-output --yes
+      - name: Locate the bundle
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path build/windows -Filter StatisticalResearchAssistant.exe -Recurse | Select-Object -First 1
+          "BUNDLE=$(Split-Path $exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          python tools/check_packaged_ocr.py build/windows
+          if ($LASTEXITCODE -ne 0) { throw "packaged OCR check failed" }
+      - name: Sign the program
+        if: env.SIGNED == '1'
+        shell: pwsh
+        env:
+          PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
+          & $signtool.FullName sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f $env:PFX_PATH /p $env:PFX_PASSWORD $env:EXE
+          if ($LASTEXITCODE -ne 0) { throw "signing the program failed" }
+          "SIGNTOOL=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Install Inno Setup when the runner has none
+        shell: pwsh
+        run: |
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ }
+          if (-not $iscc -and -not (Get-Command ISCC -ErrorAction SilentlyContinue)) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw "Inno Setup could not be installed" }
+          }
+      - name: Build the installer
+        shell: pwsh
+        env:
+          PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        run: |
+          if ($env:SIGNED -eq "1") {
+            python tools/build_installer.py $env:BUNDLE --out dist --sign-command "`"$env:SIGNTOOL`" sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f `"$env:PFX_PATH`" /p $env:PFX_PASSWORD `$f"
+          } else {
+            python tools/build_installer.py $env:BUNDLE --out dist
+          }
+          if ($LASTEXITCODE -ne 0) { throw "the installer could not be built" }
+      - name: Smoke test of the installed program
+        shell: pwsh
+        run: |
+          python tools/check_installed_app.py install "dist\StatisticalResearchAssistant-$env:VERSION-Setup.exe" --log release-evidence\install.log
+          python tools/check_installed_app.py verify --version $env:VERSION --json release-evidence\installed.json
+          python tools/check_gui_startup.py "$env:LOCALAPPDATA\Programs\Statistical Research Assistant\StatisticalResearchAssistant.exe" release-evidence\startup
+          if ($LASTEXITCODE -ne 0) { throw "the installed program did not start" }
+          python tools/check_installed_app.py uninstall --log release-evidence\uninstall.log
+          python tools/check_installed_app.py removed
+      - name: Signed update manifest
+        shell: pwsh
+        env:
+          SRA_UPDATE_SIGNING_KEY: ${{ secrets.SRA_UPDATE_SIGNING_KEY }}
+        run: |
+          $file = "StatisticalResearchAssistant-$env:VERSION-Setup.exe"
+          $notes = "release-notes\$env:VERSION.json"
+          $args = @("manifest", "--installer", "dist\$file", "--version", $env:VERSION, "--channel", $env:CHANNEL,
+                    "--url", "https://github.com/${{ github.repository }}/releases/download/$env:TAG/$file",
+                    "--build", "${{ github.run_number }}", "--out", "dist\sra-update-$env:CHANNEL.json",
+                    "--release-notes-url", "https://github.com/${{ github.repository }}/releases/tag/$env:TAG")
+          if (Test-Path $notes) { $args += @("--changelog-file", $notes) }
+          if ($env:SIGNED -eq "1") { $args += @("--signed", "--publisher", $env:PUBLISHER) }
+          python tools/update_signing.py @args
+          if ($LASTEXITCODE -ne 0) { throw "the manifest could not be signed" }
+          # The manifest must pass the same checks the installed program applies.
+          python -c "import json, app_identity as a, update_manifest as m; b = a.read_build_info(r'$env:BUNDLE\app\build_info.json'); b = a.BuildInfo(**{**b.__dict__, 'version': '0.0.1', 'channel': '$env:CHANNEL'}); p = m.verify_envelope(open(r'dist\sra-update-$env:CHANNEL.json','rb').read(), b.update_keys); print(m.decide(m.parse_manifest(p, b), b))"
+          if ($LASTEXITCODE -ne 0) { throw "the manifest fails the program's own checks" }
+          Copy-Item "$env:BUNDLE\app\build_info.json" dist\build_info.json
+      - name: Create the draft release (not public until the owner publishes it)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $meta = Get-Content dist\installer.json -Raw | ConvertFrom-Json
+          $signed = if ($env:SIGNED -eq "1") { "Code-signed by $env:PUBLISHER." } else { "**Unsigned preview build**: Windows SmartScreen may warn. Not a production release." }
+          $body = @(
+            "Statistical Research Assistant $env:VERSION ($env:CHANNEL channel).",
+            "",
+            $signed,
+            "",
+            "- Installer: ``$($meta.file)``, $([math]::Round($meta.size / 1MB, 1)) MiB",
+            "- SHA-256: ``$($meta.sha256)``",
+            "- Install once; later versions arrive inside the application (Settings -> About and updates).",
+            "- Research data stays in %LOCALAPPDATA%\StatisticalResearchAssistant and is kept by updates and uninstalling.",
+            "",
+            "Built from ${{ github.sha }} by run ${{ github.run_id }}."
+          ) -join "`n"
+          $body | Out-File -FilePath release-notes.md -Encoding utf8
+          $flags = @("--draft", "--title", "Statistical Research Assistant $env:VERSION", "--notes-file", "release-notes.md", "--target", "${{ github.sha }}")
+          if ($env:CHANNEL -eq "preview") { $flags += "--prerelease" }
+          gh release create $env:TAG @flags dist\*.exe dist\*.sha256 dist\installer.json dist\build_info.json "dist\sra-update-$env:CHANNEL.json"
+          if ($LASTEXITCODE -ne 0) { throw "the draft release could not be created" }
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence
+          path: release-evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  preview-channel:
+    # Runs when the owner publishes a pre-release: preview installations
+    # then see it in their manifest.
+    if: github.event_name == 'release' && github.event.release.prerelease
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Copy the published preview manifest to the preview channel
+        run: |
+          gh release download "$TAG" --repo "${{ github.repository }}" --pattern sra-update-preview.json --dir .
+          if ! gh release view preview-channel --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            gh release create preview-channel --repo "${{ github.repository }}" --prerelease \
+              --title "Preview channel" --notes "Update information for preview installations. Do not delete."
+          fi
+          gh release upload preview-channel sra-update-preview.json --repo "${{ github.repository }}" --clobber

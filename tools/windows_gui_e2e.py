@@ -160,6 +160,39 @@ class Gui:
         # presses Alt for it, which can leave the system menu waiting.
         self.maximize()
 
+    def running(self) -> bool:
+        if self.process is not None:
+            return self.process.poll() is None
+        return bool(self.window_pid)
+
+    def attach(self, timeout: float = 300) -> None:
+        """Connect to the program that the installer started after an
+        in-app update (not a process this driver started)."""
+        from pywinauto import Desktop
+        from pywinauto.application import Application
+
+        self.process, self.win, self.handle, self.window_pid = None, None, None, None
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline and not self.handle:
+            for window in Desktop(backend="uia").windows():
+                try:
+                    # Flutter's window class: not the installer's own window,
+                    # whose title also names the application.
+                    if window.class_name() != "FLUTTER_RUNNER_WIN32_WINDOW":
+                        continue
+                    rect = window.rectangle()
+                    if rect.width() > 300 and rect.height() > 200:
+                        self.handle, self.window_pid = window.handle, window.process_id()
+                        break
+                except Exception:
+                    continue
+            if not self.handle:
+                time.sleep(2)
+        if not self.handle:
+            raise StepFailure("the updated program did not start again")
+        self.win = Application(backend="uia").connect(handle=self.handle).window(handle=self.handle)
+        self.maximize()
+
     def maximize(self) -> None:
         import ctypes
 
@@ -176,6 +209,16 @@ class Gui:
                   f"content reaches y={bottom}", flush=True)
 
     def stop(self, *, graceful: bool = True) -> None:
+        if self.process is None and self.window_pid:
+            # Attached after an update: close that process by its id.
+            if graceful and self.win is not None:
+                with contextlib.suppress(Exception):
+                    self.win.close()
+                time.sleep(8)
+            subprocess.run(["taskkill", "/PID", str(self.window_pid), "/T", "/F"],
+                           capture_output=True, check=False)
+            self.win, self.handle, self.window_pid = None, None, None
+            return
         if self.process is None:
             return
         if graceful and self.win is not None:
@@ -1410,6 +1453,130 @@ def journey_installed_data(gui: Gui, work: Path, journey: Journey) -> None:
         open_project(gui, INSTALLED_PROJECT)
 
 
+# ------------------------------------------------ in-app updates (#45)
+_UPDATE_SERVER = None
+
+
+def update_server():
+    """The local update server of test builds (tools/update_test_server.py)."""
+    global _UPDATE_SERVER
+    if _UPDATE_SERVER is None:
+        from update_test_server import UpdateTestServer
+
+        _UPDATE_SERVER = UpdateTestServer(Path(os.environ["SRA_E2E_UPDATE_ROOT"]), 8765).start()
+    return _UPDATE_SERVER
+
+
+def check_for_updates(gui: Gui, expected: str, *, scenario: str, fault=None) -> None:
+    import update_ui
+
+    server = update_server()
+    server.scenario, server.fault = scenario, fault
+    nav(gui, "nav.settings")
+    gui.click(update_ui.t("en", "check"), control_type="Button")
+    gui.wait_text(expected, timeout=90, scroll=False)
+
+
+def close_dialog(gui: Gui) -> None:
+    import update_ui
+
+    gui.click(update_ui.t("en", "close"), control_type="Button")
+    time.sleep(1)
+
+
+def journey_update_refusals(gui: Gui, work: Path, journey: Journey) -> None:
+    """Updates that must never be installed are refused in words, and the
+    program keeps working: another signer, an older version, a damaged file."""
+    import update_ui
+
+    expect(gui.real_data, "run update journeys with --real-data")
+    data = Path(os.environ["LOCALAPPDATA"]) / "StatisticalResearchAssistant"
+    with journey.step("update information signed with another key is rejected"):
+        check_for_updates(gui, "is not signed by the publisher of this application",
+                          scenario="tampered")
+        gui.shot("another signer rejected")
+        close_dialog(gui)
+    with journey.step("an older version is never offered (no downgrade)"):
+        check_for_updates(gui, update_ui.t("en", "latest", version=os.environ["SRA_E2E_UPDATE_FROM"]),
+                          scenario="older")
+        gui.shot("older version not offered")
+        close_dialog(gui)
+    with journey.step("a damaged download is deleted and nothing is started"):
+        target = os.environ["SRA_E2E_UPDATE_TO"]
+        check_for_updates(gui, update_ui.t("en", "available", version=target), scenario="good")
+        update_server().fault = "corrupt"
+        gui.click(update_ui.t("en", "update_now"), control_type="Button")
+        gui.wait_text("does not match the published checksum", timeout=240, scroll=False)
+        gui.shot("damaged download refused")
+        expect(gui.process is not None and gui.process.poll() is None, "the program stopped")
+        expect(not list((data / "updates").glob("*.exe")), "a damaged installer was kept")
+        update_server().fault = None
+        gui.click(update_ui.t("en", "later"), control_type="Button")
+    journey.facts["requests"] = update_server().requests[-10:]
+
+
+def journey_update_a_to_b(gui: Gui, work: Path, journey: Journey) -> None:
+    """The acceptance test of Stage 35: the installed program is told about
+    a new version, shows what is new, downloads and checks it (after an
+    interruption), installs it with one click, starts again as the new
+    version and opens the same project."""
+    import update_ui
+
+    expect(gui.real_data, "run update journeys with --real-data")
+    target = os.environ["SRA_E2E_UPDATE_TO"]
+    data = Path(os.environ["LOCALAPPDATA"]) / "StatisticalResearchAssistant"
+    server = update_server()
+    server.scenario, server.fault = "good", None
+    with journey.step("the new version is announced when the program starts"):
+        state = data / "updates" / "state.json"
+        with contextlib.suppress(OSError, ValueError):
+            value = json.loads(state.read_text(encoding="utf-8"))
+            value.pop("last_check", None)
+            value.pop("snoozed", None)
+            state.write_text(json.dumps(value), encoding="utf-8")
+        gui.stop()
+        gui.start()
+        gui.wait_text(update_ui.t("en", "available", version=target), timeout=120, scroll=False)
+        gui.shot("update announced")
+    with journey.step("what's new"):
+        gui.click(update_ui.t("en", "whats_new"), control_type="Button")
+        gui.wait_text("Fictional change list for the update test", timeout=30, scroll=False)
+        gui.shot("what's new")
+    with journey.step("an interrupted download can simply be retried"):
+        server.fault = "interrupt"
+        gui.click(update_ui.t("en", "update_now"), control_type="Button")
+        gui.wait_text("The download was interrupted", timeout=240, scroll=False)
+        gui.shot("download interrupted")
+    with journey.step("update now: download, check, install, restart"):
+        gui.click(update_ui.t("en", "update_now"), control_type="Button")
+        with contextlib.suppress(StepFailure):     # shown for a few seconds only
+            gui.wait_text("Installing version", timeout=300, scroll=False)
+            gui.shot("installing")
+        old = gui.process
+        expect(old is not None, "no running program")
+        try:
+            old.wait(timeout=90)
+        except subprocess.TimeoutExpired as error:
+            raise StepFailure("the program did not close itself for the update") from error
+        gui.attach(timeout=360)
+    with journey.step("the new version reports the update"):
+        gui.wait_text(update_ui.t("en", "updated_title", version=target), timeout=120, scroll=False)
+        gui.wait_text(update_ui.t("en", "updated"), timeout=10, scroll=False)
+        gui.wait_text("projects are in place", timeout=10, scroll=False)
+        gui.shot("updated")
+        gui.click(update_ui.t("en", "close"), control_type="Button")
+    with journey.step("the project opens in the new version"):
+        open_project(gui, INSTALLED_PROJECT)
+    with journey.step("Settings name the new version"):
+        nav(gui, "nav.settings")
+        gui.wait_text(update_ui.t("en", "version", version=target), timeout=20)
+        gui.shot("new version in settings")
+    history = data / "updates" / "history.json"
+    with contextlib.suppress(OSError, ValueError):
+        journey.facts["history"] = json.loads(history.read_text(encoding="utf-8"))["updates"][-1]
+    journey.facts["ranges"] = [r for _, r in server.requests if r]
+
+
 def journey_installed_reopen(gui: Gui, work: Path, journey: Journey) -> None:
     """After an update (or a reinstall) the same projects open again."""
     expect(gui.real_data, "run installed journeys with --real-data")
@@ -1420,10 +1587,15 @@ def journey_installed_reopen(gui: Gui, work: Path, journey: Journey) -> None:
             open_project(gui, title)
 
 
+# Journeys that prepare the machine and start the program themselves.
+STARTS_ITSELF = {"legacy-migration", "installed-reopen", "update-a-to-b"}
+
 INSTALLED_JOURNEYS = {
     "legacy-migration": journey_legacy_migration,
     "installed-data": journey_installed_data,
     "installed-reopen": journey_installed_reopen,
+    "update-refusals": journey_update_refusals,
+    "update-a-to-b": journey_update_a_to_b,
 }
 
 
@@ -1474,9 +1646,7 @@ def main(argv=None) -> int:
     started = time.monotonic()
     try:
         selected = args.only or list(JOURNEYS)
-        # Installed journeys start the application themselves when they need
-        # to prepare the machine first.
-        if not any(name in INSTALLED_JOURNEYS for name in selected[:1]):
+        if selected[0] not in STARTS_ITSELF:
             gui.start()
         if args.probe:
             probe(gui)
@@ -1485,8 +1655,7 @@ def main(argv=None) -> int:
             outcome = {"journey": name, "ok": False}
             with gui.record(name):
                 try:
-                    if name not in INSTALLED_JOURNEYS and (
-                            gui.process is None or gui.process.poll() is not None):
+                    if name not in STARTS_ITSELF and not gui.running():
                         gui.start()
                     journeys[name](gui, work, journey)
                     outcome["ok"] = True

@@ -349,8 +349,26 @@ def finish(data_root: Path, build: app_identity.BuildInfo | None = None) -> dict
     _write_json(data_root / "updates" / HISTORY, history)
     pending_path.unlink(missing_ok=True)
     if reached:
-        Path(record.get("installer", "")).unlink(missing_ok=True)
+        clean_cache(data_root)
     return outcome
+
+
+def clean_cache(data_root: Path) -> list[str]:
+    """Remove downloaded installers no pending update needs. An installer
+    that is still running (it starts the new version, then exits) cannot be
+    deleted yet; it is removed on a later start."""
+    folder = Path(data_root) / "updates"
+    keep = _read_json(folder / PENDING).get("installer", "")
+    removed = []
+    for path in folder.glob("StatisticalResearchAssistant-*-Setup.exe*"):
+        if keep and os.path.normcase(str(path)) == os.path.normcase(keep):
+            continue
+        try:
+            path.unlink()
+            removed.append(path.name)
+        except OSError:
+            continue
+    return removed
 
 
 # ------------------------------------------------------------- preferences

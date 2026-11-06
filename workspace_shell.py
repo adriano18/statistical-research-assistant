@@ -138,7 +138,7 @@ class WorkspaceApp:
         # Before an in-app update closes the program, close the open project.
         import update_ui
 
-        update_ui.register_before_exit(lambda: self.projects.close(clear=False))
+        update_ui.register_before_exit(self.close_project_for_update)
         self._shown_project_message = None
         # Optional local researcher profile (beside the projects folder).
         from researcher_profile import load_profile, profile_path
@@ -209,6 +209,10 @@ class WorkspaceApp:
                       alignment=ft.MainAxisAlignment.CENTER)
 
     # ------------------------------------------------------------- pickers
+    def close_project_for_update(self) -> None:
+        """Release the open project (its lock) before an in-app update."""
+        self.projects.close(clear=False)
+
     def _install_services(self):
         self.data_picker = ft.FilePicker(on_result=self._on_data_picked)
         self.document_picker = ft.FilePicker(on_result=self._on_document_picked)
