@@ -571,16 +571,14 @@ class Gui:
             return "click"
 
     def choose(self, label: str, option: str, *, index: int = 0, options=None):
-        """Pick ``option`` in the dropdown named ``label``. The entry chosen is
-        one that appeared with the open menu: the page may hold a checkbox of
-        the same name (the ANCOVA form lists the covariates)."""
+        """Pick ``option`` in the dropdown named ``label``: open it through UI
+        Automation and press the entry that appeared with the menu (the page
+        may hold a checkbox of the same name: the ANCOVA form lists the
+        covariates). Where the open menu exposes no entries (the method form,
+        runs 13-14), choose like a keyboard user: Down to the entry, Enter."""
         from pywinauto import keyboard
 
         kinds_menu = ("MenuItem", "ListItem", "Button", "Text", "Custom", "Group")
-        # Leave Windows' menu mode if something put the window in it: the next
-        # key or click would go to the system menu. The app does not use Esc.
-        keyboard.send_keys("{ESC}{ESC}")
-        time.sleep(0.3)
         self.close_menus()
         field = None
         for kinds in (("ComboBox",), ("Edit",), ("Button", "Group", "Custom", "Pane", "Text")):
@@ -591,9 +589,10 @@ class Gui:
         if field is None:
             field = self.find(label, index=index)
         self.scroll_into_view(field)
-        before = {self.element_id(e) for e in self.elements()}
+        before = {self.element_id(e) for e in self.query(option)}
+        everything_before = {self.element_id(e) for e in self.elements()}
 
-        def entries(wait: float = 4.0):
+        def entries(wait: float = 3.0):
             deadline = time.monotonic() + wait
             while True:
                 self.close_menus()
@@ -604,35 +603,28 @@ class Gui:
                     return found
                 time.sleep(0.5)
 
-        tried = []
-        for how in ("click", "invoke"):
-            if how == "click":
-                field.click_input()
-            else:
-                with contextlib.suppress(Exception):
-                    field.invoke()
-            tried.append(how)
+        how = self.activate(field)
+        appeared = entries()
+        if not appeared and how == "invoke":
+            field.click_input()                      # open it with the mouse instead
+            how = "click"
             appeared = entries()
-            if appeared:
-                print(f"  [choose] {label!r}: opened by {how}; picking {option!r}", flush=True)
-                self.activate(appeared[-1])
-                time.sleep(1.0)
-                return
-        everything = [e for e in self.elements()]
-        new = [e for e in everything if self.element_id(e) not in before
-               and (e.element_info.name or "").strip()][:25]
-        print(f"  [choose] {label!r} (tried {', '.join(tried)}): no entry {option!r}; "
-              f"{len(everything)} elements, {len(new)} new named ones:\n"
-              + self.describe(new, 25), flush=True)
+        if appeared:
+            print(f"  [choose] {label!r}: opened by {how}; picking {option!r}", flush=True)
+            self.activate(appeared[-1])
+            time.sleep(1.0)
+            return
+        new = [e for e in self.elements() if self.element_id(e) not in everything_before
+               and (e.element_info.name or "").strip()][:20]
+        print(f"  [choose] {label!r} opened by {how}; no entry {option!r}; "
+              f"{len(new)} new named elements:\n" + self.describe(new, 20), flush=True)
         if options is None or option not in options:
             raise StepFailure(f"{option!r} is not listed in the dropdown {label!r}")
-        # Keyboard, only while the dropdown itself has the focus: the entry
-        # already chosen is highlighted (none: Down goes to the first one).
+        # The keys go to the dropdown that Flutter has focused (Windows reports
+        # Flutter's focus as its view, an unnamed pane), never to the system menu.
         focused = self.focused()
-        expect(focused.process_id == self.window_pid and not self.system_menu_open()
-               and (focused.name or "").startswith(label),
-               f"the dropdown {label!r} does not have the keyboard focus "
-               f"({focused.control_type} {focused.name!r})")
+        expect(focused.process_id == self.window_pid and not self.system_menu_open(),
+               f"the dropdown {label!r} does not have the keyboard focus")
         current = self.value(field)
         start = options.index(current) if current in options else -1
         moves = options.index(option) - start
@@ -1186,13 +1178,27 @@ def journey_responses(gui: Gui, work: Path, journey: Journey) -> None:
     for respondent, (group, stress) in enumerate((("A", "2"), ("B", "4"), ("A", "3"))):
         with journey.step(f"collect response {respondent + 1} in the form"):
             before = {gui.element_id(e) for e in gui.query(T("q.collect"), control_type="Button")}
-            gui.click(T("q.collect"), control_type=("Button", "Text"), index=0)
-            # The dialog's own submit button is the new "Collect a response".
-            deadline, submit = time.monotonic() + 15, None
-            while time.monotonic() < deadline and submit is None:
-                submit = next((e for e in gui.query(T("q.collect"), control_type="Button")
-                               if gui.element_id(e) not in before), None)
-                time.sleep(0.5)
+            opener = gui.click(T("q.collect"), control_type=("Button", "Text"), index=0)
+
+            def form_submit(wait):
+                # The dialog's own submit button is the new "Collect a response".
+                deadline = time.monotonic() + wait
+                while time.monotonic() < deadline:
+                    found = next((e for e in gui.query(T("q.collect"), control_type="Button")
+                                  if gui.element_id(e) not in before), None)
+                    if found is not None:
+                        return found
+                    time.sleep(0.5)
+                return None
+
+            submit = form_submit(8)
+            if submit is None:
+                print("  [form] the click did not open the response form; pressing the "
+                      "button through UI Automation", flush=True)
+                Gui.activate(opener)
+                submit = form_submit(10)
+            if submit is None:
+                gui.log_screen("the response form did not open")
             expect(submit is not None, "the response form did not open")
             r = submit.element_info.rectangle
             dialog = (r.right - 720, r.top - 640, r.right + 30, r.bottom + 10)
