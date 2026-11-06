@@ -140,7 +140,14 @@ class Gui:
         with contextlib.suppress(Exception):
             self.win.maximize()
         with contextlib.suppress(Exception):
+            import ctypes
+
+            ctypes.windll.user32.ShowWindow(self.handle, 3)      # SW_MAXIMIZE
+        time.sleep(1.0)
+        with contextlib.suppress(Exception):
             self.win.set_focus()
+        with contextlib.suppress(Exception):
+            print(f"  [window] {self.win.window_text()!r} at {self.window_box()}", flush=True)
         # The workspace is ready when its Home page offers to create a project.
         self.find(T("project.create"), timeout=max(30, deadline - time.monotonic()),
                   scroll=False, visible=False)
@@ -451,13 +458,17 @@ class Gui:
 
     # --------------------------------------------------------- file dialogs
     def dialogs(self) -> list:
-        """Visible standard Windows dialogs (class #32770) of any process."""
+        """Visible standard Windows dialogs (class #32770) of THIS application.
+        (Hosted runners show their own system dialogs, e.g. a paging-file
+        warning, which must never be mistaken for the file dialog.)"""
         from pywinauto import Desktop
 
+        pid = self.process.pid if self.process is not None else None
         found = []
         for window in Desktop(backend="uia").windows():
             with contextlib.suppress(Exception):
-                if window.class_name() == "#32770" and window.is_visible():
+                if (window.class_name() == "#32770" and window.is_visible()
+                        and window.process_id() == pid):
                     found.append(window)
         return found
 
@@ -485,7 +496,7 @@ class Gui:
         edit = next((e for key in wanted for e in edits
                      if e.element_info.automation_id == key), None)
         if edit is None and edits:
-            # The File name box is the lowest edit field (the search box is on top).
+            # Else the lowest edit field (the search box is on top).
             edit = max(edits, key=lambda e: e.element_info.rectangle.top)
         print(f"  [file dialog] {dialog.window_text()!r}: {len(edits)} edit field(s); using "
               f"{(edit.element_info.automation_id if edit else 'keyboard focus')!r}", flush=True)
@@ -875,6 +886,9 @@ def journey_responses(gui: Gui, work: Path, journey: Journey) -> None:
         expect(opened or gui.has_text("Fictional study A"), "project A did not open")
     with journey.step("start a small questionnaire from a template"):
         gui.click(T("nav.questionnaires"), control_type=("Button", "Text"))
+        # Narrow windows show one pane at a time: the list holds the templates.
+        if gui.query(T("q.questions"), control_type="Button"):
+            gui.click(T("q.questions"), control_type="Button")
         gui.click(T("common.continue"), control_type=("Button", "Text"))
         with contextlib.suppress(StepFailure):
             gui.click(T("q.replace_confirm"), control_type="Button", timeout=5)
