@@ -1178,7 +1178,7 @@ def journey_blocked_design(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text("age is quantitative")
         raw = [text for text in gui.texts() if RAW_KEY.search(text)]
         expect(not raw, f"untranslated identifiers on screen: {raw[:3]}")
-        expect(not gui.query(regex=r"^" + re.escape(T("rec.run", method="")).strip(),
+        expect(not gui.query(regex=r"^" + re.escape(T("rec.run", method="")),
                              control_type="Button"),
                "a run button is offered for a refused design")
         gui.shot("blocked-design")
