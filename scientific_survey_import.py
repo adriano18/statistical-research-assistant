@@ -8,6 +8,7 @@ scoring key that requires explicit researcher approval before draft use.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
 import re
@@ -28,6 +29,30 @@ from survey_storage import validate_questions
 MAX_BYTES = 20_000_000
 MAX_PAGES = 80
 MAX_QUESTIONS = 200
+MAX_NON_ITEMS = 500
+
+LEGACY_DOC_ADVICE = ("Open the file in Word or LibreOffice and save it as .docx or PDF, "
+                     "then import that file.")
+LEGACY_DOC_UNREADABLE = "Legacy Word .doc files cannot be read on this computer. " + LEGACY_DOC_ADVICE
+LEGACY_DOC_FAILED = ("This legacy Word .doc file could not be converted on this computer. "
+                     + LEGACY_DOC_ADVICE)
+
+
+class LegacyDocUnavailable(ValueError):
+    """A legacy Word .doc cannot be converted to text here (no converter,
+    typical for a packaged Windows build, or the converter failed)."""
+
+
+class NoQuestionsFound(ValueError):
+    """No numbered questionnaire items; carries what the document showed."""
+
+    def __init__(self, message: str, *, non_items=(), expected_count: int | None = None,
+                 image_pages=(), ocr_language: str = ""):
+        super().__init__(message)
+        self.non_items = tuple(non_items)
+        self.expected_count = expected_count
+        self.image_pages = tuple(image_pages)
+        self.ocr_language = ocr_language
 
 NUMBERED = re.compile(
     r"^\s*(?:[_\s]*)(\*?)\s*(\d{1,3}|[lI])\s*([.):]|(?=\s{2,}))\s*(.+)$"
@@ -185,6 +210,12 @@ class ScientificDocumentReview:
     # aids only; they never approve scoring, rights or wording.
     spatial: object | None = None
     matrices: tuple = ()
+    # Import integrity: numbered lines kept out because they look like
+    # bibliography entries ((page, text)), the item count the document's
+    # own text states, and the OCR language its letters suggest.
+    non_items: tuple[tuple[int, str], ...] = ()
+    expected_count: int | None = None
+    ocr_language: str = ""
 
 
 def _title(line: str) -> str | None:
@@ -199,6 +230,17 @@ def _clean(line: str) -> str:
 
 
 def _numbered(line: str, expected: int | None) -> tuple[int, str, bool] | None:
+    """(number, item text, starred) of a numbered item line, or None.
+
+    A numbered bibliography entry is never an item, wherever it appears.
+    """
+    found = _numbered_line(line, expected)
+    if found is not None and _reference_like(found[1]):
+        return None
+    return found
+
+
+def _numbered_line(line: str, expected: int | None) -> tuple[int, str, bool] | None:
     # Table cells from antiword: |14 | Question? | [ ] Yes |
     if line.lstrip().startswith("|"):
         cells = [c.strip() for c in line.strip("|").split("|")]
@@ -277,8 +319,169 @@ def _title_line(line: str) -> bool:
     return _heading_like(line) and not _scale_or_legend_line(line) and "=" not in line
 
 
+# Shapes of a bibliography entry; any one of them is enough because
+# questionnaire items do not carry them: a year in parentheses (not one
+# that ends a question: "… election (2022)?"), a DOI, "et al.", page
+# numbers, journal volume (issue) pages, Vancouver "1993;37(1):19",
+# "(Eds.)", ISBN, and GOST "//" or "С. 19–32".
+_REFERENCE_SHAPES = re.compile(
+    r"\(\s*\d{4}[a-z]?\s*\)(?!\s*\?)"
+    r"|\bdoi\b|\b10\.\d{4,9}/\S"
+    r"|\bet\s+al\b|\bи\s+др\."
+    r"|\bpp?\.\s*\d|\blpp\.\s*\d"
+    r"|\b\d{1,4}\s*\(\s*\d{1,4}(?:\s*[-–—/]\s*\d{1,4})?\s*\)\s*[,:.]?\s*\d{1,5}\s*[-–—]\s*\d{1,5}"
+    r"|\b\d{4}\s*;\s*\d{1,4}\s*(?:\(\s*[\d-]{1,9}\s*\))?\s*:\s*\d{1,5}"
+    r"|\((?:eds?|hrsg|red)\.?\)|\bISBN\b|\s//\s|\bС\.\s*\d{1,5}\s*[-–—]\s*\d{1,5}",
+    re.I,
+)
+_SURNAME = r"[A-ZÀ-ÖØ-ÞĀ-ŽА-ЯЁ][^\W\d_]+(?:[-'’][^\W\d_]+)*"
+_INITIALS = r"(?:[A-ZÀ-ÖØ-ÞĀ-ŽА-ЯЁ]\.\s*(?:-\s*[A-ZÀ-ÖØ-ÞĀ-ŽА-ЯЁ]\.\s*)?){1,3}"
+_ENTRY_NUMBER = r"^\W*(?:\[\d{1,3}\]|\d{1,3}[.)])?\s*"
+# Author lists at the start of an entry: APA "Surname, A. B., & …" or
+# "Surname, A. (2000)", GOST "Surname A. B., Other C." and Vancouver
+# "Surname AB, Other C." (initials end the author list with a period).
+_AUTHOR_LIST = re.compile(
+    rf"{_ENTRY_NUMBER}{_SURNAME},\s+{_INITIALS}(?:,|&|\band\b|\bun\b|\bи\b|\(|$)"
+    rf"|{_ENTRY_NUMBER}{_SURNAME}\s+{_INITIALS},\s*{_SURNAME}\s+{_INITIALS}"
+    rf"|{_ENTRY_NUMBER}{_SURNAME}\s+[A-Z]{{1,3}}(?:,\s*{_SURNAME}\s+[A-Z]{{1,3}})+\.(?:\s|$)"
+)
+# A numbered entry as printed in a list: "1.", "1)", "1:", "[1]" or "1   ".
+_NUMBERED_ENTRY = re.compile(r"^\s*(?:\[\d{1,3}\]|\d{1,3}\s*[.):]|\d{1,3}(?=\s{2,}))\s*\S")
+_REFERENCES_HEADING = re.compile(
+    r"(?:(?:list\s+of|cited|notes\s+and)\s+)?(?:references?|bibliography|literature|sources)"
+    r"(?:\s+(?:cited|list|and\s+notes))?|works\s+cited"
+    r"|(?:izmantot[āa]\s+|citēt[āa]\s+)?literat[ūu]r(?:a|as\s+saraksts)(?:\s+un\s+avoti)?"
+    r"|(?:izmantotie\s+)?avoti"
+    r"|(?:список\s+(?:использованной\s+|цитируемой\s+)?)?литератур[аы]"
+    r"|использованная\s+литература|библиография|(?:список\s+)?источник(?:и|ов)",
+    re.I,
+)
+
+
 def _reference_like(line: str) -> bool:
-    return bool(re.search(r"\(\d{4}[a-z]?\)|\bdoi\b|\bet al\.?|\bpp?\.\s*\d", line, re.I))
+    """True for a bibliography-shaped line (citation, not a question)."""
+    return bool(_REFERENCE_SHAPES.search(line) or _AUTHOR_LIST.search(line))
+
+
+def _references_heading(line: str) -> bool:
+    """A references section heading, also decorated ("— References —",
+    "6. REFERENCES:", "R E F E R E N C E S") and in Latvian or Russian."""
+    text = _clean(line)
+    if not text or len(text) > 60:
+        return False
+    text = re.sub(r"\s*\(\s*(?:continued|cont\.?)\s*\)\W*$", "", text, flags=re.I)
+    core = re.sub(r"^[\W_]*(?:(?:\d{1,2}(?:\.\d{1,2})*|[IVX]{1,4})[.)]?\s+)?|[\W_]+$", "", text)
+    if re.fullmatch(r"(?:[^\W\d_]\s){3,}[^\W\d_]", core):
+        core = core.replace(" ", "")
+    return bool(_REFERENCES_HEADING.fullmatch(core))
+
+
+def _resumes_questionnaire(line: str, numbered_text: str, legend: dict | None) -> bool:
+    """Evidence that a references section has ended: instructions, a
+    section, a response header or legend, or a numbered QUESTION that is
+    not shaped like a citation."""
+    if (SCALE_START.match(line) or re.match(r"instructions?\b", line, re.I)
+            or SECTION.match(line) or _scale_or_legend_line(line, legend)
+            or (legend and match_legend_header(line, legend))
+            or len(NUMBER_LABEL.findall(line)) >= 2):
+        return True
+    return bool(re.match(r"\s*\d{1,3}\s*[.):]\s*\S.*\?\s*$", numbered_text)
+                and not _reference_like(numbered_text))
+
+
+_NUMBER_WORDS = {
+    "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+    "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
+    "eighty": 80, "ninety": 90, "hundred": 100, "one": 1,
+}
+_COUNT = (r"(\d{1,3}|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)"
+          r"(?:[-\s](?:one|two|three|four|five|six|seven|eight|nine)\b)?"
+          r"|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen"
+          r"|nineteen|two|three|four|five|six|seven|eight|nine|(?:one\s+)?hundred)")
+_COUNTED = (r"(?:items?|statements?|questions?|apgalvojum\w*|jautājum\w*"
+            r"|пункт\w*|вопрос\w*|утверждени\w*)")
+_COUNT_STATED = re.compile(
+    r"\b(?:consists?|consisting|comprises?|comprising|composed|contains?|containing"
+    r"|includes?|including|made\s+up|sastāv|satur|ietver|состоит|содержит|включает)"
+    rf"\s+(?:of\s+|no\s+|из\s+)?(?:a\s+total\s+of\s+|kopā\s+|всего\s+)?\b{_COUNT}"
+    rf"\s+(?:[\w-]+\s+){{0,2}}?{_COUNTED}(?!\w)", re.I)
+_COUNT_HYPHENATED = re.compile(rf"\b{_COUNT}\s*[-‐–]\s*(?:items?|questions?|statements?)\b", re.I)
+_COUNT_MENTIONED = re.compile(rf"\b{_COUNT}\s+(?:[\w-]+\s+)?{_COUNTED}(?!\w)", re.I)
+# "these 4 questions" in scoring notes ("On these 4 questions, change the
+# scores ...") refers to a subset just named, not to the whole form.
+_SUBSET_BEFORE = re.compile(r"\b(?:first|last|next|remaining|other|additional|extra|further"
+                            r"|these|those|such|šiem|šo|šie|этих|эти|этим)\s+$", re.I)
+_SUBSET_AFTER = re.compile(r"\s*(?:\(|(?:are|were|is)\s+(?:reverse|reversed|positively|negatively|keyed)"
+                           r"|reverse|each\b|per\b)", re.I)
+
+
+def _count_value(text: str) -> int:
+    if text.isdigit():
+        return int(text)
+    words = re.split(r"[-\s]+", text.lower())
+    return 100 if "hundred" in words else sum(_NUMBER_WORDS.get(word, 0) for word in words)
+
+
+def expected_item_count(texts) -> int | None:
+    """The number of items the document's text says the form has, or None.
+
+    Reads statements such as "consists of 30 items", "a 30-item scale" or
+    "30 statements" (also Latvian and Russian). Sub-counts such as "the
+    first 10 items", "8 items are reverse scored" or "15 items each" are
+    ignored. Different counts resolve by weight (a "consists of" phrase
+    counts most, then "N-item", then a plain mention), ties to the
+    earliest. The file name is never used.
+    """
+    text = " ".join(_clean(t) for t in texts)[:400_000]
+    found = [(match.start(), match.group(1), 2)
+             for pattern in (_COUNT_STATED, _COUNT_HYPHENATED) for match in pattern.finditer(text)]
+    found += [(match.start(), match.group(1), 1) for match in _COUNT_MENTIONED.finditer(text)
+              if not _SUBSET_BEFORE.search(text[max(0, match.start() - 20):match.start()])
+              and not _SUBSET_AFTER.match(text, match.end())]
+    weight, first = Counter(), {}
+    for position, number, points in sorted(found):
+        value = _count_value(number)
+        if 2 <= value <= MAX_QUESTIONS:
+            weight[value] += points
+            first.setdefault(value, position)
+    if not weight:
+        return None
+    best = max(weight.values())
+    return min((first[value], value) for value in weight if weight[value] == best)[1]
+
+
+def _ocr_language_hint(texts) -> str:
+    """Tesseract languages suggested by the letters of the document's text."""
+    sample = " ".join(texts)[:200_000]
+    cyrillic = len(re.findall(r"[А-Яа-яЁё]", sample))
+    latin = len(re.findall(r"[A-Za-zĀ-ž]", sample))
+    latvian = len(re.findall(r"[āčēģīķļņšūžĀČĒĢĪĶĻŅŠŪŽ]", sample))
+    if cyrillic >= 20 and cyrillic >= 0.3 * (cyrillic + latin):
+        return "rus+eng"
+    if latvian >= 10 and latvian >= 0.02 * latin:
+        return "lav+eng"
+    return "eng"
+
+
+def _count_evidence(lines) -> list[str]:
+    """Document text for the stated item count without the bibliography
+    (prose that cites a source, "… et al. (2001) …", is kept)."""
+    kept, references = [], False
+    for _, raw in lines:
+        line = _clean(raw)
+        if not line:
+            continue
+        if _references_heading(line):
+            references = True
+            continue
+        if references and not _resumes_questionnaire(line, line, None):
+            continue
+        references = False
+        if not (_NUMBERED_ENTRY.match(line) and _reference_like(line)):
+            kept.append(line)
+    return kept
 
 
 def _stem_title(source_name: str, preamble_lines: list[str]) -> str:
@@ -397,20 +600,22 @@ def _read_docx(path: Path) -> tuple[list[tuple[int, str]], int, tuple[int, ...]]
 
 
 def _read_legacy_doc(path: Path) -> tuple[list[tuple[int, str]], int, tuple[int, ...]]:
+    # The only converter is a locally installed antiword; packaged Windows
+    # builds have none, so the error must say how to continue.
     binary = shutil.which("antiword")
     if not binary:
-        raise ValueError(
-            "Legacy .doc requires locally installed antiword. "
-            "Save the document as .docx in Word or LibreOffice and reimport."
+        raise LegacyDocUnavailable(LEGACY_DOC_UNREADABLE)
+    try:
+        result = subprocess.run(
+            [binary, "-w", "140", str(path)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, errors="replace", timeout=12,
+            check=False,
         )
-    result = subprocess.run(
-        [binary, "-w", "140", str(path)],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, errors="replace", timeout=12,
-        check=False,
-    )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise LegacyDocUnavailable(LEGACY_DOC_FAILED) from error
     if result.returncode or not result.stdout.strip():
-        raise ValueError("Legacy .doc could not be decoded; convert to .docx.")
+        raise LegacyDocUnavailable(LEGACY_DOC_FAILED)
     return [(1, line) for line in result.stdout.splitlines()], 1, ()
 
 
@@ -550,15 +755,24 @@ def parse_scientific_lines(
         document_notes.append(
             "Image-backed content on PDF page(s) "
             + ", ".join(map(str, image_pages))
-            + " may include unseen table questions. OCR is not automatic."
+            + " may include table questions the text layer does not contain; "
+            "read those pages with local OCR and compare them with the source."
         )
     current = None
-    bibliography_zone = False
+    # A references section: from its heading until the questionnaire
+    # visibly resumes, numbered lines are bibliography, never items.
+    # "title" is the zone's last title-like line (a new form may follow).
+    references = {"page": None, "title": None}
+    non_items: list[tuple[int, str]] = []
     # Binary answer evidence seen before the first numbered item (headers,
     # instructions and legends usually precede the items).
     preamble = {"binary": None, "hint": None, "legend": {}, "scale": None,
                 "scale_legend": {}, "lines": [], "codes": {}}
     parts = 1
+
+    def non_item(page: int, line: str) -> None:
+        if len(non_items) < MAX_NON_ITEMS:
+            non_items.append((page, line[:240]))
 
     def begin(title: str, page: int, collection=False):
         state = {
@@ -836,6 +1050,22 @@ def parse_scientific_lines(
         current["context"].append(line)
         if len(current["context"]) > 10000:
             raise ValueError("Document text exceeds safety limit.")
+        if _references_heading(line):
+            finish_question()
+            references.update(page=page, title=None)
+            if current["collection"]:
+                current["capture"] = False
+            return
+        if references["page"] is not None:
+            if not _resumes_questionnaire(line, numbered_text, current["scale_legend"]):
+                if _NUMBERED_ENTRY.match(numbered_text):
+                    non_item(page, line)
+                return
+            references["page"] = None
+        if _NUMBERED_ENTRY.match(numbered_text) and _reference_like(numbered_text):
+            finish_question()  # its wrapped lines must not join the last item
+            non_item(page, line)
+            return
         if current["collection"] and (
             SCALE_START.match(line) or line.lower().startswith("instructions:")
         ):
@@ -989,6 +1219,7 @@ def parse_scientific_lines(
                 "score", "instructions", "the following",
                 "scoring", "your score", "copyright",
             ))
+            and not _reference_like(line)
         ):
             combined = current["pending"]["prompt"] + " " + line
             if len(combined) <= 300:
@@ -1014,7 +1245,7 @@ def parse_scientific_lines(
         last_page = current["rows"][-1].page if current["rows"] else (
             current["pending"]["page"] if current["pending"] else page)
         headings = [i for i, (_, r) in enumerate(buffer) if _title_line(_clean(r))]
-        if any(STOP.match(_clean(buffer[i][1])) or re.search(
+        if any(STOP.match(_clean(buffer[i][1])) or _references_heading(buffer[i][1]) or re.search(
                 r"referenc|bibliograph|studies using", _clean(buffer[i][1]), re.I)
                for i in headings):
             return None  # references / scoring notes, not a new instrument
@@ -1040,6 +1271,7 @@ def parse_scientific_lines(
                 continue
             flush()
             finish_instrument()
+            references.update(page=None, title=None)  # a known instrument begins
             collection = "Self_Measures" in source_name or (
                 "LONELINESS_AND_INTERPERSONAL" in source_name.upper()
             )
@@ -1047,46 +1279,56 @@ def parse_scientific_lines(
             continue
         numbered_text, _row_scale, _tokens = item_text(raw)
         if current is None:
-            if re.match(r"^references\s*:?\s*$", line, re.I):
-                bibliography_zone = True
-            if not bibliography_zone:
-                header = match_header(line)
-                if header is not None:
-                    preamble["binary"] = {"scale": header, "page": page}
+            if _references_heading(line):
+                references.update(page=page, title=None)
+                continue
+            if references["page"] is not None:
+                # A titled form numbered from 1 after the bibliography.
+                titled = references["title"] is not None and _numbered(numbered_text, 1)
+                if not (titled or _resumes_questionnaire(
+                        line, numbered_text, preamble["scale_legend"])):
+                    if _NUMBERED_ENTRY.match(numbered_text):
+                        non_item(page, line)
+                    references["title"] = (line if _title_line(line) and not _reference_like(line)
+                                           else None)
                     continue
-                legend = parse_legend(line)
-                if legend:
-                    preamble["scale_legend"].update(legend)
-                anchors = dict(NUMBER_LABEL.findall(line)) if len(NUMBER_LABEL.findall(line)) >= 2 else {}
-                anchors = anchors or parse_code_legend(line)
-                single = re.fullmatch(r"([0-9]|10)\s*[-–]\s*([A-Za-z][A-Za-z ]{2,25})", line)
-                if anchors or single:
-                    preamble["codes"].update(anchors or {single.group(1): single.group(2)})
+                if titled:
+                    preamble["lines"].append(references["title"])
+                references.update(page=None, title=None)
+            header = match_header(line)
+            if header is not None:
+                preamble["binary"] = {"scale": header, "page": page}
+                continue
+            legend = parse_legend(line)
+            if legend:
+                preamble["scale_legend"].update(legend)
+            anchors = dict(NUMBER_LABEL.findall(line)) if len(NUMBER_LABEL.findall(line)) >= 2 else {}
+            anchors = anchors or parse_code_legend(line)
+            single = re.fullmatch(r"([0-9]|10)\s*[-–]\s*([A-Za-z][A-Za-z ]{2,25})", line)
+            if anchors or single:
+                preamble["codes"].update(anchors or {single.group(1): single.group(2)})
+                continue
+            scale_header = match_scale_header(line, preamble["scale_legend"])
+            if scale_header is None and preamble["scale_legend"]:
+                scale_header = match_legend_header(line, preamble["scale_legend"])
+            if scale_header is not None:
+                preamble["scale"] = {"header": scale_header, "page": page,
+                                     "codes": None, "fresh": True}
+                continue
+            if preamble["scale"] is not None and preamble["scale"]["codes"] is None:
+                printed_codes = codes_line(line, len(preamble["scale"]["header"].printed))
+                if printed_codes:
+                    preamble["scale"]["codes"] = printed_codes
                     continue
-                scale_header = match_scale_header(line, preamble["scale_legend"])
-                if scale_header is None and preamble["scale_legend"]:
-                    scale_header = match_legend_header(line, preamble["scale_legend"])
-                if scale_header is not None:
-                    preamble["scale"] = {"header": scale_header, "page": page,
-                                         "codes": None, "fresh": True}
-                    continue
-                if preamble["scale"] is not None and preamble["scale"]["codes"] is None:
-                    printed_codes = codes_line(line, len(preamble["scale"]["header"].printed))
-                    if printed_codes:
-                        preamble["scale"]["codes"] = printed_codes
-                        continue
-                hint = match_instruction(line)
-                if hint is not None:
-                    preamble["hint"] = {"scale": hint, "page": page}
-                preamble["legend"].update(legend_labels(line))
-                preamble["lines"].append(line)
-            if (
-                not bibliography_zone
-                and re.match(
-                    r"^\s*(?:\d{1,3}[.):]\s+.+|\d{1,3}\s{2,}.+)",
-                    numbered_text,
-                )
-            ):
+            hint = match_instruction(line)
+            if hint is not None:
+                preamble["hint"] = {"scale": hint, "page": page}
+            preamble["legend"].update(legend_labels(line))
+            if _NUMBERED_ENTRY.match(numbered_text) and _reference_like(numbered_text):
+                non_item(page, line)  # a citation never opens a candidate
+                continue
+            preamble["lines"].append(line)
+            if re.match(r"^\s*(?:\d{1,3}[.):]\s+.+|\d{1,3}\s{2,}.+)", numbered_text):
                 current = begin(
                     _stem_title(source_name, preamble["lines"]), page,
                 )
@@ -1110,6 +1352,8 @@ def parse_scientific_lines(
             flush()
             finish_instrument()
             parts += 1
+            if heading:
+                references.update(page=None, title=None)  # a new titled form
             current = begin(heading[:75] if heading else
                             f"{Path(source_name).stem[:60]} — part {parts}", page)
             for page_, raw_ in (after[1:] if heading else after):
@@ -1124,10 +1368,31 @@ def parse_scientific_lines(
     flush()
     finish_instrument()
 
+    expected = expected_item_count(_count_evidence(lines))
+    language = _ocr_language_hint(text for _, text in lines)
+    if non_items:
+        pages = ", ".join(str(p) for p in sorted({p for p, _ in non_items}))
+        document_notes.append(
+            f"Non-item material: {len(non_items)} numbered line(s) on page(s) {pages} "
+            "look like bibliography references, not questions, and were not imported."
+        )
     if not instruments:
-        reason = ("No numbered questions found in selectable text. "
-                  "Image-only forms need OCR and manual review.")
-        raise ValueError(reason)
+        if non_items:
+            reason = (
+                f"No numbered questions found: the {len(non_items)} numbered lines look like "
+                "references (a bibliography), not questionnaire items."
+                if len(non_items) > 1 else
+                "No numbered questions found: the numbered line looks like a reference "
+                "(a bibliography entry), not a questionnaire item."
+            )
+            if image_pages:
+                reason += (" Image-backed page(s) " + ", ".join(map(str, image_pages))
+                           + " may hold the questionnaire; read them with local OCR.")
+        else:
+            reason = ("No numbered questions found in selectable text. "
+                      "Image-only forms need OCR and manual review.")
+        raise NoQuestionsFound(reason, non_items=non_items, expected_count=expected,
+                               image_pages=image_pages, ocr_language=language)
 
     if len(instruments) > 1:
         document_notes.append(
@@ -1136,7 +1401,8 @@ def parse_scientific_lines(
         )
     return ScientificDocumentReview(
         source_name, tuple(instruments), tuple(document_notes),
-        page_count, image_pages,
+        page_count, image_pages, non_items=tuple(non_items),
+        expected_count=expected, ocr_language=language,
     )
 
 
