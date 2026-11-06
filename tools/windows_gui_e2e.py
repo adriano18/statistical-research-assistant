@@ -405,6 +405,13 @@ class Gui:
             return False
         info = element.element_info
         rect = info.rectangle
+        if self.region is not None:
+            # In a dialog: only what its scroll area shows, above its buttons
+            # (a control listed below them is hidden; a click there lands
+            # outside the dialog and dismisses it).
+            left, top, right, bottom = self.region
+            return (rect.top >= top and rect.bottom <= bottom
+                    and rect.left >= left and rect.right <= right)
         left, _, _, bottom = self.window_box()
         if rect.right <= left + 260:
             return True                       # the sidebar never scrolls
@@ -878,6 +885,11 @@ def engine_ancova(csv: Path):
                       {"mode": "ancova"}, {"model": True})
 
 
+def nav(gui: Gui, key: str) -> None:
+    """Go to a sidebar area; its button may carry a count ("Reports\\n1")."""
+    gui.click(regex="^" + re.escape(T(key)) + r"(\n\d+)?$", control_type=("Button", "Text"))
+
+
 def option_label(name: str, level: str) -> str:
     return f"{name} · {T('level.' + level)}"
 
@@ -892,7 +904,7 @@ def open_project(gui: Gui, title: str) -> None:
     """Open the project ``title`` from Home with its own Open button (its
     accessible name carries the tooltip "Open “title”"), then check that it
     is the open project: the project page, with this title as its heading."""
-    gui.click(T("nav.home"), control_type=("Button", "Text"))
+    nav(gui, "nav.home")
     subtitle = T("project.dashboard_subtitle")
     try:
         # Windows exposes the tooltip as an element over the button itself.
@@ -921,7 +933,7 @@ def open_project(gui: Gui, title: str) -> None:
 
 def create_project(gui: Gui, journey: Journey, title: str) -> None:
     with journey.step(f"create project {title}"):
-        gui.click(T("nav.home"), control_type=("Button", "Text"))
+        nav(gui, "nav.home")
         gui.type_into(T("project.new_title"), title)
         gui.click(T("project.create"), control_type="Button")
         gui.wait_text(title)
@@ -937,7 +949,7 @@ def open_data(gui: Gui, journey: Journey, csv: Path) -> None:
 
 def accept_levels(gui: Gui, journey: Journey) -> None:
     with journey.step("confirm the measurement levels"):
-        gui.click(T("nav.data"), control_type=("Button", "Text"))
+        nav(gui, "nav.data")
         gui.check(T("data.accept_confirm"))
         gui.click(T("data.accept_suggestions"), control_type="Button")
         gui.wait_text(T("next.analyze"))
@@ -969,7 +981,7 @@ def journey_project_a(gui: Gui, work: Path, journey: Journey) -> None:
     open_data(gui, journey, csv)
     accept_levels(gui, journey)
     with journey.step("open ANCOVA among all methods"):
-        gui.click(T("nav.analyze"), control_type=("Button", "Text"))
+        nav(gui, "nav.analyze")
         gui.click(T("analyze.mode.all"), control_type=("Button", "Text"))
         from workspace_methods import METHODS
 
@@ -1001,7 +1013,7 @@ def journey_project_a(gui: Gui, work: Path, journey: Journey) -> None:
         verify_saved(work / "ancova_word.docx", kind="docx", contains=("ANCOVA",))
     with journey.step("add the result to the report and export it"):
         gui.click(T("results.add_report"), control_type=("Button", "Text"))
-        gui.click(T("nav.reports"), control_type=("Button", "Text"))
+        nav(gui, "nav.reports")
         gui.type_into(T("reports.study_title"), "Fictional ANCOVA study")
         field = gui.find(T("reports.study_title"), control_type="Edit")
         expect(gui.value(field) == "Fictional ANCOVA study",
@@ -1009,7 +1021,7 @@ def journey_project_a(gui: Gui, work: Path, journey: Journey) -> None:
     save_via_dialog(gui, journey, T("reports.export_txt"), work / "combined_report.txt",
                     kind="txt", contains=("Fictional ANCOVA study", expected.report.strip()))
     with journey.step("back up the project"):
-        gui.click(T("nav.project"), control_type=("Button", "Text"))
+        nav(gui, "nav.project")
     save_via_dialog(gui, journey, T("project.backup"), work / "study_a_backup.sra", kind="sra",
                     contains=("Fictional study A",))
     with journey.step("restart the application"):
@@ -1023,7 +1035,7 @@ def journey_project_a(gui: Gui, work: Path, journey: Journey) -> None:
         try:
             gui.click(T("reports.open_result"), control_type=("Button", "Text"), timeout=6)
         except StepFailure:   # the icon's name may be its tooltip or nothing
-            gui.click(T("nav.results"), control_type=("Button", "Text"))
+            nav(gui, "nav.results")
             # A result in the list is named by its title and its details.
             gui.click(regex="^" + re.escape(expected.title),
                       control_type=("Button", "Text", "ListItem", "Group", "Custom"))
@@ -1054,7 +1066,7 @@ def journey_project_b(gui: Gui, work: Path, journey: Journey) -> None:
 
 def import_document(gui: Gui, journey: Journey, pdf: Path, *, expected_items: int) -> None:
     with journey.step(f"import {pdf.name} in the Windows Open dialog"):
-        gui.click(T("nav.questionnaires"), control_type=("Button", "Text"))
+        nav(gui, "nav.questionnaires")
         gui.click(T("q.import"), control_type=("Button", "Text"))
         gui.file_dialog(pdf, save=False)
         # Reading (and local OCR of image pages) runs with a progress line.
@@ -1165,7 +1177,7 @@ def open_project_a(gui: Gui, journey: Journey) -> None:
 def journey_responses(gui: Gui, work: Path, journey: Journey) -> None:
     open_project_a(gui, journey)
     with journey.step("start a small questionnaire from a template"):
-        gui.click(T("nav.questionnaires"), control_type=("Button", "Text"))
+        nav(gui, "nav.questionnaires")
         # Narrow windows show one pane at a time: the list holds the templates.
         if gui.query(T("q.questions"), control_type="Button"):
             gui.click(T("q.questions"), control_type="Button")
@@ -1201,10 +1213,15 @@ def journey_responses(gui: Gui, work: Path, journey: Journey) -> None:
                 gui.log_screen("the response form did not open")
             expect(alert is not None, "the response form did not open")
             r = alert.element_info.rectangle
-            dialog = (r.left, r.top, r.right, r.bottom)
+            buttons = [b.element_info.rectangle.top
+                       for b in gui.query(T("common.cancel"), control_type="Button")
+                       if r.left <= b.element_info.rectangle.left <= r.right]
+            # The questions scroll above the dialog's buttons.
+            dialog = (r.left, r.top, r.right, (min(buttons) - 6) if buttons else r.bottom)
             print(f"  [form] the response form is open at {dialog}", flush=True)
             with gui.within(dialog):
                 answer_form(gui, group, stress, 30 + respondent)
+            with gui.within((r.left, r.top, r.right, r.bottom)):
                 gui.click(T("q.collect"), control_type="Button")
             gui.wait_text(T("run.done"))
     save_via_dialog(gui, journey, T("q.export_responses"), work / "pilot_responses.csv",
@@ -1219,7 +1236,7 @@ def journey_responses(gui: Gui, work: Path, journey: Journey) -> None:
         gui.click(T("responses.use"), control_type="Button")
         gui.wait_text(T("responses.name", title="Fictional wellbeing pilot"))
     with journey.step("both datasets stay in the project"):
-        gui.click(T("nav.project"), control_type=("Button", "Text"))
+        nav(gui, "nav.project")
         gui.wait_text("sample_ancova.csv")
         gui.wait_text(T("responses.name", title="Fictional wellbeing pilot"))
     with journey.step("return to the original dataset with its levels"):
@@ -1237,7 +1254,7 @@ def journey_blocked_design(gui: Gui, work: Path, journey: Journey) -> None:
     choosing a suitable variable lifts the refusal."""
     open_project_a(gui, journey)
     with journey.step("guided analysis: compare groups"):
-        gui.click(T("nav.analyze"), control_type=("Button", "Text"))
+        nav(gui, "nav.analyze")
         gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
         with contextlib.suppress(StepFailure):     # a question is already chosen
             gui.click(T("analyze.change_goal"), control_type=("Button", "Text"), timeout=4)
