@@ -108,13 +108,36 @@ def fail(message: str) -> None:
     raise SystemExit(f"FAILED: {message}")
 
 
+def running_instances() -> list[str]:
+    """Processes of the installed program, and whether its mutex exists."""
+    import ctypes
+
+    found = []
+    listing = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {EXE}", "/FO", "CSV", "/NH"],
+                             capture_output=True, text=True, check=False).stdout
+    found += [line for line in listing.splitlines() if EXE.lower() in line.lower()]
+    handle = ctypes.windll.kernel32.OpenMutexW(0x00100000, False, app_identity.MUTEX)  # SYNCHRONIZE
+    if handle:
+        ctypes.windll.kernel32.CloseHandle(handle)
+        found.append(f"mutex {app_identity.MUTEX} is held")
+    return found
+
+
+def _tail(path: Path, lines: int = 25) -> str:
+    try:
+        return "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:])
+    except OSError:
+        return f"(no log at {path})"
+
+
 def cmd_install(args) -> dict:
-    args.log.parent.mkdir(parents=True, exist_ok=True)
+    log = args.log.resolve()
+    log.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     done = subprocess.run([str(args.setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
-                           "/CURRENTUSER", f"/LOG={args.log}"], check=False)
+                           "/CURRENTUSER", f"/LOG={log}"], check=False)
     if done.returncode != 0:
-        fail(f"setup exited with {done.returncode} (see {args.log})")
+        fail(f"setup exited with {done.returncode}; running: {running_instances()}\n{_tail(log)}")
     return {"installed_in_seconds": round(time.monotonic() - started, 1)}
 
 
@@ -207,17 +230,26 @@ def cmd_uninstall(args) -> dict:
     if entry is None:
         fail("nothing to uninstall")
     command = str(entry["UninstallString"]).strip().strip('"')
-    args.log.parent.mkdir(parents=True, exist_ok=True)
+    # Absolute: the uninstaller restarts itself from a temporary folder.
+    log = args.log.resolve()
+    log.parent.mkdir(parents=True, exist_ok=True)
+    busy = running_instances()
+    if busy:
+        fail(f"the program is still running, so the uninstaller would refuse: {busy}")
     started = time.monotonic()
-    subprocess.run([command, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={args.log}"],
-                   check=False)
+    done = subprocess.run([command, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={log}"],
+                          check=False)
     # The uninstaller restarts itself from a temporary copy; wait for it.
-    deadline = time.monotonic() + 300
+    deadline = time.monotonic() + 240
     while time.monotonic() < deadline and (registration() is not None
                                            or (program_folder() / EXE).exists()
                                            or any(program_folder().glob("unins*.*"))):
         time.sleep(2)
-    return {"uninstalled_in_seconds": round(time.monotonic() - started, 1)}
+    facts = {"uninstalled_in_seconds": round(time.monotonic() - started, 1),
+             "uninstaller_exit_code": done.returncode}
+    if registration() is not None or (program_folder() / EXE).exists():
+        fail(f"the uninstaller did not finish ({facts}); running: {running_instances()}\n{_tail(log, 40)}")
+    return facts
 
 
 def cmd_removed(args) -> dict:
