@@ -65,12 +65,13 @@ def allow(project, source: str, allowed: bool, *, remote: bool) -> None:
     project.set_ai_permission(source, allowed)
 
 
-def check_request(project, sources, *, remote: bool) -> list[str]:
+def check_request(project, sources, *, remote: bool, available: bool | None = None) -> list[str]:
     """Why a request for these sources may not be sent (empty = allowed).
 
-    In this version the first reason is always that no assistant exists."""
+    ``available`` says whether an assistant is set up (a provider, a model
+    and the researcher's key, #43); by default the module's AI_AVAILABLE."""
     reasons = []
-    if not AI_AVAILABLE:
+    if not (AI_AVAILABLE if available is None else available):
         reasons.append("AI assistance is not available in this version.")
     decided = permissions(project)
     for source in sources:
