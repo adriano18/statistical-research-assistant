@@ -71,6 +71,7 @@ jobs:
       - name: Throwaway update-signing key (test builds only)
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $key = Join-Path $env:RUNNER_TEMP "test-update.key"
           $out = python tools/update_signing.py new-key --private-out $key | ConvertFrom-Json
           "TEST_KEY_FILE=$key" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
@@ -91,12 +92,14 @@ jobs:
       - name: Locate the bundle
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $exe = Get-ChildItem -Path build/windows -Filter StatisticalResearchAssistant.exe -Recurse | Select-Object -First 1
           if (-not $exe) { throw "Expected .exe was not created" }
           "BUNDLE=$(Split-Path $exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Install Inno Setup when the runner has none
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ }
           if (-not $iscc -and -not (Get-Command ISCC -ErrorAction SilentlyContinue)) {
             choco install innosetup --no-progress -y
@@ -105,6 +108,7 @@ jobs:
       - name: Installers A and B (B differs in version only)
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/build_installer.py $env:BUNDLE --out dist-a --compression lzma2/fast
           if ($LASTEXITCODE -ne 0) { throw "installer A failed" }
           Copy-Item -Recurse -Path $env:BUNDLE -Destination build\windows-b
@@ -116,6 +120,7 @@ jobs:
 
       - name: Install version A (silent, per user)
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/check_installed_app.py install "dist-a\StatisticalResearchAssistant-${{ env.VERSION_A }}-Setup.exe" --log evidence\install-a.log
           python tools/check_installed_app.py verify --version "${{ env.VERSION_A }}" --json evidence\verify-a.json
       - name: "Installed A: create a project, refuse bad updates, update to B"
@@ -126,16 +131,19 @@ jobs:
           SRA_E2E_UPDATE_FROM: ${{ env.VERSION_A }}
           SRA_E2E_UPDATE_TO: ${{ env.VERSION_B }}
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/windows_gui_e2e.py "$env:LOCALAPPDATA\Programs\Statistical Research Assistant\StatisticalResearchAssistant.exe" evidence\journeys --real-data --only installed-data update-refusals update-a-to-b
           if ($LASTEXITCODE -ne 0) { throw "update journeys failed" }
       - name: B is installed in place of A, once, with the project intact
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/check_installed_app.py verify --version "${{ env.VERSION_B }}" --json evidence\verify-b.json
           python tools/check_installed_app.py data evidence\data-after-update.json --expect "Installed study (fictional)"
       - name: Update record and installer log
         if: always()
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $updates = "$env:LOCALAPPDATA\StatisticalResearchAssistant\updates"
           if (Test-Path $updates) { Copy-Item -Recurse $updates evidence\updates -ErrorAction SilentlyContinue }
           if (Test-Path "$updates\history.json") { Get-Content "$updates\history.json" }
@@ -143,6 +151,7 @@ jobs:
         run: python tools/check_code_signature.py "dist-b\StatisticalResearchAssistant-${{ env.VERSION_B }}-Setup.exe" evidence\code-signature.json
       - name: Uninstall keeps the research data
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/check_installed_app.py uninstall --log evidence\uninstall.log
           python tools/check_installed_app.py removed --json evidence\removed.json
           python tools/check_installed_app.py data --expect "Installed study (fictional)"

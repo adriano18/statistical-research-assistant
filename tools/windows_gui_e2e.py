@@ -469,6 +469,8 @@ class Gui:
             return True                       # the sidebar never scrolls
         if (info.name or "") in (T("imp.back"), T("imp.next"), T("imp.create_draft")):
             return True                       # the sticky footer itself
+        if (info.name or "") in self.banner_actions():
+            return True                       # the update banner sits above the context bar
         limit = bottom - self.STATUS_LINE
         footer = self.footer_top()
         if footer is not None:
@@ -477,6 +479,12 @@ class Gui:
         # is reported on screen, but a click there lands on the bar.
         _, top, _, _ = self.window_box()
         return rect.bottom <= limit and rect.top >= top + self.CONTEXT_BAR
+
+    @staticmethod
+    def banner_actions() -> set[str]:
+        import update_ui
+
+        return {update_ui.t("en", key) for key in ("whats_new", "update_now", "later")}
 
     def scroll_into_view(self, element, attempts: int = 30):
         for _ in range(attempts):

@@ -54,6 +54,7 @@ jobs:
         env:
           SRA_UPDATE_SIGNING_KEY: ${{ secrets.SRA_UPDATE_SIGNING_KEY }}
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           if (-not $env:SRA_UPDATE_SIGNING_KEY) {
             throw "The repository secret SRA_UPDATE_SIGNING_KEY is missing. Create it once (docs/IN_APP_UPDATES.md): python tools/update_signing.py new-key --private-out update-signing.key. No release is built without it, so no build ships that cannot verify its own updates."
           }
@@ -66,6 +67,7 @@ jobs:
           PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
           PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           if (-not $env:PFX_BASE64) {
             if ($env:CHANNEL -eq "stable") {
               throw "A stable release needs a code-signing certificate (secrets WINDOWS_SIGNING_PFX_BASE64 and WINDOWS_SIGNING_PFX_PASSWORD). Build a preview release instead, or add the certificate."
@@ -93,6 +95,7 @@ jobs:
       - name: Version identity
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $args = @("--channel", $env:CHANNEL, "--version", $env:VERSION, "--build", "${{ github.run_number }}",
                     "--commit", "${{ github.sha }}", "--update-key", $env:UPDATE_PUBLIC_KEY)
           if ($env:SIGNED -eq "1") {
@@ -115,6 +118,7 @@ jobs:
       - name: Locate the bundle
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $exe = Get-ChildItem -Path build/windows -Filter StatisticalResearchAssistant.exe -Recurse | Select-Object -First 1
           "BUNDLE=$(Split-Path $exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
@@ -126,6 +130,7 @@ jobs:
         env:
           PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
           & $signtool.FullName sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f $env:PFX_PATH /p $env:PFX_PASSWORD $env:EXE
           if ($LASTEXITCODE -ne 0) { throw "signing the program failed" }
@@ -133,6 +138,7 @@ jobs:
       - name: Install Inno Setup when the runner has none
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ }
           if (-not $iscc -and -not (Get-Command ISCC -ErrorAction SilentlyContinue)) {
             choco install innosetup --no-progress -y
@@ -143,6 +149,7 @@ jobs:
         env:
           PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           if ($env:SIGNED -eq "1") {
             python tools/build_installer.py $env:BUNDLE --out dist --sign-command "`"$env:SIGNTOOL`" sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f `"$env:PFX_PATH`" /p $env:PFX_PASSWORD `$f"
           } else {
@@ -152,6 +159,7 @@ jobs:
       - name: Smoke test of the installed program
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/check_installed_app.py install "dist\StatisticalResearchAssistant-$env:VERSION-Setup.exe" --log release-evidence\install.log
           python tools/check_installed_app.py verify --version $env:VERSION --json release-evidence\installed.json
           python tools/check_gui_startup.py "$env:LOCALAPPDATA\Programs\Statistical Research Assistant\StatisticalResearchAssistant.exe" release-evidence\startup
@@ -163,6 +171,7 @@ jobs:
         env:
           SRA_UPDATE_SIGNING_KEY: ${{ secrets.SRA_UPDATE_SIGNING_KEY }}
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $file = "StatisticalResearchAssistant-$env:VERSION-Setup.exe"
           $notes = "release-notes\$env:VERSION.json"
           $args = @("manifest", "--installer", "dist\$file", "--version", $env:VERSION, "--channel", $env:CHANNEL,
@@ -182,6 +191,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $meta = Get-Content dist\installer.json -Raw | ConvertFrom-Json
           $signed = if ($env:SIGNED -eq "1") { "Code-signed by $env:PUBLISHER." } else { "**Unsigned preview build**: Windows SmartScreen may warn. Not a production release." }
           $body = @(
