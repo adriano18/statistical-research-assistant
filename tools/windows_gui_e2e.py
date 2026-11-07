@@ -86,6 +86,75 @@ class StepFailure(AssertionError):
     pass
 
 
+# ================================================================== windows
+FLUTTER_WINDOW_CLASS = "FLUTTER_RUNNER_WIN32_WINDOW"
+
+
+def ctypes_user32():
+    """user32 with the prototypes used here (a private instance: the shared
+    ctypes.windll prototypes stay as other code expects them)."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.c_void_p]
+    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.WindowFromPoint.argtypes = [wintypes.POINT]
+    user32.WindowFromPoint.restype = wintypes.HWND
+    user32.GetAncestor.argtypes = [wintypes.HWND, ctypes.c_uint]
+    user32.GetAncestor.restype = wintypes.HWND
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                                    ctypes.c_int, ctypes.c_int, wintypes.UINT]
+    user32.BringWindowToTop.argtypes = [wintypes.HWND]
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    return user32
+
+
+def top_windows(pid: int | None = None) -> list[dict]:
+    """Top-level windows from Win32 (of process ``pid``, or all), with the
+    state UI Automation does not show: visible, minimized, class."""
+    import ctypes
+    from ctypes import wintypes
+
+    try:
+        user32 = ctypes_user32()
+        visit_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        user32.EnumWindows.argtypes = [visit_type, wintypes.LPARAM]
+    except Exception:
+        return []
+    found: list[dict] = []
+
+    def visit(hwnd, _):
+        try:
+            owner = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+            if pid is None or owner.value == pid:
+                name = ctypes.create_unicode_buffer(128)
+                user32.GetClassNameW(hwnd, name, 128)
+                title = ctypes.create_unicode_buffer(256)
+                user32.GetWindowTextW(hwnd, title, 256)
+                rect = wintypes.RECT()
+                user32.GetWindowRect(hwnd, ctypes.byref(rect))
+                found.append({"hwnd": hwnd, "pid": owner.value, "class": name.value,
+                              "title": title.value, "visible": bool(user32.IsWindowVisible(hwnd)),
+                              "minimized": bool(user32.IsIconic(hwnd)),
+                              "rect": (rect.left, rect.top, rect.right, rect.bottom)})
+        except Exception:
+            pass
+        return True
+
+    with contextlib.suppress(Exception):
+        user32.EnumWindows(visit_type(visit), 0)
+    return found
+
+
 # ====================================================================== app
 class Gui:
     """One running instance of the packaged application."""
@@ -126,26 +195,53 @@ class Gui:
         self.process = subprocess.Popen([str(self.exe)], cwd=str(self.exe.parent),
                                         env=self.environment())
         deadline = time.monotonic() + timeout
+        restored = False
         while time.monotonic() < deadline:
             if self.process.poll() is not None:
                 raise StepFailure(f"the application exited during startup ({self.process.returncode})")
-            for window in Desktop(backend="uia").windows():
-                try:
-                    if window.process_id() == self.process.pid or WINDOW_TITLE in window.window_text():
-                        rect = window.rectangle()
-                        if rect.width() > 300 and rect.height() > 200:
-                            self.handle = window.handle
-                            self.window_pid = window.process_id()
-                            break
-                except Exception:
-                    continue
+            # Win32 first (by process id, without UI Automation): run
+            # 42319964691 saw the program start (its startup log says ready
+            # after 4 s) while UI Automation listed no window for 300 s.
+            own = [w for w in top_windows(self.process.pid)
+                   if w["class"] == FLUTTER_WINDOW_CLASS and w["visible"]]
+            if own and own[0]["minimized"] and not restored:
+                print(f"  [window] the program's window is minimized: {own[0]}; restoring it",
+                      flush=True)
+                with contextlib.suppress(Exception):
+                    ctypes_user32().ShowWindow(own[0]["hwnd"], 9)        # SW_RESTORE
+                restored = True
+            elif own and not own[0]["minimized"]:
+                left, top, right, bottom = own[0]["rect"]
+                if right - left > 300 and bottom - top > 200:
+                    self.handle, self.window_pid = own[0]["hwnd"], own[0]["pid"]
+                    break
+            with contextlib.suppress(Exception):
+                for window in Desktop(backend="uia").windows():
+                    try:
+                        if window.process_id() == self.process.pid or WINDOW_TITLE in window.window_text():
+                            rect = window.rectangle()
+                            if rect.width() > 300 and rect.height() > 200:
+                                self.handle = window.handle
+                                self.window_pid = window.process_id()
+                                break
+                    except Exception:
+                        continue
             if self.handle:
                 break
             time.sleep(1)
         if not self.handle:
+            self.log_desktop("the application window never appeared")
             raise StepFailure("the application window never appeared")
         app = Application(backend="uia").connect(handle=self.handle)
         self.win = app.window(handle=self.handle)
+        self.wait_ready(ready, deadline)
+        # Maximize only now: the application sets its window size (1200 x 720)
+        # while it starts, which undid an earlier maximize (runs 5-9 worked in
+        # 1200 x 720 inside a maximized frame). No set_focus(): pywinauto
+        # presses Alt for it, which can leave the system menu waiting.
+        self.maximize()
+
+    def wait_ready(self, ready: str | None, deadline: float) -> None:
         # The workspace is ready when its Home page offers to create a project
         # (or, when given, when ``ready`` is shown, e.g. a dialog over Home).
         if ready:
@@ -154,44 +250,104 @@ class Gui:
         else:
             self.find(T("project.create"), timeout=max(30, deadline - time.monotonic()),
                       scroll=False, visible=False)
-        # Maximize only now: the application sets its window size (1200 x 720)
-        # while it starts, which undid an earlier maximize (runs 5-9 worked in
-        # 1200 x 720 inside a maximized frame). No set_focus(): pywinauto
-        # presses Alt for it, which can leave the system menu waiting.
-        self.maximize()
 
     def running(self) -> bool:
         if self.process is not None:
             return self.process.poll() is None
         return bool(self.window_pid)
 
-    def attach(self, timeout: float = 300) -> None:
+    def attach(self, timeout: float = 300, *, ready: str | None = None) -> bool:
         """Connect to the program that the installer started after an
-        in-app update (not a process this driver started)."""
+        in-app update (not a process this driver started), once it shows
+        ``ready``. Returns whether its window came to the front by itself
+        (checked before this driver touches the window)."""
         from pywinauto import Desktop
         from pywinauto.application import Application
 
         self.process, self.win, self.handle, self.window_pid = None, None, None, None
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline and not self.handle:
-            for window in Desktop(backend="uia").windows():
-                try:
-                    # Flutter's window class: not the installer's own window,
-                    # whose title also names the application.
-                    if window.class_name() != "FLUTTER_RUNNER_WIN32_WINDOW":
+            # Flutter's window class: not the installer's own window, whose
+            # title also names the application.
+            for window in top_windows():
+                left, top, right, bottom = window["rect"]
+                if (window["class"] == FLUTTER_WINDOW_CLASS and window["visible"]
+                        and not window["minimized"] and right - left > 300 and bottom - top > 200):
+                    self.handle, self.window_pid = window["hwnd"], window["pid"]
+                    break
+            with contextlib.suppress(Exception):
+                for window in ([] if self.handle else Desktop(backend="uia").windows()):
+                    try:
+                        if window.class_name() != FLUTTER_WINDOW_CLASS:
+                            continue
+                        rect = window.rectangle()
+                        if rect.width() > 300 and rect.height() > 200:
+                            self.handle, self.window_pid = window.handle, window.process_id()
+                            break
+                    except Exception:
                         continue
-                    rect = window.rectangle()
-                    if rect.width() > 300 and rect.height() > 200:
-                        self.handle, self.window_pid = window.handle, window.process_id()
-                        break
-                except Exception:
-                    continue
             if not self.handle:
                 time.sleep(2)
         if not self.handle:
+            self.log_desktop("the updated program did not start again")
             raise StepFailure("the updated program did not start again")
         self.win = Application(backend="uia").connect(handle=self.handle).window(handle=self.handle)
+        # Wait until it has started before maximizing: it sets its own window
+        # size meanwhile, which undid the maximize (run 42319959848: 1200 x 720).
+        self.wait_ready(ready, deadline)
+        in_front = False
+        until = time.monotonic() + 20
+        while time.monotonic() < until and not in_front:
+            in_front = self.in_front()
+            if not in_front:
+                time.sleep(0.5)
+        print(f"  [window] the updated program {'came' if in_front else 'did NOT come'} "
+              f"to the front by itself", flush=True)
+        if not in_front:
+            self.shot("behind another window")
+            self.bring_to_front()       # finish the journey; the caller reports it
         self.maximize()
+        return in_front
+
+    def in_front(self) -> bool:
+        """Whether a click at the centre of the window reaches this window
+        (and not a window above it)."""
+        from ctypes import wintypes
+
+        try:
+            user32 = ctypes_user32()
+            left, top, right, bottom = self.window_box()
+            hit = user32.WindowFromPoint(wintypes.POINT((left + right) // 2, (top + bottom) // 2))
+            return bool(hit) and user32.GetAncestor(hit, 2) == self.handle      # GA_ROOT
+        except Exception:
+            return False
+
+    def bring_to_front(self) -> None:
+        """Make the window the foreground window without a key press
+        (pywinauto's set_focus() presses Alt, which can leave the system
+        menu waiting): share the input state of the current foreground
+        window's thread for a moment, which Windows requires."""
+        import ctypes
+        from ctypes import wintypes
+
+        with contextlib.suppress(Exception):
+            user32 = ctypes_user32()
+            mine = ctypes.windll.kernel32.GetCurrentThreadId()
+            foreground = user32.GetForegroundWindow()
+            theirs = user32.GetWindowThreadProcessId(foreground, None) if foreground else 0
+            attached = bool(theirs and theirs != mine and user32.AttachThreadInput(mine, theirs, True))
+            try:
+                keep = 0x0001 | 0x0002                       # SWP_NOSIZE | SWP_NOMOVE
+                user32.SetWindowPos(self.handle, wintypes.HWND(-1), 0, 0, 0, 0, keep)  # TOPMOST
+                user32.SetWindowPos(self.handle, wintypes.HWND(-2), 0, 0, 0, 0, keep)  # NOTOPMOST
+                user32.BringWindowToTop(self.handle)
+                user32.SetForegroundWindow(self.handle)
+            finally:
+                if attached:
+                    user32.AttachThreadInput(mine, theirs, False)
+            time.sleep(0.5)
+            print(f"  [window] brought to the front by the driver: in front={self.in_front()}",
+                  flush=True)
 
     def maximize(self) -> None:
         import ctypes
@@ -346,6 +502,24 @@ class Gui:
             print(self.describe(visible, 90), flush=True)
         except Exception as error:
             print(f"  [screen: {title}] could not list elements: {error!r}", flush=True)
+
+    def log_desktop(self, reason: str) -> None:
+        """The whole desktop and every visible top-level window (with its
+        process, class and state) when the program's window is not found."""
+        print(f"  [desktop: {reason}]", flush=True)
+        pid = self.process.pid if self.process is not None else None
+        for window in top_windows():
+            if window["visible"] or window["pid"] == pid:
+                mark = "  <- this program" if window["pid"] == pid else ""
+                print(f"    {window['pid']:>6} {window['class'][:32]:<32} {window['title'][:40]!r} "
+                      f"{window['rect']} visible={window['visible']} "
+                      f"minimized={window['minimized']}{mark}", flush=True)
+        with contextlib.suppress(Exception):
+            from PIL import ImageGrab
+
+            target = self.out / "steps" / f"000-desktop-{slug(reason)}.png"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            ImageGrab.grab(all_screens=True).save(target)
 
     # ------------------------------------------------------------- queries
     def elements(self):
@@ -1566,7 +1740,9 @@ def journey_update_a_to_b(gui: Gui, work: Path, journey: Journey) -> None:
             old.wait(timeout=90)
         except subprocess.TimeoutExpired as error:
             raise StepFailure("the program did not close itself for the update") from error
-        gui.attach(timeout=360)
+        came_forward = gui.attach(timeout=360,
+                                  ready=update_ui.t("en", "updated_title", version=target))
+        journey.facts["came_to_front_by_itself"] = came_forward
     with journey.step("the new version reports the update"):
         gui.wait_text(update_ui.t("en", "updated_title", version=target), timeout=120, scroll=False)
         gui.wait_text(update_ui.t("en", "updated"), timeout=10, scroll=False)
@@ -1583,6 +1759,11 @@ def journey_update_a_to_b(gui: Gui, work: Path, journey: Journey) -> None:
     with contextlib.suppress(OSError, ValueError):
         journey.facts["history"] = json.loads(history.read_text(encoding="utf-8"))["updates"][-1]
     journey.facts["ranges"] = [r for _, r in server.requests if r]
+    # Checked when the new version appeared, before this driver touched its
+    # window; reported last so that a failure here still shows the rest.
+    with journey.step("the new version came to the front by itself"):
+        expect(came_forward, "after the update the program's window stayed behind another "
+                             "window (its outcome was hidden)")
 
 
 def journey_installed_reopen(gui: Gui, work: Path, journey: Journey) -> None:
