@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -35,11 +36,28 @@ SUBJECT = "CN=SRA Update Test Publisher (throwaway)"
 
 
 def powershell(script: str) -> str:
-    done = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-                          capture_output=True, text=True, check=False)
+    """Run ``script`` in Windows PowerShell 5.1 with the environment the
+    updater itself uses (its own modules only: run 42322897971 inherited the
+    PowerShell 7 module path of the CI step and had no Cert: drive). Any
+    error stops the script and fails the check."""
+    done = subprocess.run([str(uc.windows_powershell()), "-NoProfile", "-NonInteractive", "-Command",
+                           "$ErrorActionPreference = 'Stop'; " + script],
+                          capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+                          env=uc.windows_powershell_environment())
     if done.returncode:
-        raise SystemExit(f"PowerShell failed: {done.stderr.strip()[:800]}")
+        raise SystemExit(f"PowerShell failed: {(done.stderr or done.stdout).strip()[:800]}")
     return done.stdout.strip()
+
+
+def remove_certificate(thumbprint: str) -> None:
+    """Remove the throwaway certificate from both stores; a failure here is
+    reported but never hides the outcome (or the error) of the checks."""
+    try:
+        powershell(f"Get-ChildItem Cert:\\LocalMachine\\Root | Where-Object Thumbprint -eq '{thumbprint}' "
+                   f"| Remove-Item; Get-ChildItem Cert:\\CurrentUser\\My | "
+                   f"Where-Object Thumbprint -eq '{thumbprint}' | Remove-Item")
+    except SystemExit as error:
+        print(f"warning: the throwaway certificate {thumbprint} was not removed: {error}", flush=True)
 
 
 def manifest_for(path: Path) -> um.Manifest:
@@ -69,6 +87,8 @@ def main(argv=None) -> int:
     thumbprint = powershell(
         f"$c = New-SelfSignedCertificate -Type CodeSigningCert -Subject '{SUBJECT}' "
         f"-CertStoreLocation Cert:\\CurrentUser\\My -NotAfter (Get-Date).AddDays(2); $c.Thumbprint")
+    if not re.fullmatch(r"[0-9A-Fa-f]{40}", thumbprint):
+        raise SystemExit(f"no throwaway certificate was created: {thumbprint!r}")
     results, problems = {}, []
     try:
         powershell(f"$c = Get-Item Cert:\\CurrentUser\\My\\{thumbprint}; "
@@ -93,8 +113,7 @@ def main(argv=None) -> int:
         results["unsigned, unsigned preview build"] = decide(installer, relaxed)
         results["windows status of the signed copy"] = uc.authenticode(signed)
     finally:
-        powershell(f"Get-ChildItem Cert:\\LocalMachine\\Root | Where-Object Thumbprint -eq '{thumbprint}' | Remove-Item; "
-                   f"Remove-Item Cert:\\CurrentUser\\My\\{thumbprint}")
+        remove_certificate(thumbprint)
     expected = {
         "untrusted publisher": "refused: bad_code_signature",
         "trusted, pinned publisher": "accepted (Valid)",

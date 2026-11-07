@@ -240,14 +240,38 @@ def _win_verify_trust(path: Path) -> str:
     return _STATUS.get(result, "UnknownError")
 
 
-def _signer(path: Path) -> tuple[str, str]:
-    """Subject and thumbprint of a signed file (only asked for signed files)."""
+def windows_powershell() -> Path:
     system = os.environ.get("SystemRoot", r"C:\Windows")
-    shell = Path(system) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
-    environment = {**os.environ, "SRA_VERIFY_PATH": str(path)}
+    return Path(system) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+
+
+def windows_powershell_environment(extra: dict | None = None, base: dict | None = None) -> dict:
+    """The environment for a Windows PowerShell 5.1 child process.
+
+    Its module path is set to its own system modules folder. A PowerShell 7
+    module path (inherited when this program was started from PowerShell 7)
+    makes it load modules it cannot run: Microsoft.PowerShell.Security then
+    fails, so there is no Cert: drive and no Get-AuthenticodeSignature (run
+    42322897971). Names are compared case-insensitively, as Windows does,
+    so no variable is passed twice.
+    """
+    source = dict(os.environ if base is None else base)
+    system = source.get("SystemRoot") or source.get("SYSTEMROOT") or r"C:\Windows"
+    environment = {name: value for name, value in source.items() if name.upper() != "PSMODULEPATH"}
+    present = {name.upper() for name in environment}
     for name, value in (("SystemDrive", system[:2]), ("ProgramFiles", system[:2] + r"\Program Files"),
                         ("ProgramData", system[:2] + r"\ProgramData")):
-        environment.setdefault(name, value)
+        if name.upper() not in present:
+            environment[name] = value
+    environment["PSModulePath"] = system.rstrip("\\") + r"\System32\WindowsPowerShell\v1.0\Modules"
+    environment.update(extra or {})
+    return environment
+
+
+def _signer(path: Path) -> tuple[str, str]:
+    """Subject and thumbprint of a signed file (only asked for signed files)."""
+    shell = windows_powershell()
+    environment = windows_powershell_environment({"SRA_VERIFY_PATH": str(path)})
     script = ("$s = Get-AuthenticodeSignature -LiteralPath $env:SRA_VERIFY_PATH; "
               "[pscustomobject]@{subject = [string]$s.SignerCertificate.Subject; "
               "thumbprint = [string]$s.SignerCertificate.Thumbprint} | ConvertTo-Json -Compress")
