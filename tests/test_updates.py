@@ -570,13 +570,63 @@ class InterfaceTests(unittest.TestCase):
         payload = json.dumps(manifest()).replace("{port}", "1").encode()
         uc.prepare(self.data, installer, um.parse_manifest(payload, build(port=1)), self.info)
         page = FakePage()
-        with mock.patch.object(ai, "build_info", return_value=build(version="1.0.1-test.1")):
+        with mock.patch.object(ai, "build_info", return_value=build(version="1.0.1-test.1")), \
+                mock.patch.object(update_ui, "show_in_front", return_value=True) as front:
             shown = asyncio.run(update_ui.after_start(page, ROOT, "en"))
         self.assertEqual(shown, "outcome")
+        front.assert_called_once()          # the installer started it: above other windows
         text = texts(page.dialogs[0])
         self.assertIn("Updated to version 1.0.1-test.1", text)
         self.assertIn("Your projects and research data are preserved.", text)
         self.assertIn("All 1 projects are in place.", text)
+
+
+class ShowInFrontTests(unittest.TestCase):
+    """After an update the new window is raised above other programs' windows."""
+
+    @unittest.skipIf(os.name == "nt", "the Windows behaviour is tested below")
+    def test_elsewhere_nothing_is_done(self):
+        self.assertFalse(update_ui.show_in_front())
+
+    @unittest.skipUnless(os.name == "nt", "Windows window manager")
+    def test_without_a_window_of_this_program_nothing_fails(self):
+        self.assertFalse(update_ui.show_in_front(window_class="NoSuchWindowClass", attempts=1))
+
+    @unittest.skipUnless(os.name == "nt", "Windows window manager")
+    def test_the_window_is_raised_and_never_left_always_on_top(self):
+        import ctypes
+        from ctypes import wintypes
+
+        try:
+            import tkinter
+
+            root = tkinter.Tk()
+        except Exception as error:          # no Tk or no desktop here
+            self.skipTest(f"no Tk window: {error}")
+        try:
+            root.title("Fictional window")
+            root.geometry("320x200+140+140")
+            root.update()
+            frame = int(root.wm_frame(), 16)
+            user32 = ctypes.WinDLL("user32")
+            user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+            user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+            user32.WindowFromPoint.argtypes = [wintypes.POINT]
+            user32.WindowFromPoint.restype = wintypes.HWND
+            user32.GetAncestor.argtypes = [wintypes.HWND, ctypes.c_uint]
+            user32.GetAncestor.restype = wintypes.HWND
+            name = ctypes.create_unicode_buffer(128)
+            user32.GetClassNameW(frame, name, 128)
+            update_ui.show_in_front(window_class=name.value, attempts=3, pause=0.2)
+            root.update()
+            topmost = user32.GetWindowLongW(frame, -20) & 0x0008      # GWL_EXSTYLE, WS_EX_TOPMOST
+            self.assertFalse(topmost, "the window was left always on top")
+            x = root.winfo_rootx() + root.winfo_width() // 2
+            y = root.winfo_rooty() + root.winfo_height() // 2
+            reached = user32.GetAncestor(user32.WindowFromPoint(wintypes.POINT(x, y)), 2)  # GA_ROOT
+            self.assertEqual(reached, frame, "a click on the window would reach another window")
+        finally:
+            root.destroy()
 
 
 if __name__ == "__main__":

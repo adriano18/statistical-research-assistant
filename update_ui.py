@@ -529,6 +529,80 @@ def outcome_dialog(page, outcome: dict, language: str, source_root: Path) -> ft.
                           actions=actions)
 
 
+FLUTTER_WINDOW_CLASS = "FLUTTER_RUNNER_WIN32_WINDOW"
+
+
+def show_in_front(*, window_class: str = FLUTTER_WINDOW_CLASS, attempts: int = 10,
+                  pause: float = 0.5) -> bool:
+    """Put this program's window above the others (Windows only).
+
+    The installer starts the new version after an update; by then Windows
+    has usually handed the foreground to another program (the old version
+    closed), so the new window opened behind it and the outcome of the
+    update was hidden (run 42319959848). The window is raised without
+    taking the keyboard: Windows decides whether it also becomes the
+    active window, otherwise it flashes the taskbar button as usual.
+    Returns True when the window is the foreground window afterwards.
+    """
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        import time
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        visit_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        user32.EnumWindows.argtypes = [visit_type, wintypes.LPARAM]
+        user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        user32.IsWindowVisible.argtypes = [wintypes.HWND]
+        user32.IsIconic.argtypes = [wintypes.HWND]
+        user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                                        ctypes.c_int, ctypes.c_int, wintypes.UINT]
+        user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        user32.GetForegroundWindow.restype = wintypes.HWND
+        pid = os.getpid()
+
+        def own_window():
+            found = []
+
+            def visit(hwnd, _):
+                owner = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+                if owner.value == pid and user32.IsWindowVisible(hwnd):
+                    name = ctypes.create_unicode_buffer(128)
+                    user32.GetClassNameW(hwnd, name, 128)
+                    if name.value == window_class:
+                        found.append(hwnd)
+                        return False
+                return True
+
+            user32.EnumWindows(visit_type(visit), 0)
+            return found[0] if found else None
+
+        hwnd = None
+        for attempt in range(max(1, attempts)):
+            hwnd = own_window()
+            if hwnd or attempt == attempts - 1:
+                break
+            time.sleep(pause)
+        if not hwnd:
+            return False
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, 9)                       # SW_RESTORE
+        keep = 0x0001 | 0x0002 | 0x0010                      # SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
+        # Briefly topmost, then back among ordinary windows: above all of
+        # them, and never left "always on top".
+        user32.SetWindowPos(hwnd, wintypes.HWND(-1), 0, 0, 0, 0, keep)    # HWND_TOPMOST
+        user32.SetWindowPos(hwnd, wintypes.HWND(-2), 0, 0, 0, 0, keep)    # HWND_NOTOPMOST
+        user32.SetForegroundWindow(hwnd)
+        return user32.GetForegroundWindow() == hwnd
+    except Exception:
+        return False
+
+
 def _automatic_allowed(build: app_identity.BuildInfo) -> bool:
     if os.environ.get("SRA_STARTUP_SMOKE", "").strip():
         return False
@@ -602,6 +676,9 @@ async def after_start(page, source_root: Path, language: str) -> str:
     if outcome is not None:
         page.show_dialog(outcome_dialog(page, outcome, language, source_root))
         shown = "outcome"
+        # The installer started this program: show it (and the outcome)
+        # above whatever Windows activated while the old version closed.
+        await asyncio.to_thread(show_in_front)
     else:
         import data_ui
 

@@ -14,6 +14,7 @@ A researcher installs the program once (`docs/WINDOWS_INSTALLER.md`). Every late
    - backs up every project database;
    - closes the program and installs the new version.
 4. **The program starts again by itself** and says **"Updated to version 1.1.0. Your projects and research data are preserved."** It also gives the result of checking that every project listed before the update is still there (**View what's new**).
+   Its window comes up above the other windows: while the old version closed, Windows usually activated another program, and the new window would otherwise open behind it. It does not take the keyboard from another program; if Windows does not let it become the active window, its taskbar button flashes.
 5. **Without a connection,** the check fails silently and the program works as usual. A manual check says so in words.
 
 ## What is checked, and in which order
@@ -80,17 +81,18 @@ The full installer is downloaded for every update. A delta-update system such as
 
 ## Tests
 
-- `tests/test_updates.py` (Linux), 31 tests against a local HTTP server:
+- `tests/test_updates.py`, 38 tests, most against a local HTTP server (Linux and Windows; three are Windows-only):
   - signatures, the app, channel and version rules;
   - downloads: resume, damage, oversize, cancel, redirects, offline;
   - code-signature decisions;
   - the backup and record before the handoff;
   - the report after the restart, also when the installer file is still in use;
+  - after the restart the window is raised above other windows and never left always on top (Windows);
   - the dialog's texts in every language.
 - `.github/workflows/windows-update-e2e.yml` (Windows), on the installed program:
   - **Setup:** two test installers A and B, whose update key is generated for the run and thrown away; a local update server that only those test builds accept.
   - **Refusals:** a manifest signed with another key is rejected, an older version is not offered, and a damaged download is deleted without starting it.
-  - **The update itself:** the update is announced at start. **What's new** is shown. The download is interrupted, then retried, and continues where it stopped. **Update now** installs B, the program starts again as B and reports the update, and the project opens.
+  - **The update itself:** the update is announced at start. **What's new** is shown. The download is interrupted, then retried, and continues where it stopped. **Update now** installs B, the program starts again as B and reports the update, and the project opens. The driver checks that B's window came to the front by itself before it touches the window (a click at its centre reaches B).
   - **After the update:** exactly one installation of B is registered, and the uninstaller keeps the data.
   - **Code signatures:** checked with a throwaway self-signed certificate:
     - untrusted is refused;
