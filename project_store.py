@@ -983,6 +983,13 @@ class Project:
         with self._db() as db:
             return [dict(r) for r in db.execute("SELECT * FROM research_questions ORDER BY position")]
 
+    def log_ai_request(self, provider: str, model: str, sources, tokens: int) -> None:
+        """Audit an AI request: provider, exact model, approved source types and
+        token count. Neither the prompt nor the reply is stored (#43)."""
+        with self._write() as db:
+            _log(db, "ai_request", {"provider": str(provider)[:40], "model": str(model)[:200],
+                                    "sources": sorted(map(str, sources)), "tokens": int(tokens)})
+
     # -------------------------------------------------------- research plan
     def save_plan(self, plan: dict, note: str = "") -> int:
         """Save the research plan as a new version and return its number.

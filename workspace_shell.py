@@ -1260,6 +1260,9 @@ class SettingsPage:
         self.ocr_summary = ""
         self.data_note = ""
         self.profile = ProfileSettings(app)
+        from workspace_ai import AiProvidersCard
+
+        self.ai_providers = AiProvidersCard(app)
 
     def build(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session
@@ -1291,6 +1294,7 @@ class SettingsPage:
             self.profile.profile_card(),
             self.profile.ai_card(),
             self._updates_card(),
+            self.ai_providers.build(),
             self._data_card(),
             wc.card(ui, ocr, title=ui.t("settings.ocr")),
         ]
