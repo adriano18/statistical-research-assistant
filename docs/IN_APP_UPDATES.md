@@ -30,7 +30,7 @@ Nothing downloaded is executed before every check below has passed. Each refusal
 | Version | SemVer greater than the installed one, and the update's minimum version is met | equal or older: no downgrade, no replayed old manifest |
 | Download | never more bytes than announced; resumable after an interruption; cancellable | larger or truncated |
 | Checksum | SHA-256 of the file equals the signed manifest's | any difference: the file is deleted |
-| Code signature | Windows' own verification (`Get-AuthenticodeSignature`). A build made with a certificate accepts only the same publisher (subject and thumbprint pinned) | unsigned while a signature is required, another publisher, or a broken or untrusted signature. Unsigned preview builds accept unsigned installers, never broken ones |
+| Code signature | Windows' own verification (`WinVerifyTrust`; the signer's subject and thumbprint from `Get-AuthenticodeSignature` in Windows PowerShell, started with its own system module path). A build made with a certificate accepts only the same publisher (subject and thumbprint pinned) | unsigned while a signature is required, another publisher, or a broken or untrusted signature. Unsigned preview builds accept unsigned installers, never broken ones |
 
 ### Then the handoff
 
@@ -81,13 +81,14 @@ The full installer is downloaded for every update. A delta-update system such as
 
 ## Tests
 
-- `tests/test_updates.py`, 38 tests, most against a local HTTP server (Linux and Windows; three are Windows-only):
+- `tests/test_updates.py`, 41 tests, most against a local HTTP server (Linux and Windows; five are Windows-only):
   - signatures, the app, channel and version rules;
   - downloads: resume, damage, oversize, cancel, redirects, offline;
   - code-signature decisions;
   - the backup and record before the handoff;
   - the report after the restart, also when the installer file is still in use;
   - after the restart the window is raised above other windows and never left always on top (Windows);
+  - the signer is read even when the program was started from PowerShell 7 (Windows);
   - the dialog's texts in every language.
 - `.github/workflows/windows-update-e2e.yml` (Windows), on the installed program:
   - **Setup:** two test installers A and B, whose update key is generated for the run and thrown away; a local update server that only those test builds accept.

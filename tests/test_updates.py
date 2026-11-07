@@ -285,6 +285,50 @@ class ClientTests(unittest.TestCase):
                 self.assertFalse(uc._allowed(url, stable))
 
 
+class WindowsPowerShellEnvironmentTests(unittest.TestCase):
+    """The signer check runs Windows PowerShell 5.1 with its own modules only."""
+
+    POWERSHELL_7_MODULES = r"C:\Program Files\PowerShell\7\Modules"
+
+    def test_only_the_system_modules_and_no_variable_twice(self):
+        base = {"SYSTEMROOT": r"C:\Windows", "SYSTEMDRIVE": "C:", "PATH": r"C:\Windows\System32",
+                "PSMODULEPATH": self.POWERSHELL_7_MODULES + r";C:\Users\x\Documents\WindowsPowerShell\Modules",
+                "PSModulePath": self.POWERSHELL_7_MODULES}
+        env = uc.windows_powershell_environment({"SRA_VERIFY_PATH": "x"}, base=base)
+        self.assertEqual([v for k, v in env.items() if k.upper() == "PSMODULEPATH"],
+                         [r"C:\Windows\System32\WindowsPowerShell\v1.0\Modules"])
+        self.assertEqual([k for k in env if k.upper() == "SYSTEMDRIVE"], ["SYSTEMDRIVE"])
+        self.assertEqual(env["ProgramFiles"], r"C:\Program Files")     # missing in a minimal environment
+        self.assertEqual(env["SRA_VERIFY_PATH"], "x")
+        self.assertEqual(env["PATH"], base["PATH"])
+
+    @unittest.skipUnless(os.name == "nt", "Windows PowerShell")
+    def test_the_certificate_drive_exists_under_a_powershell_7_module_path(self):
+        import subprocess
+
+        polluted = {**os.environ, "PSModulePath": self.POWERSHELL_7_MODULES + ";"
+                    + os.environ.get("PSModulePath", "")}
+        done = subprocess.run([str(uc.windows_powershell()), "-NoProfile", "-NonInteractive", "-Command",
+                               "$ErrorActionPreference = 'Stop'; (Get-PSDrive -Name Cert).Name; "
+                               "(Get-Command Get-AuthenticodeSignature).Source"],
+                              capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
+                              env=uc.windows_powershell_environment(base=polluted))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("Cert", done.stdout)
+        self.assertIn("Microsoft.PowerShell.Security", done.stdout)
+
+    @unittest.skipUnless(os.name == "nt", "Windows code signatures")
+    def test_the_signer_is_read_when_started_from_powershell_7(self):
+        executable = Path(sys.executable)
+        if uc._win_verify_trust(executable) != "Valid":
+            self.skipTest(f"{executable} has no embedded valid signature here")
+        polluted = self.POWERSHELL_7_MODULES + ";" + os.environ.get("PSModulePath", "")
+        with mock.patch.dict(os.environ, {"PSModulePath": polluted}):
+            subject, thumbprint = uc._signer(executable)
+        self.assertTrue(subject.startswith("CN="), subject)
+        self.assertRegex(thumbprint, r"^[0-9A-F]{40}$")
+
+
 class CodeSignatureTests(unittest.TestCase):
     def setUp(self):
         self.folder = Path(tempfile.mkdtemp())
