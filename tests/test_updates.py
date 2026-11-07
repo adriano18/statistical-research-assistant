@@ -330,7 +330,9 @@ class CodeSignatureTests(unittest.TestCase):
             self.assertIn(uc._win_verify_trust(notepad), ("Valid", "NotSigned"))
 
     def test_the_checksum_is_checked_again_before_starting(self):
-        self.path.write_bytes(b"x" + INSTALLER[1:])
+        # Flip a byte: writing b"x" left the random file unchanged whenever
+        # its first byte already was "x" (1 run in 256: run 42322973473).
+        self.path.write_bytes(bytes([INSTALLER[0] ^ 0xFF]) + INSTALLER[1:])
         with self.assertRaises(uc.UpdateError) as caught:
             self.verify("NotSigned")
         self.assertEqual(caught.exception.reason, "damaged")
