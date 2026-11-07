@@ -81,6 +81,7 @@ jobs:
       - name: Check the bundle
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $exe = Get-ChildItem -Path build/windows -Filter StatisticalResearchAssistant.exe -Recurse | Select-Object -First 1
           if (-not $exe) { throw "Expected .exe was not created" }
           $bundle = Split-Path $exe.FullName
@@ -94,6 +95,7 @@ jobs:
       - name: Install Inno Setup when the runner has none
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ }
           if (-not $iscc -and -not (Get-Command ISCC -ErrorAction SilentlyContinue)) {
             choco install innosetup --no-progress -y
@@ -104,6 +106,7 @@ jobs:
       - name: Build a later version for the upgrade test
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           Copy-Item -Recurse -Path $env:BUNDLE -Destination build\windows-b
           python tools/write_build_info.py --channel preview --version "$env:VERSION_B" --build "${{ github.run_number }}" --commit "${{ github.sha }}" --out build\windows-b\app\build_info.json
           python tools/build_installer.py build\windows-b --out dist-b --compression lzma2/fast
@@ -111,6 +114,7 @@ jobs:
       - name: Installer size
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           $meta = Get-Content dist\installer.json -Raw | ConvertFrom-Json
           $installed = (Get-ChildItem -Recurse -File $env:BUNDLE | Measure-Object -Sum Length).Sum
           $lines = @(
@@ -125,6 +129,7 @@ jobs:
 
       - name: Fresh per-user install (silent, no administrator rights)
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/check_installed_app.py install "dist\StatisticalResearchAssistant-${{ env.VERSION_A }}-Setup.exe" --log installed\install-a.log
           python tools/check_installed_app.py verify --version "${{ env.VERSION_A }}" --json installed\verify-a.json
           python tools/check_installed_app.py snapshot installed\program-a.json
@@ -132,17 +137,20 @@ jobs:
         shell: pwsh
         timeout-minutes: 25
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/windows_gui_e2e.py "$env:LOCALAPPDATA\Programs\Statistical Research Assistant\StatisticalResearchAssistant.exe" installed\real-data --real-data --only legacy-migration installed-data
           if ($LASTEXITCODE -ne 0) { throw "installed-application journeys failed" }
       - name: Researcher journeys on the installed program
         shell: pwsh
         timeout-minutes: 45
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/windows_gui_e2e.py "$env:LOCALAPPDATA\Programs\Statistical Research Assistant\StatisticalResearchAssistant.exe" installed\journeys
           if ($LASTEXITCODE -ne 0) { throw "journeys on the installed program failed" }
       - name: Normal start of the installed program (screenshots)
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/check_gui_startup.py "$env:LOCALAPPDATA\Programs\Statistical Research Assistant\StatisticalResearchAssistant.exe" installed\startup
           if ($LASTEXITCODE -ne 0) { throw "startup check of the installed program failed" }
       - name: Running the program changed nothing in the program folder
@@ -150,6 +158,7 @@ jobs:
 
       - name: Upgrade in place to the later version
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/check_installed_app.py install "dist-b\StatisticalResearchAssistant-${{ env.VERSION_B }}-Setup.exe" --log installed\install-b.log
           python tools/check_installed_app.py verify --version "${{ env.VERSION_B }}" --json installed\verify-b.json
           python tools/check_installed_app.py data installed\data-after-upgrade.json --expect "Installed study (fictional)" --expect "Preview-era study (fictional)"
@@ -157,11 +166,13 @@ jobs:
         shell: pwsh
         timeout-minutes: 15
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/windows_gui_e2e.py "$env:LOCALAPPDATA\Programs\Statistical Research Assistant\StatisticalResearchAssistant.exe" installed\after-upgrade --real-data --only installed-reopen
           if ($LASTEXITCODE -ne 0) { throw "the upgraded program did not reopen the projects" }
 
       - name: Silent uninstall keeps the research data
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/check_installed_app.py uninstall --log installed\uninstall.log
           python tools/check_installed_app.py removed --json installed\removed.json
           python tools/check_installed_app.py data installed\data-after-uninstall.json --expect "Installed study (fictional)" --expect "Preview-era study (fictional)"
@@ -169,6 +180,7 @@ jobs:
         shell: pwsh
         timeout-minutes: 15
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/check_installed_app.py install "dist\StatisticalResearchAssistant-$env:VERSION_A-Setup.exe" --log installed\reinstall.log
           python tools/check_installed_app.py verify --version "$env:VERSION_A"
           python tools/windows_gui_e2e.py "$env:LOCALAPPDATA\Programs\Statistical Research Assistant\StatisticalResearchAssistant.exe" installed\reinstalled --real-data --only installed-reopen
