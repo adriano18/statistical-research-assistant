@@ -75,6 +75,8 @@ MENU: dict[tuple[str, str], tuple[str, str, str]] = {
     ("Settings", "macOS · soft corners"): ("settings", "workspace", "Corner style"),
     ("Settings", "Offline OCR engine…"): ("settings", "workspace", "Check OCR engine"),
     ("Settings", "Your data…"): ("settings", "workspace", "Your data"),
+    ("Settings", "Check for updates…"): ("settings", "workspace", "About and updates"),
+    ("Help", "About and updates…"): ("settings", "workspace", "About and updates"),
     ("AI assistant", "AI assistant status"): ("help", "workspace", "Help & privacy: not connected"),
     ("AI assistant", "Methodology and references"): ("results", "workspace", ""),
     ("Help", "AI assistant status"): ("help", "workspace", ""),

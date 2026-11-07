@@ -15,7 +15,7 @@ copyright = "Copyright (c) 2026 Statistical Research Assistant"
 # that exist while a build runs. `examples/` stays: the sample datasets are
 # opened from the interface.
 [tool.flet.app]
-exclude = ["tests", "tools", "docs", "packaging", "README.md", "ROADMAP.md",
+exclude = ["tests", "tools", "docs", "packaging", "release-notes", "README.md", "ROADMAP.md",
            "diagnostics", "experiments"]
 
 # Extra files removed from the installed packages, on top of serious_python's
