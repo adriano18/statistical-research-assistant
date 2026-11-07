@@ -401,6 +401,22 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(outcome["missing_projects"], [self.projects[0]])
         self.assertTrue((Path(outcome["backup"]) / f"{self.projects[0]}.sqlite3").is_file())
 
+    def test_the_installer_does_not_inherit_this_runtime(self):
+        """Found by the A -> B journey: the restarted version stayed on its
+        boot screen because it inherited this process's Flet bridge ports."""
+        record = uc.prepare(self.root, self.installer, self.manifest, build(port=1))
+        inherited = {"FLET_DART_BRIDGE_PORT": "4242", "FLET_APP_STORAGE_DATA": "x",
+                     "PYTHONHOME": "y", "SERIOUS_PYTHON_SITE_PACKAGES": "z",
+                     "PATH": "C:\\Windows", "SRA_UI": "workspace", "TEMP": "t"}
+        with mock.patch.dict(os.environ, inherited), \
+                mock.patch.object(uc.subprocess, "Popen") as popen:
+            uc.launch_installer(record)
+        environment = popen.call_args.kwargs["env"]
+        self.assertFalse([k for k in environment if k.upper().startswith(("FLET_", "SERIOUS_PYTHON"))])
+        self.assertNotIn("PYTHONHOME", environment)
+        self.assertEqual((environment["PATH"], environment["SRA_UI"]), ("C:\\Windows", "workspace"))
+        self.assertIn("/UPDATEFROMAPP", popen.call_args.args[0])
+
     def test_only_the_last_update_backups_are_kept(self):
         for n in range(uc.KEEP_UPDATE_BACKUPS + 2):
             folder = uc.backup_before_update(self.root, f"label-{n}")
