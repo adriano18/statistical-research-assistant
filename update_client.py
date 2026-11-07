@@ -197,26 +197,80 @@ def download(manifest: um.Manifest, folder: Path, build: app_identity.BuildInfo,
 
 # ------------------------------------------------------- code signature
 
+_STATUS = {0: "Valid", 0x800B0100: "NotSigned", 0x800B0003: "NotSigned", 0x800B0001: "NotSigned",
+           0x80096010: "HashMismatch", 0x800B0109: "NotTrusted", 0x800B010A: "NotTrusted",
+           0x800B0004: "NotTrusted", 0x800B0111: "NotTrusted", 0x800B0101: "NotTrusted"}
+
+
+def _win_verify_trust(path: Path) -> str:
+    """Windows' own Authenticode verification (WinVerifyTrust), no network."""
+    import ctypes
+    from ctypes import wintypes
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("Data1", wintypes.DWORD), ("Data2", wintypes.WORD), ("Data3", wintypes.WORD),
+                    ("Data4", ctypes.c_ubyte * 8)]
+
+    class FILE_INFO(ctypes.Structure):
+        _fields_ = [("cbStruct", wintypes.DWORD), ("pcwszFilePath", wintypes.LPCWSTR),
+                    ("hFile", wintypes.HANDLE), ("pgKnownSubject", ctypes.c_void_p)]
+
+    class TRUST_DATA(ctypes.Structure):
+        _fields_ = [("cbStruct", wintypes.DWORD), ("pPolicyCallbackData", ctypes.c_void_p),
+                    ("pSIPClientData", ctypes.c_void_p), ("dwUIChoice", wintypes.DWORD),
+                    ("fdwRevocationChecks", wintypes.DWORD), ("dwUnionChoice", wintypes.DWORD),
+                    ("pFile", ctypes.POINTER(FILE_INFO)), ("dwStateAction", wintypes.DWORD),
+                    ("hWVTStateData", wintypes.HANDLE), ("pwszURLReference", wintypes.LPCWSTR),
+                    ("dwProvFlags", wintypes.DWORD), ("dwUIContext", wintypes.DWORD),
+                    ("pSignatureSettings", ctypes.c_void_p)]
+
+    action = GUID(0x00AAC56B, 0xCD44, 0x11D0, (ctypes.c_ubyte * 8)(0x8C, 0xC2, 0x00, 0xC0, 0x4F, 0xC2, 0x95, 0xEE))
+    file_info = FILE_INFO(ctypes.sizeof(FILE_INFO), str(path), None, None)
+    data = TRUST_DATA()
+    data.cbStruct = ctypes.sizeof(TRUST_DATA)
+    data.dwUIChoice = 2                  # WTD_UI_NONE
+    data.fdwRevocationChecks = 0         # WTD_REVOKE_NONE
+    data.dwUnionChoice = 1               # WTD_CHOICE_FILE
+    data.pFile = ctypes.pointer(file_info)
+    data.dwProvFlags = 0x1000            # WTD_CACHE_ONLY_URL_RETRIEVAL: never the network
+    verify = ctypes.WinDLL("wintrust").WinVerifyTrust
+    verify.argtypes = [wintypes.HANDLE, ctypes.POINTER(GUID), ctypes.POINTER(TRUST_DATA)]
+    verify.restype = ctypes.c_long
+    result = verify(wintypes.HANDLE(-1), ctypes.byref(action), ctypes.byref(data)) & 0xFFFFFFFF
+    return _STATUS.get(result, "UnknownError")
+
+
+def _signer(path: Path) -> tuple[str, str]:
+    """Subject and thumbprint of a signed file (only asked for signed files)."""
+    system = os.environ.get("SystemRoot", r"C:\Windows")
+    shell = Path(system) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    environment = {**os.environ, "SRA_VERIFY_PATH": str(path)}
+    for name, value in (("SystemDrive", system[:2]), ("ProgramFiles", system[:2] + r"\Program Files"),
+                        ("ProgramData", system[:2] + r"\ProgramData")):
+        environment.setdefault(name, value)
+    script = ("$s = Get-AuthenticodeSignature -LiteralPath $env:SRA_VERIFY_PATH; "
+              "[pscustomobject]@{subject = [string]$s.SignerCertificate.Subject; "
+              "thumbprint = [string]$s.SignerCertificate.Thumbprint} | ConvertTo-Json -Compress")
+    try:
+        done = subprocess.run([str(shell), "-NoProfile", "-NonInteractive", "-Command", script],
+                              capture_output=True, text=True, timeout=90, check=False, env=environment,
+                              stdin=subprocess.DEVNULL,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        result = json.loads(done.stdout.strip() or "{}")
+    except (subprocess.TimeoutExpired, OSError, ValueError):
+        return "", ""
+    return str(result.get("subject") or ""), str(result.get("thumbprint") or "").upper()
+
+
 def authenticode(path: Path) -> dict:
     """Windows code signature of ``path``: status, signer subject, thumbprint."""
     if os.name != "nt":
         return {"status": "unavailable"}
-    system = os.environ.get("SystemRoot", r"C:\Windows")
-    shell = Path(system) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
-    script = ("$s = Get-AuthenticodeSignature -LiteralPath $env:SRA_VERIFY_PATH; "
-              "[pscustomobject]@{status = [string]$s.Status; "
-              "subject = [string]$s.SignerCertificate.Subject; "
-              "thumbprint = [string]$s.SignerCertificate.Thumbprint} | ConvertTo-Json -Compress")
-    done = subprocess.run([str(shell), "-NoProfile", "-NonInteractive", "-Command", script],
-                          capture_output=True, text=True, timeout=60, check=False,
-                          env={**os.environ, "SRA_VERIFY_PATH": str(path)},
-                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    try:
-        result = json.loads(done.stdout.strip() or "{}")
-    except ValueError:
-        result = {}
-    return {"status": result.get("status") or "UnknownError",
-            "subject": result.get("subject") or "", "thumbprint": (result.get("thumbprint") or "").upper()}
+    status = _win_verify_trust(path)
+    subject = thumbprint = ""
+    if status not in ("NotSigned", "UnknownError"):
+        subject, thumbprint = _signer(path)
+    return {"status": status, "subject": subject, "thumbprint": thumbprint}
 
 
 def verify_installer(path: Path, manifest: um.Manifest, build: app_identity.BuildInfo) -> dict:

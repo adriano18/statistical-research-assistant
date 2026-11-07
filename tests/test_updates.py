@@ -320,6 +320,15 @@ class CodeSignatureTests(unittest.TestCase):
                 self.verify(status, subject, thumb, **strict)
             self.assertEqual(caught.exception.reason, reason)
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows' own WinVerifyTrust")
+    def test_windows_verifies_signatures_itself(self):
+        """Run on Windows CI: an unsigned file is NotSigned, a signed system
+        program is Valid, without PowerShell for the status."""
+        self.assertEqual(uc._win_verify_trust(self.path), "NotSigned")
+        notepad = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "notepad.exe"
+        if notepad.is_file():
+            self.assertIn(uc._win_verify_trust(notepad), ("Valid", "NotSigned"))
+
     def test_the_checksum_is_checked_again_before_starting(self):
         self.path.write_bytes(b"x" + INSTALLER[1:])
         with self.assertRaises(uc.UpdateError) as caught:
@@ -526,6 +535,16 @@ class InterfaceTests(unittest.TestCase):
         __import__("gc").collect()
         update_ui.run_before_exit()
         self.assertEqual(closed, [True])
+
+    def test_an_unexpected_failure_never_leaves_the_dialog_waiting(self):
+        page, dialog = self.dialog()
+        asyncio.run(dialog.check())
+        with mock.patch.object(uc, "verify_installer", side_effect=RuntimeError("unexpected")), \
+                mock.patch.object(uc, "launch_installer") as launch:
+            asyncio.run(dialog.update_now())
+        launch.assert_not_called()
+        self.assertIn("could not be completed. Nothing was changed.", texts(dialog.dialog))
+        self.assertEqual([a.data for a in dialog.dialog.actions][-1], "update-now", "it can be retried")
 
     def test_after_the_restart_the_outcome_is_shown(self):
         installer = self.data / "updates" / "StatisticalResearchAssistant-1.0.1-test.1-Setup.exe"

@@ -454,6 +454,12 @@ class UpdateDialog:
             self._actions_offer()
             self._refresh()
             return
+        except Exception:      # never leave the dialog waiting on a step that failed
+            self.busy = False
+            self.show_message(error_text(self.language, "unknown"))
+            self._actions_offer()
+            self._refresh()
+            return
         self.status.value = t(self.language, "restarting", version=str(manifest.version))
         self.progress.visible = False
         self._refresh()
