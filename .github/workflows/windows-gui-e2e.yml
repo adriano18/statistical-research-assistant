@@ -12,6 +12,10 @@ on:
   pull_request:
     paths:
       - "app.py"
+      - "app_identity.py"
+      - "app_paths.py"
+      - "data_ui.py"
+      - "legacy_data.py"
       - "research_app.py"
       - "workspace_*.py"
       - "project_*.py"
@@ -59,6 +63,8 @@ jobs:
         run: |
           Set-DisplayResolution -Width 1920 -Height 1080 -Force
           python -c "import ctypes; u=ctypes.windll.user32; print('screen', u.GetSystemMetrics(0), 'x', u.GetSystemMetrics(1))"
+      - name: Version identity of this build
+        run: python tools/write_build_info.py --channel preview --version "1.0.0-ci.${{ github.run_number }}" --build "${{ github.run_number }}" --commit "${{ github.sha }}"
       - name: Build the Windows application (as distributed)
         run: >-
           flet build windows .

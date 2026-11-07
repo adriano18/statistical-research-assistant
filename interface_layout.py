@@ -4,6 +4,8 @@ The interface is divided into fifteen screens. Calculation logic stays in app.py
 existing controls are reused, so switching screens preserves user selections.
 """
 
+from pathlib import Path
+
 import flet as ft
 from localization import LANGUAGES, tr
 from statistical_guide import GUIDE_LABELS, method_guide_items
@@ -1314,6 +1316,12 @@ def build_interface(
         menu_notice_label.value = shell_label(language, "ocr_note") + ready.summary()
         page.update()
 
+    def show_data_folder(e=None):
+        """Settings → Your data…: the data folder and earlier versions' data (#44)."""
+        import data_ui
+
+        data_ui.show_data_folder(page, Path(__file__).resolve().parent, language)
+
     def navigate_and_open(section, registered_action):
         switch_screen(section)
         if registered_action in a:
@@ -1369,6 +1377,7 @@ def build_interface(
                 ("windows", lambda e: change_appearance("windows")),
                 ("macos", lambda e: change_appearance("macos")),
                 ("ocr_status", show_ocr_status),
+                ("data_folder", show_data_folder),
             ]),
             group("ai", [
                 ("ai_status", lambda e: explain("ai_note")),

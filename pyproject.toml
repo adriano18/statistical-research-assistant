@@ -3,6 +3,13 @@
 # Python dependencies intentionally stay in requirements.txt: this file has no
 # [project].dependencies, so `flet build` keeps installing requirements.txt.
 
+# Shown in the executable's file properties (the build template's default
+# was the placeholder "Your Company"). The research data folder does not
+# depend on these names (app_paths.py).
+[tool.flet]
+company = "Statistical Research Assistant"
+copyright = "Copyright (c) 2026 Statistical Research Assistant"
+
 # Files of the repository that the running application never reads
 # (issue #23; checked with a source search), plus the CI diagnostics folders
 # that exist while a build runs. `examples/` stays: the sample datasets are

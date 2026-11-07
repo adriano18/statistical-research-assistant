@@ -2,6 +2,7 @@
 
 SHELL_TEXT = {
     "en": {
+        "data_folder": "Your data…",
         "ocr_status": "Offline OCR engine…",
         "ocr_note": "Local OCR (no uploads): ",
         "ocr_checking": "Checking the local OCR engine…",
@@ -33,6 +34,7 @@ SHELL_TEXT = {
                         "server with identifiable participant data.",
     },
     "lv": {
+        "data_folder": "Jūsu dati…",
         "ocr_status": "Bezsaistes OCR dzinējs…",
         "ocr_note": "Lokālais OCR (bez augšupielādes): ",
         "ocr_checking": "Pārbauda lokālo OCR dzinēju…",
@@ -64,6 +66,7 @@ SHELL_TEXT = {
                         "identificējamu dalībnieku informāciju.",
     },
     "ru": {
+        "data_folder": "Ваши данные…",
         "ocr_status": "Офлайн-движок OCR…",
         "ocr_note": "Локальное OCR (без загрузки в сеть): ",
         "ocr_checking": "Проверка локального движка OCR…",

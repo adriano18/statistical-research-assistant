@@ -12,3 +12,8 @@ reports/
 
 # Bundled OCR runtime is generated from the pinned lock file in CI.
 bundled_ocr/
+
+# Written by tools/write_build_info.py and tools/build_installer.py in CI.
+build_info.json
+packaging/windows/generated-layout.iss
+dist/

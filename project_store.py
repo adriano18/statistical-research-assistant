@@ -139,23 +139,16 @@ def library_versions() -> dict[str, str]:
 
 
 def project_data_root(source_root: Path) -> Path:
-    """Folder holding all projects.
+    """Folder holding all projects: ``<data folder>/projects`` (``app_paths``).
 
-    ``SRA_DATA_DIR`` wins (tests, portable use). A packaged build always uses
-    Flet's durable per-user data folder, even while older questionnaires are
-    still read from an unpacked preview folder, so a new version extracted
-    elsewhere never hides a project. A source checkout keeps
-    ``<repo>/data/projects`` (git-ignored, next to ``data/surveys``).
+    ``SRA_DATA_DIR`` wins (tests, portable use); a packaged build uses the
+    per-user data folder, never the program folder, so installing, updating
+    or uninstalling the program never touches a project. A source checkout
+    keeps ``<repo>/data/projects`` (git-ignored, next to ``data/surveys``).
     """
-    from startup_diagnostics import is_packaged
+    from app_paths import projects_root
 
-    override = os.environ.get("SRA_DATA_DIR", "").strip()
-    if override:
-        return Path(override) / "projects"
-    data = os.environ.get("FLET_APP_STORAGE_DATA", "").strip()
-    if data and is_packaged():
-        return Path(data) / "projects"
-    return Path(source_root) / "data" / "projects"
+    return projects_root(source_root)
 
 
 # ------------------------------------------------------------------ schema

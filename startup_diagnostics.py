@@ -130,24 +130,12 @@ def write_startup_record(timeline: StartupTimeline) -> Path | None:
 
 
 def survey_data_root(source_root: Path) -> Path:
-    """Where questionnaires are stored.
+    """Where questionnaires are stored: ``<data folder>/surveys``.
 
-    Source checkouts keep ``<repo>/data/surveys`` (unchanged behaviour). A
-    packaged build stores them in the durable per-user Flet data folder, so
-    extracting a new version elsewhere keeps earlier surveys and a read-only
-    install folder still works. Surveys already saved inside an earlier
-    unpacked preview are kept in place rather than hidden.
+    See ``app_paths``: a packaged build never stores them inside the
+    program folder. Questionnaires an earlier unpacked preview saved there
+    are offered for copying by ``legacy_data`` instead of being used in place.
     """
-    override = os.environ.get("SRA_DATA_DIR", "").strip()
-    if override:
-        return Path(override) / "surveys"
-    legacy = Path(source_root) / "data" / "surveys"
-    data = os.environ.get("FLET_APP_STORAGE_DATA", "").strip()
-    if not data or not is_packaged():
-        return legacy
-    try:
-        if legacy.is_dir() and any(legacy.iterdir()):
-            return legacy
-    except OSError:
-        pass
-    return Path(data) / "surveys"
+    from app_paths import surveys_root
+
+    return surveys_root(source_root)

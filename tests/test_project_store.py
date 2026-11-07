@@ -185,21 +185,31 @@ class ProjectLifecycleTests(StoreCase):
         with mock.patch.dict(os.environ, {"SRA_DATA_DIR": str(self.base / "custom")}):
             self.assertEqual(ps.project_data_root(ROOT), self.base / "custom" / "projects")
 
-    def test_packaged_projects_never_live_in_the_unpacked_app_folder(self):
-        """Older questionnaires may still be read from an unpacked preview
-        folder; projects always go to the durable per-user data folder."""
-        install = self.base / "unpacked-preview"
+    def test_packaged_data_never_lives_in_the_program_folder(self):
+        """Stage 35 (#44): an installed or unpacked program folder never holds
+        research data, so installing, updating or uninstalling the program
+        cannot touch it. Questionnaires an earlier preview kept there are not
+        used in place (legacy_data offers to copy them)."""
+        import app_paths
+
+        install = self.base / "Programs" / "Statistical Research Assistant"
         (install / "data" / "surveys").mkdir(parents=True)
         (install / "data" / "surveys" / "survey_old.sqlite3").write_bytes(b"kept")
-        durable = self.base / "user-data"
-        environment = {"FLET_APP_STORAGE_DATA": str(durable)}
+        local, flet = self.base / "LocalAppData", self.base / "flet-data"
+        environment = {"FLET_APP_STORAGE_DATA": str(flet), "LOCALAPPDATA": str(local)}
         with mock.patch.dict(os.environ, environment), \
                 mock.patch("startup_diagnostics.is_packaged", return_value=True):
             os.environ.pop("SRA_DATA_DIR", None)
             from startup_diagnostics import survey_data_root
 
-            self.assertEqual(survey_data_root(install), install / "data" / "surveys")
-            self.assertEqual(ps.project_data_root(install), durable / "projects")
+            with mock.patch.object(app_paths, "_windows", return_value=True):
+                user = local / "StatisticalResearchAssistant"
+                self.assertEqual(ps.project_data_root(install), user / "projects")
+                self.assertEqual(survey_data_root(install), user / "surveys")
+                self.assertEqual(app_paths.updates_root(install), user / "updates")
+            with mock.patch.object(app_paths, "_windows", return_value=False):
+                self.assertEqual(ps.project_data_root(install), flet / "projects")
+                self.assertEqual(survey_data_root(install), flet / "surveys")
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("SRA_DATA_DIR", None)
             os.environ.pop("FLET_APP_STORAGE_DATA", None)

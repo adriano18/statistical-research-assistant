@@ -5,6 +5,10 @@ on:
   pull_request:
     paths:
       - "app.py"
+      - "app_identity.py"
+      - "app_paths.py"
+      - "data_ui.py"
+      - "legacy_data.py"
       - "research_app.py"
       - "startup_diagnostics.py"
       - "binary_responses.py"
@@ -129,6 +133,8 @@ jobs:
             throw "analysis self-test from source failed"
           }
 
+      - name: Version identity of this build
+        run: python tools/write_build_info.py --channel preview --version "1.0.0-ci.${{ github.run_number }}" --build "${{ github.run_number }}" --commit "${{ github.sha }}"
       - name: Build unsigned Windows desktop bundle
         run: >-
           flet build windows .
