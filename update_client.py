@@ -361,6 +361,24 @@ def prepare(data_root: Path, installer: Path, manifest: um.Manifest,
     return record
 
 
+# Set by the Flet host for ITS embedded Python (for example the Dart bridge
+# ports of this process). The host builds the next program's environment
+# from the inherited one and keeps what is already there, so the version the
+# installer starts again would talk to this process's dead bridge and never
+# leave its boot screen (found by the A -> B journey).
+_PRIVATE_PREFIXES = ("FLET_", "SERIOUS_PYTHON")
+_PRIVATE_NAMES = {"PYTHONHOME", "PYTHONPATH", "PYTHONEXECUTABLE", "PYTHONSTARTUP",
+                  "PYTHONNOUSERSITE", "PYTHONDONTWRITEBYTECODE"}
+
+
+def installer_environment(base: dict | None = None) -> dict:
+    """This process's environment without what belongs to its own runtime."""
+    source = dict(os.environ if base is None else base)
+    return {name: value for name, value in source.items()
+            if not name.upper().startswith(_PRIVATE_PREFIXES)
+            and name.upper() not in _PRIVATE_NAMES}
+
+
 def launch_installer(record: dict) -> subprocess.Popen:
     """Start the verified installer; the caller then closes the application."""
     installer = Path(record["installer"])
@@ -369,14 +387,15 @@ def launch_installer(record: dict) -> subprocess.Popen:
         flags |= getattr(subprocess, name, 0)
     command = [str(installer), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/UPDATEFROMAPP",
                f"/LOG={record['log']}"]
+    environment = installer_environment()
     try:
         return subprocess.Popen(command, cwd=str(installer.parent), creationflags=flags,
-                                close_fds=True)
+                                close_fds=True, env=environment)
     except OSError:
         # Some job objects forbid breaking away: start it inside the job then.
         flags &= ~getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
         return subprocess.Popen(command, cwd=str(installer.parent), creationflags=flags,
-                                close_fds=True)
+                                close_fds=True, env=environment)
 
 
 def finish(data_root: Path, build: app_identity.BuildInfo | None = None) -> dict | None:
