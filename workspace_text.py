@@ -1675,6 +1675,15 @@ T.update({
     "block.binary": ("{name} must be coded 0/1. Recode it in Data → Prepare first.",
                      "{name} jābūt kodētam 0/1. Vispirms pārkodējiet sadaļā Dati → Sagatavot.",
                      "{name} должен быть закодирован 0/1. Сначала перекодируйте в «Данные → Подготовка»."),
+    # Stage 36.3 (D5): no α/ω from total or derived scores (item_diagnostics heuristics).
+    "block.totals_not_items": (
+        "Reliability analysis needs the separate answers to the items of the scale. Only a total score is available now. These variables look like total or derived scores (many different values, decimals or a wide range), not item responses: {names}. Import the item-level data, one column per item, to calculate α or ω.",
+        "Uzticamības analīzei vajag atsevišķas atbildes uz skalas jautājumiem. Pašlaik pieejams tikai kopējais rādītājs. Šie mainīgie izskatās pēc kopējiem vai atvasinātiem rādītājiem (daudz dažādu vērtību, daļskaitļi vai plašs diapazons), nevis pēc atbildēm uz jautājumiem: {names}. Importējiet datus ar atbildēm uz katru jautājumu (katram jautājumam sava kolonna), lai aprēķinātu α vai ω.",
+        "Для анализа надёжности нужны отдельные ответы на пункты шкалы. Сейчас доступен только суммарный показатель. Эти переменные похожи на суммарные или производные баллы (много разных значений, дробные значения или широкий диапазон), а не на ответы на пункты: {names}. Импортируйте данные с ответами на каждый пункт (по столбцу на пункт), чтобы вычислить α или ω."),
+    "block.total_among_items": (
+        "Some chosen variables look like total or derived scores (many different values, decimals or a wide range), not item responses: {names}. Reliability is calculated from the answers to the items only; remove them from the items.",
+        "Daži izvēlētie mainīgie izskatās pēc kopējiem vai atvasinātiem rādītājiem (daudz dažādu vērtību, daļskaitļi vai plašs diapazons), nevis pēc atbildēm uz jautājumiem: {names}. Uzticamību aprēķina tikai no atbildēm uz jautājumiem; izņemiet tos no izvēles.",
+        "Некоторые выбранные переменные похожи на суммарные или производные баллы (много разных значений, дробные значения или широкий диапазон), а не на ответы на пункты: {names}. Надёжность вычисляется только по ответам на пункты; уберите их из выбора."),
     "pick.all_scale": ("All quantitative ({count})", "Visi kvantitatīvie ({count})", "Все количественные ({count})"),
     "pick.all_ordinal": ("All ordinal ({count})", "Visi ranga ({count})", "Все порядковые ({count})"),
     "pick.clear": ("Clear", "Notīrīt", "Очистить"),

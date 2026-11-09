@@ -827,6 +827,17 @@ def _predict(sel, session, level):
 
 def _scale(sel, session, level):
     items = list(sel["items"])
+    if session.has_data:
+        # Stage 36.3 (D5): reliability needs item responses; a total or derived
+        # score (many values, decimals or a wide range) gets no fictitious α/ω.
+        from item_diagnostics import item_response_problems
+
+        totals = [p.name for p in item_response_problems(session.df, items)
+                  if p.looks_like_total]
+        if totals:
+            key = ("block.totals_not_items" if len(totals) == len(items)
+                   else "block.total_among_items")
+            return Advice(blockers=((key, {"names": ", ".join(totals)}),))
     if len(items) <= 12:
         return Advice("omega", {"ci": "0"}, {"items": items},
                       reasons=(("why.omega", {}),),
