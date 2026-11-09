@@ -232,6 +232,13 @@ proposals awaiting review, not verified items.
   answer floor would lose them.
 * An unreadable number on the last row of a table without answer digits
   cannot be confirmed by a next row and stays plain text.
+* Rows above a table's first readable number are numbered back only when
+  exactly that many clear rows stand there. Otherwise they stay plain text,
+  and the researcher adds them in the review.
+* Rule removal keeps rules lighter than grey level 200, rules shorter than a
+  fifth of the page and bars thicker than about 1 mm. Where a rule crosses
+  letters, the letter pixels within half the rule's thickness of its line are
+  whitened with it.
 * Legend labels are proposed as OCR read them; with an OCR language that
   lacks the document's letters (English for Latvian) labels and
   statements lose their diacritics.
@@ -363,4 +370,74 @@ The journey now records the engine's own time for page 1 outside the
 program (`direct_ocr_page_1_lav`) and the time in the program
 (`ocr_in_program_seconds`), so the Windows numbers are measured, not
 assumed.
+
+## The Latvian table read on the packaged Windows program (36.7)
+
+The next packaged-EXE run of `import-scan-lv` (installer run 42669384359,
+on #61) finished its OCR but read 45 of 52 items. The journey keeps the
+bundled engine's own reading of both pages (page images and Tesseract TSV,
+`ocr/` in the evidence), so the reading could be replayed and examined here.
+
+The fixture was not the Linux fixture. The generator drew the table with
+the computer's fonts: Times New Roman on the Windows runner, DejaVu Serif
+on Linux. Two changes follow:
+
+* The generator now uses the fonts that matplotlib ships, so every platform
+  gets the same pages. The Linux pages are unchanged, pixel for pixel.
+* The Times-like case is kept as a fixture of its own,
+  `synthetic_lv_table_scan_52_stix.pdf`, set in STIX General.
+
+The engines read alike. On the Windows page images this engine finds 46
+items and the Windows engine finds 45, with the same rows lost. The losses
+came from the typeface, not from the engine. They exposed three weaknesses
+of the importer, all reproduced on the STIX variant:
+
+1. **Rules between rows made Tesseract drop whole text lines.** Tesseract
+   reads the page as one block (`--psm 6`). Rows 29 and 42–45 were missing
+   from the TSV itself. The OCR input is now cleaned first (`ocr_rules.py`):
+   * A rule is a long, thin, nearly straight run of ink: at least a fifth of
+     the page long and at most about 1 mm thick.
+   * Each rule is traced along its fitted centre line to its real ends and
+     whitened.
+   * Letters that touch a rule lose only the touching pixels.
+   * Filled bars, short rules and light lines stay.
+   * Word boxes keep the coordinates of the original page, which stays the
+     page shown to the researcher.
+   * A page without rules is passed on unchanged, byte for byte.
+2. **A legend line read as a numbered row tilted the statement column.** The
+   legend's `4-` was read as `4 bieži`, without its dash. It pulled the
+   least-squares fit of the statement column so far that page 2 kept no
+   table. The column is now a Theil–Sen fit, which a few far-off points
+   cannot tilt.
+3. **Lone digits at the top of the table were misread.** OCR read `1.` as
+   `ls`, `2.` as `vē` and `3.` as `K`, so the sequence started at 4. Rows
+   above the first readable number are now numbered back from it, but only
+   when exactly that many clear rows stand there. A clear row has:
+   * a short token in the number column;
+   * a statement of three or more words;
+   * answer digits.
+
+   Each such number is flagged "item number inferred from order".
+
+Rows numbered 1–52 (before → after):
+
+| Reading | `lav` | `lav+rus+eng` | `eng` |
+|---|---|---|---|
+| `synthetic_lv_table_scan_52.pdf` (DejaVu) | 52 → 52 | 52 → 52 | 52 → 52 |
+| `synthetic_lv_table_scan_52_stix.pdf` | 0 → 52 | 26 → 52 | 50 → 52 |
+| The captured Windows pages (Times New Roman) | 46 → 52 (5 numbers inferred and flagged) | — | — |
+| The owner's SACS-LV scan (local only, counts only) | 52 → 52 | 52 → 52 | 51 → 52 |
+
+The owner's scan is rotated by about 1.7° and has rules between some rows.
+Its cleaned pages read better:
+* `lav` gives 49 printed numbers, 3 normalised and none inferred (before:
+  43, 8 and 1).
+* The legend is found on both pages.
+
+Removing the rules takes 0.1–0.3 s per page here. OCR of ruled pages got
+faster: the two DejaVu pages with `lav+rus+eng` take 6.2 s instead of 14.6 s.
+
+The journey also reads the STIX variant with the program's code and the
+bundled engine outside the program, as a diagnostic
+(`stix_table_outside_program`).
 

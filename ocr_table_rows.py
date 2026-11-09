@@ -12,7 +12,8 @@ sequence. This module works from Tesseract word boxes instead
 2. **Columns.** Lines that start with a clean number (``12.``) followed by a
    word give the number column; the left edges of those words give the
    statement column (fitted against the page height, so rotation does not
-   matter). A number followed by its text at an ordinary word gap
+   matter; a Theil-Sen fit, so a legend line read as ``4 bieži`` or a
+   reference ``1. Author`` cannot tilt it). A number followed by its text at an ordinary word gap
    (``12. Text``) is NOT a column: such pages keep the line parser. A line
    starts in the statement column when its first word is within 0.6 line
    heights of it; a line with a plain number (quotes and ticks stripped)
@@ -37,9 +38,12 @@ sequence. This module works from Tesseract word boxes instead
    the next row contradicts is refused. A row whose number is unreadable
    or partial (``_4.`` for 49) gets the expected number when the next row
    reads the number after it, or when its statement and answer digits are
-   in place. Every normalised or inferred number is flagged "check this
-   number" — never silently accepted. Rows without answer digits count as
-   long as their number fits the sequence.
+   in place. Rows above the table's first readable number (OCR misreads a
+   lone ``1.`` as ``ls``) are numbered back from it only when exactly that
+   many clear rows stand there: a short number-column token, a statement of
+   three or more words, answer digits. Every normalised or inferred number
+   is flagged "check this number" — never silently accepted. Rows without
+   answer digits count as long as their number fits the sequence.
 5. **Continuations.** A line without a number whose text starts in the
    statement column, directly under a row, is appended to that row.
 6. **Legend.** Lines such as ``1- …`` to ``5- …`` (also when repeated at
@@ -236,6 +240,22 @@ def _fit(points) -> tuple[float, float]:
     return mx - b * my, b
 
 
+def _robust_fit(points) -> tuple[float, float]:
+    """x = a + b * y that a few far-off points cannot pull (Theil-Sen).
+
+    The slope is the median of the pairwise slopes, the offset the median
+    residual. A legend line read as ``4 bieži`` or a reference ``1. Author``
+    below the table then stays an outlier instead of tilting the column.
+    """
+    points = list(points)
+    slopes = [(x2 - x1) / (y2 - y1) for i, (y1, x1) in enumerate(points)
+              for y2, x2 in points[i + 1:] if abs(y2 - y1) > 1e-6]
+    if not slopes:
+        return _fit(points)
+    b = median(slopes)
+    return median(x - b * y for y, x in points), b
+
+
 def read_number(text: str, expected: int | None) -> tuple[int, str] | None:
     """``(number, "printed" | "normalised")`` of a number-column token, or None.
 
@@ -352,7 +372,7 @@ def _geometry(page: OCRPage, lines) -> PageGeometry | None:
     line_height = heights[len(heights) // 2]
     unit_x = line_height * page.pixel_height / max(page.pixel_width, 1)
     points = [(_cy(line.box), words[1].box[0]) for line, words in starts]
-    a, b = _fit(points)
+    a, b = _robust_fit(points)
     inliers = [s for s, (y, x) in zip(starts, points) if abs(x - (a + b * y)) <= 0.012]
     if len(inliers) < max(MIN_ROWS, 0.6 * len(starts)):
         return None
@@ -514,8 +534,74 @@ class _Sequence:
         return strict is not None and strict <= value
 
     def run(self):
-        kinds = [self.classify(i, parts) for i, parts in enumerate(self.entries)]
-        return kinds, self.rows
+        self.kinds: list[str] = []
+        for i, parts in enumerate(self.entries):
+            self.kinds.append(self.classify(i, parts))
+        return self.kinds, self.rows
+
+    def backfill(self, i: int, value: int) -> None:
+        """Rows above the table's first readable number, numbered back from it.
+
+        OCR misreads a lone digit most of all (``1.`` as ``ls``), so the top
+        rows of a table can lose their numbers while ``4.`` reads. When
+        exactly ``value - 1`` rows stand directly above that row on its page,
+        each with a short token in the number column, a statement of three
+        or more words in the statement column and answer digits on the
+        right, they are rows 1 … value - 1: inferred from the order and
+        flagged for checking. Any other line between them (a legend, an
+        instruction, a short header) or another count leaves them as text.
+        """
+        first = self.entries[i]
+        geo = self.geometries[first.page]
+        if geo.answer_floor is None or value < 2:
+            return
+        found: list[list[int]] = []          # bottom-up: [row, its continuations…]
+        pending: list[int] = []
+        for j in range(i - 1, -1, -1):
+            parts = self.entries[j]
+            if parts.page != first.page or len(found) >= value:
+                break
+            if self.kinds[j] == "noise":
+                continue
+            words = [w for w in parts.statement if _letters(w.text) >= 1]
+            statement_text = " ".join(w.text for w in parts.statement)
+            if (parts.aligned and parts.real and parts.texty and parts.has_answers
+                    and parts.number and len(parts.number_text) <= 4 and len(words) >= 3
+                    and _strict(parts) is None and not is_reference_line(statement_text)):
+                below = [self.entries[k].line for k in pending]
+                tops = [parts.line.box[3], *(line.box[3] for line in reversed(below))]
+                if any(line.box[1] - top > 1.2 * geo.line_height
+                       for line, top in zip(reversed(below), tops)):
+                    return
+                found.append([j, *reversed(pending)])
+                pending = []
+            elif parts.aligned and parts.texty and not parts.has_answers and not parts.number:
+                pending.append(j)      # a wrapped statement line of the row above
+            else:
+                break
+        if pending or len(found) != value - 1:
+            return
+        rows = []
+        for number, (j, *continuations) in enumerate(reversed(found), start=1):
+            parts = self.entries[j]
+            row = {
+                "page": parts.page, "number": number, "source": "inferred",
+                "number_text": parts.number_text, "lines": [parts.line],
+                "number_words": list(parts.number), "statement": list(parts.statement),
+                "answers": list(parts.answers), "group": self.current["group"],
+                "bottom": parts.line.box[3],
+            }
+            self.kinds[j] = "row"
+            for k in continuations:
+                more = self.entries[k]
+                row["lines"].append(more.line)
+                row["number_words"].extend(more.number)
+                row["statement"].extend(more.statement)
+                row["answers"].extend(more.answers)
+                row["bottom"] = more.line.box[3]
+                self.kinds[k] = "continuation"
+            rows.append(row)
+        self.rows[-1:-1] = rows
 
     def start(self, parts: _Parts, number: int, source: str, text: str, new_group: bool) -> str:
         if new_group:
@@ -543,7 +629,9 @@ class _Sequence:
                          or bool(_NUMBER.fullmatch(text.strip()).group(2)))
                 if not self.started:
                     if style and self.confirmed(i, value):
-                        return self.start(parts, value, source, text, True)
+                        kind = self.start(parts, value, source, text, True)
+                        self.backfill(i, value)
+                        return kind
                 elif value == 1 and expected > 1:
                     if style and self.confirmed(i, 1) and (
                             parts.has_answers or geo.answer_floor is None):
