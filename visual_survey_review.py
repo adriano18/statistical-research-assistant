@@ -356,10 +356,17 @@ def recognize_page_layout(
     dpi: float | None = None, rotation: int = 0, timeout: int = 180,
     cancel: threading.Event | None = None,
 ) -> OCRPage:
-    """Local Tesseract TSV: words with boxes and raw confidence."""
+    """Local Tesseract TSV: words with boxes and raw confidence.
+
+    Table rules are whitened first (``ocr_rules``): read as one block, a rule
+    and the row touching it can make Tesseract drop that row's text. Word
+    boxes keep the coordinates of ``png``, which stays the page shown.
+    """
+    from ocr_rules import without_ruling_lines
+
     _check_ocr_input(png, language)
     tsv = _run_ocr(
-        png, language,
+        without_ruling_lines(png, dpi=dpi), language,
         ["-c", "tessedit_create_tsv=1", "-c", "tessedit_create_txt=0"],
         timeout=timeout, cancel=cancel, dpi=dpi,
     )
