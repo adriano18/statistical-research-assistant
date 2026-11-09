@@ -1888,10 +1888,12 @@ def journey_stage36_charts(gui: Gui, work: Path, journey: Journey) -> None:
         click_chip(gui, T("goal.compare"))
         gui.choose(T("role.group"), option_label("UCLA_Level", "ordinal"),
                    options=stage36_options())
-        gui.wait_text("fewer than five values", timeout=20)    # explained before Run (D9)
         gui.click(T("pick.all_scale", count=10), control_type="Button")
         gui.check(option_label("Age", "scale"), False)
         gui.check(option_label("UCLA", "scale"), False)
+        # The recommendation (which needs the outcomes too) explains the small
+        # groups before Run (D9).
+        gui.wait_text("fewer than five values", timeout=20)
         # The method's own confirmations (engine wording, never pre-ticked).
         gui.check("I confirm that the two groups contain independent observations")
         gui.check("I reviewed the outcome distributions, outliers and group sizes")
