@@ -353,7 +353,7 @@ def recognize_page(
 
 def recognize_page_layout(
     png: bytes, language: str = "eng", *, page_number: int = 1,
-    dpi: float | None = None, rotation: int = 0, timeout: int = 90,
+    dpi: float | None = None, rotation: int = 0, timeout: int = 180,
     cancel: threading.Event | None = None,
 ) -> OCRPage:
     """Local Tesseract TSV: words with boxes and raw confidence."""

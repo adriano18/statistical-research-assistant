@@ -340,3 +340,27 @@ and 6). The engine modules were not changed.
   On macOS, Option+↑/↓ inside the wording field also moves the caret.
 * Forms up to 150 items are listed whole (the 120-item journey is
   unchanged).
+
+## Local OCR speed on the packaged Windows program (36.7)
+
+The first packaged-EXE run of `import-scan-lv` (run 42656712671) failed:
+both pages of the synthetic Latvian table scan stopped at the per-page time
+limit ("Local OCR exceeded its time limit"), which the status line explained
+with the language kept. The same pages take 2.7–3.6 s each here (Tesseract
+5.3.4, Linux); in the same Windows run the bundled engine (5.5.4) needed
+about 15 times as long as here for the 30-item questionnaire page. Two
+changes:
+
+* The OCR process runs with one OpenMP thread (`OMP_THREAD_LIMIT=1` unless
+  the researcher set it): here both table pages take 5.8 s with one thread,
+  6.1 s with two and 6.4 s with four, and OpenMP threads that spin while they
+  wait are a known cause of slow Tesseract runs on Windows.
+* The per-page limit of the layout OCR is 180 s (was 90 s). It is a safety
+  limit for an engine that hangs, not a budget: progress and Cancel are shown
+  for every page.
+
+The journey now records the engine's own time for page 1 outside the
+program (`direct_ocr_page_1_lav`) and the time in the program
+(`ocr_in_program_seconds`), so the Windows numbers are measured, not
+assumed.
+

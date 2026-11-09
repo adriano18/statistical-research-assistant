@@ -224,6 +224,27 @@ class ItemDiagnosticsWorkspaceTests(unittest.TestCase):
         self.assertEqual(wm.role_problems(wm.METHODS["factor"], roles, ws.app.session), [])
 
 
+class ScenarioTests(unittest.TestCase):
+    def test_the_browser_reports_scenario_still_reports_two_results(self):
+        """tools/workspace_scenarios.py "reports" (the browser state checks
+        type into its title field): its scale analysis must really run now
+        that the guided scale question recommends item diagnostics."""
+        from workspace_harness import Workspace
+
+        sys.path.insert(0, str(ROOT / "tools"))
+        from workspace_scenarios import apply
+
+        ws = Workspace(1440)
+        self.addCleanup(ws.close)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ws.run(apply(ws.app, "reports"))
+        s = ws.app.session
+        self.assertEqual(len(s.report_entries()), 2)
+        self.assertEqual(s.results[-1].method, "item_diagnostics")
+        self.assertTrue(ws.find("reports-study-title"))
+
+
 class GroupsUxTests(unittest.TestCase):
     def test_create_groups_from_a_scale_in_at_most_five_interactions(self):
         """UX audit row: scale, rule, preview, create — target ≤ 5."""
