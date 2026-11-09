@@ -1842,10 +1842,12 @@ def journey_stage36_tasks(gui: Gui, work: Path, journey: Journey) -> None:
     with journey.step("each research step opens its own step (D1)"):
         gui.click(regex=r"^5\. " + re.escape(T("journey.method")) + CHIP_END,
                   control_type=("Button", "Text", "Group", "Custom"))
-        gui.find(T("step.method"), timeout=15)        # scrolled into view
+        # The application scrolls to the step itself: found without the
+        # driver scrolling (scroll=False), as a researcher would see it.
+        gui.find(T("step.method"), timeout=15, scroll=False)
         gui.click(regex=r"^3\. " + re.escape(T("journey.variables")) + CHIP_END,
                   control_type=("Button", "Text", "Group", "Custom"))
-        gui.find(option_label("UCLA_Level", "ordinal"), timeout=15)   # the dictionary
+        gui.find(T("data.dictionary"), timeout=15, scroll=False)      # the dictionary
     with journey.step("restart: the task and its result come back"):
         gui.stop()
         gui.start()
