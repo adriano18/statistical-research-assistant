@@ -97,7 +97,8 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 - [ ] Manually smoke-test Windows desktop at 100%/125%/150% scaling, full LV/RU labels, screenshot regression and native MacOS renderer
 - [ ] Implement secure local .sra project save/open, project list, backup/restore and database maintenance screen (beyond current survey SQLite view)
 - [ ] Add scanned-document OCR with explicit local processing and review; preserve complex Word tables/rating scale matrices and branching rules where safely parsable
-- [ ] Define opt-in AI architecture: deterministic method selection, strict calculation facts, citations, per-project consent and configurable **local-only** model vs optional external provider
+- [x] Define opt-in AI architecture: deterministic method selection, strict calculation facts, per-project consent and an optional external provider with the researcher's own key (Stage 35–36.6; `docs/STAGE36_AI_ASSISTANT.md`)
+- [ ] A configurable **local-only** model; citations for literature the assistant mentions
 - [ ] Build Windows packaged .exe/installer and signed-release QA; assess native macOS distribution separately
 
 ## Stage 28 — end-to-end reliability and research journey
@@ -305,8 +306,8 @@ A **local-first, reproducible statistical workbench** for psychology and marketi
 
 - [ ] Deterministic method advisor: research question, variables, measurement scales, independent/paired design, outcomes, N and missing data
 - [ ] Explain assumptions, alternatives, effect sizes and appropriate caution
-- [ ] **Optional AI** after calculation: interpret a strictly structured summary; never fabricate p-values, results or references
-- [ ] User approval before sharing any research data with external AI; local-only remains default
+- [x] **Optional AI** after calculation: interpret a strictly structured summary; never fabricate p-values, results or references (Stage 36.6: the engine's text only, numbers not in it flagged as unverified)
+- [x] User approval before sharing any research data with external AI (Stage 36.6: an exact preview and one click per request, per-project permissions, data rows only after an anonymity statement); nothing is sent until a provider is connected
 - [ ] Track the exact analysis, assumptions and code version backing every explanation
 
 ## 5. Languages and product interface
