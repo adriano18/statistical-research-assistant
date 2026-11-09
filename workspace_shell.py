@@ -510,6 +510,17 @@ class WorkspaceApp:
         except Exception:  # pragma: no cover - no page on screen
             pass
 
+    def reveal(self, key: str) -> None:
+        """Scroll the page on screen to the control with ``ft.ScrollKey(key)``
+        (an item reached with the keyboard, or restored after a restart)."""
+        column = self.page_control
+        if column is None:
+            return
+        try:
+            self.page.run_task(column.scroll_to, scroll_key=key, duration=150)
+        except Exception:  # pragma: no cover - no page on screen
+            pass
+
     def _render_chrome(self):
         self.sidebar_host.content = self._sidebar()
         self.context_host.content = self._context_bar()
@@ -810,6 +821,8 @@ class WorkspaceApp:
             self.toggle_theme()
         elif e.ctrl and key == "ENTER" and self.route == "analyze":
             await self.pages["analyze"].run_current()
+        elif self.route == "import" and self.pages["import"].shortcut(e):
+            pass        # items step: F8 / Shift+F8, F9, Alt+↓ / Alt+↑ (never text keys)
         elif key == "F1":
             self.navigate("help")
 
