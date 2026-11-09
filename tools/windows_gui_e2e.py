@@ -2133,10 +2133,13 @@ def journey_stage36_groups(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text("UCLA_Level already groups UCLA", timeout=20)
     with journey.step("three quantile groups previewed, then created"):
         gui.wait_text(T("groups.counts", valid=55, missing=0, outside=0), timeout=20)
-        for size in expected:
-            gui.find(str(size), timeout=10)
+        gui.shot("groups previewed")
         gui.click(T("groups.create"), control_type="Button")
         gui.wait_text("UCLA itself is unchanged", timeout=30)
+        # Windows exposes a preview row as one element, not a cell per number:
+        # the group sizes are read from the announcement ("Q1 [37, 46]: n = 18").
+        for size in expected:
+            gui.wait_text(f": n = {size}", timeout=10)
         gui.shot("groups created")
     title = T("task.title_compare", group="UCLA_groups", count=8)
     with journey.step("the eight scales by the new groups: one Kruskal–Wallis batch"):
