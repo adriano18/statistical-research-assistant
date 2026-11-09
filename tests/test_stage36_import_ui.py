@@ -510,7 +510,7 @@ class AutosaveFlow(Base):
 
 class AutosaveTests(AutosaveFlow):
     def test_every_change_is_saved_atomically_beside_the_surveys(self):
-        ws, page = self.ws, self.page
+        ws = self.ws
         self.open(self.docx)
         self.assertEqual(self.sessions(), [], "opening alone is not a review")
         ws.click("imp-instrument-use-1")
