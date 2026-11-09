@@ -78,7 +78,13 @@ Tesseract word boxes (normalised 0..1 page coordinates):
    number followed by its text at an ordinary word gap is **not** a column
    — such pages (the inline scan) keep the line parser. Alignment is
    measured on the first word of a line; tiny low-scored specks before it
-   (≤ 2 characters, no digit, score < 40) are ignored;
+   (≤ 2 characters, no digit, score < 40) are ignored. A line is aligned
+   within 0.6 line heights (as an x fraction, `unit_x`) of the column; a
+   line with a plain number (quotes and ticks stripped) left of its first
+   word and answer digits on the right may be up to 1.2 `unit_x` off,
+   because OCR word boxes sometimes start early. Lines without such a
+   number keep the strict test, so continuation and noise decisions are
+   unchanged;
 3. **answer tokens** come off the END of a line only: the trailing run of
    tokens right of the answer floor (a little left of the earliest answer
    runs of the page) made of digits and the glyphs OCR makes of them —
@@ -139,8 +145,17 @@ Every one of these tests also rejects an item number used twice. The first
 into a second item 5, and — checked before the duplicate test was added —
 it also misses the split or speck-preceded number, the look-alike readings
 and the answer-token stripping (`test_2` split/speck, `test_3`, `test_5`).
-Whether the real scan now gives 52 can only be checked in the private
-setting.
+
+**Round 3.** The private check after round 2 (see below) traced the one
+lost row from the structure alone. The page fitted x = 0.2070 − 0.0043·y
+with `unit_x` = 0.0319. Item 17's first word box starts 0.0201
+(0.63 `unit_x`) left of the column; its number `"17.` is at x 0.149 and
+its answer digits at 0.713–0.956. `LooseFirstWordTests` rebuilds that
+geometry with invented words. It fails on 132082c (17 lost, 18 taken as a
+jump) and passes with the 1.2 `unit_x` tolerance for numbered rows. The
+same offset on a line without a number still makes neither a row nor a
+continuation. Whether the real scan now gives 52 can only be checked in
+the private setting.
 
 **Honest counts.** Every review now ends its document notes with what was
 found next to what the document states, e.g. "Found 120 candidate items in
@@ -164,8 +179,9 @@ column: with the geometry path it gives the same 30 items, the same 30
 prompts and the same header scheme as the text-only path.
 
 Full suite on the Stage 36 stack (`claude/stage36-import`, on top of 36.1):
-`python -m unittest discover -s tests -q` → 847 tests OK with 6 skips and
-1 expected failure (D5, fixed by 36.3; D1–D4, D6–D10 are fixed; 36.0 had 10).
+`python -m unittest discover -s tests -q` → 850 tests OK with 6 skips and
+1 expected failure with the round-3 change (847 before its 3 tests; D5,
+fixed by 36.3; D1–D4, D6–D10 are fixed; 36.0 had 10).
 
 **Private check after round 2 (counts only).** The owner's real scan gives
 51 of 52 (first 36.5 version: 45; 36.0: 16); 3 prompts still end in
