@@ -25,13 +25,13 @@ test next to the baseline one), and the final numbers are collected in
 | Create groups from a scale (UCLA) | not available (only an existing column can be used) | scale, rule, preview, create: **≤ 5** | derived categorical variable with its rule and history | user thresholds are never presented as clinical norms; original scores stay unchanged |
 | Two-category group for a 3–8 group test | technical refusal after Run | explanation and the two-group alternative **before** Run | — | — |
 | Reliability with total scores only | ω/α offered on totals (fictitious) | explanation: item responses are needed | — | no coefficient is ever computed from totals |
-| Change a chart type | not possible | **1–2** in Chart Studio, no re-run | figures are drawn from the stored result data | chart settings never change the statistics |
-| Copy a chart to the clipboard | not possible (text copy only) | **1** (real image on the clipboard) | — | the clipboard is checked to hold an image, not a path |
+| Change a chart type | not possible | **1–2** in Chart Studio, no re-run → **2 interactions** (36.4: Edit chart, choose the type; no analysis runs) | figures are drawn from the stored result data | chart settings never change the statistics (every analysis runner fails the test if it is called) |
+| Copy a chart to the clipboard | not possible (text copy only) | **1** (real image on the clipboard) → **1 interaction** (36.4), from Chart Studio or from the result's figure | — | the clipboard is checked to hold an image, not a path: a bitmap (CF_DIB, plus PNG) of the announced size, read back in the EXE journey `stage36-charts` |
 | Word report from 8 results | **19** interactions + Save dialog | **2** (add the task's results, export) + Save dialog | — | results from different data versions are labelled, never merged silently |
 | Review a 60-item table form without item numbers | blocked ("no numbered questions") | choose the form, review, confirm | both forms detected, each with its own options | wording and scoring keys are never approved automatically |
 | Import a scanned 52-item table (OCR) | 16 of 52 items found; 36 must be typed in by hand | 52 candidates, each linked to its page region | — | OCR confidence is shown as character confidence only; every item is reviewed |
 | Move between research steps | **Variables** opens Data; **Method** opens Design | each step opens itself (1 click) → **done** (36.1): every step opens and marks itself; the page scrolls to it | — | — |
-| Resume after a restart | project and results return; selections and settings do not | tasks, selections and chart settings return → **tasks, selections and the structured result return** (36.1, project format 4); chart settings follow with 36.4 | — | — |
+| Resume after a restart | project and results return; selections and settings do not | tasks, selections and chart settings return → **tasks, selections and the structured result return** (36.1, project format 4); **chart views and the report view return** (36.4, format 5), drawn without the dataset | — | — |
 
 ## Principles applied (spec §2)
 
@@ -54,3 +54,13 @@ count is 8 because a dropdown counts twice, Age has to be cleared from
 "All quantitative", and the researcher chose Spearman over the recommended
 Pearson. Selecting a variable range in one gesture would remove one more
 interaction; Flet's checkboxes give no modifier keys, so it is not offered.
+
+## Measured after 36.4
+
+`test_change_the_chart_type_without_running_the_analysis` and
+`test_copy_a_chart_as_an_image` measure the two chart workflows on the same
+synthetic data: from the task's result, **Edit chart** and one chart type
+(2 interactions); in Chart Studio, **Copy image** (1 interaction). Chart
+types are chips, not a dropdown, so a change of type is one interaction.
+The EXE journey `stage36-charts` performs the same steps on the packaged
+program and reads the bitmap back from the Windows clipboard.

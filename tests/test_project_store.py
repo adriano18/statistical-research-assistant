@@ -541,6 +541,7 @@ class MigrationTests(StoreCase):
             dataset = project.import_dataset(EXAMPLES / "sample_scale.csv", mode="copy")
         database = info.path / ps.DB_NAME
         with closing(sqlite3.connect(database)) as db, db:   # back to what format 1 wrote
+            db.execute("ALTER TABLE runs DROP COLUMN charts")   # format 5 (Stage 36.4)
             db.execute("DROP TABLE research_tasks")          # format 4 (Stage 36)
             db.execute("ALTER TABLE runs DROP COLUMN task_id")
             db.execute("ALTER TABLE runs DROP COLUMN structured")
@@ -565,6 +566,7 @@ class MigrationTests(StoreCase):
             project.add_question("Kept?")
         database = info.path / ps.DB_NAME
         with closing(sqlite3.connect(database)) as db, db:
+            db.execute("ALTER TABLE runs DROP COLUMN charts")   # format 5 (Stage 36.4)
             db.execute("DROP TABLE research_tasks")          # format 4 (Stage 36)
             db.execute("ALTER TABLE runs DROP COLUMN task_id")
             db.execute("ALTER TABLE runs DROP COLUMN structured")
@@ -580,6 +582,7 @@ class MigrationTests(StoreCase):
         info = self.store.create("Interrupted")
         database = info.path / ps.DB_NAME
         with closing(sqlite3.connect(database)) as db, db:
+            db.execute("ALTER TABLE runs DROP COLUMN charts")   # format 5 (Stage 36.4)
             db.execute("DROP TABLE research_tasks")          # format 4 (Stage 36)
             db.execute("ALTER TABLE runs DROP COLUMN task_id")
             db.execute("ALTER TABLE runs DROP COLUMN structured")
@@ -613,6 +616,7 @@ class ResearchTaskTests(StoreCase):
             project.add_question("Kept?")
         database = info.path / ps.DB_NAME
         with closing(sqlite3.connect(database)) as db, db:
+            db.execute("ALTER TABLE runs DROP COLUMN charts")   # format 5 (Stage 36.4)
             db.execute("DROP TABLE research_tasks")
             db.execute("ALTER TABLE runs DROP COLUMN task_id")
             db.execute("ALTER TABLE runs DROP COLUMN structured")
@@ -657,6 +661,74 @@ class ResearchTaskTests(StoreCase):
             self.assertIsNone(project.run(record.id).task_id, "results stay, unlinked")
             with self.assertRaises(ps.ProjectError):
                 project.save_task(task_id=None, title=" ", goal="relate", selection={})
+
+
+class ChartStateTests(StoreCase):
+    """Stage 36.4 (format 5): a result's chart views survive a restart."""
+
+    def test_a_format_4_project_gains_chart_storage_and_keeps_its_runs(self):
+        import pandas as pd
+
+        from analysis_runs import run_batch_correlation
+
+        info = self.store.create("Format four")
+        frame = pd.read_csv(EXAMPLES / "sample_scale.csv")
+        items = [c for c in frame.columns if c.startswith("stress_q")][:3]
+        with self.store.open(info.id) as project:
+            dataset = project.import_dataset(EXAMPLES / "sample_scale.csv", mode="copy")
+            run = run_batch_correlation(frame, items[0], items[1:], "spearman")
+            record = project.record_run(run, method="batch_correlation", dataset_id=dataset.id,
+                                        roles={"x": items[0], "ys": items[1:]},
+                                        options={"method": "spearman"}, confirms={})
+        database = info.path / ps.DB_NAME
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute("ALTER TABLE runs DROP COLUMN charts")
+            db.execute("PRAGMA user_version = 4")
+        with self.restart().open(info.id) as project:
+            saved = project.run(record.id)
+            self.assertIsNone(saved.charts)
+            self.assertEqual(saved.report, run.report, "the run is kept as it was")
+        self.assertEqual(len(list((self.store.root / ps.BACKUPS).glob(f"{info.id}-v4-*.sqlite3"))), 1)
+
+    def test_chart_views_round_trip_without_changing_the_numbers(self):
+        import pandas as pd
+
+        import chart_studio as cs
+        from analysis_runs import run_batch_correlation
+        from chart_views import ChartState, create_state
+        from result_store import from_json
+
+        info = self.store.create("Charts")
+        frame = pd.read_csv(EXAMPLES / "sample_scale.csv")
+        items = [c for c in frame.columns if c.startswith("stress_q")][:4]
+        with self.store.open(info.id) as project:
+            dataset = project.import_dataset(EXAMPLES / "sample_scale.csv", mode="copy")
+            run = run_batch_correlation(frame, items[0], items[1:], "spearman")
+            record = project.record_run(run, method="batch_correlation", dataset_id=dataset.id,
+                                        roles={"x": items[0], "ys": items[1:]},
+                                        options={"method": "spearman"}, confirms={})
+            state = create_state(method="batch_correlation", roles={"x": items[0], "ys": items[1:]},
+                                 options={"method": "spearman"}, frame=frame,
+                                 level=lambda name: "ordinal")
+            self.assertEqual(state.view.kind, "heatmap")
+            state.add_view()
+            state.update(cs.ChartSpec(kind="multi_boxplot", variables=tuple(items),
+                                      multibox_layout="panels", title="Fictional items"))
+            state.report = 1
+            project.set_run_charts(record.id, state.to_dict())
+            with self.assertRaises(ps.ProjectError):
+                project.set_run_charts("missing", state.to_dict())
+        with self.restart().open(info.id) as project:
+            saved = project.run(record.id)
+            restored = ChartState.from_dict(saved.charts)
+            self.assertEqual([v.kind for v in restored.views], ["heatmap", "multi_boxplot"])
+            self.assertEqual(restored.views[1].title, "Fictional items")
+            self.assertEqual((restored.active, restored.report), (1, 1))
+            self.assertEqual(restored.render("png"), state.render("png"),
+                             "the same view is drawn from the stored values")
+            self.assertEqual(from_json(saved.structured), run.result, "numbers unchanged")
+            project.set_run_charts(record.id, None)
+            self.assertIsNone(project.run(record.id).charts)
 
 
 class ResearchPlanTests(StoreCase):

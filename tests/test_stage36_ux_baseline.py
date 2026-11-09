@@ -155,6 +155,54 @@ class Stage36Workflows(unittest.TestCase):
         self.assertIn("permutation", entry.run.result.p_method)
         self.assertEqual(ws.total, 8)
 
+    def test_change_the_chart_type_without_running_the_analysis(self):
+        """Spec §15: changing the chart type runs no analysis; target 1–2
+        interactions from the result (36.4: open Chart Studio, choose the type)."""
+        from unittest import mock
+
+        import analysis_runs
+
+        ws = prepared_workspace()
+        self.addCleanup(ws.close)
+        eight_correlations(ws)
+        entry = ws.app.session.results[0]
+        ws.counts.clear()
+        runners = [mock.patch.object(analysis_runs, name, side_effect=AssertionError(name))
+                   for name in dir(analysis_runs) if name.startswith("run_")]
+        for runner in runners:
+            runner.start()
+        try:
+            ws.click("task-edit-chart")
+            ws.click("chart-kind-multi_boxplot")
+        finally:
+            for runner in runners:
+                runner.stop()
+        self.assertEqual(entry.charts.view.kind, "multi_boxplot")
+        self.assertEqual(len(ws.app.session.results), 1, "no analysis ran")
+        self.assertEqual(ws.total, 2)
+        print(f"\n[ux] change the chart type: {ws.total} interactions, no re-run "
+              "(before Stage 36: not possible)")
+
+    def test_copy_a_chart_as_an_image(self):
+        """Spec §15: one explicit action with a verifiable result; the
+        clipboard receives an image (36.4)."""
+        from unittest import mock
+
+        import image_clipboard
+
+        ws = prepared_workspace()
+        self.addCleanup(ws.close)
+        eight_correlations(ws)
+        ws.click("task-edit-chart")
+        ws.counts.clear()
+        with mock.patch.object(image_clipboard, "copy_png", return_value=image_clipboard
+                               .ClipboardOutcome(True, "windows")) as copy:
+            ws.click("chart-copy")
+        self.assertTrue(copy.call_args.args[0].startswith(b"\x89PNG"))
+        self.assertTrue(ws.has_text("Copied as an image"))
+        self.assertEqual(ws.total, 1)
+        print(f"\n[ux] copy a chart as an image: {ws.total} interaction (before: not possible)")
+
     def test_tasks_and_results_return_after_a_restart(self):
         """Spec §3/§15: the project, its tasks and their results come back."""
         import tempfile

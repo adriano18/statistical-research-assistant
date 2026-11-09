@@ -52,7 +52,7 @@ Further audit observations, handled in the listed sub-stage:
 
 - An identifier column of text codes (`fictional_001`, …) was suggested as "unknown", not "identifier": one more confirmation for every dataset (fixed in 36.1).
 - Spearman ρ has no confidence interval; no Kendall τ (36.2).
-- No chart can be changed without re-running the analysis; no SVG/PDF export and no image clipboard (36.4).
+- No chart can be changed without re-running the analysis; no SVG/PDF export and no image clipboard (fixed in 36.4: Chart Studio, project format 5).
 - The importer finds no response options for the table forms (both DOCX forms and both scans: zero response schemes) (36.5).
 
 ## Fixtures

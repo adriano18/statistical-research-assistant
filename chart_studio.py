@@ -64,7 +64,8 @@ __all__ = [
     "Palette", "PALETTES", "DEFAULT_PALETTE", "ChartSpec", "CorrelationTable",
     "ChartData", "prepare", "correlation_chart_data", "chart_warnings",
     "figure_count", "describe", "build_figure", "render", "render_all",
-    "render_pdf_pages", "resolved_font",
+    "render_pdf_pages", "resolved_font", "snapshot", "derive", "figure_title",
+    "figure_note", "available_kinds", "MAX_STORED_VARIABLES",
 ]
 
 
@@ -139,7 +140,7 @@ PRESENTATION_FIELDS = frozenset({
     "title", "x_label", "y_label", "legend", "palette", "font_family",
     "font_size", "width_in", "height_in", "dpi", "show_points", "show_outliers",
     "grid", "x_limits", "y_limits", "number_format", "apa_style", "bins",
-    "bandwidth", "group_order", "note", "figure_number",
+    "bandwidth", "group_order", "note", "figure_number", "caption_in_image",
 })
 
 RANGE_RATIO_LIMIT = 3.0      # one range > 3 times another: not comparable on one axis
@@ -377,7 +378,9 @@ class ChartSpec:
     line chart's x; ``group_order`` orders groups on screen. ``units`` maps
     variables to declared units (used for the comparability warning and axis
     labels). ``note`` replaces the automatic APA note; ``figure_number`` adds
-    "Figure N" above an APA-style title.
+    "Figure N" above an APA-style title. ``caption_in_image`` draws the title
+    and note inside the image; a document that sets its own caption and note
+    (the Word report) turns it off.
     """
 
     kind: str = "histogram"
@@ -413,6 +416,7 @@ class ChartSpec:
     units: tuple[tuple[str, str], ...] = ()
     note: str = ""
     figure_number: int | None = None
+    caption_in_image: bool = True
 
     def __post_init__(self) -> None:
         def put(name: str, value: Any) -> None:
@@ -442,7 +446,8 @@ class ChartSpec:
             value = getattr(self, name)
             put(name, None if value is None else _number(value, f"{label} (inches)", 2, 40))
         put("dpi", _integer(self.dpi, "Resolution (dpi)", 50, 600))
-        for name in ("show_points", "show_outliers", "grid", "apa_style", "standardize"):
+        for name in ("show_points", "show_outliers", "grid", "apa_style", "standardize",
+                     "caption_in_image"):
             put(name, _flag(getattr(self, name), name.replace("_", " ").capitalize()))
         put("x_limits", _limits(self.x_limits, "X-axis limits"))
         put("y_limits", _limits(self.y_limits, "Y-axis limits"))
@@ -1019,6 +1024,149 @@ def correlation_chart_data(names: Sequence[str], coefficients: Any,
     data = ChartData(variables=table.names, correlation=table)
     spec = ChartSpec(kind="heatmap", variables=table.names, correlation_method=table.method)
     return replace(data, warnings=chart_warnings(spec, data))
+
+
+MAX_STORED_VARIABLES = 60
+
+
+def snapshot(frame: pd.DataFrame, variables: Sequence[str],
+             group: str | None = None) -> ChartData:
+    """The values a result's charts are drawn from, taken once from ``frame``.
+
+    Stores the numeric ``variables`` (aligned by row, ``None`` for missing)
+    and the ``group`` labels, so that :func:`derive` can draw any view of
+    them later without the dataset. Reads only those columns and never
+    modifies the DataFrame. A single view still plots at most
+    :data:`MAX_VARIABLES` of them.
+    """
+    if not isinstance(frame, pd.DataFrame):
+        raise TypeError("snapshot() needs a pandas DataFrame.")
+    names = _names(variables, "Variables")
+    if not names or len(set(names)) != len(names):
+        raise ValueError("Choose one or more different variables.")
+    if len(names) > MAX_STORED_VARIABLES:
+        raise ValueError(f"A result stores at most {MAX_STORED_VARIABLES} variables "
+                         "for its charts.")
+    if group is not None:
+        group = _name(group, "Group variable")
+        if group in names:
+            raise ValueError("The group variable cannot also be a plotted variable.")
+    needed = [*names, *([group] if group else [])]
+    absent = [name for name in needed if name not in frame.columns]
+    if absent:
+        raise ValueError(f"Not in the dataset: {', '.join(absent)}.")
+    repeated = [name for name in needed if int((frame.columns == name).sum()) > 1]
+    if repeated:
+        raise ValueError(f"Several dataset columns are named {', '.join(repeated)}; "
+                         "rename them first.")
+    with _quiet():
+        columns = [_numeric_column(frame[name], name) for name in names]
+        group_values: tuple[str | None, ...] = ()
+        levels: tuple[str, ...] = ()
+        if group:
+            group_values, levels = _group_column(frame[group], group)
+    return ChartData(variables=names, values=tuple(_stored(column) for column in columns),
+                     rows=len(frame), group=group, group_values=group_values,
+                     group_levels=levels)
+
+
+def derive(spec: ChartSpec, source: ChartData) -> ChartData:
+    """ChartData for ``spec`` taken from stored chart data, without a dataset.
+
+    ``source`` holds the values a result was calculated from: several
+    variables, aligned by row, and optionally the result's group. A view may
+    plot any of those variables in any order, split them by the stored group
+    or not, and draw a correlation heatmap whose coefficients are computed
+    here from the stored values (pairwise complete, as :func:`prepare` does).
+    A line chart may use the stored group as its ordered x axis
+    (``spec.variables[0] == source.group``, no group split), in the order of
+    ``spec.x_order`` or else the stored level order.
+
+    Nothing is read from or written to a dataset and the stored values are
+    never changed, so a result's chart can be redrawn in another form after a
+    restart, without the original data file. Raises ``ValueError`` when the
+    view needs values that are not stored.
+    """
+    if not isinstance(spec, ChartSpec):
+        raise TypeError("derive() needs a ChartSpec.")
+    if not isinstance(source, ChartData):
+        raise TypeError("derive() needs stored ChartData.")
+    if not source.values:
+        raise ValueError("These chart data hold only a correlation matrix; they can be "
+                         "drawn as a heatmap only.")
+    _check_shape(spec)
+    if spec.group is not None and spec.group != source.group:
+        raise ValueError(f"'{spec.group}' is not the group stored with these values.")
+    columns: list[np.ndarray] = []
+    categories: tuple[str, ...] = ()
+    with _quiet():
+        for position, name in enumerate(spec.variables):
+            if (spec.kind == "line" and position == 0 and source.group is not None
+                    and name == source.group):
+                order = spec.x_order or source.group_levels
+                observed = {label for label in source.group_values if label is not None}
+                unknown = sorted(observed - set(order), key=_natural_key)
+                if unknown:
+                    raise ValueError(f"The level order for '{name}' does not include: "
+                                     f"{', '.join(unknown[:5])}.")
+                categories = tuple(label for label in order if label in observed)
+                place = {label: float(index) for index, label in enumerate(categories)}
+                columns.append(np.array([np.nan if label is None else place[label]
+                                         for label in source.group_values], dtype=float))
+                continue
+            if name not in source.variables:
+                raise ValueError(f"'{name}' is not stored with these values; choose one of: "
+                                 f"{', '.join(source.variables)}.")
+            columns.append(source.column(name))
+        correlation = (_correlation_table(spec.variables, columns, spec.correlation_method)
+                       if spec.kind == "heatmap" else None)
+    data = ChartData(
+        variables=spec.variables,
+        values=tuple(_stored(column) for column in columns),
+        rows=source.rows,
+        group=spec.group,
+        group_values=source.group_values if spec.group else (),
+        group_levels=source.group_levels if spec.group else (),
+        x_categories=categories,
+        correlation=correlation,
+    )
+    return replace(data, warnings=chart_warnings(spec, data))
+
+
+def available_kinds(source: ChartData, *, ordered_group: bool = False) -> tuple[str, ...]:
+    """The chart kinds :func:`derive` can draw from ``source``.
+
+    A line chart is offered only when the stored group is an ordered
+    variable (``ordered_group``, as the researcher confirmed it): connecting
+    means across unordered categories would suggest an order that does not
+    exist.
+    """
+    if not source.values:
+        return ("heatmap",) if source.correlation is not None else ()
+    count = len(source.variables)
+    kinds = ["histogram", "frequency_polygon", "boxplot", "violin", "qq"]
+    if count >= 2:
+        kinds[3:3] = ["multi_boxplot"]
+        kinds += ["scatter", "heatmap"]
+    if source.group is not None:
+        if "multi_boxplot" not in kinds:
+            kinds.insert(3, "multi_boxplot")
+        kinds.append("faceted")
+        if ordered_group:
+            kinds.append("line")
+    return tuple(kind for kind in KINDS if kind in kinds)
+
+
+def figure_title(spec: ChartSpec, index: int | None = None) -> str:
+    """The title a figure shows: the researcher's title or the automatic one."""
+    return _display_title(spec, index)
+
+
+def figure_note(spec: ChartSpec, data: ChartData, index: int | None = None) -> str:
+    """The figure note: the researcher's note or the automatic APA note."""
+    _check_compatible(spec, data)
+    with _quiet():
+        return _note_text(spec, data, index)
 
 
 # --------------------------------------------------------------------------
@@ -1943,11 +2091,13 @@ def _figure(ctx: _Context, title: str, note: str, plot_size: tuple[float, float]
     title_size = spec.font_size + 1.0
     note_size = max(6.0, spec.font_size - 1.5)
     header: list[tuple[str, str, str]] = []
-    if spec.apa_style and spec.figure_number is not None:
-        header.append((f"Figure {spec.figure_number}", "bold", "normal"))
-    for line in _wrap(title, width - 0.3, title_size):
-        header.append((line, "normal", "italic") if spec.apa_style else (line, "bold", "normal"))
-    note_lines = _wrap(note, width - 0.3, note_size) if note else []
+    if spec.caption_in_image:
+        if spec.apa_style and spec.figure_number is not None:
+            header.append((f"Figure {spec.figure_number}", "bold", "normal"))
+        for line in _wrap(title, width - 0.3, title_size):
+            header.append((line, "normal", "italic") if spec.apa_style
+                          else (line, "bold", "normal"))
+    note_lines = _wrap(note, width - 0.3, note_size) if note and spec.caption_in_image else []
     header_height = 0.18 + len(header) * title_size * _LINE_HEIGHT / 72
     note_height = (0.18 + len(note_lines) * note_size * _LINE_HEIGHT / 72) if note_lines else 0.06
     height = spec.height_in or (plot_size[1] + header_height + note_height)
