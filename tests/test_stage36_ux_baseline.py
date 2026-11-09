@@ -203,6 +203,28 @@ class Stage36Workflows(unittest.TestCase):
         self.assertEqual(ws.total, 1)
         print(f"\n[ux] copy a chart as an image: {ws.total} interaction (before: not possible)")
 
+    def test_a_word_report_from_eight_results(self):
+        """Spec §15: a Word document without copying tables by hand (36.6):
+        add the task's result (one family of 8), open Reports, export."""
+        from docx import Document
+
+        ws = prepared_workspace()
+        self.addCleanup(ws.close)
+        eight_correlations(ws)
+        ws.counts.clear()
+        ws.click("task-add-report")
+        ws.click("nav-reports")
+        ws.click("reports-export-docx")
+        document = Document(str(ws.saved[-1]))
+        text = "\n".join(p.text for p in document.paragraphs)
+        for scale in fx.SCALES:
+            self.assertTrue(any(scale in cell.text for table in document.tables
+                                for row in table.rows for cell in row.cells), scale)
+        self.assertIn("Hypothesis tests", text)
+        self.assertEqual(ws.total, 3)
+        print(f"\n[ux] Word report from 8 results: {ws.total} interactions + the Save dialog "
+              "(before Stage 36: 19)")
+
     def test_tasks_and_results_return_after_a_restart(self):
         """Spec §3/§15: the project, its tasks and their results come back."""
         import tempfile

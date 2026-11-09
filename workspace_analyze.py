@@ -1232,6 +1232,10 @@ class ReportsPage:
         self.app = app
         self.study_title = ""
         self.include_stale = False
+        from research_report import SECTIONS
+
+        self.sections: set[str] = set(SECTIONS)      # Stage 36.6: chosen sections
+        self.language: str | None = None             # report language (default: interface)
         self.opened: set[str] = set()
         self.feedback: tuple[str, str] | None = None
         self._preview: ft.Text | None = None   # updated in place while typing
@@ -1302,10 +1306,18 @@ class ReportsPage:
                 key="reports-preview", opened=self.opened,
                 subtitle=wc.caption(ui, ui.t("reports.preview_hint")), data="reports-preview")
             body = [
-                wc.text_field(ui, ui.t("reports.study_title"), self.study_title, width=520,
-                              on_change=self._set_title, data="reports-study-title"),
+                ft.Row([
+                    wc.text_field(ui, ui.t("reports.study_title"), self.study_title, width=520,
+                                  on_change=self._set_title, data="reports-study-title"),
+                    wc.dropdown(ui, ui.t("reports.language"),
+                                [("en", "English"), ("lv", "Latviešu"), ("ru", "Русский")],
+                                self.report_language(),
+                                on_select=lambda e: self._set_language(e.control.value),
+                                width=200, data="reports-language"),
+                ], wrap=True, spacing=tk.SPACE_3),
                 *gate,
                 *items,
+                self._structure(),
                 preview,
                 wc.notice(ui, ui.t("reports.export_docx_note"), "neutral"),
             ]
@@ -1314,6 +1326,78 @@ class ReportsPage:
         return app.constrained(ft.Column([header, *body, wc.caption(
             ui, session_note(app), data="reports-note")], spacing=tk.SPACE_4,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH), tk.READING_MAX_WIDTH + 240)
+
+    # ------------------------------------------------- research report (36.6)
+    def report_language(self) -> str:
+        return self.language or self.app.session.language
+
+    def _set_language(self, value: str):
+        self.language = value if value in ("en", "lv", "ru") else None
+        self.app.render()
+
+    def report_inputs(self):
+        """What the fifteen-section report is written from: saved engine
+        output and the researcher's own entries, nothing computed here."""
+        import research_report as rr
+        from project_store import library_versions
+
+        app, s = self.app, self.app.session
+        results_page = app.pages["results"]
+        tasks = {task.id: task.title for task in s.tasks}
+        infos = [rr.result_info(entry, reviewed=results_page.reviewed.get(entry.id, ()),
+                                note=results_page.notes.get(entry.id, ""),
+                                task_title=tasks.get(entry.task_id, ""))
+                 for entry in s.report_entries()]
+        inputs = rr.ReportInputs(title=self.study_title, language=self.report_language(),
+                                 question=app.research_question(), results=infos,
+                                 sections=frozenset(self.sections),
+                                 libraries=library_versions())
+        if app.projects.active:
+            project = app.projects.project
+            inputs.project = app.projects.info().title
+            plan = project.plan()
+            status = project.hypothesis_status() if plan else {}
+            inputs.hypotheses = [{**h, "standing": status.get(h.get("id"), {}).get("standing")}
+                                 for h in (plan or {}).get("plan", {}).get("hypotheses", [])]
+            inputs.questionnaires = [q["title"] for q in project.questionnaires()]
+            names = {d.id: d.name for d in project.datasets()}
+            for dataset_id, name in names.items():
+                for step in project.transformations(dataset_id):
+                    inputs.transformations.append({"dataset": name, "kind": step["kind"],
+                                                   "outputs": step["output_columns"]})
+        return inputs
+
+    def _structure(self) -> ft.Control:
+        """The fifteen sections: what each will contain, each can be left out."""
+        import research_report as rr
+
+        ui = self.app.ui
+        plan = rr.plan_report(self.report_inputs())
+        present = {section.key: len(section.items) for section in plan.sections}
+        language = self.report_language()
+        rows = []
+        for number, key in enumerate(rr.SECTIONS, start=1):
+            label = f"{number}. {rr.text(language, key)}"
+            if key == "title":
+                rows.append(wc.caption(ui, label + " · " + ui.t("reports.section_title")))
+                continue
+            state = (ui.t("reports.section_items", count=present[key]) if key in present
+                     else ui.t("reports.section_empty") if key in self.sections
+                     else ui.t("reports.section_off"))
+            rows.append(wc.checkbox(ui, f"{label} · {state}", key in self.sections,
+                                    on_change=lambda e, k=key: self._toggle_section(
+                                        k, bool(e.control.value)),
+                                    data=f"reports-section-{key}"))
+        notes = []
+        if len(plan.versions) > 1:
+            notes.append(wc.notice(ui, ui.t("reports.versions", count=len(plan.versions)),
+                                   "warning", data="reports-versions"))
+        return wc.card(ui, [wc.caption(ui, ui.t("reports.structure_hint")), *rows, *notes],
+                       title=ui.t("reports.structure"), data="reports-structure")
+
+    def _toggle_section(self, key: str, value: bool):
+        (self.sections.add if value else self.sections.discard)(key)
+        self.app.render()
 
     def _set_title(self, e):
         """The preview shows the title as it will be exported. It is updated
@@ -1350,20 +1434,19 @@ class ReportsPage:
         app = self.app
         if self._blocked():
             return
-        blocks = report_docx.blocks_from_entries(app.session.report_entries())
-        info = app.projects.info() if app.projects.active else None
-        project = info.title if info is not None else ""
-        language, title = app.session.language, self.study_title
+        import research_report as rr
+
+        inputs = self.report_inputs()
+        plan = rr.plan_report(inputs)
         version = app_identity.build_info().version
 
         def write(path):
-            document = report_docx.build_report_docx(
-                blocks, title=title, language=language, project=project, version=version,
-                allow_stale=self.include_stale)
+            document = report_docx.build_research_docx(plan, version=version)
             return report_docx.save_report_docx(path, document)
 
         outcome = await app.save_file(app.t("reports.export_docx"),
-                                      report_docx.default_file_name(title or project), "docx", write)
+                                      report_docx.default_file_name(inputs.title or inputs.project),
+                                      "docx", write)
         self.feedback = (outcome.message, outcome.tone)
         app.render()
 

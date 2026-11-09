@@ -192,8 +192,14 @@ class WorkspaceExportTests(unittest.TestCase):
         document = Document(str(saved[0]))
         lines = [p.text for p in document.paragraphs]
         entries = session.report_entries()
-        self.assertIn(f"1. {entries[0].title}", lines)
-        self.assertIn(f"2. {entries[1].title}", lines)
+        # Stage 36.6: one research report in sections; each result is written
+        # in the section it belongs to (a test, a reliability analysis …).
+        headings = [p.text for p in document.paragraphs if p.style.name.startswith("Heading")]
+        for entry in entries:
+            self.assertIn(entry.title, headings)
+        self.assertTrue(any(h.endswith("Hypothesis tests") for h in headings))
+        self.assertTrue(any(h.endswith("Reliability and measurement quality") for h in headings))
+        self.assertIn("Table 1", lines)
 
 
 if __name__ == "__main__":

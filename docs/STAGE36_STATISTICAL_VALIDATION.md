@@ -79,6 +79,18 @@ drawing, labelled in the figure note, and never written into the result.
 A line chart is offered only across the levels of a group the researcher
 confirmed as ordinal, in an order the researcher can check and change.
 
+## Research report (36.6): no number is computed for the report
+
+`research_report.plan_report` writes the report from saved engine output and
+the researcher's own entries only. Its tests check that the effects table
+holds exactly the engine's rows with intervals; that a result calculated
+twice with an identical report is written once (and says so) while results
+from different data versions stay separate and are named; that a
+reliability coefficient below .70 is reported with a methodological
+warning, never changed; that hypotheses added after results were seen are
+labelled exploratory (post hoc); and that small or very unequal groups and
+missing values become stated limitations.
+
 ## Not yet validated here
 
 Item-level psychometrics (36.3) are validated in their own pull request;

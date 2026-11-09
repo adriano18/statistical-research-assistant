@@ -26,8 +26,9 @@ The engine (36.2) comes before the task model (36.1) because a research
 task stores and re-runs the structured batch results. Each PR is stacked
 on the previous one and carries its own tests and Windows E2E journeys.
 The import engine (36.5, D6–D8) was ready first, so it is stacked directly
-on 36.1; the import review wizard follows in a later PR, and 36.3 and
-36.4 are stacked on top of the import engine.
+on 36.1; the import review wizard follows in a later PR. 36.4 (Chart
+Studio) is stacked on the import engine and 36.6 (research report) on
+36.4; 36.3 and the AI assistant follow on top.
 
 ## Defect matrix (36.0 audit)
 
