@@ -1862,7 +1862,7 @@ STAGE36_CHARTS_PROJECT = "Fictional Stage 36 charts"
 
 def click_chip(gui: Gui, label: str) -> None:
     """A chip or tile: named by its label, sometimes followed by a tooltip."""
-    gui.click(regex="^" + re.escape(label) + r"(\n|$)",
+    gui.click(regex="^" + re.escape(label) + CHIP_END,
               control_type=("Button", "Text", "Group", "Custom"))
 
 
