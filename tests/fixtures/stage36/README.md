@@ -10,7 +10,9 @@ Run from the repository root:
 python tests/fixtures/stage36/generate_fixtures.py --out-dir .stage36-fixtures
 ```
 
-This requires `python-docx` and `Pillow` in the *developer/CI environment*; it does **not** require the end user to install packages. Add them to test-only dependencies if missing.
+This requires `python-docx`, `Pillow` and `matplotlib` in the *developer/CI environment*; it does **not** require the end user to install packages. Add them to test-only dependencies if missing.
+
+The scans are drawn with fonts that matplotlib ships (DejaVu, STIX), never with the fonts of the computer, and laid out by Pillow's basic text engine (Pillow shapes text with libraqm on Linux but cannot on Windows), so Linux and Windows generate the same pages. Before Stage 36.7 the Windows runner drew the Latvian table in Times New Roman: the packaged-EXE journey then read a different document than the Linux tests did.
 
 The generator is deterministic and creates:
 
@@ -28,6 +30,7 @@ invented text:
 |---|---|
 | `synthetic_cope_two_forms_60_unnumbered.docx` | Two 60-item table forms with **no item numbers inside the cells** (first table 61 rows with a header of response labels, second 60 rows, 5 columns), each form with its own response options, a 15 × 4 scoring note and numbered references. |
 | `synthetic_lv_table_scan_52.pdf` | Two image-only pages of a table: item numbers in their own column, statements wrapped onto a second line, Latvian letters with diacritics, the response legend repeated at the top of page 2, a slight rotation and tick-like artifacts before some numbers. |
+| `synthetic_lv_table_scan_52_stix.pdf` | Stage 36.7: the same table set in STIX General, a Times-like serif. In that typeface the rules between rows made Tesseract drop whole text lines, single-digit numbers were misread and a legend line read as `4 bieži` tilted the statement column (the packaged Windows run found 45 of 52 on the Times New Roman version). |
 
 `tests/test_stage36_fixtures.py` checks the minimal verification below;
 `tests/test_stage36_regressions.py` reproduces the documented defects on

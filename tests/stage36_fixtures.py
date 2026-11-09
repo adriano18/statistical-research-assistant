@@ -21,6 +21,7 @@ DOCX_NUMBERED = "synthetic_cope_two_forms_60.docx"
 DOCX_UNNUMBERED = "synthetic_cope_two_forms_60_unnumbered.docx"
 SCAN_INLINE = "synthetic_sacs_scanned_52.pdf"
 SCAN_TABLE_LV = "synthetic_lv_table_scan_52.pdf"
+SCAN_TABLE_LV_STIX = "synthetic_lv_table_scan_52_stix.pdf"   # the same table, a Times-like font
 
 SCALES = ("AssertiveAction", "SocialJoining", "SeekingSocialSupport", "CautiousAction",
           "InstinctiveAction", "Avoidancen", "IndirectAction", "AntisocialAction")
@@ -40,7 +41,8 @@ def generate(out_dir: Path) -> dict[str, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = (module.create_csv(out_dir), module.create_docx(out_dir),
              module.create_scan_pdf(out_dir), module.create_docx_unnumbered(out_dir),
-             module.create_lv_table_scan_pdf(out_dir))
+             module.create_lv_table_scan_pdf(out_dir),
+             module.create_lv_table_scan_pdf(out_dir, "stix"))
     return {path.name: path for path in paths}
 
 

@@ -25,6 +25,9 @@ through the specification PR #52 (`stage36/spec-and-safe-fixtures`, base
 The engine (36.2) comes before the task model (36.1) because a research
 task stores and re-runs the structured batch results. Each PR is stacked
 on the previous one and carries its own tests and Windows E2E journeys.
+The import engine (36.5, D6–D8) was ready first, so it is stacked directly
+on 36.1; the import review wizard follows in a later PR, and 36.3 and
+36.4 are stacked on top of the import engine.
 
 ## Defect matrix (36.0 audit)
 
@@ -39,9 +42,9 @@ so an unexpected success fails CI.
 | D3 | One variable against eight scales needs eight separate runs; no shared table, no multiple-comparison correction | correlation engine and guided roles take one pair | `test_one_variable_against_eight_scales_in_one_run` | 36.2 ✔ |
 | D4 | A two-category group (Sex) for a 3–8 group method is not explained before Run | `role_problems` does not count the categories of the group | `test_a_two_group_variable_is_explained_before_a_three_group_test` | 36.2 ✔ |
 | D5 | Reliability (ω/α) is offered for total scores | the guided advice cannot tell item responses from totals | `test_no_reliability_from_total_scores` | 36.3 |
-| D6 | A Word document with two 60-item table forms **without numbers in the cells** is "not recognised" | `parse_scientific_lines` needs numbered lines; table structure is flattened first | `test_two_unnumbered_sixty_item_forms` | 36.5 |
-| D7 | The stated item count is read from a scoring note ("each with four items" → 4) | `expected_item_count` takes the first count phrase in the document | `test_the_stated_item_count_is_not_taken_from_a_scoring_note` | 36.5 |
-| D8 | A scanned table with a number column yields 16 of 52 items | line parser needs a clean number at the line start; a scan artifact (`"17.`) ends the sequence; no column geometry | `test_a_scanned_table_with_a_number_column_yields_all_52_items` | 36.5 |
+| D6 | A Word document with two 60-item table forms **without numbers in the cells** is "not recognised" | `parse_scientific_lines` needs numbered lines; table structure is flattened first | `test_two_unnumbered_sixty_item_forms` | 36.5 ✔ |
+| D7 | The stated item count is read from a scoring note ("each with four items" → 4) | `expected_item_count` takes the first count phrase in the document | `test_the_stated_item_count_is_not_taken_from_a_scoring_note` | 36.5 ✔ |
+| D8 | A scanned table with a number column yields 16 of 52 items | line parser needs a clean number at the line start; a scan artifact (`"17.`) ends the sequence; no column geometry | `test_a_scanned_table_with_a_number_column_yields_all_52_items` | 36.5 ✔ |
 | D9 | Groups of 3/47/5 are refused only after Run ("At least five complete observations per group") | no pre-run check of group sizes | `test_small_groups_are_handled_before_the_run_not_refused_after` | 36.2 ✔ |
 | D10 | Kruskal–Wallis refuses any group under five observations, so no batch comparison by an imbalanced level variable is possible | omnibus engine minimum of five per group for every method | `test_kruskal_wallis_for_eight_outcomes_with_a_group_of_three` | 36.2 ✔ |
 

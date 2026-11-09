@@ -88,7 +88,7 @@ class ScanFixtureTests(unittest.TestCase):
     def test_image_only_two_page_scans(self):
         import pypdf
 
-        for name in (fx.SCAN_INLINE, fx.SCAN_TABLE_LV):
+        for name in (fx.SCAN_INLINE, fx.SCAN_TABLE_LV, fx.SCAN_TABLE_LV_STIX):
             reader = pypdf.PdfReader(fx.fixture(name))
             self.assertEqual(len(reader.pages), 2, name)
             self.assertEqual([(page.extract_text() or "").strip() for page in reader.pages],

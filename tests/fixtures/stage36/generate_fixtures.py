@@ -8,7 +8,14 @@ These are artificial instrument names and fictional question texts. The fixture
 is intentionally unsuitable for scientific interpretation or scale validation.
 
 Usage: python tests/fixtures/stage36/generate_fixtures.py --out-dir .stage36-fixtures
-Dependencies for developers/CI: python-docx, Pillow. No end-user install needed.
+Dependencies for developers/CI: python-docx, Pillow, matplotlib (for its bundled
+fonts). No end-user install needed.
+
+The scans are drawn with fonts that matplotlib ships (DejaVu, STIX), never
+with the fonts of the computer, and laid out by Pillow's basic engine: the
+same fixture on Linux and Windows. Before 36.7 the Windows runner drew the
+Latvian table in Times New Roman, so the packaged-EXE journey read a
+different document than the Linux tests did.
 """
 from __future__ import annotations
 
@@ -25,6 +32,18 @@ COLUMNS = [
 ]
 SCALES = COLUMNS[4:12]
 SEED = 360612
+
+
+def bundled_font(name: str, size: int):
+    """A TrueType font shipped with matplotlib, laid out by Pillow's basic
+    engine: identical text widths on every platform. (Pillow on Linux shapes
+    text with libraqm by default, on Windows it cannot; the widths differ by
+    about 1 %, enough to wrap a statement differently.)"""
+    import matplotlib
+    from PIL import ImageFont
+
+    return ImageFont.truetype(str(Path(matplotlib.get_data_path()) / "fonts" / "ttf" / name), size,
+                              layout_engine=ImageFont.Layout.BASIC)
 
 
 def create_csv(out_dir: Path) -> Path:
@@ -103,20 +122,10 @@ def create_docx(out_dir: Path) -> Path:
 
 
 def create_scan_pdf(out_dir: Path) -> Path:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
     def choose_font(size: int):
-        for candidate in (
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "C:/Windows/Fonts/arial.ttf",
-            "DejaVuSans.ttf",
-            "Arial.ttf",
-        ):
-            try:
-                return ImageFont.truetype(candidate, size)
-            except OSError:
-                continue
-        return ImageFont.load_default()
+        return bundled_font("DejaVuSans.ttf", size)
 
     pages = []
     for page in (0, 1):
@@ -218,37 +227,47 @@ def _lv_statement(index: int) -> str:
     return text + "."
 
 
-def create_lv_table_scan_pdf(out_dir: Path) -> Path:
+LV_TABLE_TYPEFACES = {
+    # typeface: (font file shipped with matplotlib, fixture name)
+    "dejavu": ("DejaVuSerif.ttf", "synthetic_lv_table_scan_52.pdf"),
+    # A Times-like serif. Set in Times New Roman, this table lost rows in
+    # OCR: the ruling lines made Tesseract skip text lines, and single-digit
+    # item numbers were misread (found by the packaged Windows run, 36.7).
+    "stix": ("STIXGeneral.ttf", "synthetic_lv_table_scan_52_stix.pdf"),
+}
+
+
+def create_lv_table_scan_pdf(out_dir: Path, typeface: str = "dejavu") -> Path:
     """Two image-only pages of a 52-item table, the way a scan looks.
 
     Item numbers stand in their own column, statements wrap onto a second
     line, the 1-5 response digits stand in a right column, the legend is
-    repeated at the top of page 2, the page is slightly rotated, and a
+    repeated at the top of page 2 and stands right under an instruction
+    line that opens with a bare "5", the page is slightly rotated, and a
     tick-like mark precedes some numbers (scan artifacts that OCR reads
     as quotes). Latvian letters with diacritics test the OCR language.
+    ``typeface`` picks the font (``LV_TABLE_TYPEFACES``); the layout, the
+    text and the noise are the same.
     """
     import random as _random
 
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
+
+    font_file, file_name = LV_TABLE_TYPEFACES[typeface]
 
     def font(size: int):
-        for candidate in ("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
-                          "C:/Windows/Fonts/times.ttf", "DejaVuSerif.ttf"):
-            try:
-                return ImageFont.truetype(candidate, size)
-            except OSError:
-                continue
-        return ImageFont.load_default()
+        return bundled_font(font_file, size)
 
     rnd = _random.Random(SEED + 52)
     title, body = font(28), font(21)
     width, height = 1240, 1754
-    # Stage 36.5: the statement column ends at x = 935 (digits at 965), so
-    # only the 13 long statements wrap and all 26 rows of a page stay above
-    # the footer. With digits at 905, page 1 drew item 26 below the bottom
-    # edge (y = 1761 of 1754) and the footer over item 24: no reader could
-    # find 52 items in that scan.
-    left_number, left_text, digits_x, right = 120, 175, 965, 1150
+    # Stage 36.5: only the 13 long statements wrap and all 26 rows of a page
+    # stay above the footer. With digits at 905, page 1 drew item 26 below the
+    # bottom edge (y = 1761 of 1754) and the footer over item 24: no reader
+    # could find 52 items in that scan. Stage 36.7: Pillow's basic layout
+    # (the same on every platform) sets text about 1 % wider than libraqm
+    # did on Linux, so the digits stand at 985 and statements end by x = 955.
+    left_number, left_text, digits_x, right = 120, 175, 985, 1190
     footer_top = height - 90
 
     def wrap(draw, text):
@@ -273,8 +292,12 @@ def create_lv_table_scan_pdf(out_dir: Path) -> Path:
             draw.text((left_number, y), "Lūdzu, iedomājieties izdomātas ikdienas situācijas un "
                       "atbildiet, kā jūs parasti", font=body, fill="black")
             y += 32
-            draw.text((left_number, y), "rīkotos. Izvēlieties vienu no 5 atbilžu variantiem:",
-                      font=body, fill="black")
+            draw.text((left_number, y), "rīkotos. Izvēlieties vienu no", font=body, fill="black")
+            y += 32
+            # Stage 36.5: the option count opens the next instruction line, so a
+            # bare "5" stands between the number and statement columns right
+            # above the legend (a real scan did this); it is not item 5.
+            draw.text((150, y), "5 atbilžu variantiem:", font=body, fill="black")
             y += 40
         for label in LV_LEGEND:
             draw.text((430, y), label, font=body, fill="black")
@@ -311,7 +334,7 @@ def create_lv_table_scan_pdf(out_dir: Path) -> Path:
             draw.point((px, py), fill="#9a9a9a")
         pages.append(image.rotate(0.35 if page == 0 else -0.3, resample=Image.BICUBIC,
                                   fillcolor="white", expand=False))
-    target = out_dir / "synthetic_lv_table_scan_52.pdf"
+    target = out_dir / file_name
     pages[0].save(target, "PDF", save_all=True, append_images=pages[1:], resolution=150)
     return target
 
@@ -323,7 +346,8 @@ def main() -> None:
     out_dir = Path(args.out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     for path in (create_csv(out_dir), create_docx(out_dir), create_scan_pdf(out_dir),
-                 create_docx_unnumbered(out_dir), create_lv_table_scan_pdf(out_dir)):
+                 create_docx_unnumbered(out_dir), create_lv_table_scan_pdf(out_dir),
+                 create_lv_table_scan_pdf(out_dir, "stix")):
         print(f"{path} ({path.stat().st_size} bytes)")
 
 
