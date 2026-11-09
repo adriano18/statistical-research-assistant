@@ -12,7 +12,7 @@ python tests/fixtures/stage36/generate_fixtures.py --out-dir .stage36-fixtures
 
 This requires `python-docx`, `Pillow` and `matplotlib` in the *developer/CI environment*; it does **not** require the end user to install packages. Add them to test-only dependencies if missing.
 
-The scans are drawn with fonts that matplotlib ships (DejaVu, STIX), never with the fonts of the computer, so Linux and Windows generate the same pages. Before Stage 36.7 the Windows runner drew the Latvian table in Times New Roman: the packaged-EXE journey then read a different document than the Linux tests did.
+The scans are drawn with fonts that matplotlib ships (DejaVu, STIX), never with the fonts of the computer, and laid out by Pillow's basic text engine (Pillow shapes text with libraqm on Linux but cannot on Windows), so Linux and Windows generate the same pages. Before Stage 36.7 the Windows runner drew the Latvian table in Times New Roman: the packaged-EXE journey then read a different document than the Linux tests did.
 
 The generator is deterministic and creates:
 
