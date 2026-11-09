@@ -155,6 +155,18 @@ def top_windows(pid: int | None = None) -> list[dict]:
     return found
 
 
+def window_guard_events(log: Path) -> list[dict]:
+    """The ``window_guard`` lines of the program's startup log."""
+    events = []
+    with contextlib.suppress(OSError):
+        for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+            with contextlib.suppress(ValueError):
+                record = json.loads(line)
+                if isinstance(record, dict) and record.get("event") == "window_guard":
+                    events.append(record)
+    return events
+
+
 # ====================================================================== app
 class Gui:
     """One running instance of the packaged application."""
@@ -1959,6 +1971,11 @@ def main(argv=None) -> int:
     report["seconds"] = round(time.monotonic() - started, 1)
     report["ok"] = bool(report["journeys"]) and all(j["ok"] for j in report["journeys"]) \
         and "error" not in report
+    # Evidence for the window guard (window_guard.py): each time the program
+    # had to show its own still-hidden window, its startup log says so.
+    report["window_guard"] = window_guard_events(out / "app-logs" / "startup.log")
+    print(f"window guard: {len(report['window_guard'])} intervention(s)"
+          + "".join(f"\n  {event}" for event in report["window_guard"]), flush=True)
     (out / "gui-e2e-result.json").write_text(json.dumps(report, indent=1, ensure_ascii=False),
                                              encoding="utf-8")
     for name in ("ancova_report.txt", "combined_report.txt", "pilot_responses.csv"):
