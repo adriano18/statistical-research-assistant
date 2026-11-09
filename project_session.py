@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import json
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
@@ -142,6 +143,7 @@ class ProjectBinding:
         self._restoring = False
         self._saved_levels: dict[str, tuple[str, str]] = {}
         self._saved_runs: dict[int, int] = {}       # entry id -> id(run) saved
+        self._saved_charts: dict[int, str | None] = {}  # entry id -> chart state digest
         self.message: tuple[str, str] | None = None  # (text key, tone) for the UI
         session.subscribe(self._on_session)
         atexit.register(_release_at_exit, weakref.ref(self))
@@ -217,6 +219,7 @@ class ProjectBinding:
         self.dataset_id = None
         self._saved_levels = {}
         self._saved_runs = {}
+        self._saved_charts = {}
         for entry in self.session.results:
             entry.record_id = None
             entry.stale_reasons = ()
@@ -281,6 +284,14 @@ class ProjectBinding:
                                 "variables": list(run.levels), "rows": run.provenance.get("rows")})
                 entry.stale_reasons = project.run_status(run).reasons
                 self._saved_runs[entry.id] = id(entry.run)
+                if run.charts:
+                    try:
+                        from chart_views import ChartState
+
+                        entry.charts = ChartState.from_dict(run.charts)
+                    except (KeyError, TypeError, ValueError):
+                        entry.charts = None      # unreadable: drawn again on request
+                    self._saved_charts[entry.id] = self._chart_digest(entry.charts)
             by_record = {e.record_id: e for e in session.results}
             for run in project.report_runs():
                 entry = by_record.get(run.id)
@@ -441,6 +452,8 @@ class ProjectBinding:
                 self._save_report()
             elif what == "tasks":
                 self._save_tasks()
+            elif what == "charts":
+                self._save_charts()
         except Exception:
             self.message = ("project.save_failed", "danger")
 
@@ -456,6 +469,25 @@ class ProjectBinding:
             known.discard(task.id)
         for task_id in known:                      # removed in the session
             self.project.delete_task(task_id)
+
+    @staticmethod
+    def _chart_digest(state) -> str | None:
+        if state is None:
+            return None
+        return sha256_bytes(json.dumps(state.to_dict(), sort_keys=True, default=str)
+                            .encode("utf-8"))
+
+    def _save_charts(self) -> None:
+        """Chart views are written through, like research tasks: a changed
+        view is in the project as soon as it is chosen (Stage 36.4)."""
+        for entry in self.session.results:
+            if not entry.record_id or entry.charts is None:
+                continue
+            digest = self._chart_digest(entry.charts)
+            if self._saved_charts.get(entry.id) == digest:
+                continue
+            self.project.set_run_charts(entry.record_id, entry.charts.to_dict())
+            self._saved_charts[entry.id] = digest
 
     def _save_dataset(self) -> None:
         session, project = self.session, self.project
@@ -554,6 +586,8 @@ class ProjectBinding:
             entry.record_id = record.id
             entry.stale_reasons = self.project.run_status(record).reasons
             self._saved_runs[entry.id] = id(entry.run)
+            self._saved_charts.pop(entry.id, None)
+        self._save_charts()
         self._save_report()
 
     def _save_report(self) -> None:

@@ -1121,6 +1121,13 @@ def verify_saved(path: Path, *, kind: str, contains: tuple[str, ...] = ()) -> di
             expect(fragment in json.dumps(manifest, ensure_ascii=False), f"backup lacks {fragment!r}")
         facts["entries"] = len(names)
         facts["project"] = manifest.get("project", {}).get("title")
+    elif kind == "svg":
+        text = path.read_text(encoding="utf-8")
+        expect("<svg" in text[:600], f"{path.name} is not an SVG")
+        expect("<desc>" in text, f"{path.name} has no text alternative")
+        for fragment in contains:
+            expect(fragment in text, f"{path.name} lacks {fragment!r}")
+        facts["characters"] = len(text)
     return facts
 
 
@@ -2050,6 +2057,97 @@ def journey_stage36_tasks(gui: Gui, work: Path, journey: Journey) -> None:
         gui.shot("task after restart")
 
 
+STAGE36_CHARTS_PROJECT = "Fictional Stage 36 charts"
+
+
+def click_chip(gui: Gui, label: str) -> None:
+    """A chip or tile: named by its label, sometimes followed by a tooltip."""
+    gui.click(regex="^" + re.escape(label) + CHIP_END,
+              control_type=("Button", "Text", "Group", "Custom"))
+
+
+def journey_stage36_charts(gui: Gui, work: Path, journey: Journey) -> None:
+    """Spec §14 journeys 3 and 4 on the packaged EXE: the eight scales by the
+    existing UCLA_Level in one Kruskal–Wallis batch; then Chart Studio: change
+    the chart type without running the analysis, a multi-boxplot, an image on
+    the clipboard (a bitmap of the announced size, not a path), PNG and SVG
+    files, the view for the Word report, and the view after a restart."""
+    from image_clipboard import clipboard_image_size
+    from stage36_fixtures import SCALES, generator
+
+    csv = generator().create_csv(work)
+    create_project(gui, journey, STAGE36_CHARTS_PROJECT)
+    open_data(gui, journey, csv)
+    accept_levels(gui, journey)
+    title = T("task.title_compare", group="UCLA_Level", count=8)
+    with journey.step("eight scales by UCLA_Level: one Kruskal–Wallis batch"):
+        nav(gui, "nav.analyze")
+        gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
+        click_chip(gui, T("goal.compare"))
+        gui.choose(T("role.group"), option_label("UCLA_Level", "ordinal"),
+                   options=stage36_options())
+        gui.click(T("pick.all_scale", count=10), control_type="Button")
+        gui.check(option_label("Age", "scale"), False)
+        gui.check(option_label("UCLA", "scale"), False)
+        # The recommendation (which needs the outcomes too) explains the small
+        # groups before Run (D9).
+        gui.wait_text("fewer than five values", timeout=20)
+        # The method's own confirmations (engine wording, never pre-ticked).
+        gui.check("I confirm that the two groups contain independent observations")
+        gui.check("I reviewed the outcome distributions, outliers and group sizes")
+        gui.click(regex="^" + re.escape(T("rec.run", method="")), control_type="Button")
+        gui.wait_text(title, timeout=180)
+        for scale in SCALES:
+            gui.wait_text(scale, timeout=10)
+        gui.shot("kruskal-wallis batch")
+    with journey.step("Chart Studio opens from the task"):
+        gui.click(T("chart.open"), control_type="Button")
+        gui.wait_text(T("chart.unchanged"), timeout=60)
+        gui.wait_text("Small groups of UCLA_Level", timeout=20)
+        gui.shot("chart studio")
+    with journey.step("change the chart type: violin, then multi-boxplot panels"):
+        click_chip(gui, T("chart.kind.violin"))
+        gui.wait_text(T("chart.alt", text="Violin Plots of 8 Variables by UCLA_Level"), timeout=60)
+        click_chip(gui, T("chart.kind.multi_boxplot"))
+        gui.click(T("chart.layout.panels"), control_type="Button")
+        gui.wait_text(T("chart.alt", text="Boxplots of 8 Variables by UCLA_Level"), timeout=60)
+        expect(not gui.has_text(T("run.failed", error="")[:12]), "an analysis ran")
+        gui.shot("multi-boxplot")
+    custom = "Fictional coping by loneliness level"
+    with journey.step("title typed in Appearance"):
+        click_chip(gui, T("chart.appearance"))
+        gui.type_into(T("chart.title_field"), custom)
+        gui.click(T("chart.apply"), control_type="Button")
+        gui.wait_text(T("chart.alt", text=custom), timeout=60)
+    with journey.step("copy: the clipboard holds a bitmap of the announced size"):
+        gui.click(T("chart.copy"), control_type="Button")
+        prefix = T("chart.copied", width=0, height=0).split("(")[0]
+        gui.wait_text(prefix, timeout=60)
+        announced = next(text for text in gui.texts() if text.startswith(prefix))
+        match = re.search(r"\((\d+) × (\d+)", announced)
+        expect(match is not None, f"no size in {announced!r}")
+        size = clipboard_image_size()
+        expect(size is not None, "the clipboard holds no image (CF_DIB)")
+        expect(size == (int(match.group(1)), int(match.group(2))),
+               f"clipboard {size} differs from the announced {match.groups()}")
+        journey.facts["clipboard_bitmap"] = list(size)
+    save_via_dialog(gui, journey, T("chart.save_png"), work / "stage36_chart.png", kind="png")
+    save_via_dialog(gui, journey, T("chart.save_svg"), work / "stage36_chart.svg", kind="svg",
+                    contains=(custom,))
+    with journey.step("the view is chosen for the Word report"):
+        gui.click(T("chart.report_add"), control_type="Button")
+        gui.wait_text(T("chart.report_added")[:40], timeout=30)
+    with journey.step("restart: the chart view comes back"):
+        gui.stop()
+        gui.start()
+        open_project(gui, STAGE36_CHARTS_PROJECT)
+        nav(gui, "nav.results")
+        gui.click(T("chart.open"), control_type="Button")
+        gui.wait_text(T("chart.alt", text=custom), timeout=60)
+        gui.wait_text(T("chart.report_on"), timeout=20)
+        gui.shot("chart after restart")
+
+
 def journey_installed_reopen(gui: Gui, work: Path, journey: Journey) -> None:
     """After an update (or a reinstall) the same projects open again."""
     expect(gui.real_data, "run installed journeys with --real-data")
@@ -2074,6 +2172,7 @@ INSTALLED_JOURNEYS = {
 
 JOURNEYS = {
     "stage36-tasks": journey_stage36_tasks,
+    "stage36-charts": journey_stage36_charts,
     "project-a": journey_project_a,
     "project-b": journey_project_b,
     "import-30": journey_import_30,

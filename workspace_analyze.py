@@ -413,6 +413,8 @@ class AnalyzePage:
                       lambda e, i=entry.id: self._toggle_report(i), kind="secondary",
                       icon=ft.Icons.CHECK if entry.in_report else ft.Icons.PLAYLIST_ADD,
                       data="task-add-report"),
+            wc.button(ui, ui.t("chart.open"), lambda e, i=entry.id: self.app.pages["charts"].open_charts(i),
+                      kind="secondary", icon=ft.Icons.BAR_CHART, data="task-edit-chart"),
             wc.button(ui, ui.t("task.change_variables"),
                       lambda e: self.app.navigate("analyze", section="variables"), kind="quiet",
                       icon=ft.Icons.EDIT_OUTLINED, data="task-change-variables"),
@@ -875,7 +877,7 @@ class ResultsPage:
             figure_card = wc.card(ui, [wc.figure(
                 ui, run.png, caption_text="" if embedded else run.title,
                 on_enlarge=lambda e: self._enlarge(run), enlarge_label=ui.t("results.enlarge"),
-                max_height=360 if wide and answer else 460)],
+                max_height=360 if wide and answer else 460), self._edit_chart(entry)],
                 title=ui.t("results.figure"), data="result-figure")
         # The primary result first: the summary and its figure, side by side
         # when the detail column is wide enough, before estimates and tables.
@@ -1073,6 +1075,30 @@ class ResultsPage:
         (reviewed.add if value else reviewed.discard)(assumption)
         self.app.render()
 
+    def _edit_chart(self, entry) -> ft.Control:
+        """Chart Studio for this result (other chart types without re-running)
+        and copying the figure as an image."""
+        import chart_views
+
+        ui = self.app.ui
+        buttons = []
+        if entry.charts is not None or chart_views.may_have_charts(
+                entry.roles, (entry.provenance or {}).get("levels") or {}):
+            buttons.append(wc.button(ui, ui.t("chart.open"),
+                                     lambda e, i=entry.id: self.app.pages["charts"].open_charts(i),
+                                     icon=ft.Icons.BAR_CHART, data="result-edit-chart"))
+        if entry.run.png:
+            buttons.append(wc.button(ui, ui.t("chart.copy"), wc.handler(self._copy_image, entry),
+                                     icon=ft.Icons.CONTENT_COPY, data="result-copy-image"))
+        return ft.Row(buttons, wrap=True, spacing=tk.SPACE_2)
+
+    async def _copy_image(self, entry):
+        """The result's own figure as an image on the clipboard (not a path)."""
+        from workspace_charts import copy_to_clipboard
+
+        self.feedback[entry.id] = await copy_to_clipboard(self.app, entry.run.png)
+        self.app.render()
+
     def _enlarge(self, run):
         ui = self.app.ui
         dialog = ft.AlertDialog(
@@ -1143,6 +1169,7 @@ class ResultsPage:
                       tooltip=None if run.png else ui.t("disabled.no_figure"), data="export-png"),
             wc.button(ui, ui.t("results.save_docx"), wc.handler(self._save, entry, "docx"),
                       icon=ft.Icons.DESCRIPTION_OUTLINED, kind="primary", data="export-docx"),
+            *([] if run.png else [self._edit_chart(entry)]),
             figure_number,
         ], wrap=True, spacing=tk.SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             settings, *feedback], title=None, data="result-exports")

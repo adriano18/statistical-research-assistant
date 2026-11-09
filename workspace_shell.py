@@ -171,6 +171,7 @@ class WorkspaceApp:
         self.question_draft = ""      # research question without a project
         self._install_services()
         from workspace_analyze import AnalyzePage, ReportsPage, ResultsPage
+        from workspace_charts import ChartStudioPage
         from workspace_projects import ProjectHub, ProjectPage
         from workspace_questionnaires import ImportPage, QuestionnairesPage
 
@@ -181,7 +182,7 @@ class WorkspaceApp:
             "questionnaires": QuestionnairesPage(self), "import": ImportPage(self),
             "analyze": AnalyzePage(self), "results": ResultsPage(self),
             "reports": ReportsPage(self), "settings": SettingsPage(self),
-            "help": HelpPage(self),
+            "help": HelpPage(self), "charts": ChartStudioPage(self),
         }
         self.session.subscribe(self._on_session_change)
 
@@ -379,7 +380,7 @@ class WorkspaceApp:
             route = "home"            # the project page needs an open project
         self.route = route
         self.section = section
-        self.area = "questionnaires" if route == "import" else route
+        self.area = self.SUB_ROUTES.get(route, route)
         if refresh:
             self.render()
             key = self.SECTION_KEYS.get((self.route, section or ""))
@@ -418,7 +419,9 @@ class WorkspaceApp:
                ("design", "analyze"), ("method", "analyze"), ("result", "results"),
                ("report", "reports"))
     JOURNEY_ROUTES = {"project": "question", "data": "data", "analyze": "design",
-                      "results": "result", "reports": "report"}
+                      "results": "result", "reports": "report", "charts": "result"}
+    # Pages that belong to an area of the sidebar (Chart Studio is part of Results).
+    SUB_ROUTES = {"import": "questionnaires", "charts": "results"}
     SECTION_KEYS = {("data", "data"): "data-top", ("data", "variables"): "data-variables",
                     ("analyze", "design"): "step-design", ("analyze", "method"): "step-method",
                     ("analyze", "variables"): "step-variables",

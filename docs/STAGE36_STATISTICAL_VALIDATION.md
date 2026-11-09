@@ -55,7 +55,31 @@ this repository; only agreement counts:
 | Reported 95% intervals | all 16 bounds within 0.03 of the engine's percentile bootstrap bounds (consistent with a bootstrap interval in the original analysis; exact agreement is not expected) |
 | Kruskal–Wallis by UCLA level (groups 3/47/5), 8 scales | all 8 reported p-values equal the engine's asymptotic p; the engine's primary p is the permutation p because of the group of 3 |
 
+## Chart Studio (36.4): charts never change a number
+
+A result's charts are drawn from the values it was calculated on, stored
+once with the result (`chart_studio.snapshot`, project format 5). Every
+view (`ChartSpec`) is derived from those stored values (`chart_studio.derive`);
+no view reads the dataset again and no view runs an analysis.
+
+| Check | How it is verified | Result |
+|---|---|---|
+| Stored values equal the dataset | `snapshot` of UCLA, the 8 scales and UCLA_Level against the CSV columns | identical (NumPy `assert_allclose`, exact) |
+| Heatmap coefficients from stored values | `derive` vs `prepare` on the dataset, Spearman, 9 × 9 | identical matrices (`assert_array_equal`); ρ(UCLA, first scale) equals SciPy `spearmanr` to 1e-12 |
+| Changing the chart runs no analysis | every `analysis_runs.run_*` patched to fail while 10 chart types, 4 multi-boxplot layouts, points and palette are changed in the workspace | no call; the result object and its numbers unchanged; no new result |
+| A view only uses what is stored | a variable that is not stored, or another group, is refused with an explanation | refused |
+| Data changed after the result | the dataset's SHA-256 differs from the result's | charts are not prepared; the researcher is asked to recalculate |
+| Restart | views, the active view and the report view restored from the project; drawn with the dataset removed from the session | identical PNG and SVG bytes |
+| Ranges on one axis | two variables with spans 5 and 100 on one axis; panels; explicit z-scores | warning on one axis, none in panels, z-scores stated in the warning, note and alt text |
+
+Display quantities (histogram bins, kernel density with the stated
+bandwidth rule, box quartiles, display z-scores, means along a line, OLS
+and LOWESS trend lines) are presentation only. They are computed while
+drawing, labelled in the figure note, and never written into the result.
+A line chart is offered only across the levels of a group the researcher
+confirmed as ordinal, in an order the researcher can check and change.
+
 ## Not yet validated here
 
-Item-level psychometrics (36.3) and charts (36.4) are validated in their own
-pull requests; this document will gain their sections.
+Item-level psychometrics (36.3) are validated in their own pull request;
+this document will gain their section.

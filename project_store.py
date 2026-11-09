@@ -58,7 +58,7 @@ from typing import Any, Iterable
 import uuid
 import zipfile
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 PACKAGE_FORMAT = "sra-project"
 PACKAGE_VERSION = 1
 DB_NAME = "project.sqlite3"
@@ -277,7 +277,17 @@ def _migrate_v4(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE runs ADD COLUMN structured TEXT")
 
 
-MIGRATIONS = {1: _create_v1, 2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4}
+def _migrate_v5(db: sqlite3.Connection) -> None:
+    """Format 5 (Stage 36.4): the charts of a result.
+
+    ``runs.charts`` holds the Chart Studio state of a run as JSON: the
+    values the result's charts are drawn from (taken once from the dataset
+    version the run rests on), the researcher's chart views and which view
+    the Word report uses. Changing a view never changes the run's numbers."""
+    db.execute("ALTER TABLE runs ADD COLUMN charts TEXT")
+
+
+MIGRATIONS = {1: _create_v1, 2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5}
 
 
 def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
@@ -408,6 +418,7 @@ class RunRecord:
     guide: str = ""
     task_id: str | None = None          # format 4: the research task it belongs to
     structured: dict | None = None      # format 4: result_store JSON of the engine result
+    charts: dict | None = None          # format 5: chart_views.ChartState JSON
 
 
 @dataclass(frozen=True)
@@ -1422,6 +1433,21 @@ class Project:
     def figure(self, run: RunRecord) -> bytes | None:
         return (self.path / run.figure).read_bytes() if run.figure else None
 
+    def set_run_charts(self, run_id: str, charts: dict | None) -> None:
+        """Store the Chart Studio state of a run (format 5); ``None`` removes it.
+
+        Only the way the result is drawn is stored; the run's numbers,
+        report and figure are not touched."""
+        payload = None if charts is None else json.dumps(charts, default=str,
+                                                         separators=(",", ":"))
+        with self._write() as db:
+            changed = db.execute("UPDATE runs SET charts = ? WHERE id = ?",
+                                 (payload, run_id)).rowcount
+            if not changed:
+                raise ProjectError(f"No analysis run {run_id} in this project.")
+            self._touch(db)
+            _log(db, "charts", {"run": run_id, "views": len((charts or {}).get("views") or ())})
+
     def run_status(self, run: RunRecord) -> RunStatus:
         reasons = []
         if run.dataset_id:
@@ -1733,7 +1759,8 @@ def _run(row: sqlite3.Row) -> RunRecord:
         row["created_at"], row["note"], row["descriptives"], row["guide"],
         row["task_id"] if "task_id" in row.keys() else None,
         json.loads(row["structured"]) if "structured" in row.keys() and row["structured"]
-        else None)
+        else None,
+        json.loads(row["charts"]) if "charts" in row.keys() and row["charts"] else None)
 
 
 def _task(row: sqlite3.Row) -> TaskRecord:

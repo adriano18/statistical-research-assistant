@@ -121,6 +121,22 @@ class ReportBlock:
     warnings: tuple[str, ...] = ()
     note: str = ""
     stale: tuple[str, ...] = field(default_factory=tuple)
+    # A chart chosen in Chart Studio (Stage 36.4): drawn without its own
+    # caption band, so the document carries its numbered title and note.
+    figure_title: str = ""
+    figure_note: str = ""
+    figure_from_studio: bool = False
+
+
+def _studio_figure(entry):
+    """(png, title, note) of the chart view chosen for the report, or None."""
+    state = getattr(entry, "charts", None)
+    if state is None or getattr(state, "report", None) is None:
+        return None
+    try:
+        return state.report_figure()
+    except ValueError:
+        return None          # an undrawable view: the result's own figure is used
 
 
 def blocks_from_entries(entries) -> list[ReportBlock]:
@@ -129,13 +145,16 @@ def blocks_from_entries(entries) -> list[ReportBlock]:
     for entry in entries:
         run = entry.run
         provenance = entry.provenance or {}
+        studio = _studio_figure(entry)
+        figure, figure_title, figure_note = studio if studio else (run.png, "", "")
         blocks.append(ReportBlock(
             title=run.title, report=run.report or "", tables=tuple(run.tables or ()),
-            figure=run.png, section=run.section, dataset=entry.dataset, rows=entry.rows,
+            figure=figure, section=run.section, dataset=entry.dataset, rows=entry.rows,
             dataset_sha256=str(provenance.get("dataset_sha256") or ""),
             created=entry.created, method=entry.method or run.section,
             run_id=entry.record_id or "", warnings=tuple(run.warnings or ()),
-            stale=tuple(entry.stale_reasons or ())))
+            stale=tuple(entry.stale_reasons or ()), figure_title=figure_title,
+            figure_note=figure_note, figure_from_studio=studio is not None))
     return blocks
 
 
@@ -268,8 +287,17 @@ def build_report_docx(blocks: list[ReportBlock], *, title: str = "", language: s
         if block.figure:
             figure_number += 1
             _caption(document, f"{labels['figure']} {figure_number}",
-                     f"{labels['figure_title']}: {block.title}")
-            document.add_picture(_figure_body(block.figure, block.section), width=Inches(6.0))
+                     block.figure_title or f"{labels['figure_title']}: {block.title}")
+            # A Chart Studio figure has no caption band to remove.
+            document.add_picture(_figure_body(block.figure, "" if block.figure_from_studio
+                                              else block.section), width=Inches(6.0))
+            if block.figure_note.strip():
+                paragraph = document.add_paragraph()
+                note_text = block.figure_note.strip()
+                if note_text.startswith("Note."):
+                    note_text = note_text[len("Note."):].strip()
+                paragraph.add_run(labels["note"]).italic = True
+                paragraph.add_run(" " + note_text)
         if block.warnings:
             paragraph = document.add_paragraph()
             paragraph.add_run(labels["note"]).italic = True

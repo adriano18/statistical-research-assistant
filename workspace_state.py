@@ -108,6 +108,9 @@ class ResultEntry:
     # group labels, and how many rows were complete for those variables.
     provenance: dict = field(default_factory=dict)
     task_id: str | None = None      # Stage 36: the research task this run belongs to
+    # Stage 36.4: the values the result's charts are drawn from and the
+    # researcher's chart views (chart_views.ChartState); None until opened.
+    charts: object | None = None
 
     @property
     def title(self) -> str:
@@ -320,6 +323,11 @@ class ResearchSession:
             self.tasks.append(task)
         self.notify("tasks")
         return task
+
+    def save_charts(self, entry_id: int) -> None:
+        """The chart views of a result changed; listeners store them."""
+        if self.result(entry_id) is not None:
+            self.notify("charts")
 
     def task_results(self, task_id: str) -> list[ResultEntry]:
         return [entry for entry in self.results if entry.task_id == task_id]
