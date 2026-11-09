@@ -1905,6 +1905,17 @@ def journey_update_a_to_b(gui: Gui, work: Path, journey: Journey) -> None:
         nav(gui, "nav.settings")
         gui.wait_text(update_ui.t("en", "version", version=target), timeout=20)
         gui.shot("new version in settings")
+    # Spec §14 (packaging regression): A → B → open the project → use the
+    # new functionality, here a Stage 36 batch analysis in that project.
+    from stage36_fixtures import generator
+
+    nav(gui, "nav.project")
+    open_data(gui, journey, generator().create_csv(work))
+    accept_levels(gui, journey)
+    with journey.step("the new version runs eight correlations in one batch"):
+        run_eight_correlations(gui)
+        gui.wait_text("p (Holm)", timeout=30)
+        gui.shot("stage 36 batch after the update")
     history = data / "updates" / "history.json"
     with contextlib.suppress(OSError, ValueError):
         journey.facts["history"] = json.loads(history.read_text(encoding="utf-8"))["updates"][-1]
@@ -1953,17 +1964,7 @@ def journey_stage36_tasks(gui: Gui, work: Path, journey: Journey) -> None:
     accept_levels(gui, journey)
     title = T("task.title_relate", x="UCLA", count=8)
     with journey.step("UCLA with eight scales: goal, UCLA, all scales, Spearman, Run"):
-        nav(gui, "nav.analyze")
-        gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
-        gui.click(regex="^" + re.escape(T("goal.relate")) + r"\b",
-                  control_type=("Button", "Text", "Group", "Custom"))
-        gui.choose(T("role.x"), option_label("UCLA", "scale"), options=stage36_options())
-        gui.click(T("pick.all_scale", count=9), control_type="Button")
-        gui.check(option_label("Age", "scale"), False)
-        gui.click(T("rec.use_instead"), control_type="Button", index=0)   # Spearman
-        gui.click(regex="^" + re.escape(T("rec.run", method="")) + "Spearman",
-                  control_type="Button")
-        gui.wait_text(title, timeout=120)
+        run_eight_correlations(gui)
         gui.shot("eight correlations in one batch")
     with journey.step("one table: eight pairs, N, interval, raw and Holm p"):
         for scale in SCALES:
@@ -1994,6 +1995,24 @@ def journey_stage36_tasks(gui: Gui, work: Path, journey: Journey) -> None:
                   control_type=("Button", "Text", "Group", "Custom"))
         gui.wait_text("p (Holm)", timeout=30)
         gui.shot("task after restart")
+
+
+def run_eight_correlations(gui: Gui) -> str:
+    """Guided analysis: UCLA with the eight scales (Spearman) in one batch,
+    until the task's table is shown; returns the task's title."""
+    title = T("task.title_relate", x="UCLA", count=8)
+    nav(gui, "nav.analyze")
+    gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
+    gui.click(regex="^" + re.escape(T("goal.relate")) + r"\b",
+              control_type=("Button", "Text", "Group", "Custom"))
+    gui.choose(T("role.x"), option_label("UCLA", "scale"), options=stage36_options())
+    gui.click(T("pick.all_scale", count=9), control_type="Button")
+    gui.check(option_label("Age", "scale"), False)
+    gui.click(T("rec.use_instead"), control_type="Button", index=0)   # Spearman
+    gui.click(regex="^" + re.escape(T("rec.run", method="")) + "Spearman",
+              control_type="Button")
+    gui.wait_text(title, timeout=120)
+    return title
 
 
 STAGE36_CHARTS_PROJECT = "Fictional Stage 36 charts"
@@ -2032,7 +2051,7 @@ def journey_stage36_charts(gui: Gui, work: Path, journey: Journey) -> None:
         # groups before Run (D9).
         gui.wait_text("fewer than five values", timeout=20)
         # The method's own confirmations (engine wording, never pre-ticked).
-        gui.check("I confirm that the two groups contain independent observations")
+        gui.check("I confirm the groups contain independent participants")
         gui.check("I reviewed the outcome distributions, outliers and group sizes")
         gui.click(regex="^" + re.escape(T("rec.run", method="")), control_type="Button")
         gui.wait_text(title, timeout=180)
@@ -2122,13 +2141,102 @@ def journey_stage36_groups(gui: Gui, work: Path, journey: Journey) -> None:
         gui.click(T("pick.all_scale", count=10), control_type="Button")
         gui.check(option_label("Age", "scale"), False)
         gui.check(option_label("UCLA", "scale"), False)
-        gui.check("I confirm that the two groups contain independent observations")
+        gui.check("I confirm the groups contain independent participants")
         gui.check("I reviewed the outcome distributions, outliers and group sizes")
         gui.click(regex="^" + re.escape(T("rec.run", method="")), control_type="Button")
         gui.wait_text(title, timeout=180)
         for scale in SCALES:
             gui.wait_text(scale, timeout=10)
         gui.shot("kruskal-wallis by the new groups")
+
+
+def stage36_options_with_groups() -> list[str]:
+    """The variable dropdown once journey stage36-groups created UCLA_groups."""
+    return [*stage36_options(), option_label("UCLA_groups", "ordinal")]
+
+
+def stage36_report_fragments() -> tuple[str, ...]:
+    """What the Word report of journey stage36-report must hold: both results,
+    the sections they belong in, numbered tables, the appendix, the data."""
+    from research_report import TEXT as REPORT_TEXT
+    from stage36_fixtures import CSV
+
+    text = REPORT_TEXT["en"]
+    return ("Kruskal–Wallis", "UCLA_groups", "Descriptive: UCLA", text["descriptives"],
+            text["tests"], "Table 1", "Table 2", text["appendix"], CSV)
+
+
+def journey_stage36_report(gui: Gui, work: Path, journey: Journey) -> None:
+    """Spec §14 journey 8 on the packaged EXE, in the project of
+    stage36-groups: the Kruskal–Wallis batch and a description of UCLA go into
+    one Word report (numbered sections, each result in its own section). On
+    the way, a scale check on totals offers no coefficient (D5, a refusal of
+    journey 10). tests/test_stage36_acceptance.py walks the same flow."""
+    from stage36_fixtures import SCALES
+
+    title = T("task.title_compare", group="UCLA_groups", count=8)
+    with journey.step("the Kruskal–Wallis task goes into the report"):
+        open_project(gui, STAGE36_GROUPS_PROJECT)
+        nav(gui, "nav.analyze")
+        click_chip(gui, title)
+        gui.wait_text(T("task.rerun"), timeout=30)
+        gui.click(T("results.add_report"), control_type="Button")
+        gui.find(T("results.in_report"), control_type="Button", timeout=20)
+    with journey.step("a second result: describe UCLA, then into the report"):
+        gui.click(T("task.new"), control_type="Button")
+        click_chip(gui, T("goal.describe"))
+        gui.choose(T("role.variable"), option_label("UCLA", "scale"),
+                   options=stage36_options_with_groups())
+        gui.click(regex="^" + re.escape(T("rec.run", method="")), control_type="Button")
+        gui.wait_text("Descriptive: UCLA", timeout=120)
+        gui.click(T("results.add_report"), control_type="Button")
+        gui.find(T("results.in_report"), control_type="Button", timeout=20)
+        gui.shot("two results in the report")
+    with journey.step("totals get no reliability coefficient (D5)"):
+        nav(gui, "nav.analyze")
+        gui.click(T("task.new"), control_type="Button")
+        click_chip(gui, T("goal.scale"))
+        for scale in SCALES[:3]:
+            gui.check(option_label(scale, "scale"))
+        gui.wait_text("Only a total score is available now", timeout=20)
+        runs = gui.query(regex="^" + re.escape(T("rec.run", method="")), control_type="Button")
+        expect(not runs, f"a Run button is offered for totals: {len(runs)}")
+        gui.shot("no coefficient from totals")
+    with journey.step("one Word report from both results"):
+        nav(gui, "nav.reports")
+    save_via_dialog(gui, journey, T("reports.export_docx"), work / "stage36_report.docx",
+                    kind="docx", contains=stage36_report_fragments())
+
+
+DAMAGED_PDF = b"%PDF-1.4\n% fictional damaged scan: the file ends here"
+
+
+def damaged_document_fragments(broken: str, kept: str, items: int = 120) -> tuple[str, ...]:
+    """What the status line says when ``broken`` cannot be read while
+    ``kept`` is under review (each fragment is one text on screen)."""
+    return (T("imp.state.error"), f"{broken} could not be read",
+            f"The document under review, {kept} ({items} items), is unchanged.")
+
+
+def journey_import_damaged(gui: Gui, work: Path, journey: Journey) -> None:
+    """Spec §14 journey 10 on the packaged EXE (damaged documents): while a
+    Word document is under review, a damaged PDF is refused with its reason
+    and the next step; the review under way is kept and goes on.
+    tests/test_stage36_acceptance.py walks the same flow."""
+    from stage36_fixtures import generator
+
+    docx = generator().create_docx_unnumbered(work)
+    broken = work / "fictional_broken_scan.pdf"
+    broken.write_bytes(DAMAGED_PDF)
+    import_document(gui, journey, docx, expected_items=120, instruments=2)
+    import_document(gui, journey, broken, shows=T("imp.state.error"))
+    with journey.step("the damaged file is explained; the review under way is kept"):
+        for fragment in damaged_document_fragments(broken.name, docx.name):
+            gui.wait_text(fragment, timeout=20)
+        gui.shot("damaged document refused")
+    with journey.step("the researcher goes on with the document under review"):
+        review_form(gui, COPE_SITUATIONAL, index=1,
+                    then=T("imp.status.form_of", number=2, total=2))
 
 
 def journey_installed_reopen(gui: Gui, work: Path, journey: Journey) -> None:
@@ -2167,6 +2275,10 @@ JOURNEYS = {
     # that their order and the state they meet stay as they were.
     "import-cope-docx": journey_import_cope_docx,
     "import-scan-lv": journey_import_scan_lv,
+    # Stage 36.7: spec §14 journeys 8 and 10 (after stage36-groups, whose
+    # project stage36-report continues).
+    "stage36-report": journey_stage36_report,
+    "import-damaged": journey_import_damaged,
 }
 
 

@@ -426,8 +426,9 @@ METHODS: dict[str, MethodSpec] = {spec.key: spec for spec in (
                  Option("two_group_method", "Test for two groups",
                         (("mannwhitney", "Mann–Whitney U"), ("welch", "Welch’s independent t")),
                         "mannwhitney")),
+        # 2–8 groups: the confirmation must not speak of "the two groups".
         confirmations=(
-            INDEPENDENT,
+            OMNI_INDEPENDENT,
             Confirmation("assumptions",
                          "I reviewed the outcome distributions, outliers and group sizes")),
         runner=_run_batch_groups),
