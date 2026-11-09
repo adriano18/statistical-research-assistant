@@ -33,6 +33,18 @@ Journeys (synthetic data only; see JOURNEYS):
 * import-scan-lv a scanned Latvian 52-item table: the scan is detected,
                  read with local OCR in Latvian, its legend offered as one
                  documented scale, a draft of exactly 52
+* stage36-tasks  eight correlations in one batch, back to the task and run
+                 again, each research step opens itself, restart
+* stage36-charts eight scales by UCLA_Level in one Kruskal–Wallis batch,
+                 Chart Studio (type, layout, title), image clipboard, PNG/SVG,
+                 the view for the report, restart
+* stage36-groups three quantile groups of UCLA previewed and created, the
+                 existing UCLA_Level offered, the batch by the new groups
+* stage36-report the batch and a description into one Word report; no
+                 reliability coefficient from totals (D5)
+* import-damaged a damaged PDF while a document is under review: refused
+                 with its reason, the review kept
+* blocked-design a quantitative group variable refused in words
 
 Every step is recorded in OUT_DIR: a screenshot, the UI Automation tree
 when something is missing, an animated recording per journey
