@@ -20,6 +20,7 @@ on:
       - "workspace_*.py"
       - "project_*.py"
       - "import_session.py"
+      - "import_review.py"
       - "scientific_survey_import.py"
       - "visual_survey_review.py"
       - "survey_*.py"
@@ -27,6 +28,8 @@ on:
       - "pyproject.toml"
       - "tools/windows_gui_e2e.py"
       - "tests/synthetic_documents.py"
+      - "tests/stage36_fixtures.py"
+      - "tests/fixtures/stage36/generate_fixtures.py"
       - ".github/workflows/windows-gui-e2e.yml"
 
 permissions:

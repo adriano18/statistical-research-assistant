@@ -243,3 +243,100 @@ proposals awaiting review, not verified items.
 * Validation used synthetic documents only; real documents must still be
   compared with the source page by the researcher, and no accuracy claim
   is made for them.
+
+## Review wizard (36.5 UI)
+
+The engine above is reviewed in the workspace's import wizard
+(`workspace_questionnaires.ImportPage`; review sessions in
+`import_review.py`). Tests: `tests/test_stage36_import_ui.py` (harness,
+English, Latvian and Russian); packaged-EXE journeys `import-cope-docx`
+and `import-scan-lv` in `tools/windows_gui_e2e.py` (spec §14 journeys 5
+and 6). The engine modules were not changed.
+
+**What changed.**
+
+* **Source / version.** Every form of a document is a card: title, item
+  count, the documented answer options with their evidence (header row,
+  instruction before the table, legend or labels in every row, and page),
+  pages, and "Review this form". With two or more forms nothing is chosen
+  for the researcher: steps 2–4, Next and "Create editable draft" wait for
+  the choice, and the status says so. The chosen card says it is chosen;
+  switching to the other form and back keeps each form's own review (its
+  checked items and confirmations are never carried to the other form).
+* **One processing status** (spec §10 "Ошибки") above the wizard, a live
+  region: *Source loaded* (reading the text), *Scanned pages detected*
+  (no text layer: local OCR offered with a language choice, proposed from
+  the interface language; nothing is read before), *Recognizing the
+  scanned pages* (page progress, Cancel), *Candidates found* (N items in
+  M forms, choose one), *Needs review* (K need attention, and the next
+  open step), *Ready to create the draft*, or *Not imported* / *No
+  questionnaire items found* with the reason and the next step. A failed
+  reading names the document under review that stays unchanged, so an
+  error and the counts on screen are never shown without the difference
+  being explained. A successful OCR stays as a line of the status ("Local
+  OCR read pages 1 and 2 (language: Latvian). Compare every item …").
+  A PDF with a text layer is still read with OCR automatically on its image
+  pages (Stage 34.5), in the language its text suggests; "Read the scanned
+  pages again" reads it in another language.
+* **Autosave and resume.** Each document's review is kept in
+  `<data>/import_sessions/<sha256 of the bytes>.json` (beside `surveys`,
+  written atomically after every change): the chosen form, the step, the
+  items compared with the source, wording corrections and scale reviews (as
+  an ordered list of the researcher's own actions), the confirmations, the
+  last selected item, the OCR language and the file's path. Opening the
+  same bytes again restores it; after a restart the Questionnaires page and
+  the empty Import page offer "Continue reviewing <file> — N of M checked"
+  while the file is still at its path with the same SHA-256. The restored
+  review opens at the item last selected, scrolled into view. Restoring
+  replays only the researcher's own actions, and only on a form whose fresh
+  reading has the same fingerprint (items, wording, scales); unknown or
+  malformed entries are ignored, so nothing is ever confirmed by a restore.
+  Creating the draft or "Discard this review" (asked first) removes the
+  file. No network is used (a test forbids sockets during the whole flow).
+* **Keys on the items step**, routed through the shell's keyboard handler
+  and active only there: F8 / Shift+F8 the next / previous item that needs
+  attention, F9 mark the item checked and go to the next one, Alt+↓ /
+  Alt+↑ the next / previous item (also within the "Needs attention"
+  filter). None of them is a text-editing key; a caption lists them, and a
+  "Checked, next item to check (F9)" button does the same with the mouse.
+  The editor keeps one identity (key) as it moves, rows keep scroll keys,
+  and the reached item is scrolled into view. Wording typed but not applied
+  is kept for its item and marked "Not applied yet"; no key applies it.
+  Every item can now be marked as compared with the source (before, only
+  items needing attention could).
+* **Long forms.** Above 150 items the list is shown 100 rows at a time, in
+  fixed pages (rows never shift while the selection moves inside a page;
+  moving past the last row opens the next page), with the filter, stable
+  row keys and the editor under its row.
+
+**Measured** (Linux, Python 3.13, Flet 1.0.5; Tesseract 5.3.4):
+
+| Measure | Result |
+|---|---|
+| Two unnumbered 60-item Word forms → draft of the chosen form | **9 interactions** after the Open dialog; 60 items, the form's own options |
+| Scanned Latvian 52-item table → draft | **12 interactions** (English interface), **10** (Latvian interface, Latvian proposed); 52 items, one legend scale |
+| Local OCR of the 2-page scan in Latvian | about 8 s (the same on restore: the scan is read again) |
+| Items step with 200 items, one build of the page (median of 7; three runs) | **13–24 ms** with a 100-row page; 29–40 ms with all 200 rows; the test fails above 600 ms |
+| Flet's patch of the rebuilt page for one selection (three runs) | 24–30 ms with a 100-row page; 33–36 ms with all 200 rows |
+
+**Limitations.**
+
+* The Windows journeys were written against the same texts and controls as
+  the harness tests, but they run only on Windows (`windows-gui-e2e.yml`);
+  they were not run for this change.
+* The OCR language is asked for only when a PDF has no text layer at all;
+  other PDFs are read automatically as before and can be read again in
+  another language.
+* A restore reads the document again (OCR included) and restores a form
+  only if that reading is identical; another OCR engine or language data
+  version can therefore start a new review (the status says so).
+* The filter, the list page and wording typed but not applied are not
+  saved; a review is found again only through the same file at the same
+  path (or by opening the same bytes from anywhere).
+* Items reached with a key, "Next item that needs attention" or a restore
+  are brought into view with Flet's `scroll_to(scroll_key=…)`, which
+  decides where the row lands (the harness checks the call, not the
+  pixels); mouse clicks keep the clicked row under the pointer as before.
+  On macOS, Option+↑/↓ inside the wording field also moves the caret.
+* Forms up to 150 items are listed whole (the 120-item journey is
+  unchanged).
