@@ -382,8 +382,13 @@ The fixture was not the Linux fixture. The generator drew the table with
 the computer's fonts: Times New Roman on the Windows runner, DejaVu Serif
 on Linux. Two changes follow:
 
-* The generator now uses the fonts that matplotlib ships, so every platform
-  gets the same pages. The Linux pages are unchanged, pixel for pixel.
+* The generator now uses the fonts that matplotlib ships and Pillow's basic
+  text layout, so every platform gets the same pages. Pillow shapes text
+  with libraqm on Linux and cannot on Windows; libraqm set the text about
+  1 % narrower, so two short statements wrapped on Windows and item 26 no
+  longer fitted on page 1 (the first packaged run with the bundled fonts
+  stopped there). The answer digits now stand 20 px further right, which
+  keeps the designed wrapping: 13 long statements, 4 of them on three lines.
 * The Times-like case is kept as a fixture of its own,
   `synthetic_lv_table_scan_52_stix.pdf`, set in STIX General.
 
@@ -424,7 +429,8 @@ Rows numbered 1–52 (before → after):
 | Reading | `lav` | `lav+rus+eng` | `eng` |
 |---|---|---|---|
 | `synthetic_lv_table_scan_52.pdf` (DejaVu) | 52 → 52 | 52 → 52 | 52 → 52 |
-| `synthetic_lv_table_scan_52_stix.pdf` | 0 → 52 | 26 → 52 | 50 → 52 |
+| `synthetic_lv_table_scan_52_stix.pdf` | 26 → 52 | 26 → 52 | 52 → 52 |
+| The same STIX table laid out by libraqm (as first generated here) | 0 → 52 | 26 → 52 | 50 → 52 |
 | The captured Windows pages (Times New Roman) | 46 → 52 (5 numbers inferred and flagged) | — | — |
 | The owner's SACS-LV scan (local only, counts only) | 52 → 52 | 52 → 52 | 51 → 52 |
 
@@ -435,7 +441,7 @@ Its cleaned pages read better:
 * The legend is found on both pages.
 
 Removing the rules takes 0.1–0.3 s per page here. OCR of ruled pages got
-faster: the two DejaVu pages with `lav+rus+eng` take 6.2 s instead of 14.6 s.
+faster: the two DejaVu pages with `lav+rus+eng` take 6.0 s instead of 15.1 s.
 
 The journey also reads the STIX variant with the program's code and the
 bundled engine outside the program, as a diagnostic
