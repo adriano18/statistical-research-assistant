@@ -271,6 +271,9 @@ class ProjectHub:
             self._failed(error)
             return
         self.new_title = ""
+        # A new project starts a new analysis: nothing chosen for another
+        # project's data (or its research task) carries over.
+        self.app.pages["analyze"].reset()
         # The new project opens on its own page, with the first step offered.
         self._done(self.app.t("project.created", title=info.title), route="project")
 
