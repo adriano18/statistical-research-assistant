@@ -1,5 +1,5 @@
-<!-- PUBLIC, PRIVACY-SAFE Stage 36 specification. Private dataset-derived numerical benchmarks are intentionally omitted. -->
-<!-- Owner communication: Russian. Source code, tests and technical docs: English. Application localization: RU/LV/EN. -->
+<!-- Public-safe version of the owner's Stage 36 prompt. The private-data validation section has intentionally been replaced by synthetic fixtures. -->
+<!-- Communicate with the owner in Russian. Keep code, tests and technical documentation in English. Localize app RU/LV/EN. -->
 
 # STAGE 36 — SCIENTIFIC RESEARCH WORKBENCH
 ## Full UX/UI Redesign, Research Workflows, Advanced Statistics, Scientific Import and E2E Validation
@@ -754,11 +754,9 @@ AI не может:
 
 ### 13. Independent statistical validation — PUBLIC TEST FIXTURES ONLY
 
-The original UCLA/SACS research dataset, thesis, COPE/SACS documents and scan PDFs are **private reference material**. They must **not** be committed, copied into PRs, attached to issue threads, included in CI artifacts or logged. Run acceptance tests on those documents only in an explicitly authorized local environment, with output reporting counts and discrepancies but not data excerpts.
+The original UCLA/SACS research dataset, bachelor thesis, COPE/SACS documents and scanned PDF files are **private reference material**. Do **not** commit, attach to public issues/PRs, store in CI artifacts, use as training data, or quote them in public logs. Test on those originals only in an expressly authorized private/local environment.
 
-For the public repository, generate wholly synthetic UCLA/SACS-style data, two independent 60-item COPE-like Word table forms, and a two-page 52-item scanned SACS-like questionnaire using `tests/fixtures/stage36/generate_fixtures.py`. These are invented items, fake participants, and fake responses, not derivatives of the original instruments.
-
-Add independent deterministic numerical oracles for Spearman/Pearson/Kendall, Holm/BH, Kruskal–Wallis, effect sizes, CI methods, alpha-if-item-deleted, handling of unequal group sizes and missingness. Avoid hardcoding statistics measured on the user's private data into public tests. Real validation results are reported privately to the owner.
+For the public repository use wholly invented synthetic data (not modified copies of participant rows), two 60-item fictional Word forms and a two-page image-only 52-item fictional questionnaire from `tests/fixtures/stage36/generate_fixtures.py`. Use independent deterministic SciPy/statsmodels oracles for correlation coefficients, Holm/BH, Kruskal–Wallis, confidence intervals, scoring and item analysis. Record methodology and numerical tolerance. No private-data-derived benchmark values in the public repository.
 
 ---
 
@@ -942,7 +940,8 @@ Stage 36 считается завершённым только при выпо�
 
 После реализации предоставь:
 
-1. **Executive summary** — что реально улучшено.2. **UX before/after** — количество действий и устранённая рутинность.
+1. **Executive summary** — что реально улучшено.
+2. **UX before/after** — количество действий и устранённая рутинность.
 3. **Architecture changes** — новые компоненты и модель данных.
 4. **Statistics validation** — независимые эталоны, методы, допуски, расхождения.
 5. **Scientific import tests** — сколько пунктов обнаружено, сколько подтверждено, где возникли проблемы.
