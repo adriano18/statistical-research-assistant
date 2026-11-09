@@ -434,6 +434,11 @@ def _reference_like(line: str) -> bool:
     return bool(_REFERENCE_SHAPES.search(line) or _AUTHOR_LIST.search(line))
 
 
+def is_reference_line(line: str) -> bool:
+    """A bibliography-shaped line (author list, year in parentheses, DOI …)."""
+    return _reference_like(_clean(line))
+
+
 def _references_heading(line: str) -> bool:
     """A references section heading, also decorated ("— References —",
     "6. REFERENCES:", "R E F E R E N C E S") and in Latvian or Russian."""

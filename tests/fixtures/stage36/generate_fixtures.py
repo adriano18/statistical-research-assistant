@@ -223,7 +223,8 @@ def create_lv_table_scan_pdf(out_dir: Path) -> Path:
 
     Item numbers stand in their own column, statements wrap onto a second
     line, the 1-5 response digits stand in a right column, the legend is
-    repeated at the top of page 2, the page is slightly rotated, and a
+    repeated at the top of page 2 and stands right under an instruction
+    line that opens with a bare "5", the page is slightly rotated, and a
     tick-like mark precedes some numbers (scan artifacts that OCR reads
     as quotes). Latvian letters with diacritics test the OCR language.
     """
@@ -273,8 +274,12 @@ def create_lv_table_scan_pdf(out_dir: Path) -> Path:
             draw.text((left_number, y), "Lūdzu, iedomājieties izdomātas ikdienas situācijas un "
                       "atbildiet, kā jūs parasti", font=body, fill="black")
             y += 32
-            draw.text((left_number, y), "rīkotos. Izvēlieties vienu no 5 atbilžu variantiem:",
-                      font=body, fill="black")
+            draw.text((left_number, y), "rīkotos. Izvēlieties vienu no", font=body, fill="black")
+            y += 32
+            # Stage 36.5: the option count opens the next instruction line, so a
+            # bare "5" stands between the number and statement columns right
+            # above the legend (a real scan did this); it is not item 5.
+            draw.text((150, y), "5 atbilžu variantiem:", font=body, fill="black")
             y += 40
         for label in LV_LEGEND:
             draw.text((430, y), label, font=body, fill="black")

@@ -420,6 +420,312 @@ class OCRTableRowTests(unittest.TestCase):
         self.assertTrue(any("Found 12 candidate items" in w for w in review.warnings))
 
 
+# ------------- structural patterns reported from a real scan (invented words)
+#
+# Positions (page fractions) and word confidences follow the structural
+# evidence of an authorized private check; every word here is invented.
+
+FILLER = ("aaaa", "bbbbbb", "cccc", "ddddddd", "eeee", "ffffff", "ggg", "hhhhhhh")
+LABELS = ("nekad", "reti", "dažreiz", "bieži", "vienmēr")
+
+
+def invented(n: int) -> str:
+    return f"Iedomāta rinda {n} " + " ".join(FILLER[(n + k) % len(FILLER)] for k in range(4)) + "."
+
+
+def tokens_at(tokens, x=0.76, step=0.042, conf=80.0):
+    """Answer-area tokens: plain strings, or (text, x, confidence)."""
+    parts = []
+    for token in tokens:
+        text, at, score = token if isinstance(token, tuple) else (token, x, conf)
+        parts.append((text, at, at + 0.009 * len(text), score))
+        x = at + step
+    return parts
+
+
+class RealLayout:
+    """Synthetic OCR lines: number column 0.13-0.16, statement column 0.21,
+    answers 0.72-0.97, ruled-line noise between rows."""
+
+    def __init__(self, page=1):
+        self.page, self.lines, self.y = page, [], 0.05
+
+    def add(self, parts, step=0.02, height=0.013):
+        line_id = f"p{self.page}-b1-r1-l{len(self.lines) + 1}"
+        words = tuple(OCRWord(f"{line_id}-w{k}", text, (x0, self.y, x1, self.y + height), conf,
+                              line_id) for k, (text, x0, x1, conf) in enumerate(parts, 1))
+        self.lines.append(OCRLine(line_id, f"p{self.page}-b1", words,
+                                  union_box(w.box for w in words)))
+        self.y += step
+
+    @staticmethod
+    def words(text, x, conf=95.0):
+        parts = []
+        for token in text.split():
+            parts.append((token, x, x + 0.0075 * len(token), conf))
+            x += 0.0075 * len(token) + 0.006
+        return parts
+
+    def row(self, number, text, answers, *, number_x=0.15, number_conf=92.0, more=(),
+            noise=True):
+        parts = [(number, number_x, number_x + 0.0075 * len(number), number_conf)] if number else []
+        self.add(parts + self.words(text, 0.21) + answers)
+        for extra in more:
+            self.add(self.words(extra, 0.21))
+        if noise:  # a ruled line read as text
+            self.add([("ii", 0.08, 0.93, 11.0), ("m", 0.40, 0.45, 20.0)], step=0.008,
+                     height=0.018)
+
+    def legend(self, x=0.355, step=0.017):
+        for code, label in zip("12345", LABELS):
+            self.add([(f"{code}-", x, x + 0.015, 93.0)] + self.words(label, x + 0.022), step=step)
+
+    def ocr_page(self):
+        block = OCRBlock(f"p{self.page}-b1", tuple(self.lines), union_box(l.box for l in self.lines))
+        return OCRPage(self.page, 1200, 1700, (block,), "tesseract_tsv", "lav")
+
+
+def first_page(rows=range(1, 9), *, instruction=True, legend=True, special=None):
+    """Title, an instruction line opening with a bare "5", the legend, rows."""
+    sheet = RealLayout(1)
+    sheet.add(sheet.words("IEDOMĀTA APTAUJA", 0.30))
+    if instruction:
+        sheet.add(sheet.words("Lūdzu, izvēlieties katrai rindai vienu no", 0.10))
+        sheet.add([("5", 0.18, 0.188, 90.0)] + sheet.words("atbilžu variantiem zemāk:", 0.205))
+    if legend:
+        sheet.legend()
+    confidences = {1: 57.0, 2: 74.0, 3: 91.0, 4: 95.0}
+    for n in rows:
+        if special and n in special:
+            special[n](sheet, n)
+            continue
+        sheet.row(f"{n}.", invented(n), tokens_at("1 2 3 4 5".split()),
+                  number_x=0.16 if n <= 4 else 0.15, number_conf=confidences.get(n, 92.0),
+                  more=("turpinājums ar dažiem vārdiem",) if n in (1, 4) else ())
+    return sheet.ocr_page()
+
+
+def rows_of(pages):
+    tables = reconstruct_tables(pages)
+    numbers = [row.number for row in tables.rows]
+    if len(numbers) != len(set(numbers)):
+        raise AssertionError(f"an item number was used twice: {numbers}")
+    return {row.number: row for row in tables.rows}, tables
+
+
+class RealScanPatternTests(unittest.TestCase):
+    def test_1_a_bare_digit_and_the_legend_never_start_or_advance_the_sequence(self):
+        rows, tables = rows_of([first_page()])
+        self.assertEqual(sorted(rows), list(range(1, 9)))
+        self.assertEqual(rows[1].prompt, invented(1) + " turpinājums ar dažiem vārdiem")
+        self.assertEqual(rows[4].prompt, invented(4) + " turpinājums ar dažiem vārdiem")
+        self.assertEqual(rows[5].prompt, invented(5), "the instruction line is not item 5")
+        self.assertTrue(all(r.number_source == "printed" for r in rows.values()))
+        self.assertEqual([legend.pairs for legend in tables.legends], [tuple(zip("12345", LABELS))])
+        text = [str(line) for line in tables.lines[1]]
+        self.assertIn("5 atbilžu variantiem zemāk:", text, "the instruction stays plain text")
+
+    def test_1_the_bare_digit_is_refused_even_where_its_text_meets_the_statement_column(self):
+        def instruction_row(sheet, n):
+            sheet.row(f"{n}.", invented(n), tokens_at("1 2 3 4 5".split()), number_x=0.16)
+        page = RealLayout(1)
+        page.add([("5", 0.17, 0.178, 90.0)] + page.words("atbilžu variantiem zemāk:", 0.21))
+        page.legend()
+        for n in range(1, 6):
+            instruction_row(page, n)
+        rows, _ = rows_of([page.ocr_page()])
+        self.assertEqual(sorted(rows), [1, 2, 3, 4, 5])
+        self.assertEqual(rows[5].prompt, invented(5))
+
+    def test_2_a_quoted_number_with_a_lost_first_answer_digit(self):
+        def quoted(sheet, n):
+            sheet.row(f'"{n}.', invented(n), tokens_at("2 3 4 5".split(), x=0.80),
+                      number_conf=52.0, more=("turpinājums ar dažiem vārdiem",))
+        rows, _ = rows_of([first_page(range(1, 9), special={6: quoted})])
+        self.assertEqual(sorted(rows), list(range(1, 9)))
+        self.assertEqual((rows[6].number_source, rows[6].number_text), ("normalised", '"6.'))
+        self.assertEqual(rows[6].prompt, invented(6) + " turpinājums ar dažiem vārdiem")
+
+    def test_2_a_number_split_onto_its_own_line_or_behind_a_speck_is_still_read(self):
+        def split(sheet, n):    # OCR puts '"6.' on a line of its own, at the row's height
+            top = sheet.y
+            sheet.add(sheet.words(invented(n), 0.21) + tokens_at("2 3 4 5".split(), x=0.80),
+                      step=0.0)
+            sheet.y = top + 0.001
+            sheet.add([(f'"{n}.', 0.15, 0.172, 52.0)])
+            sheet.add([("ii", 0.08, 0.93, 11.0)], step=0.008, height=0.018)
+
+        def speck(sheet, n):    # a low-scored speck left of the number
+            sheet.add([("a", 0.135, 0.14, 20.0), (f'"{n}.', 0.15, 0.172, 52.0)]
+                      + sheet.words(invented(n), 0.21) + tokens_at("1 2 3 4 5".split()))
+        rows, _ = rows_of([first_page(range(1, 10), special={6: split, 8: speck})])
+        self.assertEqual(sorted(rows), list(range(1, 10)))
+        self.assertEqual([rows[n].prompt for n in (6, 8)], [invented(6), invented(8)])
+        self.assertEqual({rows[n].number_source for n in (6, 8)}, {"normalised"})
+
+    def test_2_specks_and_merged_rule_noise_do_not_hide_a_quoted_row(self):
+        def speck_in_text(sheet, n):    # a speck just left of the first statement word
+            sheet.add([(f'"{n}.', 0.15, 0.172, 52.0), (",", 0.198, 0.201, 15.0)]
+                      + sheet.words(invented(n), 0.21) + tokens_at("2 3 4 5".split(), x=0.80))
+
+        def merged_noise(sheet, n):     # rule noise read into the same line
+            sheet.add([(f'"{n}.', 0.15, 0.172, 52.0)] + sheet.words(invented(n), 0.21)
+                      + [("ii", 0.56, 0.60, 12.0), ("m", 0.62, 0.64, 18.0)]
+                      + tokens_at("1 2 3 4 5".split()))
+        rows, _ = rows_of([first_page(range(1, 9), special={5: speck_in_text, 7: merged_noise})])
+        self.assertEqual(sorted(rows), list(range(1, 9)))
+        self.assertEqual(rows[5].prompt, invented(5), "the speck is not statement text")
+        self.assertEqual({rows[n].number_source for n in (5, 7)}, {"normalised"})
+
+    def test_2_low_scored_first_words_still_anchor_the_row(self):
+        def low_scored(sheet, n):   # e.g. Latvian words read with English OCR
+            words = sheet.words(invented(n), 0.21)
+            words[0] = (*words[0][:3], 28.0)
+            words[1] = (*words[1][:3], 33.0)
+            sheet.add([(f"{n}.", 0.15, 0.165, 92.0)] + words + tokens_at(["123", "45"], x=0.78))
+        rows, _ = rows_of([first_page(range(1, 9), special={3: low_scored, 6: low_scored})])
+        self.assertEqual(sorted(rows), list(range(1, 9)))
+        self.assertEqual([rows[n].prompt for n in (3, 6)], [invented(3), invented(6)])
+        self.assertEqual([rows[n].answers for n in (3, 6)], [("123", "45")] * 2)
+
+    def test_3_look_alike_letters_reach_only_the_expected_number(self):
+        cases = {"Aī.": 41, "A1.": 41, "4ī.": 41, "Il.": 11, "|7.": 17, "!8.": 18,
+                 "S2.": 52, "Z5.": 25, "B4.": 84, "G1.": 61, "T3.": 73, "lO.": 10}
+        for token, number in cases.items():
+            with self.subTest(token=token):
+                self.assertEqual(read_number(token, number), (number, "normalised"))
+                self.assertIsNone(read_number(token, number + 1))
+        self.assertIsNone(read_number("Aa.", 41))
+        self.assertEqual(read_number("41.", 7), (41, "printed"), "clean numbers are kept")
+
+    def test_3_a_look_alike_row_is_flagged_and_its_glued_answers_stripped(self):
+        def misread(sheet, n):   # "41." read as "Aī."
+            sheet.row("Aī.", invented(n), tokens_at(["a2", "3", "7", "5"], x=0.78, conf=50.0),
+                      number_x=0.14, number_conf=16.0)
+        page = first_page(range(37, 46), instruction=False, legend=False, special={41: misread})
+        rows, tables = rows_of([page])
+        self.assertEqual(sorted(rows), list(range(37, 46)))
+        self.assertEqual((rows[41].number_source, rows[41].number_text), ("normalised", "Aī."))
+        self.assertEqual(rows[41].prompt, invented(41))
+        self.assertEqual(rows[41].answers, ("a2", "3", "7", "5"))
+        line = next(line for line in tables.lines[1] if getattr(line, "number", None) == 41)
+        self.assertIn("check this number: OCR read “Aī.”", line.flags)
+
+    def test_4_a_partial_number_between_its_neighbours_is_inferred_and_flagged(self):
+        def partial(sheet, n):
+            sheet.row("_4.", invented(n), tokens_at([("a", 0.78, 30.0), ("3", 0.85, 80.0),
+                                                     ("45", 0.89, 70.0)]),
+                      number_x=0.13, number_conf=55.0)
+        rows, tables = rows_of([first_page(range(1, 9), special={6: partial})])
+        self.assertEqual(sorted(rows), list(range(1, 9)))
+        self.assertEqual((rows[6].number_source, rows[6].number_text), ("inferred", "_4."))
+        self.assertEqual(rows[6].prompt, invented(6))
+        line = next(line for line in tables.lines[1] if getattr(line, "number", None) == 6)
+        self.assertIn("item number inferred from order", line.flags)
+        self.assertIn("check this number: OCR read “_4.”", line.flags)
+
+    def test_4_a_partial_number_is_not_inferred_without_the_next_row(self):
+        def partial(sheet, n):   # "14." read as "_1.", last row, no answer digits
+            sheet.row("_1.", invented(n), [], number_x=0.13, number_conf=55.0)
+        rows, tables = rows_of([first_page(range(1, 15), special={14: partial})])
+        self.assertEqual(sorted(rows), list(range(1, 14)), "nothing after it confirms 14")
+        self.assertIn(f"_1. {invented(14)}", [str(line) for line in tables.lines[1]],
+                      "it stays plain text for the researcher, not part of item 13")
+
+    ANSWER_TOKENS = (
+        ["12", "345"], ["123", "45"], ["1", "234", "5"], ["12", "3", "45"], ["333", "45"],
+        ["737", "5"], ["37", "5"], ["12375"], ["a2345"], ["[1", "2", "3", "4", "5"],
+        ["|", "2", "3", "4", "5"], ["1", "2", "3", "4", "5”"], ["1", "23”", "45"],
+        ["1—2", "3", "4—5"], ["—", "2", "3", "4", "5"], ["-", "2", "3", "4", "5"],
+        ["1", "2", "3", "7", "5"], [("a", 0.73, 40.0), "2", "3", "4", "5"],
+        ["1", ("a", 0.80, 30.0), "3", "4", ("a", 0.92, 25.0)],
+    )
+
+    def test_5_every_listed_answer_token_form_is_stripped_from_the_row_end(self):
+        page = RealLayout(1)
+        page.legend()
+        for n, tokens in enumerate(self.ANSWER_TOKENS, 1):
+            start = 0.72 + 0.10 * ((n * 7) % 11) / 10     # skew and lost digits: 0.72-0.82
+            page.row(f"{n}.", invented(n), tokens_at(tokens, x=start))
+        rows, _ = rows_of([page.ocr_page()])
+        self.assertEqual(sorted(rows), list(range(1, len(self.ANSWER_TOKENS) + 1)))
+        for n, row in rows.items():
+            self.assertEqual(row.prompt, invented(n), self.ANSWER_TOKENS[n - 1])
+            self.assertTrue(row.answers)
+
+    def test_5_statement_words_and_two_letter_tokens_are_never_stripped(self):
+        page = RealLayout(1)
+        long = "Iedomāta rinda ar ļoti garu tekstu kas beidzas pie labās malas un"
+        endings = {
+            1: (long, ["1", "2", "3", "4", "5"]),                  # "un" ends at x ≈ 0.70
+            2: ("Iedomāta rinda 2 numurs 12 un vēl teksts", ["1", "2", "3", "4", "5"]),
+            3: ("Iedomāta rinda 3 aaaa bbbbbb", [("ab", 0.74, 30.0), "3", "4", "5"]),
+            4: ("Iedomāta rinda 4 cccc dddd", [("k", 0.73, 90.0), "2", "3", "4", "5"]),
+            5: ("Iedomāta rinda 5 eeee ffff", [("L", 0.73, 90.0), "2", "3", "4", "5"]),
+            6: ("Iedomāta rinda 6 gggg hhhh", [("LZ", 0.73, 51.0), "3", "4", "5"]),
+        }
+        for n, (text, tokens) in endings.items():
+            page.row(f"{n}.", text, tokens_at(tokens, x=0.76 if n != 1 else 0.74))
+        rows, _ = rows_of([page.ocr_page()])
+        self.assertEqual(rows[1].prompt, long, "a statement word near the answers stays")
+        self.assertEqual(rows[2].prompt, endings[2][0], "digits inside the statement stay")
+        self.assertTrue(rows[3].prompt.endswith(" ab"), "two letters are never stripped")
+        self.assertTrue(rows[4].prompt.endswith(" k"), "a confidently read letter stays")
+        self.assertEqual(rows[5].prompt, endings[5][0], "a look-alike letter (L for 1) goes")
+        self.assertTrue(rows[6].prompt.endswith(" LZ"), "two-letter junk stays, as read")
+
+    def test_6_a_legend_merged_with_rule_noise_never_becomes_an_item(self):
+        second = RealLayout(2)
+        second.add([("a", 0.15, 0.158, 36.0), ("1-", 0.36, 0.375, 90.0)]
+                   + second.words("nekad", 0.382))
+        for code, label in zip("234", LABELS[1:4]):
+            second.add([(f"{code}-", 0.36, 0.375, 92.0)] + second.words(label, 0.382), step=0.017)
+        # Worst case: rule noise reads as "ZT" (2 → Z, 7 → T: the expected 27)
+        # in the number column and texts land in the statement column; the
+        # next numbered line prints 27 itself, so this line is not item 27.
+        second.add([("ZT", 0.15, 0.165, 22.0), ("vārds", 0.21, 0.245, 75.0),
+                    ("cits", 0.25, 0.28, 75.0), ("5-", 0.36, 0.375, 90.0)]
+                   + second.words("vienmēr", 0.382))
+        for n in range(27, 32):
+            second.row(f"{n}.", invented(n), tokens_at("1 2 3 4 5".split()))
+        first = first_page(range(21, 27), instruction=False)
+        rows, tables = rows_of([first, second.ocr_page()])
+        self.assertEqual(sorted(rows), list(range(21, 32)))
+        self.assertEqual(rows[27].prompt, invented(27))
+        self.assertEqual(rows[27].number_source, "printed")
+        self.assertIn("ZT vārds cits 5- vienmēr", [str(line) for line in tables.lines[2]])
+
+    def test_7_rows_without_answer_digits_count_when_their_number_fits(self):
+        def blank(sheet, n):
+            sheet.row(f"{n}.", invented(n), [("aaa", 0.74, 0.765, 20.0), ("a", 0.92, 0.928, 25.0)])
+        rows, _ = rows_of([first_page(range(1, 9), special={5: blank, 7: blank})])
+        self.assertEqual(sorted(rows), list(range(1, 9)))
+        self.assertEqual(rows[5].prompt, invented(5) + " aaa", "three letters are kept as read")
+        self.assertEqual(rows[5].number_source, "printed")
+
+    def test_all_patterns_together_give_every_number_once(self):
+        def quoted(sheet, n):
+            sheet.row(f'"{n}.', invented(n), tokens_at("2 3 4 5".split(), x=0.80), number_conf=52.0)
+
+        def misread(sheet, n):
+            sheet.row("Aī.", invented(n), tokens_at(["a2", "3", "7", "5"], x=0.78, conf=50.0),
+                      number_x=0.14, number_conf=16.0)
+
+        def partial(sheet, n):
+            sheet.row("_4.", invented(n), tokens_at([("a", 0.78, 30.0), "3", "45"]),
+                      number_x=0.13, number_conf=55.0)
+
+        def blank(sheet, n):
+            sheet.row(f"{n}.", invented(n), [("a", 0.92, 0.928, 25.0)])
+        rows, tables = rows_of([first_page(range(1, 14), special={
+            5: quoted, 9: misread, 11: partial, 12: blank})])
+        self.assertEqual(sorted(rows), list(range(1, 14)))
+        self.assertEqual({n for n, r in rows.items() if r.number_source != "printed"}, {5, 9, 11})
+        for n, row in rows.items():
+            self.assertTrue(row.prompt.startswith(invented(n)), n)
+            self.assertNotRegex(row.prompt, r"\s\d+$", "no answer digits at the end")
+
+
 @unittest.skipUnless(shutil.which("tesseract"), "local OCR engine")
 class RealOCRTableTests(unittest.TestCase):
     """Real local Tesseract on the synthetic scans (D8 and the older inline scan)."""
