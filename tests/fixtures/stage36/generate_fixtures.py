@@ -12,9 +12,10 @@ Dependencies for developers/CI: python-docx, Pillow, matplotlib (for its bundled
 fonts). No end-user install needed.
 
 The scans are drawn with fonts that matplotlib ships (DejaVu, STIX), never
-with the fonts of the computer: the same fixture on Linux and Windows. Before
-36.7 the Windows runner drew the Latvian table in Times New Roman, so the
-packaged-EXE journey read a different document than the Linux tests did.
+with the fonts of the computer, and laid out by Pillow's basic engine: the
+same fixture on Linux and Windows. Before 36.7 the Windows runner drew the
+Latvian table in Times New Roman, so the packaged-EXE journey read a
+different document than the Linux tests did.
 """
 from __future__ import annotations
 
@@ -34,11 +35,15 @@ SEED = 360612
 
 
 def bundled_font(name: str, size: int):
-    """A TrueType font shipped with matplotlib: identical on every platform."""
+    """A TrueType font shipped with matplotlib, laid out by Pillow's basic
+    engine: identical text widths on every platform. (Pillow on Linux shapes
+    text with libraqm by default, on Windows it cannot; the widths differ by
+    about 1 %, enough to wrap a statement differently.)"""
     import matplotlib
     from PIL import ImageFont
 
-    return ImageFont.truetype(str(Path(matplotlib.get_data_path()) / "fonts" / "ttf" / name), size)
+    return ImageFont.truetype(str(Path(matplotlib.get_data_path()) / "fonts" / "ttf" / name), size,
+                              layout_engine=ImageFont.Layout.BASIC)
 
 
 def create_csv(out_dir: Path) -> Path:
@@ -256,12 +261,13 @@ def create_lv_table_scan_pdf(out_dir: Path, typeface: str = "dejavu") -> Path:
     rnd = _random.Random(SEED + 52)
     title, body = font(28), font(21)
     width, height = 1240, 1754
-    # Stage 36.5: the statement column ends at x = 935 (digits at 965), so
-    # only the 13 long statements wrap and all 26 rows of a page stay above
-    # the footer. With digits at 905, page 1 drew item 26 below the bottom
-    # edge (y = 1761 of 1754) and the footer over item 24: no reader could
-    # find 52 items in that scan.
-    left_number, left_text, digits_x, right = 120, 175, 965, 1150
+    # Stage 36.5: only the 13 long statements wrap and all 26 rows of a page
+    # stay above the footer. With digits at 905, page 1 drew item 26 below the
+    # bottom edge (y = 1761 of 1754) and the footer over item 24: no reader
+    # could find 52 items in that scan. Stage 36.7: Pillow's basic layout
+    # (the same on every platform) sets text about 1 % wider than libraqm
+    # did on Linux, so the digits stand at 985 and statements end by x = 955.
+    left_number, left_text, digits_x, right = 120, 175, 985, 1190
     footer_top = height - 90
 
     def wrap(draw, text):
