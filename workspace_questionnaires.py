@@ -2031,10 +2031,11 @@ class ImportPage:
         ], wrap=True, spacing=tk.SPACE_2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
     def _list_page(self, page: int):
-        window, current, pages = self._window(self._visible())
+        """Show another page of a long list, from its first row."""
+        pages = self._window(self._visible())[2]
         self.list_page = max(0, min(page, pages - 1))
         self.app.render()
-        window, _, _ = self._window(self._visible())
+        window = self._window(self._visible())[0]
         if window:
             self._reveal(window[0])
 
