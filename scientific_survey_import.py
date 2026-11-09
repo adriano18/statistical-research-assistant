@@ -29,8 +29,7 @@ from response_scales import (
     strip_trailing_scale_tokens,
 )
 from scoring_evidence import (
-    ReviewEvidence, ScoringGroup, ScoringStatement, parse_scoring_evidence,
-    referenced_missing, sequence_gaps,
+    ReviewEvidence, parse_scoring_evidence, referenced_missing, sequence_gaps,
 )
 from survey_storage import validate_questions
 
@@ -194,6 +193,56 @@ class ResponseScheme:
 
 
 @dataclass(frozen=True)
+class DocumentedScale:
+    """Answer options a questionnaire table documents for ALL its rows.
+
+    Evidence for a shared :class:`ResponseScheme` only: labels as printed
+    (header row, instruction sentence or legend), codes only where printed.
+    The researcher confirms the scheme; nothing here is confirmed or scored.
+    """
+    labels: tuple[str, ...]
+    codes: tuple[str | None, ...]
+    printed: tuple[str, ...]
+    evidence: str                  # "header" | "instruction" | "row" | "legend"
+    page: int
+    source_text: str
+    issues: tuple[str, ...] = ()
+
+
+class StructuredItemLine(str):
+    """One item row rebuilt from document STRUCTURE, not from text order.
+
+    A Word table row (numbered by row order when the source prints no
+    number) or an OCR'd table row rebuilt from word boxes arrives with its
+    number, prompt and evidence already known. :func:`parse_scientific_lines`
+    takes them as they are; rows of one ``group`` (one table, possibly
+    continued on later pages) form one instrument candidate titled ``title``.
+    """
+    number: int
+    prompt: str
+    excerpt: str
+    group: str
+    title: str
+    number_source: str              # "printed" | "row_order" | "normalised" | "inferred"
+    flags: tuple[str, ...]
+    notes: tuple[str, ...]
+    scale: DocumentedScale | None
+    row_tokens: tuple[str, ...]
+    group_notes: tuple[str, ...]
+
+    def __new__(cls, text: str, *, number: int, prompt: str, excerpt: str, group: str,
+                title: str = "", number_source: str = "printed", flags=(), notes=(),
+                scale: DocumentedScale | None = None, row_tokens=(), group_notes=()):
+        line = super().__new__(cls, text)
+        line.number, line.prompt, line.excerpt = int(number), str(prompt), str(excerpt)
+        line.group, line.title, line.number_source = str(group), str(title), number_source
+        line.flags, line.notes = tuple(flags), tuple(notes)
+        line.scale, line.row_tokens = scale, tuple(row_tokens)
+        line.group_notes = tuple(group_notes)
+        return line
+
+
+@dataclass(frozen=True)
 class InstrumentCandidate:
     title: str
     questions: tuple[Candidate, ...]
@@ -335,6 +384,12 @@ def _title_line(line: str) -> bool:
     return _heading_like(line) and not _scale_or_legend_line(line) and "=" not in line
 
 
+def is_title_line(line: str) -> bool:
+    """A heading-like line that can title an instrument (not a legend or form field)."""
+    text = _clean(line)
+    return _title_line(text) and not _form_field_line(text)
+
+
 # Shapes of a bibliography entry; any one of them is enough because
 # questionnaire items do not carry them: a year in parentheses (not one
 # that ends a question: "… election (2022)?"), a DOI, "et al.", page
@@ -431,6 +486,22 @@ _SUBSET_BEFORE = re.compile(r"\b(?:first|last|next|remaining|other|additional|ex
                             r"|these|those|such|šiem|šo|šie|этих|эти|этим)\s+$", re.I)
 _SUBSET_AFTER = re.compile(r"\s*(?:\(|(?:are|were|is)\s+(?:reverse|reversed|positively|negatively|keyed)"
                            r"|reverse|each\b|per\b)", re.I)
+# A count in a clause that distributes over parts of the form ("15 subscales,
+# each with four items", "each dimension sums four statements", "subscales
+# of 4 items") is the size of a part (a scoring note), not the form length.
+# "each of the 20 items" still counts.
+_DISTRIBUTIVE = re.compile(
+    r"\b(?:each|every|per|katr[a-zāēīūšž]*|кажд\w*)\b(?!\s+(?:of|one\s+of|no|из)\b)", re.I)
+_PART_BEFORE = re.compile(
+    r"\b(?:sub-?scales?|dimensions?|factors?|domains?|facets?|clusters?|apakšskal\w*"
+    r"|dimensij\w*|faktor\w*|подшкал\w*|шкал\w*|фактор\w*)"
+    r"\s+(?:of|with|containing|comprising|having|ar|из|по)?\s*$", re.I)
+
+
+def _describes_a_part(text: str, start: int) -> bool:
+    clause = re.split(r"[.;:!?](?:\s|$)", text[max(0, start - 160):start])[-1]
+    near = " ".join(clause.split()[-5:])
+    return bool(_DISTRIBUTIVE.search(near) or _PART_BEFORE.search(clause))
 
 
 def _count_value(text: str) -> int:
@@ -445,17 +516,21 @@ def expected_item_count(texts) -> int | None:
 
     Reads statements such as "consists of 30 items", "a 30-item scale" or
     "30 statements" (also Latvian and Russian). Sub-counts such as "the
-    first 10 items", "8 items are reverse scored" or "15 items each" are
-    ignored. Different counts resolve by weight (a "consists of" phrase
-    counts most, then "N-item", then a plain mention), ties to the
-    earliest. The file name is never used.
+    first 10 items", "8 items are reverse scored", "15 items each" or a
+    scoring note "15 subscales, each with four items" are ignored: a count
+    only counts when it describes the form, otherwise the result is None.
+    Different counts resolve by weight (a "consists of" phrase counts most,
+    then "N-item", then a plain mention), ties to the earliest. The file
+    name is never used.
     """
     text = " ".join(_clean(t) for t in texts)[:400_000]
     found = [(match.start(), match.group(1), 2)
-             for pattern in (_COUNT_STATED, _COUNT_HYPHENATED) for match in pattern.finditer(text)]
+             for pattern in (_COUNT_STATED, _COUNT_HYPHENATED) for match in pattern.finditer(text)
+             if not _describes_a_part(text, match.start())]
     found += [(match.start(), match.group(1), 1) for match in _COUNT_MENTIONED.finditer(text)
               if not _SUBSET_BEFORE.search(text[max(0, match.start() - 20):match.start()])
-              and not _SUBSET_AFTER.match(text, match.end())]
+              and not _SUBSET_AFTER.match(text, match.end())
+              and not _describes_a_part(text, match.start())]
     weight, first = Counter(), {}
     for position, number, points in sorted(found):
         value = _count_value(number)
@@ -601,44 +676,79 @@ def _read_pdf(path: Path) -> tuple[list[tuple[int, str]], int, tuple[int, ...]]:
     return lines, pages, images
 
 
-def _read_docx(path: Path) -> tuple[list[tuple[int, str]], int, tuple[int, ...]]:
-    from docx import Document
-    from docx.table import Table
-    from docx.text.paragraph import Paragraph
-    document = Document(path)
+def _read_docx(path: Path):
+    """Structure-first DOCX reading: ``(lines, 1, (), forms)``.
+
+    Paragraphs, headings and tables are read in document order
+    (:mod:`table_forms`). Rows of a questionnaire table WITHOUT printed item
+    numbers become :class:`StructuredItemLine` items numbered by row order;
+    every other table keeps the established row flattening.
+    """
+    from table_forms import find_forms, read_docx_blocks
+
+    blocks = read_docx_blocks(path)
+    forms = find_forms(blocks)
+    unnumbered = {form.block_index: form for form in forms if not form.numbered}
     lines = []
-    for part in document.iter_inner_content():
-        if isinstance(part, Paragraph):
-            lines.extend((1, line) for line in part.text.splitlines())
-        elif isinstance(part, Table):
-            for row in part.rows:
-                values = [cell.text.strip() for cell in row.cells]
-                nonempty = [v for v in values if v]
-                # Native table structure: a header row "No. | Statement |
-                # T | F" or an item row ending in its own T / F cells.
-                joined = " ".join(nonempty)
-                if nonempty and match_header(joined):
-                    lines.append((1, joined))
-                    continue
-                if len(nonempty) >= 3 and match_header(" ".join(nonempty[-2:])):
-                    head = nonempty[:-2]
-                    if len(head) >= 2 and re.fullmatch(r"\d{1,3}", head[0]):
-                        lines.append((1, f"{head[0]}. {head[1]}"))
-                        lines.extend((1, v) for v in head[2:])
-                    else:
-                        lines.extend((1, v) for v in head)
-                    lines.append((1, " ".join(nonempty[-2:])))
-                    continue
-                if len(values) >= 2 and re.fullmatch(r"\d{1,3}", values[0]):
-                    lines.append((1, f"{values[0]}. {values[1]}"))
-                    for value in values[2:]:
-                        if value:
-                            lines.extend((1, v) for v in _cell_lines(value))
-                else:
-                    for value in values:
-                        if value:
-                            lines.extend((1, v) for v in _cell_lines(value))
-    return lines, 1, ()
+    for block in blocks:
+        if block.kind == "paragraph":
+            lines.extend((1, line) for line in block.text.splitlines())
+        elif block.index in unnumbered:
+            lines.extend((1, line) for line in _form_lines(block, unnumbered[block.index]))
+        else:
+            lines.extend((1, line) for row in block.rows for line in _table_row_lines(row))
+    return lines, 1, (), forms
+
+
+def _table_row_lines(row) -> list[str]:
+    """One Word table row as text lines (the established flattening)."""
+    values = [str(text).strip() for text in row]
+    nonempty = [v for v in values if v]
+    # Native table structure: a header row "No. | Statement | T | F" or an
+    # item row ending in its own T / F cells.
+    joined = " ".join(nonempty)
+    if nonempty and match_header(joined):
+        return [joined]
+    if len(nonempty) >= 3 and match_header(" ".join(nonempty[-2:])):
+        head = nonempty[:-2]
+        if len(head) >= 2 and re.fullmatch(r"\d{1,3}", head[0]):
+            out = [f"{head[0]}. {head[1]}", *head[2:]]
+        else:
+            out = list(head)
+        return [*out, " ".join(nonempty[-2:])]
+    if len(values) >= 2 and re.fullmatch(r"\d{1,3}", values[0]):
+        out = [f"{values[0]}. {values[1]}"]
+        for value in values[2:]:
+            if value:
+                out.extend(_cell_lines(value))
+        return out
+    return [v for value in values if value for v in _cell_lines(value)]
+
+
+def _form_lines(block, form) -> list[str]:
+    """Rows of an unnumbered questionnaire table as structured items."""
+    count = len(form.rows)
+    notes = (
+        f"Word table {form.table_number} prints no item numbers: its {count} statement rows "
+        f"were numbered 1–{count} in table order (the header row is not an item). "
+        "Check the order against the source.",
+        *form.issues,
+    )
+    items = {row.table_row: row for row in form.rows}
+    out = []
+    for k, raw in enumerate(block.rows, 1):
+        row = items.get(k)
+        if row is None:
+            if form.header and form.header == tuple(_clean(c) for c in raw):
+                continue  # the header row is evidence (DocumentedScale), not text
+            out.extend(_table_row_lines(raw))
+            continue
+        out.append(StructuredItemLine(
+            row.statement, number=row.number, prompt=row.statement, excerpt=row.cell_text,
+            group=form.id, title=form.title, number_source="row_order",
+            scale=form.scale, row_tokens=row.answers, group_notes=notes,
+        ))
+    return out
 
 
 def _cell_lines(value: str) -> list[str]:
@@ -678,11 +788,12 @@ def read_scientific_document(path: str | Path) -> ScientificDocumentReview:
     if size < 1 or size > MAX_BYTES:
         raise ValueError("Source must be nonempty and at most 20 MB.")
     repairs: tuple[SpacingRepair, ...] = ()
+    forms = ()
     if ext == ".pdf":
         lines, pages, images, repairs = _read_pdf_pages(file)
         source = "pdf_text_layer"
     elif ext == ".docx":
-        lines, pages, images = _read_docx(file)
+        lines, pages, images, forms = _read_docx(file)
         source = "docx"
     else:
         lines, pages, images = _read_legacy_doc(file)
@@ -690,7 +801,108 @@ def read_scientific_document(path: str | Path) -> ScientificDocumentReview:
     review = parse_scientific_lines(
         lines, file.name, page_count=pages, image_pages=images, text_source=source,
     )
+    if forms:
+        review = attach_form_scales(review, forms)
     return with_spacing_repairs(review, repairs)
+
+
+def _fold_text(text: str) -> str:
+    return re.sub(r"[^\w]+", " ", str(text).casefold()).strip()
+
+
+def _form_matches(instrument: InstrumentCandidate, form) -> list[int]:
+    """Indices of questions that are rows of a numbered Word-table form."""
+    rows = {(row.number, _fold_text(row.statement)) for row in form.rows}
+    numbers = {number for number, _ in rows}
+    matched = []
+    for index, candidate in enumerate(instrument.questions):
+        if candidate.number not in numbers:
+            continue
+        prompt = _fold_text(candidate.question.get("prompt", ""))
+        if any(number == candidate.number and prompt and statement
+               and (prompt == statement or prompt.startswith(statement)
+                    or statement.startswith(prompt))
+               for number, statement in rows):
+            matched.append(index)
+    return matched
+
+
+def attach_form_scales(review: ScientificDocumentReview, forms) -> ScientificDocumentReview:
+    """Evidence of NUMBERED Word-table forms for the items the parser found.
+
+    The line parser keeps the items of a table whose cells carry numbers;
+    the form's own documented answer options (header labels or the
+    instruction before the table) are proposed — not confirmed — for those
+    of its items that found no answer options, and an instrument titled only
+    by the file name takes the heading of its table.
+    """
+    instruments = list(review.instruments)
+    stem = Path(review.source_name).stem
+    for form in forms:
+        if not form.numbered:
+            continue
+        best = None
+        for index, instrument in enumerate(instruments):
+            matched = _form_matches(instrument, form)
+            if len(matched) >= max(2, len(form.rows) // 2) and (
+                    best is None or len(matched) > len(best[1])):
+                best = (index, matched)
+        if best is None:
+            continue
+        index, matched = best
+        instrument = instruments[index]
+        if form.title and (instrument.title == stem[:75]
+                           or instrument.title.startswith(f"{stem[:60]} — part")):
+            instrument = replace(instrument, title=form.title[:75])
+        if form.scale is not None:
+            instrument = _with_documented_scale(instrument, form.scale, matched)
+        instruments[index] = instrument
+    return replace(review, instruments=tuple(instruments))
+
+
+SHARED_SCALE_WARNING = (
+    "Shared response scale(s) detected and proposed for the linked questions — NOT "
+    "verified. Confirm each scale in Response scale review before importing; numeric "
+    "codes and reverse keys need separate confirmation."
+)
+
+
+def _scheme_note(scheme: ResponseScheme) -> str:
+    return (f"Shared scale {scheme.id} ({' / '.join(scheme.labels) or 'labels missing'}) "
+            f"from {scheme.evidence} evidence on page {scheme.page} — proposed, not verified.")
+
+
+def _with_documented_scale(instrument: InstrumentCandidate, scale: DocumentedScale,
+                           indices) -> InstrumentCandidate:
+    """Link items without answer options to a documented (unconfirmed) scale."""
+    eligible = [k for k in indices
+                if instrument.questions[k].scheme_id is None
+                and instrument.questions[k].question.get("kind") == "short_text"]
+    if len(eligible) < 2:
+        return instrument
+    taken = {scheme.id for scheme in instrument.schemes}
+    number = len(instrument.schemes) + 1
+    while f"s{number}" in taken:
+        number += 1
+    numbers = tuple(instrument.questions[k].number for k in eligible)
+    scheme = ResponseScheme(
+        f"s{number}", scale.labels, scale.printed, scale.codes, scale.evidence, scale.page,
+        scale.source_text[:160], numbers,
+        tuple(n for n in instrument.scoring.reverse_numbers if n in numbers),
+        next((w for w in instrument.scoring.warnings if "revers" in w.lower()), "")[:200],
+        issues=scale.issues,
+    )
+    questions = list(instrument.questions)
+    for k in eligible:
+        row = questions[k]
+        questions[k] = replace(row, scheme_id=scheme.id,
+                               question=proposed_scheme_question(row.question, scheme),
+                               notes=(*row.notes, _scheme_note(scheme)))
+    warnings = instrument.warnings
+    if SHARED_SCALE_WARNING not in warnings:
+        warnings = (*warnings, SHARED_SCALE_WARNING)
+    return replace(instrument, questions=tuple(questions),
+                   schemes=(*instrument.schemes, scheme), warnings=warnings)
 
 
 def with_spacing_repairs(
@@ -815,6 +1027,22 @@ def _build_schemes(current: dict, scoring: "ProposedScoring"):
     for key, group in current["scale_groups"].items():
         indices = [i for i, k in current["links"] if k == key]
         if len(indices) < 2:
+            continue
+        if key[0] == "structured":
+            documented = group["documented"]
+            numbers = tuple(rows[i].number for i in indices)
+            scheme = ResponseScheme(
+                f"s{len(schemes) + 1}", documented.labels, documented.printed,
+                documented.codes, documented.evidence, documented.page,
+                documented.source_text[:160], numbers,
+                tuple(n for n in scoring.reverse_numbers if n in numbers),
+                next((line for line in current["context"]
+                      if re.search(r"revers|circled number", line, re.I)), "")[:200],
+                issues=documented.issues,
+            )
+            schemes.append(scheme)
+            for i in indices:
+                assignments[i] = scheme
             continue
         if key[0] == "block":
             scale = current["scale"]
@@ -971,17 +1199,18 @@ def parse_scientific_lines(
         if len(non_items) < MAX_NON_ITEMS:
             non_items.append((page, line[:240]))
 
-    def begin(title: str, page: int, collection=False):
+    def begin(title: str, page: int, collection=False, group: str | None = None,
+              notes=()):
         state = {
             "title": title, "page": page, "rows": [], "codes": dict(preamble["codes"]),
             "reverse": set(), "context": [], "pending": None,
             "section": "Imported questions", "capture": not collection,
-            "collection": collection, "warnings": [],
+            "collection": collection, "warnings": list(notes),
             "binary": preamble["binary"], "hint": preamble["hint"],
             "legend": dict(preamble["legend"]), "formats": {},
             "scale": preamble["scale"], "scale_legend": dict(preamble["scale_legend"]),
             "buffer": [], "links": [], "scale_groups": {},
-            "evidence_lines": [], "flags": {},
+            "evidence_lines": [], "flags": {}, "group": group,
         }
         preamble.update({"binary": None, "hint": None, "legend": {}, "scale": None,
                          "scale_legend": {}, "lines": [], "codes": {}})
@@ -1085,8 +1314,16 @@ def parse_scientific_lines(
             return
         opts = list(dict.fromkeys(pending["options"]))[:12]
         link = None
+        structured = pending.get("structured")
         if pending.get("block_item") is not None:
             link = block_link(pending)
+        elif structured is not None and structured.scale is not None:
+            # A table form documents its own answer options for every row.
+            link = ("structured", structured.group)
+            current["scale_groups"].setdefault(link, {
+                "header": None, "page": structured.scale.page, "scale": None,
+                "tokens": [], "documented": structured.scale,
+            })["tokens"].append(tuple(structured.row_tokens))
         elif len(opts) < 2:
             binary = binary_options(pending)
             if binary:
@@ -1186,7 +1423,10 @@ def parse_scientific_lines(
                         for q in current["rows"])
                 and not schemes
             )
-            if scoring.code_labels and not safe_homogeneous_scale:
+            # A table form whose every item is on its documented scale keeps
+            # the printed codes in that scale's review instead.
+            documented = current["group"] is not None and len(assignments) == len(current["rows"])
+            if scoring.code_labels and not safe_homogeneous_scale and not documented:
                 current["warnings"].append(
                     "Numeric anchors were found in a mixed or short "
                     "questionnaire; automatic rating conversion disabled."
@@ -1198,9 +1438,7 @@ def parse_scientific_lines(
                     scheme = assignments[index]
                     scheme_id = scheme.id
                     question = proposed_scheme_question(question, scheme)
-                    notes = (*notes, f"Shared scale {scheme.id} ({' / '.join(scheme.labels) or 'labels missing'}) "
-                             f"from {scheme.evidence} evidence on page {scheme.page} — "
-                             "proposed, not verified.")
+                    notes = (*notes, _scheme_note(scheme))
                 elif (
                     safe_homogeneous_scale
                     and len(scoring.code_labels) >= 2
@@ -1216,12 +1454,7 @@ def parse_scientific_lines(
                     row.confidence, notes, scheme_id,
                 ))
             if schemes:
-                current["warnings"].append(
-                    "Shared response scale(s) detected and proposed for the linked "
-                    "questions — NOT verified. Confirm each scale in Response scale "
-                    "review before importing; numeric codes and reverse keys need "
-                    "separate confirmation."
-                )
+                current["warnings"].append(SHARED_SCALE_WARNING)
             try:
                 validate_questions([r.question for r in rows])
             except ValueError as error:
@@ -1304,10 +1537,30 @@ def parse_scientific_lines(
         }
         finish_question()  # the printed choices end the item: no wrapped text follows
 
+    def handle_structured_item(page, raw: StructuredItemLine):
+        """A table row rebuilt from document structure (number, prompt known)."""
+        current["context"].append(_clean(raw))
+        finish_question()
+        current["capture"] = True
+        if current["scale"] is not None:
+            current["scale"]["fresh"] = False
+        if raw.flags:
+            current["flags"].setdefault(raw.number, []).extend(raw.flags)
+        current["pending"] = {
+            "number": raw.number, "prompt": raw.prompt[:300], "page": page,
+            "excerpt": raw.excerpt[:300], "confidence": "review",
+            "options": [], "notes": list(raw.notes), "binary": None, "lines": 0,
+            "row_tokens": tuple(raw.row_tokens), "structured": raw,
+        }
+        finish_question()  # wrapped lines were already joined from the structure
+
     def handle(page, raw):
         """Process one non-title line inside the current instrument."""
         if isinstance(raw, BlockItemLine):
             handle_block_item(page, raw)
+            return
+        if isinstance(raw, StructuredItemLine):
+            handle_structured_item(page, raw)
             return
         line = _clean(raw)
         numbered_text, row_scale, row_tokens = item_text(raw)
@@ -1527,9 +1780,40 @@ def parse_scientific_lines(
             return moved[0] if moved else len(buffer)
         return None
 
+    def structured_row(page, raw: StructuredItemLine):
+        """Rows of one table form are one instrument; a new table starts another."""
+        nonlocal current
+        if current is not None and current["group"] == raw.group:
+            flush()
+            handle(page, raw)
+            return
+        after = []
+        if current is not None:
+            buffer = current["buffer"]
+            heading = _clean(raw.title)
+            cut = next((i for i, (_, r) in enumerate(buffer)
+                        if heading and _clean(r) == heading), None)
+            if cut is None and (current["rows"] or current["pending"]):
+                cut = restart_split(page)
+            cut = len(buffer) if cut is None else cut
+            current["buffer"], after = buffer[:cut], buffer[cut:]
+            flush()
+            finish_instrument()
+            if after and heading and _clean(after[0][1]) == heading:
+                after = after[1:]  # the heading titles the form
+        references.update(page=None, title=None)  # a table row is questionnaire content
+        current = begin(raw.title[:75] if raw.title else _stem_title(source_name, preamble["lines"]),
+                        page, group=raw.group, notes=raw.group_notes)
+        for page_, raw_ in after:
+            handle(page_, raw_)
+        handle(page, raw)
+
     for page, raw in lines:
         line = _clean(raw)
         if not line:
+            continue
+        if isinstance(raw, StructuredItemLine):
+            structured_row(page, raw)
             continue
         title = _title(line)
         if title:
@@ -1679,11 +1963,33 @@ def parse_scientific_lines(
             f"Found {len(instruments)} different candidate instruments. "
             "Select ONE instrument/version; never merge them automatically."
         )
+    document_notes.append(count_statement(instruments, expected))
     return ScientificDocumentReview(
         source_name, tuple(instruments), tuple(document_notes),
         page_count, image_pages, non_items=tuple(non_items),
         expected_count=expected, ocr_language=language, choice_layout=choice_layout,
     )
+
+
+def count_statement(instruments, expected: int | None) -> str:
+    """What was found next to what the document states (counts only).
+
+    Candidate items are proposals for review, not verified questions; the
+    stated count comes from the document's own text (never the file name).
+    """
+    sizes = [len(instrument.questions) for instrument in instruments]
+    if len(sizes) == 1:
+        found = f"{sizes[0]} candidate item{'' if sizes[0] == 1 else 's'}"
+    else:
+        found = (f"{sum(sizes)} candidate items in {len(sizes)} instruments ("
+                 + ", ".join(map(str, sizes)) + ")")
+    if expected is None:
+        return (f"Found {found}. The document text states no item count, so the "
+                "count cannot be checked against it; compare the list with the source.")
+    if expected in sizes:
+        return f"Found {found}; the document text states {expected} items."
+    return (f"Found {found}, but the document text states {expected} items; compare "
+            "the list with the source before importing.")
 
 
 def linked_questions(candidate: InstrumentCandidate, scheme_id: str) -> list[int]:

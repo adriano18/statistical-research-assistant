@@ -182,7 +182,7 @@ class ReliabilityReproduction(unittest.TestCase):
 
 
 class ImportReproduction(unittest.TestCase):
-    @unittest.expectedFailure    # 36.0 D6, fixed in 36.5
+    # 36.0 D6, fixed in 36.5 (table_forms: structure-first Word forms)
     def test_two_unnumbered_sixty_item_forms(self):
         """Spec §10 COPE-LV: no item numbers inside the cells is not 'not
         recognised'; both forms are found, 60 items each, with their own
@@ -195,7 +195,7 @@ class ImportReproduction(unittest.TestCase):
         self.assertEqual(labels, [["Hardly ever", "Now and then", "Fairly often", "Very often"],
                                   ["Not at all", "Slightly", "Moderately", "Strongly"]])
 
-    @unittest.expectedFailure    # 36.0 D7, fixed in 36.5
+    # 36.0 D7, fixed in 36.5 (expected_item_count ignores part sizes)
     def test_the_stated_item_count_is_not_taken_from_a_scoring_note(self):
         """'each with four invented items' describes the scoring key, not the
         questionnaire length (60)."""
@@ -204,8 +204,8 @@ class ImportReproduction(unittest.TestCase):
         review = read_scientific_document(fx.fixture(fx.DOCX_NUMBERED))
         self.assertIn(review.expected_count, (None, 60))
 
+    # 36.0 D8, fixed in 36.5 (ocr_table_rows: rows rebuilt from word boxes)
     @unittest.skipUnless(shutil.which("tesseract"), "local OCR engine")
-    @unittest.expectedFailure    # 36.0 D8, fixed in 36.5
     def test_a_scanned_table_with_a_number_column_yields_all_52_items(self):
         """Spec §10 SACS-LV: the scanned table (number column, wrapped
         rows, repeated legend, artifacts before numbers) yields all 52

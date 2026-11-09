@@ -232,3 +232,72 @@ def codes_line(text: str, size: int) -> tuple[str, ...] | None:
     if len(tokens) == size and all(re.fullmatch(r"-?\d{1,2}", t) for t in tokens):
         return tuple(tokens)
     return None
+
+
+# A printed answer code before its label: "1 = Never", "2- reti", "(3) Often",
+# "4 Very often" (a letter must follow; "1, 16" or "1 (invented)" are not codes).
+_OPTION_CODE = re.compile(
+    r"(?:^|(?<=[\s:;,/|(•·]))\(?(?P<code>\d{1,2})(?![\d.,]\d)"
+    r"\s*(?:[=:–—)-]|\s)\s*(?=[^\W\d_])"
+)
+_LABEL_END = re.compile(r"\.\s+\S|[;|•·/]|\s+-\s+")
+
+
+def _option_label(text: str) -> str:
+    """The label part after a code, up to the next delimiter or sentence end."""
+    end = _LABEL_END.search(text)
+    label = text[:end.start()] if end else text
+    return label.strip(" \t,.;:/|•·–—-")
+
+
+def code_label_pairs(text: str) -> tuple[tuple[str, str], ...]:
+    """Answer options printed as codes with labels, in source order.
+
+    ``1 = Hardly ever; 2 = Now and then`` and ``1 Never / 2 Rarely / 3 Often.``
+    give ``(("1", "Hardly ever"), ...)``. Only a consecutive ascending run of
+    2–11 codes starting at 0 or 1 counts, each label 1–5 words long (a range
+    such as "from 0 = never to 4 = always" is not a list of options).
+    Labels are kept as printed; nothing is scored.
+    """
+    clean = _clean(text)
+    if not clean or len(clean) > 600:
+        return ()
+    marks = list(_OPTION_CODE.finditer(clean))
+    pairs = []
+    for k, mark in enumerate(marks):
+        stop = marks[k + 1].start() if k + 1 < len(marks) else len(clean)
+        pairs.append((mark.group("code"), _option_label(clean[mark.end():stop])))
+    return _valid_run(pairs)
+
+
+def line_code_label(text: str) -> tuple[str, str] | None:
+    """One legend line that is ONLY a code and its label (``2- reti``)."""
+    clean = _clean(text)
+    mark = _OPTION_CODE.match(clean)
+    if mark is None or mark.start() != 0 or len(clean) > 60:
+        return None
+    label = clean[mark.end():].strip(" \t,.;:/|•·")
+    if not _short_label(label) or _LABEL_END.search(label):
+        return None
+    return mark.group("code"), label
+
+
+def _short_label(label: str) -> bool:
+    return (bool(re.match(r"[^\W\d_]", label)) and len(label) <= 40
+            and len(label.split()) <= 5 and not re.search(r"\d", label))
+
+
+def _valid_run(pairs) -> tuple[tuple[str, str], ...]:
+    """The pairs when they form a run 0/1, 2, 3 ... of 2–11 labelled codes."""
+    pairs = list(pairs)
+    if not 2 <= len(pairs) <= 11 or not all(_short_label(label) for _, label in pairs):
+        return ()
+    codes = [int(code) for code, _ in pairs]
+    if codes[0] not in (0, 1) or codes != list(range(codes[0], codes[0] + len(codes))):
+        return ()
+    return tuple((str(code), label) for code, (_, label) in zip(codes, pairs))
+
+
+def legend_run(entries) -> tuple[tuple[str, str], ...]:
+    """A legend printed one option per line: ``[("1", "never"), ("2", "rarely")]``."""
+    return _valid_run(entries)

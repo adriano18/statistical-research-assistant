@@ -40,6 +40,14 @@ _GROUP_COLON = re.compile(
     rf"(?:no\.?\s*|nr\.?\s*|№\s*)?(?P<items>{_LIST})\s*[,.;]?\s*(?P<rest>.*)$",
     re.I,
 )
+# A numbered group name before the list: "Dimension 3 (invented): statements
+# 3, 18, 33, 48." or "Subscale 2: items 5-8" (scoring keys of inventories).
+_GROUP_NUMBERED = re.compile(
+    rf"^(?P<name>[^\W\d_][^\d():=]{{1,60}}?\s\d{{1,2}}(?:\s*\([^()]{{1,40}}\))?)\s*[:=]\s*"
+    rf"(?P<pre>[^\d]{{0,40}}?)\b{_ITEM_WORDS}\s*(?:no\.?\s*|nr\.?\s*|№\s*)?"
+    rf"(?P<items>{_LIST})\s*[,.;]?\s*(?P<rest>.*)$",
+    re.I,
+)
 _MEAN = re.compile(r"\b(?:average|mean|averaged|vidēj\w*|средн\w*)\b", re.I)
 _SUM = re.compile(r"\b(?:sum|summed|total|add(?:ed)?\s+up|summ\w*|kopsumm\w*|сумм\w*)\b", re.I)
 _COUNT = re.compile(
@@ -148,7 +156,7 @@ def _aggregation(text: str) -> str:
 
 
 def _group(line: str, page: int, evidence: str, index: int) -> ScoringGroup | None:
-    for pattern in (_GROUP_PAREN, _GROUP_COLON):
+    for pattern in (_GROUP_PAREN, _GROUP_COLON, _GROUP_NUMBERED):
         match = pattern.match(line)
         if not match:
             continue

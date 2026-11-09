@@ -27,6 +27,7 @@ from ocr_layout import (
 from matrix_reconstruction import (
     choice_cell_grid, choice_grid_lines, docx_matrices, geometric_matrices,
 )
+from ocr_table_rows import attach_row_regions, page_geometry, reconstruct_tables
 from ocr_runtime import (
     OCRCancelled, OCRConfigurationError, resolve_tesseract, run_tesseract,
     tesseract_available as _runtime_available,
@@ -591,6 +592,8 @@ def ocr_scientific_pdf(
     page_lines: list[tuple[int, list[str]]] = []
     text_pages: list[tuple[int, list[str]]] = []
     geometry: list[OCRPage] = []
+    table_pages: list[OCRPage] = []
+    grid_overridden: set[int] = set()
     done = 0
     for n in range(1, count + 1):
         if n in pages:
@@ -616,8 +619,17 @@ def ocr_scientific_pdf(
             # OCR reads a row of labelled answer cells together with the item
             # text; restore "item, then its printed choices" from the boxes.
             grid = choice_cell_grid(page_layout)
+            if grid is not None:
+                columns = page_geometry(page_layout)
+                if columns is not None and 2 * len(grid.rows) < columns.rows:
+                    # A few rows whose "labels" are table-rule noise: the
+                    # number column describes this table better.
+                    grid = None
+                    grid_overridden.add(n)
             page_lines.append((n, choice_grid_lines(page_layout, grid) if grid is not None
                                else [line.text for line in page_layout.lines]))
+            if grid is None:
+                table_pages.append(page_layout)
             done += 1
             if progress is not None:
                 progress(done, len(pages))
@@ -635,8 +647,13 @@ def ocr_scientific_pdf(
         fixed, repairs = repair_pdf_text(source, text_pages)
         repaired = dict(fixed)
         page_lines = [(n, repaired.get(n, text)) for n, text in page_lines]
+    # A scanned table (number column, statement column, answer digits) is
+    # rebuilt row by row from the word boxes instead of the text order.
+    tables = reconstruct_tables(table_pages)
+    if tables is not None:
+        page_lines = [(n, tables.lines.get(n, text)) for n, text in page_lines]
     lines = [(n, line) for n, text in page_lines for line in text]
-    matrices = geometric_matrices(geometry)
+    matrices = geometric_matrices([g for g in geometry if g.page_number not in grid_overridden])
     try:
         review = parse_scientific_lines(
             lines, filename, page_count=count, ocr_pages=tuple(pages),
@@ -656,9 +673,10 @@ def ocr_scientific_pdf(
         )
     from shared_scales import link_matrices
 
-    review = link_matrices(replace(
-        review, spatial=link_candidates(review, geometry), matrices=matrices,
-    ))
+    spatial = link_candidates(review, geometry)
+    if tables is not None:
+        spatial = attach_row_regions(spatial, review, tables.rows)
+    review = link_matrices(replace(review, spatial=spatial, matrices=matrices))
     confidence_note = ocr_confidence_warning(review)
     return replace(
         review,
