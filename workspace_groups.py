@@ -108,7 +108,9 @@ class GroupsCard:
         app, ui, s = self.app, self.app.ui, self.app.session
         candidates = self.candidates()
         if self.source not in candidates:
-            self.source = candidates[0] if candidates else None
+            # No hidden default: which score to group is the researcher's
+            # choice (the first column is rarely the one).
+            self.source = None
         controls: list[ft.Control] = [wc.caption(ui, ui.t("groups.subtitle"))]
         if not candidates:
             controls.append(wc.notice(ui, ui.t("groups.no_scale"), "info", data="groups-no-scale"))
@@ -117,6 +119,10 @@ class GroupsCard:
             ui, ui.t("groups.source"), [(name, name) for name in candidates], self.source,
             on_select=lambda e: self._set(source=e.control.value), width=300,
             data="groups-source"))
+        if self.source is None:
+            controls.append(wc.caption(ui, ui.t("groups.choose_source"),
+                                       data="groups-choose-source"))
+            return wc.card(ui, controls, title=ui.t("groups.title"), data="groups-card")
         for existing in sg.existing_groupings(s.df, self.source):
             categories = ", ".join(f"{c} ({n})" for c, n in zip(existing.categories,
                                                                  existing.counts))

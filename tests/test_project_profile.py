@@ -141,7 +141,8 @@ class AiContextTests(TempCase):
             self.assertEqual(ai_context.readiness(root).problem, "no_store")
         with mock.patch.object(secret_store, "_BACKEND", None), \
                 mock.patch.object(secret_store, "_Keyring", side_effect=ImportError("none")), \
-                mock.patch.object(secret_store.os, "name", "posix"):
+                mock.patch.object(secret_store, "_WindowsCredentials",
+                                  side_effect=OSError("no credential store")):
             self.assertEqual(ai_context.readiness(root).problem, "no_store")
 
     def test_rules_a_future_assistant_must_pass(self):

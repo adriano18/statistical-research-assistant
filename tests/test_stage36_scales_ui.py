@@ -38,6 +38,18 @@ class GroupsFromScaleTests(unittest.TestCase):
         self.ws.click("nav-data")
         self.ws.choose("groups-source", "UCLA")
 
+    def test_no_score_is_chosen_for_the_researcher(self):
+        ws = prepared_workspace()
+        self.addCleanup(ws.close)
+        ws.click("nav-data")
+        self.assertIsNone(ws.find("groups-source").value)
+        self.assertTrue(ws.find("groups-choose-source"))
+        self.assertFalse(ws.find_all("groups-create"), "nothing to create before a choice")
+        self.assertFalse(ws.find_all("groups-preview"))
+        ws.choose("groups-source", "UCLA")
+        self.assertTrue(ws.find("groups-existing-UCLA_Level"))
+        self.assertFalse(ws.find_all("groups-choose-source"))
+
     def test_an_existing_grouping_is_offered_not_recreated(self):
         ws = self.ws
         self.assertTrue(ws.find("groups-existing-UCLA_Level"))
