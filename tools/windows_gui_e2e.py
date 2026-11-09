@@ -155,6 +155,18 @@ def top_windows(pid: int | None = None) -> list[dict]:
     return found
 
 
+def window_guard_events(log: Path) -> list[dict]:
+    """The ``window_guard`` lines of the program's startup log."""
+    events = []
+    with contextlib.suppress(OSError):
+        for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+            with contextlib.suppress(ValueError):
+                record = json.loads(line)
+                if isinstance(record, dict) and record.get("event") == "window_guard":
+                    events.append(record)
+    return events
+
+
 # ====================================================================== app
 class Gui:
     """One running instance of the packaged application."""
@@ -1521,7 +1533,8 @@ def journey_blocked_design(gui: Gui, work: Path, journey: Journey) -> None:
         gui.click(regex="^" + re.escape(T("goal.compare")) + r"\b",
                   control_type=("Button", "Text", "Group", "Custom"))
     with journey.step("a quantitative group variable is refused in words"):
-        gui.choose(T("role.outcome"), option_label("wellbeing", "scale"), options=ANCOVA_OPTIONS)
+        # Stage 36: outcomes are a multiple choice (one or more).
+        gui.check(option_label("wellbeing", "scale"))
         gui.choose(T("role.group"), option_label("age", "scale"), options=ANCOVA_OPTIONS)
         gui.wait_text(T("design.blocked"))
         gui.wait_text("age is quantitative")
@@ -1771,6 +1784,86 @@ def journey_update_a_to_b(gui: Gui, work: Path, journey: Journey) -> None:
                              "window (its outcome was hidden)")
 
 
+# ------------------------------------------------ Stage 36 research tasks
+STAGE36_PROJECT = "Fictional Stage 36 study"
+# UI Automation names a chip by its label, then ". " and its tooltip (or a
+# new line and its explanation), e.g. "5. Method. The recommended method…".
+CHIP_END = r"(\.|\n|$)"
+
+
+def stage36_options() -> list[str]:
+    """The variable dropdown of the synthetic UCLA/SACS table after its
+    levels are accepted: every variable but the identifier, in column order."""
+    from stage36_fixtures import SCALES
+
+    return [option_label("Age", "scale"), option_label("Sex", "nominal"),
+            option_label("UCLA", "scale"), *[option_label(s, "scale") for s in SCALES],
+            option_label("UCLA_Level", "ordinal")]
+
+
+def journey_stage36_tasks(gui: Gui, work: Path, journey: Journey) -> None:
+    """Spec §14 journeys 1, 2 and 9 on the packaged EXE: eight correlations
+    in one batch, back to the task and run again, a restart that brings the
+    task and its result back; and each research step opens itself (D1)."""
+    import pandas as pd
+
+    from batch_correlation import correlate_many
+    from stage36_fixtures import SCALES, generator
+
+    csv = generator().create_csv(work)
+    expected = correlate_many(pd.read_csv(csv), "UCLA", list(SCALES), method="spearman")
+    journey.facts["engine_rho"] = {row.y: round(row.estimate, 2) for row in expected.rows}
+    create_project(gui, journey, STAGE36_PROJECT)
+    open_data(gui, journey, csv)
+    with journey.step("the participant code is suggested as identifier"):
+        nav(gui, "nav.data")
+        gui.wait_text(T("level.id"))
+    accept_levels(gui, journey)
+    title = T("task.title_relate", x="UCLA", count=8)
+    with journey.step("UCLA with eight scales: goal, UCLA, all scales, Spearman, Run"):
+        nav(gui, "nav.analyze")
+        gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
+        gui.click(regex="^" + re.escape(T("goal.relate")) + r"\b",
+                  control_type=("Button", "Text", "Group", "Custom"))
+        gui.choose(T("role.x"), option_label("UCLA", "scale"), options=stage36_options())
+        gui.click(T("pick.all_scale", count=9), control_type="Button")
+        gui.check(option_label("Age", "scale"), False)
+        gui.click(T("rec.use_instead"), control_type="Button", index=0)   # Spearman
+        gui.click(regex="^" + re.escape(T("rec.run", method="")) + "Spearman",
+                  control_type="Button")
+        gui.wait_text(title, timeout=120)
+        gui.shot("eight correlations in one batch")
+    with journey.step("one table: eight pairs, N, interval, raw and Holm p"):
+        for scale in SCALES:
+            gui.wait_text(scale, timeout=10)
+        gui.wait_text("p (Holm)", timeout=10)
+        gui.wait_text(T("task.rerun"), timeout=10)     # still in the task, not in Results
+    with journey.step("back to the task and run it again in two actions"):
+        nav(gui, "nav.results")
+        nav(gui, "nav.analyze")
+        gui.click(T("task.rerun"), control_type="Button")
+        gui.wait_text(T("task.versions", count=2), timeout=120)
+        gui.shot("task run again")
+    with journey.step("each research step opens its own step (D1)"):
+        gui.click(regex=r"^5\. " + re.escape(T("journey.method")) + CHIP_END,
+                  control_type=("Button", "Text", "Group", "Custom"))
+        # The application scrolls to the step itself: found without the
+        # driver scrolling (scroll=False), as a researcher would see it.
+        gui.find(T("step.method"), timeout=15, scroll=False)
+        gui.click(regex=r"^3\. " + re.escape(T("journey.variables")) + CHIP_END,
+                  control_type=("Button", "Text", "Group", "Custom"))
+        gui.find(T("data.dictionary"), timeout=15, scroll=False)      # the dictionary
+    with journey.step("restart: the task and its result come back"):
+        gui.stop()
+        gui.start()
+        open_project(gui, STAGE36_PROJECT)
+        nav(gui, "nav.analyze")
+        gui.click(regex="^" + re.escape(title) + CHIP_END,
+                  control_type=("Button", "Text", "Group", "Custom"))
+        gui.wait_text("p (Holm)", timeout=30)
+        gui.shot("task after restart")
+
+
 def journey_installed_reopen(gui: Gui, work: Path, journey: Journey) -> None:
     """After an update (or a reinstall) the same projects open again."""
     expect(gui.real_data, "run installed journeys with --real-data")
@@ -1794,6 +1887,7 @@ INSTALLED_JOURNEYS = {
 
 
 JOURNEYS = {
+    "stage36-tasks": journey_stage36_tasks,
     "project-a": journey_project_a,
     "project-b": journey_project_b,
     "import-30": journey_import_30,
@@ -1877,6 +1971,11 @@ def main(argv=None) -> int:
     report["seconds"] = round(time.monotonic() - started, 1)
     report["ok"] = bool(report["journeys"]) and all(j["ok"] for j in report["journeys"]) \
         and "error" not in report
+    # Evidence for the window guard (window_guard.py): each time the program
+    # had to show its own still-hidden window, its startup log says so.
+    report["window_guard"] = window_guard_events(out / "app-logs" / "startup.log")
+    print(f"window guard: {len(report['window_guard'])} intervention(s)"
+          + "".join(f"\n  {event}" for event in report["window_guard"]), flush=True)
     (out / "gui-e2e-result.json").write_text(json.dumps(report, indent=1, ensure_ascii=False),
                                              encoding="utf-8")
     for name in ("ancova_report.txt", "combined_report.txt", "pilot_responses.csv"):

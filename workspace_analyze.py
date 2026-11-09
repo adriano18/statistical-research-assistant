@@ -9,6 +9,8 @@ engine tables, report text); no number is formatted or derived here.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
+import uuid
 
 import flet as ft
 
@@ -18,7 +20,7 @@ from workspace_methods import (
     FAMILIES, GOAL_ROLES, GOALS, METHODS, RoleProblems, advise, default_options,
     required_confirmations, run_method,
 )
-from workspace_state import LEVELS
+from workspace_state import LEVELS, ResearchTask
 from workspace_text import count_text, label as engine_label
 
 GOAL_ICONS = {
@@ -68,7 +70,7 @@ def method_label(key: str, options: dict) -> str:
 def _variable_options(ui: wc.Ui, session, *, allow_id: bool = False):
     options = []
     for info in session.variables.values():
-        if info.suggested == "id" and not allow_id:
+        if (info.suggested == "id" or info.confirmed == "id") and not allow_id:
             continue
         level = ui.t(f"level.{info.confirmed}")
         options.append((info.name, f"{info.name} · {level}"))
@@ -91,6 +93,7 @@ class AnalyzePage:
         self.running = False
         self.message: tuple[str, str] | None = None
         self.choosing_goal = False          # step 1 re-opened with "Change"
+        self.task_id: str | None = None     # Stage 36: the research task on screen
 
     def rerun(self, entry) -> None:
         """Open a saved result's analysis for the current data. The researcher
@@ -107,6 +110,7 @@ class AnalyzePage:
         """Forget choices made for another project's data."""
         self.goal, self.selection, self.confirms, self.override = None, {}, {}, None
         self.choosing_goal = False
+        self.task_id = None              # a task belongs to the project it was made in
         self.method, self.form_roles, self.form_options, self.form_confirms = None, {}, {}, {}
         self.message = None
 
@@ -183,30 +187,36 @@ class AnalyzePage:
         else:
             goal_content = [ft.ResponsiveRow(goal_tiles, spacing=tk.SPACE_3,
                                              run_spacing=tk.SPACE_3)]
-        steps = [wc.step_card(
+        steps = self._task_bar() + [wc.step_card(
             ui, 1, ui.t("step.goal"), goal_content,
-            state="done" if self.goal else "active", data="step-goal")]
+            state="done" if self.goal else "active", data="step-goal", scroll_key="step-goal")]
         if not self.goal:
-            steps += [wc.step_card(ui, 2, ui.t("step.variables"), [], state="locked"),
-                      wc.step_card(ui, 3, ui.t("step.design"), [], state="locked"),
-                      wc.step_card(ui, 4, ui.t("step.method"), [], state="locked")]
+            steps += [wc.step_card(ui, 2, ui.t("step.variables"), [], state="locked",
+                                   scroll_key="step-variables"),
+                      wc.step_card(ui, 3, ui.t("step.design"), [], state="locked",
+                                   scroll_key="step-design"),
+                      wc.step_card(ui, 4, ui.t("step.method"), [], state="locked",
+                                   scroll_key="step-method")]
             return steps
         steps.append(wc.step_card(ui, 2, ui.t("step.variables"), self._role_pickers(),
-                                  state="active", data="step-variables"))
+                                  state="active", data="step-variables",
+                                  scroll_key="step-variables"))
         advice = advise(self.goal, self.selection, s)
         chosen = self._chosen(advice)
         steps.append(wc.step_card(ui, 3, ui.t("step.design"), self._design(advice, chosen),
                                   state="active" if self._roles_filled() else "locked",
-                                  data="step-design"))
+                                  data="step-design", scroll_key="step-design"))
         steps.append(wc.step_card(ui, 4, ui.t("step.method"), self._recommendation(advice, chosen),
                                   state="active" if advice.ready else "locked",
-                                  data="step-method"))
+                                  data="step-method", scroll_key="step-method"))
+        steps += self._task_result()
         return steps
 
     def _set_goal(self, goal: str):
         if goal != self.goal:
             self.goal, self.selection, self.confirms, self.override = goal, {}, {}, None
             self.message = None
+            self.task_id = None          # another question: another research task
         self.choosing_goal = False
         self.app.render()
 
@@ -235,6 +245,7 @@ class AnalyzePage:
                                      data=f"role-{role.key}-{name}")
                          for name, label in options]
                 controls += [wc.section_label(ui, ui.t(role.label)),
+                             self._quick_select(role, options),
                              ft.Container(ft.Row(boxes, wrap=True, spacing=tk.SPACE_4,
                                                  run_spacing=0),
                                           data=f"role-{role.key}")]
@@ -263,6 +274,163 @@ class AnalyzePage:
         self.override = None
         self.app.render()
 
+    def _others_chosen(self, role_key: str) -> set[str]:
+        chosen = set()
+        for key, value in self.selection.items():
+            if key != role_key:
+                chosen.update(value if isinstance(value, list) else ([value] if value else []))
+        return chosen
+
+    def _quick_select(self, role, options) -> ft.Control:
+        """Batch first (spec §2D): every variable of one level in one action."""
+        ui, s = self.app.ui, self.app.session
+        taken = self._others_chosen(role.key)
+        buttons = []
+        for level in ("scale", "ordinal"):
+            names = [n for n, _ in options if s.level(n) == level and n not in taken
+                     and level in role.levels]
+            if len(names) > 1:
+                buttons.append(wc.button(
+                    ui, ui.t(f"pick.all_{level}", count=len(names)),
+                    lambda e, r=role.key, n=tuple(names): self._select(r, list(n)), kind="quiet",
+                    icon=ft.Icons.DONE_ALL, data=f"role-{role.key}-all-{level}"))
+        # The variable set of another task, e.g. the same eight scales for a
+        # group comparison after a correlation batch.
+        names_here = {n for n, _ in options}
+        for task in reversed(s.tasks):
+            if task.id == self.task_id:
+                continue
+            for value in task.selection.values():
+                if isinstance(value, list) and len(value) > 1:
+                    reuse = [n for n in value if n in names_here and n not in taken
+                             and s.level(n) in role.levels]
+                    if len(reuse) > 1 and reuse != list(self.selection.get(role.key) or []):
+                        buttons.append(wc.button(
+                            ui, ui.t("pick.same_as_task", title=task.title, count=len(reuse)),
+                            lambda e, r=role.key, n=tuple(reuse): self._select(r, list(n)),
+                            kind="quiet", icon=ft.Icons.CONTENT_COPY,
+                            data=f"role-{role.key}-from-{task.id}"))
+            if len(buttons) >= 4:
+                break
+        if self.selection.get(role.key):
+            buttons.append(wc.button(ui, ui.t("pick.clear"),
+                                     lambda e, r=role.key: self._select(r, []), kind="quiet",
+                                     icon=ft.Icons.CLEAR, data=f"role-{role.key}-clear"))
+        return ft.Row(buttons, wrap=True, spacing=tk.SPACE_2)
+
+    def _select(self, role: str, names: list[str]):
+        self.selection[role] = list(names)
+        self.override = None
+        self.app.render()
+
+    # ------------------------------------------------------ research tasks
+    def _task_bar(self) -> list[ft.Control]:
+        """The project's research tasks: one action returns to a task's choices."""
+        ui, tasks = self.app.ui, self.app.session.tasks
+        if not tasks:
+            return []
+        chips = [wc.chip(ui, task.title, "info" if task.id == self.task_id else "neutral",
+                         icon=ft.Icons.ASSIGNMENT_OUTLINED,
+                         tooltip=ui.t("task.open_tip"),
+                         on_click=lambda e, t=task.id: self._open_task(t), data=f"task-{task.id}")
+                 for task in tasks]
+        chips.append(wc.button(ui, ui.t("task.new"), self._new_task, kind="quiet",
+                               icon=ft.Icons.ADD, data="task-new"))
+        return [ft.Column([wc.section_label(ui, ui.t("task.tasks")),
+                           ft.Row(chips, wrap=True, spacing=tk.SPACE_2, run_spacing=tk.SPACE_2)],
+                          spacing=tk.SPACE_2, data="task-bar")]
+
+    def _open_task(self, task_id: str):
+        task = self.app.session.task(task_id)
+        if task is None:
+            return
+        self.mode, self.task_id, self.goal = "guided", task.id, task.goal
+        self.selection = {k: (list(v) if isinstance(v, list) else v)
+                          for k, v in task.selection.items()}
+        self.confirms = dict(task.confirms)
+        self.override = (task.method, dict(task.options)) if task.method else None
+        self.choosing_goal, self.message = False, None
+        self.app.render()
+
+    def _new_task(self, e=None):
+        self.task_id, self.goal, self.selection, self.confirms, self.override = (
+            None, None, {}, {}, None)
+        self.choosing_goal, self.message = False, None
+        self.app.render()
+
+    def _task_title(self, key: str, roles: dict) -> str:
+        ui = self.app.ui
+        if key == "batch_correlation":
+            return ui.t("task.title_relate", x=roles["x"], count=len(roles["ys"]))
+        if key == "batch_groups":
+            return ui.t("task.title_compare", group=roles["group"], count=len(roles["outcomes"]))
+        names = [v for value in roles.values()
+                 for v in (value if isinstance(value, list) else [value]) if v]
+        return f"{method_label(key, {})}: {', '.join(names[:3])}"
+
+    def _remember_task(self, key: str, roles: dict, options: dict) -> ResearchTask | None:
+        """The guided run belongs to the task on screen (a new one if none)."""
+        if self.mode != "guided" or not self.goal:
+            return None
+        task = self.app.session.task(self.task_id)
+        if task is None:
+            task = ResearchTask(str(uuid.uuid4()), self._task_title(key, roles), self.goal, {},
+                                state={"created": datetime.now().isoformat(timespec="seconds")})
+        task.selection = {k: (list(v) if isinstance(v, list) else v)
+                          for k, v in self.selection.items()}
+        task.method, task.options, task.confirms = key, dict(options), dict(self.confirms)
+        self.task_id = task.id
+        return self.app.session.save_task(task)
+
+    def _task_result(self) -> list[ft.Control]:
+        """The latest batch result of the task, with what can be done next."""
+        ui, s = self.app.ui, self.app.session
+        if not self.task_id:
+            return []
+        entries = [e for e in s.task_results(self.task_id)
+                   if e.method in ("batch_correlation", "batch_groups")]
+        if not entries:
+            return []
+        entry = entries[-1]
+        run = entry.run
+        rows = []
+        if run.tables:
+            table = run.tables[0]
+            rows.append(ft.Container(ft.DataTable(
+                columns=[ft.DataColumn(wc.text(ui, c, tk.TYPE_LABEL)) for c in table.columns],
+                rows=[ft.DataRow(cells=[ft.DataCell(wc.text(ui, cell, tk.TYPE_BODY, selectable=True))
+                                        for cell in row]) for row in table.rows],
+                heading_row_color=ui.p.surface_alt, data="task-table"),
+                data="task-table-scroll"))
+        for line in (run.interpretation or "").splitlines():
+            rows.append(wc.text(ui, "• " + line, tk.TYPE_BODY, selectable=True))
+        if len(entries) > 1:
+            rows.append(wc.caption(ui, ui.t("task.versions", count=len(entries))))
+        actions = [
+            wc.button(ui, ui.t("task.rerun"), self._run_guided, kind="secondary",
+                      icon=ft.Icons.REPLAY, data="task-rerun"),
+            wc.button(ui, ui.t("results.in_report") if entry.in_report else ui.t("results.add_report"),
+                      lambda e, i=entry.id: self._toggle_report(i), kind="secondary",
+                      icon=ft.Icons.CHECK if entry.in_report else ft.Icons.PLAYLIST_ADD,
+                      data="task-add-report"),
+            wc.button(ui, ui.t("task.change_variables"),
+                      lambda e: self.app.navigate("analyze", section="variables"), kind="quiet",
+                      icon=ft.Icons.EDIT_OUTLINED, data="task-change-variables"),
+            wc.button(ui, ui.t("task.open_result"), lambda e, i=entry.id: self._open_result(i),
+                      kind="quiet", icon=ft.Icons.OPEN_IN_NEW, data="task-open-result"),
+        ]
+        rows.append(ft.Row(actions, wrap=True, spacing=tk.SPACE_2))
+        return [wc.step_card(ui, 5, run.title, rows, state="active", data="task-result",
+                             scroll_key="task-result")]
+
+    def _toggle_report(self, entry_id: int):
+        self.app.session.toggle_report(entry_id)
+        self.app.render()
+
+    def _open_result(self, entry_id: int):
+        self.app.session.selected_result = entry_id
+        self.app.navigate("results")
+
     def _chosen(self, advice):
         if not advice.ready:
             return None
@@ -279,9 +447,18 @@ class AnalyzePage:
             value = self.selection.get(role.key)
             names += list(value) if isinstance(value, list) else ([value] if value else [])
         level_rows = []
+        many = len(names) > 4
+        if many:
+            confirmed = [n for n in names if n in s.variables and s.level(n) != "unknown"]
+            if confirmed:
+                summary = ", ".join(sorted({ui.t(f"level.{s.level(n)}") for n in confirmed}))
+                controls.append(wc.caption(ui, ui.t("design.levels_summary",
+                                                    count=len(confirmed), levels=summary)))
         for name in names:
             info = s.variables.get(name)
             if info is None or info.suggested == "id":
+                continue
+            if many and info.confirmed != "unknown":
                 continue
             options = [(lvl, ui.t(f"level.{lvl}")) for lvl in LEVELS if lvl != "id"]
             level_rows.append(wc.dropdown(
@@ -428,11 +605,17 @@ class AnalyzePage:
             app.render()
             return None
         confirmed = [c.label for c in METHODS[key].confirmations if confirms.get(c.key)]
+        effective = {**default_options(METHODS[key]), **options}
+        task = self._remember_task(key, roles, effective)
         entry = app.session.add_result(
-            run, confirmed, method=key, roles=dict(roles),
-            options={**default_options(METHODS[key]), **options}, confirms=dict(confirms))
+            run, confirmed, method=key, roles=dict(roles), options=effective,
+            confirms=dict(confirms), task_id=task.id if task else None)
         app.status(app.t("run.done"), "success")
-        app.navigate("results")
+        if task is not None and key in ("batch_correlation", "batch_groups"):
+            # Stage 36 (spec §4): after a batch run the researcher stays in the task.
+            app.navigate("analyze", section="task-result")
+        else:
+            app.navigate("results")
         return entry
 
     # ------------------------------------------------------ all methods

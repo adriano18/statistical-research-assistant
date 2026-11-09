@@ -49,6 +49,22 @@ METHOD_PROFILES: dict[str, MethodProfile] = {
          "Inspect scatterplot, outliers and linearity/monotonicity",
          "Check how incomplete pairs were handled"),
         "A correlation is not causal evidence."),
+    "batch_correlation": MethodProfile(
+        "Relate one variable to several others in one run; the pairs form one "
+        "family of hypotheses with a stated multiple-comparison adjustment.",
+        ("Confirm measurement levels and independence of observations",
+         "Inspect each pair's scatterplot for outliers and non-monotonic patterns",
+         "Report raw and adjusted p-values together with the family size"),
+        "Correlations are not causal evidence, and a non-significant pair is not "
+        "evidence of no association."),
+    "batch_groups": MethodProfile(
+        "Compare the same groups on several outcomes in one run; the outcomes form "
+        "one family with a stated multiple-comparison adjustment.",
+        ("Confirm independent groups and the outcome measurement levels",
+         "Review group sizes: small or unequal groups limit the comparison",
+         "Report raw and adjusted p-values and the effect-size definitions"),
+        "Group differences do not establish causation; a non-significant outcome does "
+        "not show that the groups are equal."),
     "matrix": MethodProfile(
         "Inspect several pairwise correlations with appropriate attention "
         "to multiple comparisons and changing pairwise sample sizes.",
@@ -219,6 +235,8 @@ def build_analysis_evidence(
         raise ValueError("A completed analysis title is required.")
     from stat_results import StructuredResult
 
+    if hasattr(result, "structured") and callable(result.structured):
+        result = result.structured()        # a Stage 36 family of results
     if isinstance(result, StructuredResult):
         return _structured_evidence(section, title, report, png, result, profile)
     rows: list[EvidenceRow] = []

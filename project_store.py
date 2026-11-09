@@ -58,7 +58,7 @@ from typing import Any, Iterable
 import uuid
 import zipfile
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 PACKAGE_FORMAT = "sra-project"
 PACKAGE_VERSION = 1
 DB_NAME = "project.sqlite3"
@@ -258,7 +258,26 @@ def _migrate_v3(db: sqlite3.Connection) -> None:
                " runs_before INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '')")
 
 
-MIGRATIONS = {1: _create_v1, 2: _migrate_v2, 3: _migrate_v3}
+def _migrate_v4(db: sqlite3.Connection) -> None:
+    """Format 4 (Stage 36): research tasks, and runs that remember their
+    task and the structured result they were built from.
+
+    A research task keeps what the researcher chose (question, variables,
+    method, options, confirmations, its hypothesis and interface state), so
+    the task can be run again or continued after a restart. ``structured``
+    holds the JSON of the engine's structured result, so numbers and figures
+    come back without recalculating or parsing report text."""
+    db.execute("CREATE TABLE research_tasks ("
+               " id TEXT PRIMARY KEY, position INTEGER NOT NULL, title TEXT NOT NULL,"
+               " goal TEXT NOT NULL, selection TEXT NOT NULL, method TEXT NOT NULL DEFAULT '',"
+               " options TEXT NOT NULL DEFAULT '{}', confirms TEXT NOT NULL DEFAULT '{}',"
+               " hypothesis_id TEXT, state TEXT NOT NULL DEFAULT '{}',"
+               " created_at TEXT NOT NULL, modified_at TEXT NOT NULL)")
+    db.execute("ALTER TABLE runs ADD COLUMN task_id TEXT")
+    db.execute("ALTER TABLE runs ADD COLUMN structured TEXT")
+
+
+MIGRATIONS = {1: _create_v1, 2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4}
 
 
 def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
@@ -387,6 +406,26 @@ class RunRecord:
     note: str = ""
     descriptives: str = ""
     guide: str = ""
+    task_id: str | None = None          # format 4: the research task it belongs to
+    structured: dict | None = None      # format 4: result_store JSON of the engine result
+
+
+@dataclass(frozen=True)
+class TaskRecord:
+    """A research task (format 4): what the researcher chose, to run again."""
+
+    id: str
+    position: int
+    title: str
+    goal: str
+    selection: dict
+    method: str
+    options: dict
+    confirms: dict
+    hypothesis_id: str | None
+    state: dict
+    created_at: str
+    modified_at: str
 
 
 @dataclass(frozen=True)
@@ -1326,7 +1365,8 @@ class Project:
     # ---------------------------------------------------------------- runs
     def record_run(self, run, *, method: str, dataset_id: str | None, roles: dict,
                    options: dict, confirms: dict, confirmations: Iterable[str] = (),
-                   levels: dict | None = None, dataset_sha256: str | None = None) -> RunRecord:
+                   levels: dict | None = None, dataset_sha256: str | None = None,
+                   task_id: str | None = None) -> RunRecord:
         """Save one completed analysis (an ``analysis_runs.AnalysisRun``).
 
         ``dataset_sha256`` names the dataset version the run was calculated on
@@ -1343,6 +1383,9 @@ class Project:
             _atomic_write(self.path / figure, run.png)
         tables = [{"title": t.title, "columns": list(t.columns), "rows": [list(r) for r in t.rows]}
                   for t in run.tables]
+        from result_store import to_json
+
+        structured = to_json(getattr(run, "result", None))
         provenance = {"libraries": library_versions(), "seed": options.get("seed"),
                       "rows": self.dataset(dataset_id).rows if dataset_id else None,
                       "inputs": run.inputs}
@@ -1351,14 +1394,16 @@ class Project:
                 "INSERT INTO runs (id, method, section, title, dataset_id, dataset_sha256, roles,"
                 " options, confirms, confirmations, levels, report, report_sha256, summary,"
                 " interpretation, warnings, tables, figure, provenance, created_at, descriptives,"
-                " guide) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " guide, task_id, structured)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (run_id, method, run.section, run.title, dataset_id, dataset_sha,
                  json.dumps(roles, default=str), json.dumps(options, default=str),
                  json.dumps(confirms, default=str), json.dumps(list(confirmations)),
                  json.dumps(levels or {}), run.report, sha256_bytes(run.report.encode("utf-8")),
                  run.summary, run.interpretation, json.dumps(list(run.warnings)),
                  json.dumps(tables), figure, json.dumps(provenance, default=str), now(),
-                 run.descriptives or "", run.guide or ""))
+                 run.descriptives or "", run.guide or "", task_id,
+                 json.dumps(structured, default=str) if structured else None))
             self._touch(db)
             _log(db, "run", {"run": run_id, "method": method, "dataset": dataset_id})
         return self.run(run_id)
@@ -1407,6 +1452,56 @@ class Project:
             _log(db, "run_deleted", {"run": run_id, "title": run.title})
         if run.figure:
             (self.path / run.figure).unlink(missing_ok=True)
+
+    # ------------------------------------------------------- research tasks
+    def save_task(self, *, task_id: str | None, title: str, goal: str, selection: dict,
+                  method: str = "", options: dict | None = None, confirms: dict | None = None,
+                  hypothesis_id: str | None = None, state: dict | None = None) -> TaskRecord:
+        """Create a research task, or update it in place (same id)."""
+        if not str(title).strip():
+            raise ProjectError("A research task needs a title.")
+        stamp = now()
+        task_id = task_id or str(uuid.uuid4())
+        values = (str(title).strip()[:200], goal, json.dumps(selection, default=str), method,
+                  json.dumps(options or {}, default=str), json.dumps(confirms or {}, default=str),
+                  hypothesis_id, json.dumps(state or {}, default=str))
+        with self._write() as db:
+            existing = db.execute("SELECT id FROM research_tasks WHERE id = ?",
+                                  (task_id,)).fetchone()
+            if existing:
+                db.execute("UPDATE research_tasks SET title = ?, goal = ?, selection = ?,"
+                           " method = ?, options = ?, confirms = ?, hypothesis_id = ?, state = ?,"
+                           " modified_at = ? WHERE id = ?", (*values, stamp, task_id))
+            else:
+                position = db.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM research_tasks"
+                                      ).fetchone()[0]
+                db.execute("INSERT INTO research_tasks (id, position, title, goal, selection,"
+                           " method, options, confirms, hypothesis_id, state, created_at,"
+                           " modified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                           (task_id, position, *values, stamp, stamp))
+                _log(db, "task", {"task": task_id, "title": values[0]})
+            self._touch(db)
+        return self.task(task_id)
+
+    def tasks(self) -> list[TaskRecord]:
+        with self._db() as db:
+            return [_task(r) for r in db.execute(
+                "SELECT * FROM research_tasks ORDER BY position, created_at")]
+
+    def task(self, task_id: str) -> TaskRecord:
+        with self._db() as db:
+            row = db.execute("SELECT * FROM research_tasks WHERE id = ?", (task_id,)).fetchone()
+        if row is None:
+            raise ProjectError(f"No research task {task_id} in this project.")
+        return _task(row)
+
+    def delete_task(self, task_id: str) -> None:
+        """Remove the task; its results stay (no longer linked to a task)."""
+        task = self.task(task_id)
+        with self._write() as db:
+            db.execute("UPDATE runs SET task_id = NULL WHERE task_id = ?", (task_id,))
+            db.execute("DELETE FROM research_tasks WHERE id = ?", (task_id,))
+            _log(db, "task_deleted", {"task": task_id, "title": task.title})
 
     # -------------------------------------------------------------- report
     def set_report(self, run_ids: list[str]) -> None:
@@ -1635,4 +1730,14 @@ def _run(row: sqlite3.Row) -> RunRecord:
         json.loads(row["levels"]), row["report"], row["report_sha256"], row["summary"],
         row["interpretation"], tuple(json.loads(row["warnings"])),
         tuple(json.loads(row["tables"])), row["figure"], json.loads(row["provenance"]),
-        row["created_at"], row["note"], row["descriptives"], row["guide"])
+        row["created_at"], row["note"], row["descriptives"], row["guide"],
+        row["task_id"] if "task_id" in row.keys() else None,
+        json.loads(row["structured"]) if "structured" in row.keys() and row["structured"]
+        else None)
+
+
+def _task(row: sqlite3.Row) -> TaskRecord:
+    return TaskRecord(row["id"], row["position"], row["title"], row["goal"],
+                      json.loads(row["selection"]), row["method"], json.loads(row["options"]),
+                      json.loads(row["confirms"]), row["hypothesis_id"], json.loads(row["state"]),
+                      row["created_at"], row["modified_at"])

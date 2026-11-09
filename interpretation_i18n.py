@@ -45,6 +45,26 @@ METHOD_TEXT = {
       "limitation": "Корреляция не доказывает причинность."
     }
   },
+  "batch_correlation": {
+    "lv": {
+      "rationale": "Saistiet vienu mainīgo ar vairākiem vienā aprēķinā; pāri veido vienu hipotēžu kopu ar norādītu daudzkārtējo salīdzinājumu korekciju.",
+      "limitation": "Korelācijas nav cēloņsakarības pierādījums, un nenozīmīgs pāris nepierāda, ka sakarības nav."
+    },
+    "ru": {
+      "rationale": "Свяжите одну переменную с несколькими за один запуск; пары образуют одно семейство гипотез с указанной поправкой на множественные сравнения.",
+      "limitation": "Корреляции не доказывают причинность, а незначимая пара не доказывает отсутствие связи."
+    }
+  },
+  "batch_groups": {
+    "lv": {
+      "rationale": "Salīdziniet tās pašas grupas vairākos rezultātos vienā aprēķinā; rezultāti veido vienu kopu ar norādītu daudzkārtējo salīdzinājumu korekciju.",
+      "limitation": "Grupu atšķirības nepierāda cēloņsakarību; nenozīmīgs rezultāts nepierāda, ka grupas ir vienādas."
+    },
+    "ru": {
+      "rationale": "Сравните одни и те же группы по нескольким переменным за один запуск; переменные образуют одно семейство с указанной поправкой на множественные сравнения.",
+      "limitation": "Различия групп не доказывают причинность; незначимый результат не доказывает, что группы одинаковы."
+    }
+  },
   "matrix": {
     "lv": {
       "rationale": "Izpētiet pāru korelācijas, ņemot vērā vairākkārtējus testus un atšķirīgus pāru izlases apjomus.",
@@ -189,6 +209,30 @@ ASSUMPTION_TEXT = {
   "Review variable measurement levels": {
     "lv": "Pārskatīt mainīgo mērījumu līmeņus",
     "ru": "Проверить шкалы переменных"
+  },
+  "Confirm measurement levels and independence of observations": {
+    "lv": "Apstiprināt mērījumu līmeņus un novērojumu neatkarību",
+    "ru": "Подтвердить уровни измерения и независимость наблюдений"
+  },
+  "Inspect each pair's scatterplot for outliers and non-monotonic patterns": {
+    "lv": "Pārskatīt katra pāra izkliedes diagrammu: izlēcēji un nemonotoni modeļi",
+    "ru": "Просмотреть диаграмму рассеяния каждой пары: выбросы и немонотонные закономерности"
+  },
+  "Report raw and adjusted p-values together with the family size": {
+    "lv": "Ziņot neapstrādātās un koriģētās p vērtības kopā ar testu skaitu",
+    "ru": "Сообщать исходные и скорректированные p вместе с числом проверок"
+  },
+  "Confirm independent groups and the outcome measurement levels": {
+    "lv": "Apstiprināt neatkarīgas grupas un rezultātu mērījumu līmeņus",
+    "ru": "Подтвердить независимость групп и уровни измерения переменных"
+  },
+  "Review group sizes: small or unequal groups limit the comparison": {
+    "lv": "Pārskatīt grupu lielumus: mazas vai nevienādas grupas ierobežo salīdzinājumu",
+    "ru": "Проверить размеры групп: малые или неравные группы ограничивают сравнение"
+  },
+  "Report raw and adjusted p-values and the effect-size definitions": {
+    "lv": "Ziņot neapstrādātās un koriģētās p vērtības un efekta lieluma definīcijas",
+    "ru": "Сообщать исходные и скорректированные p и определения размеров эффекта"
   },
   "Inspect missing data and pairwise sample sizes": {
     "lv": "Pārbaudīt trūkstošos datus un pāru izlases apjomus",

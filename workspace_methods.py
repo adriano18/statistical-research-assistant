@@ -113,6 +113,27 @@ def _run_correlation(df, roles, options, confirms, session):
         _level(session, roles["y"]), confirms.get("pearson", False))
 
 
+def _run_batch_correlation(df, roles, options, confirms, session):
+    return runs.run_batch_correlation(
+        df, roles["x"], list(roles["ys"]), options["method"], options["adjust"],
+        options["spearman_p"], confirms.get("pearson", False), language=_language(session))
+
+
+def _run_batch_groups(df, roles, options, confirms, session):
+    outcomes = list(roles["outcomes"])
+    scale = "scale" if all(session.level(n) == "scale" for n in outcomes) else "ordinal"
+    if not confirms.get("independent", False):
+        raise ValueError("Confirm independent participants and group membership.")
+    return runs.run_batch_groups(
+        df, roles["group"], outcomes, scale=scale, two_group_method=options["two_group_method"],
+        adjust=options["adjust"], assumptions_confirmed=confirms.get("assumptions", False),
+        language=_language(session))
+
+
+def _language(session) -> str:
+    return getattr(session, "language", "en") or "en"
+
+
 def _run_matrix(df, roles, options, confirms, session):
     return runs.run_matrix(df, roles["items"], options["method"], confirms.get("scales", False))
 
@@ -339,6 +360,48 @@ METHODS: dict[str, MethodSpec] = {spec.key: spec for spec in (
             "I reviewed independent observations, quantitative covariates, group design, "
             "covariate timing, linearity and outliers"),),
         runner=_run_ancova),
+    MethodSpec(
+        "batch_correlation", "batch_correlation", "relationships",
+        "Correlations: one variable with several",
+        "Pearson, Spearman or Kendall between one variable and several others in one run, "
+        "with N per pair, intervals and a multiple-comparison adjustment.",
+        (Role("x", "role.x", ORDERED),
+         Role("ys", "role.y_many", ORDERED, multiple=True, minimum=2, maximum=40)),
+        options=(Option("method", "Correlation method",
+                        (("spearman", "Spearman’s ρ"), ("pearson", "Pearson’s r"),
+                         ("kendall", "Kendall’s τ-b")), "spearman"),
+                 Option("adjust", "Multiple-comparison adjustment",
+                        (("holm", "Holm (familywise error)"),
+                         ("bh", "Benjamini–Hochberg (false discovery rate)"),
+                         ("bonferroni", "Bonferroni (familywise error)"),
+                         ("none", "None (raw p only)")), "holm"),
+                 Option("spearman_p", "Spearman p-value",
+                        (("permutation", "Permutation (as the single analysis)"),
+                         ("asymptotic", "t approximation (as SPSS reports)")), "permutation")),
+        confirmations=(Confirmation(
+            "pearson",
+            "For Pearson only: I reviewed linearity, outliers, independence and "
+            "suitability of the variables", applies_to=("pearson",)),),
+        runner=_run_batch_correlation),
+    MethodSpec(
+        "batch_groups", "batch_groups", "differences", "Groups compared on several outcomes",
+        "Kruskal–Wallis for 3–8 groups or a two-group test, on several outcomes in one run, "
+        "with a multiple-comparison adjustment.",
+        (Role("group", "role.group", CATEGORICAL),
+         Role("outcomes", "role.outcomes", ORDERED, multiple=True, minimum=2, maximum=40)),
+        options=(Option("adjust", "Multiple-comparison adjustment",
+                        (("holm", "Holm (familywise error)"),
+                         ("bh", "Benjamini–Hochberg (false discovery rate)"),
+                         ("bonferroni", "Bonferroni (familywise error)"),
+                         ("none", "None (raw p only)")), "holm"),
+                 Option("two_group_method", "Test for two groups",
+                        (("mannwhitney", "Mann–Whitney U"), ("welch", "Welch’s independent t")),
+                        "mannwhitney")),
+        confirmations=(
+            INDEPENDENT,
+            Confirmation("assumptions",
+                         "I reviewed the outcome distributions, outliers and group sizes")),
+        runner=_run_batch_groups),
 )}
 
 FAMILIES = ("describe", "measurement", "relationships", "differences", "models")
@@ -432,11 +495,12 @@ GOALS = ("compare", "change", "relate", "associate", "predict", "scale", "struct
 
 GOAL_ROLES: dict[str, tuple[Role, ...]] = {
     # Optional covariates turn the comparison into ANCOVA (adjusted means).
-    "compare": (Role("outcome", "role.outcome", ANY), Role("group", "role.group", CATEGORICAL),
+    "compare": (Role("outcome", "role.outcomes", ANY, multiple=True),
+                Role("group", "role.group", CATEGORICAL),
                 Role("covariates", "role.adjust_for", ("scale",), multiple=True, optional=True,
                      maximum=3)),
     "change": (Role("measures", "role.measures", ORDERED, multiple=True, minimum=2, maximum=8),),
-    "relate": (Role("x", "role.x", ANY), Role("y", "role.y", ANY)),
+    "relate": (Role("x", "role.x", ANY), Role("y", "role.y_many", ANY, multiple=True)),
     "associate": (Role("a", "role.a", CATEGORICAL), Role("b", "role.b", CATEGORICAL)),
     "predict": (Role("outcome", "role.outcome", ANY),
                 Role("predictors", "role.predictors", ANY, multiple=True, maximum=5)),
@@ -542,12 +606,15 @@ def advise(goal: str, selection: dict, session) -> Advice:
 
 
 def _compare(sel, session, level):
-    outcome, group = sel["outcome"], sel["group"]
+    outcomes, group = _names(sel["outcome"]), sel["group"]
     labels = session.group_labels(group)
     count = len(labels)
-    out_level = level(outcome)
     if level(group) == "scale":
         return Advice(blockers=(("block.group_quantitative", {"name": group}),))
+    if len(outcomes) > 1:
+        return _compare_many(outcomes, group, labels, sel, session, level)
+    outcome = outcomes[0]
+    out_level = level(outcome)
     covariates = _names(sel.get("covariates"))
     if covariates:
         return _compare_adjusted(outcome, group, covariates, labels, out_level)
@@ -590,6 +657,39 @@ def _compare(sel, session, level):
                       Alternative("omnibus", {"method": "kruskal"}, "alt.kruskal")),
         design_checks=("independent", "assumptions"))
 
+
+
+def _compare_many(outcomes, group, labels, sel, session, level) -> Advice:
+    """The same groups on several outcomes (Stage 36): one family."""
+    if _names(sel.get("covariates")):
+        return Advice(blockers=(("block.batch_with_covariates", {}),))
+    levels = [level(o) for o in outcomes]
+    if "nominal" in levels:
+        return Advice(blockers=(("block.batch_nominal_outcomes", {}),))
+    count = len(labels)
+    if count < 2 or count > 8:
+        return Advice(blockers=(("block.group_count", {"name": group, "count": count}),))
+    roles = {"group": group, "outcomes": list(outcomes)}
+    facts = ("design.groups_found", {"name": group, "count": count,
+                                     "labels": ", ".join(labels[:8])})
+    family = ("why.batch_family", {"count": len(outcomes)})
+    if count == 2:
+        if "ordinal" in levels:
+            return Advice("batch_groups", {"two_group_method": "mannwhitney"}, roles,
+                          reasons=(facts, family, ("why.two_groups", {})),
+                          design_checks=("independent",))
+        return Advice("batch_groups", {"two_group_method": "welch"}, roles,
+                      reasons=(facts, family, ("why.two_groups", {})),
+                      alternatives=(Alternative("batch_groups", {"two_group_method": "mannwhitney"},
+                                                "alt.mannwhitney"),),
+                      design_checks=("independent", "assumptions"))
+    small = ", ".join(sorted({note for o in outcomes
+                              for note in [small_group_note(group, o, session)] if note}))
+    reasons = (facts, family, ("why.many_groups", {}), ("why.batch_kruskal", {}))
+    if small:
+        reasons += (("why.small_groups_rank", {"name": group, "groups": small}),)
+    return Advice("batch_groups", {}, roles, reasons=reasons,
+                  design_checks=("independent", "assumptions"))
 
 def _compare_adjusted(outcome, group, covariates, labels, out_level) -> Advice:
     """Groups compared on adjusted means (ANCOVA): a hypothesis test whose
@@ -645,7 +745,10 @@ def _change(sel, session, level):
 
 
 def _relate(sel, session, level):
-    x, y = sel["x"], sel["y"]
+    x, ys = sel["x"], _names(sel["y"])
+    if len(ys) > 1:
+        return _relate_many(x, ys, level)
+    y = ys[0]
     lx, ly = level(x), level(y)
     if lx == "nominal" or ly == "nominal":
         if lx in CATEGORICAL and ly in CATEGORICAL:
@@ -661,6 +764,29 @@ def _relate(sel, session, level):
                   alternatives=(Alternative("correlation", {"method": "spearman"}, "alt.spearman"),),
                   design_checks=("pearson",))
 
+
+
+def _relate_many(x, ys, level) -> Advice:
+    """One variable with several (Stage 36): the same rules as for one pair,
+    applied to the whole family; nominal variables need another question."""
+    levels = [level(x), *[level(y) for y in ys]]
+    if "nominal" in levels:
+        return Advice(blockers=(("block.nominal_relation", {}),),
+                      alternatives=(Alternative("groups", {}, "alt.compare_instead"),))
+    roles = {"x": x, "ys": list(ys)}
+    facts = ("why.batch_family", {"count": len(ys)})
+    if "ordinal" in levels:
+        return Advice("batch_correlation", {"method": "spearman"}, roles,
+                      reasons=(facts, ("why.spearman", {})),
+                      alternatives=(Alternative("batch_correlation", {"method": "kendall"},
+                                                "alt.kendall"),))
+    return Advice("batch_correlation", {"method": "pearson"}, roles,
+                  reasons=(facts, ("why.pearson", {})),
+                  alternatives=(Alternative("batch_correlation", {"method": "spearman"},
+                                            "alt.spearman"),
+                                Alternative("batch_correlation", {"method": "kendall"},
+                                            "alt.kendall")),
+                  design_checks=("pearson",))
 
 def _associate(sel, session, level):
     return Advice("chi", {}, {"a": sel["a"], "b": sel["b"]},

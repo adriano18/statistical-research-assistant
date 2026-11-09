@@ -113,19 +113,25 @@ class StartupTimeline:
 
 def write_startup_record(timeline: StartupTimeline) -> Path | None:
     """Append one JSON line; keep the file bounded. Never raises."""
+    return write_event(timeline.record())
+
+
+def write_event(record: dict) -> Path | None:
+    """Append one JSON line (a startup record or a later startup event such
+    as ``window_guard``); keep the file bounded. Never raises."""
     folder = writable_log_directory()
     if folder is None:
         return None
     target = folder / LOG_NAME
     try:
-        line = json.dumps(timeline.record(), ensure_ascii=False)
+        line = json.dumps(record, ensure_ascii=False)
         if target.exists() and target.stat().st_size > MAX_LOG_BYTES:
             kept = target.read_text(encoding="utf-8", errors="replace").splitlines()[-KEEP_LINES:]
             target.write_text("\n".join(kept) + "\n", encoding="utf-8")
         with target.open("a", encoding="utf-8") as stream:
             stream.write(line + "\n")
         return target
-    except OSError:
+    except (OSError, TypeError, ValueError):
         return None
 
 

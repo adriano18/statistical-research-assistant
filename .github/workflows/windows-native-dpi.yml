@@ -12,6 +12,7 @@ on:
     paths:
       - "workspace_*.py"
       - "app.py"
+      - "window_guard.py"
       - "tools/set_display_scale.py"
       - "tools/check_native_dpi.py"
       - ".github/workflows/windows-native-dpi.yml"

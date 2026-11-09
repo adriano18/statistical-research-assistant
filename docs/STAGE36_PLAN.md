@@ -34,20 +34,20 @@ so an unexpected success fails CI.
 
 | ID | Symptom | Root cause | Reproduction | Fix |
 |---|---|---|---|---|
-| D1 | Journey items open the wrong step: **Variables** opens Data, **Method** opens Design; the current step is always "Design" on the analysis page | `workspace_shell.JOURNEY` maps 7 steps onto 5 routes; `JOURNEY_ROUTES["analyze"] = "design"` | `test_every_journey_step_opens_its_own_step` | 36.1 |
-| D2 | Descriptive statistics show "Structured numeric results: Not captured" | `analysis_runs.run_descriptive` keeps no result object; `build_analysis_evidence` only knows Shapiro–Wilk/Levene rows for this section | `test_descriptive_statistics_are_structured_numbers` | 36.2 |
-| D3 | One variable against eight scales needs eight separate runs; no shared table, no multiple-comparison correction | correlation engine and guided roles take one pair | `test_one_variable_against_eight_scales_in_one_run` | 36.2 |
-| D4 | A two-category group (Sex) for a 3–8 group method is not explained before Run | `role_problems` does not count the categories of the group | `test_a_two_group_variable_is_explained_before_a_three_group_test` | 36.2 |
+| D1 | Journey items open the wrong step: **Variables** opens Data, **Method** opens Design; the current step is always "Design" on the analysis page | `workspace_shell.JOURNEY` maps 7 steps onto 5 routes; `JOURNEY_ROUTES["analyze"] = "design"` | `test_every_journey_step_opens_its_own_step` | 36.1 ✔ |
+| D2 | Descriptive statistics show "Structured numeric results: Not captured" | `analysis_runs.run_descriptive` keeps no result object; `build_analysis_evidence` only knows Shapiro–Wilk/Levene rows for this section | `test_descriptive_statistics_are_structured_numbers` | 36.2 ✔ |
+| D3 | One variable against eight scales needs eight separate runs; no shared table, no multiple-comparison correction | correlation engine and guided roles take one pair | `test_one_variable_against_eight_scales_in_one_run` | 36.2 ✔ |
+| D4 | A two-category group (Sex) for a 3–8 group method is not explained before Run | `role_problems` does not count the categories of the group | `test_a_two_group_variable_is_explained_before_a_three_group_test` | 36.2 ✔ |
 | D5 | Reliability (ω/α) is offered for total scores | the guided advice cannot tell item responses from totals | `test_no_reliability_from_total_scores` | 36.3 |
 | D6 | A Word document with two 60-item table forms **without numbers in the cells** is "not recognised" | `parse_scientific_lines` needs numbered lines; table structure is flattened first | `test_two_unnumbered_sixty_item_forms` | 36.5 |
 | D7 | The stated item count is read from a scoring note ("each with four items" → 4) | `expected_item_count` takes the first count phrase in the document | `test_the_stated_item_count_is_not_taken_from_a_scoring_note` | 36.5 |
 | D8 | A scanned table with a number column yields 16 of 52 items | line parser needs a clean number at the line start; a scan artifact (`"17.`) ends the sequence; no column geometry | `test_a_scanned_table_with_a_number_column_yields_all_52_items` | 36.5 |
-| D9 | Groups of 3/47/5 are refused only after Run ("At least five complete observations per group") | no pre-run check of group sizes | `test_small_groups_are_handled_before_the_run_not_refused_after` | 36.2 |
-| D10 | Kruskal–Wallis refuses any group under five observations, so no batch comparison by an imbalanced level variable is possible | omnibus engine minimum of five per group for every method | `test_kruskal_wallis_for_eight_outcomes_with_a_group_of_three` | 36.2 |
+| D9 | Groups of 3/47/5 are refused only after Run ("At least five complete observations per group") | no pre-run check of group sizes | `test_small_groups_are_handled_before_the_run_not_refused_after` | 36.2 ✔ |
+| D10 | Kruskal–Wallis refuses any group under five observations, so no batch comparison by an imbalanced level variable is possible | omnibus engine minimum of five per group for every method | `test_kruskal_wallis_for_eight_outcomes_with_a_group_of_three` | 36.2 ✔ |
 
 Further audit observations, handled in the listed sub-stage:
 
-- An identifier column of text codes (`fictional_001`, …) is suggested as "unknown", not "identifier": one more confirmation for every dataset (36.1).
+- An identifier column of text codes (`fictional_001`, …) was suggested as "unknown", not "identifier": one more confirmation for every dataset (fixed in 36.1).
 - Spearman ρ has no confidence interval; no Kendall τ (36.2).
 - No chart can be changed without re-running the analysis; no SVG/PDF export and no image clipboard (36.4).
 - The importer finds no response options for the table forms (both DOCX forms and both scans: zero response schemes) (36.5).

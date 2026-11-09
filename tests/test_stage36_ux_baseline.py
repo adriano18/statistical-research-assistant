@@ -1,11 +1,14 @@
-"""Stage 36.0: measured interaction cost of research workflows (UX baseline).
+"""Stage 36: measured interaction cost of research workflows.
 
 The workflows are driven through the real workspace controls (the test
 harness calls the same handlers a click does) and every interaction a
 researcher needs is counted. A dropdown choice counts as two interactions
-(open, choose). The numbers are recorded in docs/STAGE36_UX_AUDIT.md;
-later Stage 36 changes add the improved workflows next to these, so the
-before/after comparison stays measured, not estimated.
+(open, choose). Each test checks that the workflow produced its results.
+
+Before Stage 36 (measured at 36.0, commit b8e123c, recorded in
+docs/STAGE36_UX_AUDIT.md): 43 interactions and 16 page changes for eight
+correlations; 5 to repeat an analysis; a group comparison by UCLA_Level
+refused only after Run; 19 for a Word report from 8 results.
 """
 
 from __future__ import annotations
@@ -52,100 +55,133 @@ class CountingWorkspace(Workspace):
         return super().check(data, value)
 
 
-def prepared_workspace() -> CountingWorkspace:
-    ws = CountingWorkspace()
-    ws.app.projects.create("Fictional UX baseline")
+LEVELS = {"Code": "id", "Age": "scale", "Sex": "nominal", "UCLA": "scale",
+          "UCLA_Level": "ordinal", **{name: "scale" for name in fx.SCALES}}
+
+
+def prepared_workspace(root=None) -> CountingWorkspace:
+    ws = CountingWorkspace(root=root)
+    if not ws.app.projects.active:
+        ws.app.projects.create("Fictional UX study")
     assert ws.run(ws.app.load_path(str(fx.fixture(fx.CSV))))
-    levels = {"Code": "id", "Age": "scale", "Sex": "nominal", "UCLA": "scale",
-              "UCLA_Level": "ordinal", **{name: "scale" for name in fx.SCALES}}
-    for name, level in levels.items():
+    for name, level in LEVELS.items():
         ws.app.session.confirm_level(name, level)
     ws.counts.clear()
     return ws
 
 
-class BaselineWorkflows(unittest.TestCase):
-    """Stage 34.5/35 workflows as they are before Stage 36 (measured)."""
+def eight_correlations(ws: CountingWorkspace) -> None:
+    ws.click("nav-analyze")
+    ws.click("goal-relate")
+    ws.choose("role-x", "UCLA")
+    ws.click("role-y-all-scale")                  # every quantitative variable but UCLA
+    ws.check("role-y-Age", False)                 # Age is not a coping scale
+    ws.click("alt-batch_correlation-spearman")
+    ws.click("guided-run")
 
-    def test_eight_spearman_correlations_one_pair_at_a_time(self):
+
+class Stage36Workflows(unittest.TestCase):
+    def test_eight_correlations_in_one_batch(self):
+        """Target (spec §4): goal, UCLA, the scales, Run — the researcher
+        stays in the task and sees one table of 8 pairs."""
         ws = prepared_workspace()
         self.addCleanup(ws.close)
-        before = len(ws.app.session.results)
-        ws.click("nav-analyze")
-        ws.click("goal-relate")
-        ws.choose("role-x", "UCLA")
-        for index, scale in enumerate(fx.SCALES):
-            if index:
-                ws.click("nav-analyze")          # the run leaves the analysis page
-            ws.choose("role-y", scale)
-            ws.click("alt-correlation-spearman")  # a new choice resets the method
-            ws.click("guided-run")
-        self.assertEqual(len(ws.app.session.results) - before, 8, "eight results")
-        self.assertEqual(ws.total, 43)
-        self.assertEqual(len(ws.routes), 16, "page changes: analysis and results, 8 times")
-        print(f"\n[ux-baseline] 8 correlations: {ws.total} interactions "
-              f"({dict(ws.counts)}), {len(ws.routes)} page changes; "
-              "no shared table, no multiple-comparison correction")
+        eight_correlations(ws)
+        entries = ws.app.session.results
+        self.assertEqual([e.method for e in entries], ["batch_correlation"])
+        family = entries[0].run.result
+        self.assertEqual([row.y for row in family.rows], list(fx.SCALES))
+        self.assertEqual(family.method, "spearman")
+        self.assertEqual(ws.app.route, "analyze", "the researcher stays in the task")
+        self.assertTrue(ws.find_all("task-table"))
+        self.assertEqual(ws.total, 8)
+        self.assertEqual(ws.routes, ["analyze"])
+        print(f"\n[ux] 8 correlations: {ws.total} interactions ({dict(ws.counts)}), "
+              f"{len(ws.routes)} page change (before Stage 36: 43 and 16)")
 
-    def test_repeat_an_analysis_with_another_variable(self):
+    def test_return_to_the_task_and_run_it_again(self):
+        """Target (spec §15): back to the earlier settings in 1–2 actions."""
         ws = prepared_workspace()
         self.addCleanup(ws.close)
-        ws.click("nav-analyze")
-        ws.click("goal-relate")
-        ws.choose("role-x", "UCLA")
-        ws.choose("role-y", fx.SCALES[0])
-        ws.click("alt-correlation-spearman")
-        ws.click("guided-run")
+        eight_correlations(ws)
+        ws.click("nav-results")
         ws.counts.clear()
-        ws.routes.clear()
         ws.click("nav-analyze")
-        ws.choose("role-y", fx.SCALES[1])
-        ws.click("alt-correlation-spearman")
-        ws.click("guided-run")
-        self.assertEqual(ws.total, 5)
-        print(f"\n[ux-baseline] repeat with another variable: {ws.total} interactions")
+        ws.click("task-rerun")
+        entries = ws.app.session.results
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[1].task_id, entries[0].task_id, "a new run of the same task")
+        self.assertEqual(entries[1].run.result.rows, entries[0].run.result.rows,
+                         "the same selection, method and options")
+        self.assertEqual(ws.total, 2)
+        print(f"\n[ux] return and run again: {ws.total} interactions (before: 5)")
 
-    def test_group_comparison_by_an_existing_level_variable(self):
-        """UCLA_Level has groups of 3, 47 and 5. Before Stage 36.2 every
-        omnibus method was refused only after Run (9 interactions spent,
-        docs/STAGE36_UX_AUDIT.md). Now the small groups are explained before
-        Run and Kruskal–Wallis runs with a permutation p-value."""
+    def test_groups_on_the_same_eight_scales(self):
+        """The second question reuses the first task's eight scales in one action."""
         ws = prepared_workspace()
         self.addCleanup(ws.close)
-        before = len(ws.app.session.results)
+        eight_correlations(ws)
+        task = ws.app.session.tasks[0]
+        ws.counts.clear()
+        ws.click("task-new")
+        ws.click("goal-compare")
+        ws.choose("role-group", "UCLA_Level")
+        ws.click(f"role-outcome-from-{task.id}")
+        self.assertTrue(ws.has_text("fewer than five values"), "small groups explained before Run")
+        ws.check("design-confirm-independent")
+        ws.check("design-confirm-assumptions")
+        ws.click("guided-run")
+        entry = ws.app.session.results[-1]
+        self.assertEqual(entry.method, "batch_groups")
+        self.assertEqual([row.outcome for row in entry.run.result.rows], list(fx.SCALES))
+        self.assertEqual(len(ws.app.session.tasks), 2)
+        self.assertEqual(ws.total, 8)
+        print(f"\n[ux] Kruskal–Wallis on the same 8 scales: {ws.total} interactions "
+              "(before: refused after Run)")
+
+    def test_a_single_group_comparison_by_a_small_level_variable(self):
+        ws = prepared_workspace()
+        self.addCleanup(ws.close)
         ws.click("nav-analyze")
         ws.click("goal-compare")
         ws.choose("role-group", "UCLA_Level")
-        ws.choose("role-outcome", fx.SCALES[0])
+        ws.check(f"role-outcome-{fx.SCALES[0]}")
         self.assertTrue(ws.has_text("fewer than five values"), "explained before Run")
         ws.check("design-confirm-independent")
         ws.check("design-confirm-assumptions")
         ws.click("guided-run")
-        added = ws.app.session.results[before:]
-        self.assertEqual([entry.method for entry in added], ["omnibus"])
-        self.assertIn("permutation", added[0].run.result.p_method)
-        self.assertEqual(ws.total, 9)
-        print(f"\n[ux] group comparison by UCLA_Level: runs after {ws.total} interactions "
-              "with the small groups explained before Run (before 36.2: refused after Run)")
+        entry = ws.app.session.results[-1]
+        self.assertEqual(entry.method, "omnibus")
+        self.assertIn("permutation", entry.run.result.p_method)
+        self.assertEqual(ws.total, 8)
 
-    def test_a_word_report_from_eight_results(self):
-        ws = prepared_workspace()
-        self.addCleanup(ws.close)
-        page = ws.app.pages["analyze"]
-        for scale in fx.SCALES:
-            ws.run(page._execute("correlation", {"x": "UCLA", "y": scale},
-                                 {"method": "spearman"}, {}))
-        ws.counts.clear()
-        ws.click("nav-results")
-        for entry in ws.app.session.results:
-            ws.click(f"result-{entry.id}")
-            ws.click("result-add-report")
-        ws.click("nav-reports")
-        ws.click("reports-export-docx")
-        self.assertTrue(any(path.suffix == ".docx" for path in ws.saved))
-        self.assertEqual(ws.total, 19)
-        print(f"\n[ux-baseline] Word report from 8 results: {ws.total} interactions "
-              "(plus the Save dialog)")
+    def test_tasks_and_results_return_after_a_restart(self):
+        """Spec §3/§15: the project, its tasks and their results come back."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as folder:
+            ws = prepared_workspace(root=Path(folder))
+            try:
+                eight_correlations(ws)
+                project_id = ws.app.projects.info().id
+                first = ws.app.session.results[0].run.result
+            finally:
+                ws.close()
+            again = CountingWorkspace(root=Path(folder))
+            try:
+                again.app.projects.open(project_id)
+                tasks = again.app.session.tasks
+                self.assertEqual(len(tasks), 1)
+                self.assertEqual(tasks[0].selection["y"], list(fx.SCALES))
+                restored = again.app.session.results[0]
+                self.assertEqual(restored.task_id, tasks[0].id)
+                self.assertEqual(restored.run.result, first, "numbers come back unchanged")
+                again.click("nav-analyze")
+                again.click(f"task-{tasks[0].id}")
+                self.assertEqual(again.app.pages["analyze"].selection["y"], list(fx.SCALES))
+                self.assertTrue(again.find_all("task-table"), "the result is shown in the task")
+            finally:
+                again.close()
 
 
 if __name__ == "__main__":
