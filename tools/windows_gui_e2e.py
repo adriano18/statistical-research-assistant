@@ -1500,19 +1500,50 @@ def journey_import_cope_docx(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text(COPE_SITUATIONAL)
 
 
-def direct_ocr_seconds(pdf: Path, language: str, page: int = 1):
-    """Seconds for one page read by this driver with the program's OCR code
-    and runtime (as the program renders it), or why it could not be read."""
-    from visual_survey_review import _render_pdf_page, recognize_page_layout
+def direct_ocr(pdf: Path, language: str, out: Path | None = None, pages=(1, 2)) -> dict:
+    """Read ``pages`` with the program's OCR code and runtime, as the program
+    renders them, outside the program: seconds and words per page, and (into
+    ``out``) the page image and Tesseract's word boxes (TSV), so that the
+    reading of this engine can be replayed elsewhere. Synthetic documents only;
+    a diagnostic that never fails the journey."""
+    from visual_survey_review import _render_pdf_page, _run_ocr, parse_tesseract_tsv
 
+    facts = {}
+    for page in pages:
+        try:
+            png, dpi = _render_pdf_page(pdf.read_bytes(), page, scale=2.0, max_width=1800,
+                                        rotation=0)
+            started = time.monotonic()
+            tsv = _run_ocr(png, language,
+                           ["-c", "tessedit_create_tsv=1", "-c", "tessedit_create_txt=0"],
+                           timeout=240, cancel=None, dpi=dpi)
+            seconds = round(time.monotonic() - started, 1)
+            words = parse_tesseract_tsv(tsv, page, language=language, rotation=0,
+                                        engine="tesseract").words
+            facts[f"page_{page}"] = {"seconds": seconds, "words": len(words), "dpi": round(dpi, 2)}
+            if out is not None:
+                out.mkdir(parents=True, exist_ok=True)
+                (out / f"{pdf.stem}-p{page}.png").write_bytes(png)
+                (out / f"{pdf.stem}-p{page}-{language}.tsv").write_text(tsv, encoding="utf-8")
+        except Exception as error:      # a diagnostic: never fails the journey
+            facts[f"page_{page}"] = f"{type(error).__name__}: {error}"
+    return facts
+
+
+def direct_rows(pdf: Path, language: str) -> dict:
+    """The program's whole OCR reading (``ocr_scientific_pdf``) of ``pdf``,
+    outside the program, with the same engine: the item numbers it finds.
+    A diagnostic that never fails the journey; synthetic documents only."""
+    from visual_survey_review import ocr_scientific_pdf
+
+    started = time.monotonic()
     try:
-        png, dpi = _render_pdf_page(pdf.read_bytes(), page, scale=2.0, max_width=1800,
-                                    rotation=0)
-        started = time.monotonic()
-        result = recognize_page_layout(png, language, page_number=page, dpi=dpi, timeout=240)
-        return {"seconds": round(time.monotonic() - started, 1), "words": len(result.words)}
+        review = ocr_scientific_pdf(pdf.read_bytes(), pdf.name, [1, 2], language)
+        numbers = [q.number for x in review.instruments for q in x.questions]
+        return {"items": len(numbers), "numbers_1_to_52": numbers == list(range(1, 53)),
+                "seconds": round(time.monotonic() - started, 1)}
     except Exception as error:      # a diagnostic: never fails the journey
-        return f"{type(error).__name__}: {error}"
+        return {"error": f"{type(error).__name__}: {error}"}
 
 
 def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
@@ -1524,11 +1555,17 @@ def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
     from workspace_questionnaires import ocr_language_options
 
     pdf = generator().create_lv_table_scan_pdf(work)
-    # The bundled engine's own speed on this page, with no interface around
-    # it (run 42656712671: in the program both pages hit the per-page limit).
-    journey.facts["direct_ocr_page_1_lav"] = direct_ocr_seconds(pdf, "lav")
-    print(f"  [ocr] page 1 in Latvian outside the program: "
-          f"{journey.facts['direct_ocr_page_1_lav']}", flush=True)
+    # The bundled engine's own reading of both pages, with no interface around
+    # it: its speed, and its word boxes kept with the evidence (gui.out/ocr),
+    # so that a reading that differs from Linux can be replayed there.
+    journey.facts["direct_ocr_lav"] = direct_ocr(pdf, "lav", gui.out / "ocr")
+    print(f"  [ocr] Latvian outside the program: {journey.facts['direct_ocr_lav']}", flush=True)
+    # The same table set in a Times-like font (STIX), read by this engine with
+    # the program's code: before 36.7 that typeface lost rows on Windows.
+    stix = generator().create_lv_table_scan_pdf(work, "stix")
+    journey.facts["stix_table_outside_program"] = direct_rows(stix, "lav")
+    print(f"  [ocr] Times-like table outside the program: "
+          f"{journey.facts['stix_table_outside_program']}", flush=True)
     import_document(gui, journey, pdf, shows=T("imp.state.scan"))
     with journey.step("the scan is detected: local OCR is offered with its language"):
         gui.wait_text(T("imp.scan.detail", pages="Pages 1 and 2"))
@@ -1538,8 +1575,13 @@ def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
         gui.choose(T("imp.ocr_language"), T("imp.ocr_lang.lav"), options=options)
         gui.click(T("imp.ocr_run"), control_type="Button")
         started = time.monotonic()
-        gui.wait_text(T("imp.read_ok", instruments=1, items=52, name=pdf.name), timeout=600)
+        # Whatever the reading gives is recorded before it is checked.
+        gui.wait_text(T("imp.state.ocr_used", pages="pages 1 and 2",
+                        ocr=T("imp.ocr_lang.lav")), timeout=600)
         journey.facts["ocr_in_program_seconds"] = round(time.monotonic() - started, 1)
+        journey.facts["candidates_in_program"] = [
+            text for text in gui.texts() if "candidate items" in text][:3]
+        gui.wait_text(T("imp.read_ok", instruments=1, items=52, name=pdf.name), timeout=30)
     with journey.step("52 candidates; the OCR stays a visible fact"):
         gui.wait_text("52 candidate items")
         gui.wait_text(T("imp.state.ocr_used", pages="pages 1 and 2",
@@ -2133,10 +2175,13 @@ def journey_stage36_groups(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text("UCLA_Level already groups UCLA", timeout=20)
     with journey.step("three quantile groups previewed, then created"):
         gui.wait_text(T("groups.counts", valid=55, missing=0, outside=0), timeout=20)
-        for size in expected:
-            gui.find(str(size), timeout=10)
+        gui.shot("groups previewed")
         gui.click(T("groups.create"), control_type="Button")
         gui.wait_text("UCLA itself is unchanged", timeout=30)
+        # Windows exposes a preview row as one element, not a cell per number:
+        # the group sizes are read from the announcement ("Q1 [37, 46]: n = 18").
+        for size in expected:
+            gui.wait_text(f": n = {size}", timeout=10)
         gui.shot("groups created")
     title = T("task.title_compare", group="UCLA_groups", count=8)
     with journey.step("the eight scales by the new groups: one Kruskal–Wallis batch"):
