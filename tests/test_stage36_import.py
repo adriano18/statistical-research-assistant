@@ -9,6 +9,7 @@ as metadata, flagged numbers, joined continuation lines, legends, regions.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
 import re
@@ -724,6 +725,79 @@ class RealScanPatternTests(unittest.TestCase):
         for n, row in rows.items():
             self.assertTrue(row.prompt.startswith(invented(n)), n)
             self.assertNotRegex(row.prompt, r"\s\d+$", "no answer digits at the end")
+
+
+class LooseFirstWordTests(unittest.TestCase):
+    """Round 3: the geometry a private check traced for the lost item 17.
+
+    Line height 0.0225 of a 1200 × 1700 page gives unit_x ≈ 0.0319; the
+    statement column runs x = 0.207 − 0.0043·y; numbers stand at x ≈ 0.149
+    (quoted) to 0.155; answer digits at 0.713 (scored 0), 0.849, 0.885,
+    0.920 and 0.956. Item 17's first word box starts 0.63·unit_x left of the
+    column (0.0201 > the strict 0.6·unit_x); item 20's starts 0.018 left
+    (inside it), as on the real page. Invented words only.
+    """
+    HEIGHT, STEP = 0.0225, 0.045
+    UNIT = HEIGHT * 1700 / 1200
+
+    def page(self, shifted=17):
+        lines, y = [], 0.05
+
+        def add(parts, height=self.HEIGHT):
+            line_id = f"p1-b1-r1-l{len(lines) + 1}"
+            words = tuple(OCRWord(f"{line_id}-w{k}", text, (x0, y, x1, y + height), conf, line_id)
+                          for k, (text, x0, x1, conf) in enumerate(parts, 1))
+            lines.append(OCRLine(line_id, "p1-b1", words, union_box(w.box for w in words)))
+
+        for n in range(13, 23):
+            column = 0.207 - 0.0043 * (y + self.HEIGHT / 2)
+            start = column - {shifted: 0.63 * self.UNIT, 20: 0.018}.get(n, 0.0)
+            quoted = n in (17, 18, 19, 20)
+            number = f'"{n}.' if quoted else f"{n}."
+            x0 = 0.149 if quoted else 0.155
+            words = [(number, x0, x0 + 0.009 * len(number), 52.0 if n == 17 else 92.0)]
+            first = "abcdefghijk" if n == 17 else ("abc" if n == 20 else "aaaaaaa")
+            words.append((first, start, start + 0.0105 * len(first), 32.0 if n == 20 else 90.0))
+            x = start + 0.0105 * len(first) + 0.008
+            for token in invented(n).split()[1:]:
+                words.append((token, x, x + 0.0105 * len(token), 92.0))
+                x += 0.0105 * len(token) + 0.008
+            words += [("1", 0.713, 0.721, 0.0 if n == 17 else 88.0)] + [
+                (code, at, at + 0.008, 88.0) for code, at in zip("2345", (0.849, 0.885, 0.920, 0.956))]
+            add(words)
+            y += self.STEP * 0.6
+            add([("ii", 0.08, 0.93, 11.0), ("m", 0.40, 0.45, 20.0)], height=0.025)
+            y += self.STEP * 0.4
+        block = OCRBlock("p1-b1", tuple(lines), union_box(l.box for l in lines))
+        return OCRPage(1, 1200, 1700, (block,), "tesseract_tsv", "lav")
+
+    def test_the_page_has_the_traced_geometry(self):
+        geo = page_geometry(self.page())
+        self.assertAlmostEqual(geo.unit_x, 0.0319, places=3)
+        self.assertAlmostEqual(geo.statement_a, 0.207, delta=0.002)
+        self.assertAlmostEqual(geo.statement_b, -0.0043, delta=0.002)
+        self.assertEqual(geo.number_style, "dot")
+        self.assertLess(geo.answer_floor, 0.713)
+
+    def test_a_numbered_row_whose_first_word_starts_left_of_the_column_is_kept(self):
+        rows, _ = rows_of([self.page()])
+        self.assertEqual(sorted(rows), list(range(13, 23)))
+        self.assertEqual((rows[17].number_source, rows[17].number_text), ("normalised", '"17.'))
+        self.assertTrue(rows[17].prompt.startswith("abcdefghijk "))
+        self.assertEqual(rows[17].answers, ("1", "2", "3", "4", "5"))
+        self.assertEqual(rows[20].number_source, "normalised")
+
+    def test_lines_without_a_number_keep_the_strict_tolerance(self):
+        # The same offset without a number in the column: no row, and no
+        # continuation of row 16 either (it is not aligned).
+        page = self.page()
+        lines = list(page.lines)
+        k = next(i for i, line in enumerate(lines) if line.words[0].text == '"17.')
+        unnumbered = replace(lines[k], words=lines[k].words[1:])
+        block = replace(page.blocks[0], lines=tuple([*lines[:k], unnumbered, *lines[k + 1:]]))
+        rows, tables = rows_of([replace(page, blocks=(block,))])
+        self.assertNotIn(17, rows)
+        self.assertNotIn("abcdefghijk", rows[16].prompt)
 
 
 @unittest.skipUnless(shutil.which("tesseract"), "local OCR engine")

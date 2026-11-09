@@ -13,7 +13,11 @@ sequence. This module works from Tesseract word boxes instead
    word give the number column; the left edges of those words give the
    statement column (fitted against the page height, so rotation does not
    matter). A number followed by its text at an ordinary word gap
-   (``12. Text``) is NOT a column: such pages keep the line parser.
+   (``12. Text``) is NOT a column: such pages keep the line parser. A line
+   starts in the statement column when its first word is within 0.6 line
+   heights of it; a line with a plain number (quotes and ticks stripped)
+   before its first word and answer digits on the right may be 1.2 line
+   heights off, because OCR word boxes sometimes start early.
 3. **Answer tokens** are removed from the END of a line only: a trailing
    run of tokens in the answer area made of digits and the glyphs OCR
    produces for them (``12375``, ``1—2``, ``[1``, ``|``, ``5”``, ``—``, one
@@ -415,10 +419,25 @@ def _parts(line: OCRLine, page: int, geo: PageGeometry) -> _Parts:
     while statement and _speck(statement[0]):
         statement.pop(0)   # a speck before the first word
     first = next((w for w in statement if len(re.findall(r"[^\W_]", w.text)) >= 2), None)
-    tolerance = max(0.6 * geo.unit_x, 0.01)
-    aligned = first is not None and abs(first.box[0] - left) <= tolerance
+    offset = abs(first.box[0] - left) if first is not None else None
+    aligned = offset is not None and offset <= max(0.6 * geo.unit_x, 0.01)
+    if (not aligned and offset is not None and offset <= max(1.2 * geo.unit_x, 0.02)
+            and number and _clean_number(number) and first.box[0] >= number[-1].box[2]
+            and any(ch.isdigit() for w in answers for ch in w.text)):
+        # A row in all but alignment (a plain number left of its first word,
+        # answer digits on the right) whose first word box starts a little
+        # off the column. Lines without such a number keep the strict test,
+        # so continuation and noise decisions do not change.
+        aligned = True
     return _Parts(page, line, number, statement, answers, aligned,
                   _texty(statement), any(_real(w) for w in statement))
+
+
+def _clean_number(words) -> bool:
+    """The number column reads as a plain number once quotes and ticks are stripped."""
+    texts = ["".join(w.text for w in words)] + ([words[-1].text] if len(words) > 1 else [])
+    return any(_NUMBER.fullmatch("".join(text.split()).lstrip(_ARTIFACTS + ".").rstrip(_ARTIFACTS))
+               for text in texts)
 
 
 # ---------------------------------------------------------------- legends
