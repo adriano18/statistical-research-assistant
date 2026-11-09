@@ -1,5 +1,6 @@
-"""Settings: the optional researcher profile and the AI context overview
-(Stage 34, part C). See ``researcher_profile`` and ``ai_context``."""
+"""Settings: the optional researcher profile and what the AI assistant may
+see in the open project (Stage 34, part C; switches since Stage 36). See
+``researcher_profile`` and ``ai_context``."""
 
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ import flet as ft
 import ai_context
 import workspace_components as wc
 import workspace_tokens as tk
+from project_store import ProjectError
 from researcher_profile import (
     EXPERIENCE, EXPLANATIONS, LANGUAGES, STUDY_LEVELS, ProfileError, ResearcherProfile,
     delete_profile, save_profile,
@@ -26,6 +28,7 @@ class ProfileSettings:
         self.app = app
         self.draft = app.profile
         self.feedback: tuple[str, str] | None = None
+        self.ai_feedback: tuple[str, str] | None = None
         self.opened: set[str] = set()
 
     # ---------------------------------------------------------- profile
@@ -103,11 +106,15 @@ class ProfileSettings:
 
     # --------------------------------------------------------------- AI
     def ai_card(self) -> ft.Control:
+        """What the assistant may see in the open project: one switch per
+        source (all off by default) and the statement that the data rows
+        identify nobody, without which data rows cannot be allowed."""
         app, ui = self.app, self.app.ui
         binding = app.projects
         project = binding.project if binding.active else None
         rows: list[ft.Control] = []
         decided = ai_context.permissions(project) if project is not None else {}
+        anonymous = project.data_anonymous if project is not None else False
         for source in ai_context.SOURCES:
             allowed = decided.get(source.key, False)
             heading = ft.Row([
@@ -120,6 +127,13 @@ class ProfileSettings:
             ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
             block: list[ft.Control] = [heading]
             if project is not None:
+                locked = source.key == "raw_data" and not anonymous and not allowed
+                block.append(wc.checkbox(
+                    ui, ui.t("ai.allow"), allowed, disabled=locked,
+                    on_change=lambda e, k=source.key: self._allow(k, bool(e.control.value)),
+                    data=f"ai-allow-{source.key}"))
+                if locked:
+                    block.append(wc.caption(ui, ui.t("ai.rows_locked")))
                 text = ai_context.preview(source.key, project=project, session=app.session,
                                           profile=app.profile, survey_root=app.survey_root)
                 block.append(wc.expansion(
@@ -132,9 +146,14 @@ class ProfileSettings:
             rows.append(ft.Container(ft.Column(block, spacing=tk.SPACE_2), padding=tk.SPACE_3,
                                      border=ft.Border.all(1, ui.p.border),
                                      border_radius=ui.radius("card")))
+        setup = ai_context.readiness(app.project_root.parent)
+        status = (wc.chip(ui, ui.t("ai.ready", provider=setup.provider_name, model=setup.model),
+                          "success", icon=ft.Icons.CHECK_CIRCLE_OUTLINE, data="ai-ready")
+                  if setup.ready else
+                  wc.chip(ui, ui.t("ai.unavailable"), "neutral", icon=ft.Icons.BLOCK,
+                          data="ai-unavailable"))
         content: list[ft.Control] = [
-            ft.Row([wc.chip(ui, ui.t("ai.unavailable"), "neutral", icon=ft.Icons.BLOCK,
-                            data="ai-unavailable")]),
+            ft.Row([status]),
             wc.text(ui, ui.t("ai.intro"), tk.TYPE_BODY),
             wc.section_label(ui, ui.t("ai.sources", title=binding.info().title)
                              if project is not None else ui.t("ai.sources_none")),
@@ -142,7 +161,42 @@ class ProfileSettings:
         ]
         if project is None:
             content.append(wc.caption(ui, ui.t("ai.no_project")))
+        else:
+            content += [wc.checkbox(ui, ui.t("ai.anonymous"), anonymous,
+                                    on_change=lambda e: self._anonymous(bool(e.control.value)),
+                                    data="ai-anonymous"),
+                        wc.caption(ui, ui.t("ai.anonymous_note"))]
+        if self.ai_feedback:
+            content.append(wc.notice(ui, self.ai_feedback[0], self.ai_feedback[1],
+                                     data="ai-feedback"))
         content += [wc.text(ui, "• " + ui.t(f"ai.rule.{rule}"), tk.TYPE_BODY,
                             color=ui.p.text_secondary)
                     for rule in ("consent", "rows", "log", "profile")]
-        return wc.card(ui, content, title=ui.t("settings.ai"), data="settings-ai")
+        card = wc.card(ui, content, title=ui.t("settings.ai"), data="settings-ai")
+        card.key = ft.ScrollKey("settings-ai")    # the assistant's "AI permissions" link
+        return card
+
+    def _allow(self, source: str, allowed: bool):
+        """One source on or off for the open project (stored and logged there)."""
+        binding = self.app.projects
+        self.ai_feedback = None
+        if binding.active:
+            try:
+                ai_context.allow(binding.project, source, allowed, remote=True)
+            except ai_context.ContextRefused:
+                self.ai_feedback = (self.app.t("ai.rows_locked"), "warning")
+            except ProjectError as error:
+                self.ai_feedback = (self.app.t("profile.invalid", error=error), "danger")
+        self.app.render()
+
+    def _anonymous(self, value: bool):
+        """The researcher's statement that the data rows identify nobody;
+        withdrawing it withdraws data rows too."""
+        binding = self.app.projects
+        self.ai_feedback = None
+        if binding.active:
+            try:
+                ai_context.state_anonymous(binding.project, value)
+            except ProjectError as error:
+                self.ai_feedback = (self.app.t("profile.invalid", error=error), "danger")
+        self.app.render()

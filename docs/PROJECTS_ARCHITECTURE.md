@@ -231,17 +231,22 @@ version.
   recovery story (a lost passphrase loses the data) and review; not in scope.
 - Backups may contain personal response data; the export dialog must say so.
 
-## 12. AI context permissions (`ai_context.py` — AI is not connected)
+## 12. AI context permissions (`ai_context.py`)
 
-Settings shows **"AI assistance — not available in this version"**, the six
-context sources with their state for the open project (all "Off") and, for
-each, a preview of exactly what it would contain now, built locally (the test
-blocks every socket while building it). `AI_AVAILABLE = False`, so
-`check_request()` refuses every request; nothing in the application sends
-project content anywhere. Decisions are stored per project (format 2:
-`ai_permissions`, `project.data_anonymous`), travel with `.sra` backups and are
-logged in the activity log. The interface has no switches for them yet: they
-belong to the version that adds an assistant. The contract:
+Settings → AI assistance shows whether a provider is connected, the context
+sources with their state for the open project (all "Off" by default), a
+switch for each, the statement that the project's data rows identify nobody
+and, for each source, a preview of exactly what it would contain now, built
+locally (the test blocks every socket while building it). Until Stage 36 a
+global `AI_AVAILABLE = False` refused every request; since Stage 36.6
+`check_request()` refuses unless the assistant is set up (a provider, a model
+and the researcher's key in the OS store, `ai_context.readiness`), and the
+assistant itself is described in [STAGE36_AI_ASSISTANT.md](STAGE36_AI_ASSISTANT.md).
+Decisions are stored per project (format 2: `ai_permissions`,
+`project.data_anonymous`), travel with `.sra` backups and are logged in the
+activity log. Stage 36 added a seventh source, the research plan (design and
+hypotheses with whether each was planned before results were seen). The
+contract:
 
 | Context source | Default | Notes |
 |---|---|---|
@@ -310,7 +315,7 @@ account or role), and novice/advanced explanations from the profile.
 | Exact table round trip; unreproducible results never become Word files | `test_stored_copies_read_back_as_exactly_the_same_table`, `test_a_result_that_cannot_be_reproduced_is_not_exported_as_word` |
 | No result filed against the wrong data | `test_a_result_finished_after_switching_projects_is_not_filed_in_the_new_one`, `test_work_started_without_a_project_moves_into_the_first_one_created` |
 | Optional local profile, independent of projects | `test_the_profile_is_optional_and_round_trips`, `test_values_outside_the_offered_choices_or_personal_identifiers_are_refused`, `test_deleting_the_profile_leaves_every_project_untouched`, `test_the_profile_is_filled_saved_and_applied_after_a_restart` |
-| AI permissions: project-scoped, off, nothing sent | `test_every_source_is_off_and_no_request_can_be_made_in_this_version`, `test_rules_a_future_assistant_must_pass`, `test_permissions_travel_with_the_project_backup`, `test_previews_show_exactly_what_would_be_shared_and_use_no_network` |
+| AI permissions: project-scoped, off, nothing sent | `test_every_source_is_off_and_no_request_can_be_made_without_a_provider`, `test_readiness_needs_a_model_and_a_key_in_the_os_store`, `test_rules_a_future_assistant_must_pass`, `test_the_ai_card_allows_sources_per_project_and_rows_need_the_statement`, `test_permissions_travel_with_the_project_backup`, `test_previews_show_exactly_what_would_be_shared_and_use_no_network` |
 | Accessibility, packaged smoke | screenshot suite (`home_projects`, `settings_profile`); Windows CI runs `test_project_*.py` |
 
 The project tests also run on the Windows CI runner (locks, renames, file URIs).
