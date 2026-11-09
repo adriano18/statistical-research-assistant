@@ -371,3 +371,195 @@ def _outcome_row(df, group, outcome, permutations, seed, posthoc) -> GroupRow:
     except ValueError as error:
         return GroupRow(outcome, group, text_labels, ns, int(sum(ns)), excluded,
                         status="failed", note=str(error), warnings=tuple(warnings))
+
+
+# ------------------------------------------------------- two groups, many outcomes
+@dataclass(frozen=True)
+class TwoGroupRow:
+    outcome: str
+    group: str
+    labels: tuple[str, ...]
+    ns: tuple[int, ...]
+    status: str = "ok"
+    note: str = ""
+    statistic: float | None = None
+    df: float | None = None
+    p_raw: float | None = None
+    p_method: str = ""
+    p_adjusted: float | None = None
+    effect_name: str = ""
+    effect_size: float | None = None
+    mean_difference: float | None = None
+    ci_low: float | None = None
+    ci_high: float | None = None
+    medians: tuple[float, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class TwoGroupFamily:
+    group: str
+    method: str                     # "mannwhitney" | "welch"
+    rows: tuple[TwoGroupRow, ...]
+    adjustment: str
+    adjustment_text: str
+    family_size: int
+    alpha: float
+    warnings: tuple[str, ...]
+    provenance: dict = field(default_factory=dict)
+
+    def row(self, outcome: str) -> TwoGroupRow:
+        for row in self.rows:
+            if row.outcome == outcome:
+                return row
+        raise KeyError(outcome)
+
+    def table(self) -> Table:
+        statistic = "U" if self.method == "mannwhitney" else "t"
+        adjusted = {"holm": "p (Holm)", "bh": "p (BH)", "bonferroni": "p (Bonferroni)",
+                    "none": "p (unadjusted)"}[self.adjustment]
+        rows = []
+        for row in self.rows:
+            ns = ", ".join(f"{label}: {n}" for label, n in zip(row.labels, row.ns))
+            if row.status != "ok":
+                rows.append((row.outcome, ns, "Calculation failed", "", "", "", ""))
+                continue
+            rows.append((row.outcome, ns, f"{row.statistic:.2f}", _p(row.p_raw),
+                         _p(row.p_adjusted), row.effect_name, f"{row.effect_size:.3f}"))
+        title = ("Mann–Whitney U" if self.method == "mannwhitney" else "Welch t")
+        return Table(f"{title}: {len(self.rows)} outcomes by {self.group}",
+                     ("Outcome", "n per group", statistic, "p (raw)", adjusted, "Effect", "Size"),
+                     tuple(rows))
+
+    def structured(self) -> StructuredResult:
+        quantities = []
+        for row in self.rows:
+            key = f"{self.method}:{row.outcome}"
+            label = f"{row.effect_name or 'Effect'}: {row.outcome} by {row.group}"
+            if row.status != "ok":
+                quantities.append(Quantity.missing(key, label, "failed", row.note))
+                continue
+            quantities.append(Quantity(key, label, row.effect_size, ci_low=row.ci_low
+                                       if row.effect_name.startswith("Mean") else None,
+                                       ci_high=row.ci_high if row.effect_name.startswith("Mean")
+                                       else None, p=row.p_raw, p_method=row.p_method,
+                                       note=f"adjusted p = {_p(row.p_adjusted)}"))
+        return StructuredResult(
+            f"batch_{self.method}", self.table().title,
+            {"groups": {row.outcome: dict(zip(row.labels, row.ns)) for row in self.rows}},
+            {"variables": [self.group, *[row.outcome for row in self.rows]],
+             "options": {"method": self.method, "adjustment": self.adjustment, "alpha": self.alpha}},
+            tuple(quantities), warnings=self.warnings, tables=(self.table(),),
+            provenance=self.provenance)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TwoGroupFamily":
+        rows = tuple(TwoGroupRow(**{**row, "labels": tuple(row["labels"]), "ns": tuple(row["ns"]),
+                                     "medians": tuple(row.get("medians", ())),
+                                     "warnings": tuple(row.get("warnings", ()))})
+                     for row in data["rows"])
+        return cls(**{**data, "rows": rows, "warnings": tuple(data.get("warnings", ())),
+                      "provenance": dict(data.get("provenance", {}))})
+
+
+def compare_two_many(df: pd.DataFrame, group: str, outcomes: list[str], *,
+                     method: str = "mannwhitney", scale: str = "ordinal", adjust: str = "holm",
+                     alpha: float = 0.05, assumptions_confirmed: bool = False) -> TwoGroupFamily:
+    """Two independent groups compared on several outcomes, as one family.
+
+    Each outcome uses the validated two-group engine
+    (``group_comparison.compare_independent_groups``); the p-values are
+    adjusted together, raw p kept."""
+    from group_comparison import compare_independent_groups
+
+    if method not in ("mannwhitney", "welch"):
+        raise ValueError("Choose Mann–Whitney U or Welch's t.")
+    outcomes = list(outcomes)
+    if not outcomes or len(set(outcomes)) != len(outcomes) or group in outcomes:
+        raise ValueError("Choose each outcome once, and not the grouping variable.")
+    for name in outcomes:
+        if name not in df.columns:
+            raise ValueError(f"Unknown variable: {name}")
+        if _text_only(df[name]):
+            raise ValueError(f"{name} holds text, not numbers (an identifier?); it cannot be "
+                             "analysed as an outcome.")
+    rows = []
+    for outcome in outcomes:
+        try:
+            result = compare_independent_groups(df, group, outcome, method, scale,
+                                                independent_checked=True,
+                                                assumptions_checked=assumptions_confirmed)
+            rows.append(TwoGroupRow(
+                outcome, group, (result.group_a, result.group_b), (result.n_a, result.n_b),
+                statistic=float(result.statistic), df=result.degrees_of_freedom,
+                p_raw=float(result.p_value), p_method=result.p_method,
+                effect_name=result.effect_name, effect_size=float(result.effect_size),
+                mean_difference=result.mean_difference, ci_low=result.ci_low,
+                ci_high=result.ci_high, medians=(float(result.median_a), float(result.median_b)),
+                warnings=tuple(result.warnings)))
+        except ValueError as error:
+            sizes = group_sizes(df, group, outcome)
+            rows.append(TwoGroupRow(outcome, group, tuple(sizes), tuple(sizes.values()),
+                                    status="failed", note=str(error)))
+    adjustment = adjust_family([row.p_raw if row.status == "ok" else None for row in rows], adjust)
+    rows = [TwoGroupRow(**{**asdict(row), "p_adjusted": value})
+            for row, value in zip(rows, adjustment.adjusted)]
+    warnings = (
+        f"The outcomes form one family ({adjustment.description}; {adjustment.family_size} tests); "
+        "raw p-values are kept.",
+        "Group differences do not establish causation; a non-significant result does not show "
+        "that the groups are equal.",
+    )
+    return TwoGroupFamily(group, method, tuple(rows), adjust, adjustment.description,
+                          adjustment.family_size, alpha, warnings,
+                          _provenance(engine=ENGINE_VERSION))
+
+
+GROUP_TEMPLATES = {
+    "en": {
+        "difference": "{outcome}: {test}, p(adjusted) = {padj}. The groups of {group} differ "
+                      "in this sample; this does not show causation.",
+        "no_evidence": "{outcome}: {test}, p(adjusted) = {padj}. No evidence of a difference "
+                       "between the groups of {group} at α = {alpha}; this does not show that "
+                       "the groups are equal.",
+        "failed": "{outcome}: not calculated — {note}",
+    },
+    "lv": {
+        "difference": "{outcome}: {test}, p(koriģēts) = {padj}. {group} grupas šajā izlasē "
+                      "atšķiras; tas nepierāda cēloņsakarību.",
+        "no_evidence": "{outcome}: {test}, p(koriģēts) = {padj}. Nav pierādījumu atšķirībai "
+                       "starp {group} grupām pie α = {alpha}; tas nepierāda, ka grupas ir vienādas.",
+        "failed": "{outcome}: nav aprēķināts — {note}",
+    },
+    "ru": {
+        "difference": "{outcome}: {test}, p(скорр.) = {padj}. Группы {group} в этой выборке "
+                      "различаются; это не доказывает причинность.",
+        "no_evidence": "{outcome}: {test}, p(скорр.) = {padj}. Нет оснований говорить о "
+                       "различии групп {group} при α = {alpha}; это не доказывает, что группы "
+                       "одинаковы.",
+        "failed": "{outcome}: не вычислено — {note}",
+    },
+}
+
+
+def interpret_groups(family, language: str = "en") -> list[str]:
+    """One cautious sentence per outcome (Kruskal–Wallis or two-group family)."""
+    words = GROUP_TEMPLATES.get(language, GROUP_TEMPLATES["en"])
+    sentences = []
+    for row in family.rows:
+        if row.status != "ok":
+            sentences.append(words["failed"].format(outcome=row.outcome, note=row.note))
+            continue
+        if isinstance(row, GroupRow):
+            test = f"H({row.df}) = {row.statistic:.2f}, η²_H = {row.eta2_h:.3f}"
+        else:
+            symbol = "U" if family.method == "mannwhitney" else "t"
+            test = f"{symbol} = {row.statistic:.2f}, {row.effect_name} = {row.effect_size:.3f}"
+        significant = row.p_adjusted is not None and row.p_adjusted < family.alpha
+        sentences.append(words["difference" if significant else "no_evidence"].format(
+            outcome=row.outcome, test=test, padj=_p(row.p_adjusted), group=family.group,
+            alpha=str(family.alpha).replace("0.", ".", 1)))
+    return sentences

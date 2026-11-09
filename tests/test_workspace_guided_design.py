@@ -89,7 +89,7 @@ class GuidedAncovaJourneyTests(unittest.TestCase):
         ws.click("data-accept")
         ws.app.navigate("analyze")
         ws.click("goal-compare")
-        ws.choose("role-outcome", "wellbeing")
+        ws.check("role-outcome-wellbeing")
         ws.choose("role-group", "group")
         ws.check("role-covariates-baseline_score", True)
         self.assertEqual(ws.find("guided-method").value.split(" ")[0], "ANCOVA")

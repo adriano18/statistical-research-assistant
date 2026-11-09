@@ -54,7 +54,7 @@ class XlsxToApaReportJourney(unittest.TestCase):
         ws.key("4", ctrl=True)  # navigation, not a research decision
         ws.click("goal-compare")
         decisions.append("goal: compare groups")
-        ws.choose("role-outcome", "stress_q1")
+        ws.check("role-outcome-stress_q1")
         decisions.append("outcome")
         ws.choose("role-group", "group")
         decisions.append("group")
@@ -229,7 +229,7 @@ class PreparationToFactorJourney(unittest.TestCase):
             ws.app.session.confirm_level(item, "ordinal")
         ws.app.navigate("analyze")
         ws.segment("analyze-mode", "all")
-        self.assertEqual(len(ws.find_all("method-")), 15)
+        self.assertEqual(len(ws.find_all("method-")), 17)   # 15 classic + 2 batch (Stage 36)
         ws.click("method-factor")
         for item in items:
             ws.check(f"form-items-{item}")

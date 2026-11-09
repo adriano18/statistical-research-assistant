@@ -502,3 +502,84 @@ def run_ancova(df: pd.DataFrame, outcome: str, group: str, covariates: list[str]
         inputs={"outcome": outcome, "group": group, "covariates": list(covariates),
                 "mode": mode},
     )
+
+
+# ------------------------------------------------------------ Stage 36 batches
+def _family_report(table, interpretation, method_lines, warnings) -> str:
+    lines = [table.title, "", " | ".join(table.columns)]
+    lines += [" | ".join(row) for row in table.rows]
+    lines += ["", "Interpretation:", *interpretation, "", "Methods:", *method_lines, "",
+              "Notes:", *warnings]
+    return "\n".join(lines)
+
+
+def run_batch_correlation(df: pd.DataFrame, focal: str, others: list[str], method: str,
+                          adjust: str = "holm", spearman_p: str = "permutation",
+                          pearson_confirmed: bool = False, language: str = "en") -> AnalysisRun:
+    """One variable against several (Stage 36, spec §4–5)."""
+    from batch_charts import correlation_forest
+    from batch_correlation import correlate_many
+
+    family = correlate_many(df, focal, list(others), method=method, adjust=adjust,
+                            spearman_p=spearman_p,
+                            pearson_assumptions_confirmed=pearson_confirmed)
+    table = family.table()
+    first = next((row for row in family.rows if row.status == "ok"), None)
+    method_lines = [f"Coefficient: {family.method_label}; complete pairs per pair (N per row)."]
+    if first is not None:
+        method_lines += [f"p-values: {first.p_method}.", f"Intervals: {first.ci_method}."]
+    method_lines.append(f"Adjustment: {family.adjustment_text}; {family.family_size} tests.")
+    if family.magnitude_rule != "none" and family.method != "kendall":
+        from batch_correlation import MAGNITUDE_RULES
+
+        method_lines.append(f"Magnitude labels: {MAGNITUDE_RULES[family.magnitude_rule][0]}.")
+    interpretation = family.interpretation(language)
+    report = _family_report(table, interpretation, method_lines, family.warnings)
+    return AnalysisRun(
+        "batch_correlation", table.title, report, correlation_forest(family), result=family,
+        summary="\n".join(interpretation), interpretation="\n".join(interpretation),
+        guide="\n".join(method_lines), warnings=tuple(family.warnings),
+        tables=(ResultTable(table.title, table.columns, table.rows),),
+        inputs={"focal": focal, "others": list(others), "method": method, "adjust": adjust,
+                "spearman_p": spearman_p, "seed": family.seed, "resamples": family.resamples})
+
+
+def run_batch_groups(df: pd.DataFrame, group: str, outcomes: list[str], *, scale: str,
+                     two_group_method: str = "mannwhitney", adjust: str = "holm",
+                     assumptions_confirmed: bool = False, language: str = "en") -> AnalysisRun:
+    """The same groups compared on several outcomes (Stage 36, spec §6):
+    Kruskal–Wallis for 3–8 groups, a two-group test for 2 groups."""
+    from batch_charts import group_boxplots
+    from batch_groups import compare_many, compare_two_many, group_sizes
+
+    count = len(group_sizes(df, group))
+    if count == 2:
+        family = compare_two_many(df, group, list(outcomes), method=two_group_method,
+                                  scale=scale, adjust=adjust,
+                                  assumptions_confirmed=assumptions_confirmed)
+        first = next((row for row in family.rows if row.status == "ok"), None)
+        method_lines = [f"Test: {first.p_method if first else two_group_method}.",
+                        f"Effect size: {first.effect_name if first else ''}."]
+    else:
+        family = compare_many(df, group, list(outcomes), adjust=adjust)
+        first = next((row for row in family.rows if row.status == "ok"), None)
+        method_lines = ["Test: Kruskal–Wallis H, tie-corrected.",
+                        "Effect sizes: η²_H = (H − k + 1)/(N − k), truncated at 0; "
+                        "ε²_R = H/(N − 1).",
+                        "Pairwise: Dunn z tests with Holm adjustment within each outcome."]
+        if first is not None:
+            method_lines.insert(1, f"p-values: {first.p_method}.")
+    method_lines.append(f"Adjustment across outcomes: {family.adjustment_text}; "
+                        f"{family.family_size} tests.")
+    from batch_groups import interpret_groups
+
+    table = family.table()
+    interpretation = interpret_groups(family, language)
+    report = _family_report(table, interpretation, method_lines, family.warnings)
+    return AnalysisRun(
+        "batch_groups", table.title, report, group_boxplots(df, family), result=family,
+        summary="\n".join(interpretation), interpretation="\n".join(interpretation),
+        guide="\n".join(method_lines), warnings=tuple(family.warnings),
+        tables=(ResultTable(table.title, table.columns, table.rows),),
+        inputs={"group": group, "outcomes": list(outcomes), "adjust": adjust,
+                "two_group_method": two_group_method if count == 2 else None})

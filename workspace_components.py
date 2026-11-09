@@ -346,7 +346,8 @@ def figure(ui: Ui, png: bytes, *, caption_text: str = "", on_enlarge=None,
 
 
 def step_card(ui: Ui, number: int, title: str, content: list[ft.Control], *,
-              state: str = "active", summary: str = "", data=None) -> ft.Container:
+              state: str = "active", summary: str = "", data=None,
+              scroll_key: str | None = None) -> ft.Container:
     """Guided step: 'done' shows a summary, 'locked' explains what is missing."""
     marker_bg = {"done": ui.p.success_subtle, "active": ui.p.accent,
                  "locked": ui.p.surface_alt}[state]
@@ -371,6 +372,7 @@ def step_card(ui: Ui, number: int, title: str, content: list[ft.Control], *,
                                  padding=ft.Padding.only(left=40)))
     return ft.Container(
         content=ft.Column(body, spacing=tk.SPACE_3),
+        key=ft.ScrollKey(scroll_key) if scroll_key else None,
         bgcolor=ui.p.surface,
         border=ft.Border.all(1.5 if state == "active" else 1,
                              ui.p.accent if state == "active" else ui.p.border),

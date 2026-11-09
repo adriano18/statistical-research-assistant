@@ -57,7 +57,7 @@ def tone_of(ws, key: str) -> str:
 
 
 class NavigationReproduction(unittest.TestCase):
-    @unittest.expectedFailure    # 36.0 D1, fixed in 36.1
+    # 36.0 D1, FIXED in 36.1
     def test_every_journey_step_opens_its_own_step(self):
         """Spec §3: each item of Question → Data → Variables → Design →
         Method → Result → Report opens that step and marks it current.
@@ -139,7 +139,7 @@ class BatchAnalysisReproduction(unittest.TestCase):
         ws.click("nav-analyze")
         ws.click("goal-compare")
         ws.choose("role-group", "UCLA_Level")
-        ws.choose("role-outcome", fx.SCALES[0])
+        ws.check(f"role-outcome-{fx.SCALES[0]}")
         for key in ("independent", "assumptions"):
             if ws.find_all(f"design-confirm-{key}"):
                 ws.check(f"design-confirm-{key}")

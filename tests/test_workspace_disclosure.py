@@ -54,10 +54,11 @@ class GuidedDisclosureTests(unittest.TestCase):
     def test_changing_the_view_keeps_the_answers_given_so_far(self):
         ws = self.ws
         ws.click("goal-compare")
-        ws.choose("role-outcome", "stress_q1")
+        ws.check("role-outcome-stress_q1")
         ws.click("goal-change")
         ws.click("goal-compare")                # the same question again
-        self.assertEqual(ws.app.pages["analyze"].selection.get("outcome"), "stress_q1")
+        # Stage 36: outcomes are a multiple choice (one or more).
+        self.assertEqual(ws.app.pages["analyze"].selection.get("outcome"), ["stress_q1"])
 
     def test_all_methods_and_their_options_stay_available(self):
         ws = self.ws

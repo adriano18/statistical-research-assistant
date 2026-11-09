@@ -55,8 +55,10 @@ def run_from_record(record: RunRecord, figure: bytes | None):
 
     tables = tuple(ResultTable(t["title"], tuple(t["columns"]), tuple(tuple(r) for r in t["rows"]))
                    for t in record.tables)
+    from result_store import from_json
+
     return AnalysisRun(
-        record.section, record.title, record.report, figure, None,
+        record.section, record.title, record.report, figure, from_json(record.structured),
         summary=record.summary, interpretation=record.interpretation,
         descriptives=record.descriptives, guide=record.guide,
         warnings=tuple(record.warnings), tables=tables,
@@ -274,7 +276,7 @@ class ProjectBinding:
                     method=run.method, roles=run.roles, options=run.options,
                     confirms=run.confirms, dataset=names.get(run.dataset_id, "—"),
                     rows=run.provenance.get("rows") or 0, created=_local_time(run.created_at),
-                    record_id=run.id, restored=True,
+                    record_id=run.id, restored=True, task_id=run.task_id,
                     provenance={"dataset_sha256": run.dataset_sha256, "levels": dict(run.levels),
                                 "variables": list(run.levels), "rows": run.provenance.get("rows")})
                 entry.stale_reasons = project.run_status(run).reasons
@@ -285,6 +287,11 @@ class ProjectBinding:
                 if entry is not None:
                     entry.in_report = True
                     session.report_order.append(entry.id)
+            from workspace_state import ResearchTask
+
+            session.tasks = [ResearchTask(t.id, t.title, t.goal, dict(t.selection), t.method,
+                                          dict(t.options), dict(t.confirms), t.hypothesis_id,
+                                          dict(t.state)) for t in project.tasks()]
             session.notify("results")
         finally:
             self._restoring = False
@@ -432,8 +439,23 @@ class ProjectBinding:
                 self._save_results()
             elif what == "report":
                 self._save_report()
+            elif what == "tasks":
+                self._save_tasks()
         except Exception:
             self.message = ("project.save_failed", "danger")
+
+    def _save_tasks(self) -> None:
+        """Research tasks are written through: what the researcher chose is in
+        the project as soon as it changes (Stage 36)."""
+        known = {t.id for t in self.project.tasks()}
+        for task in self.session.tasks:
+            self.project.save_task(task_id=task.id, title=task.title, goal=task.goal,
+                                   selection=task.selection, method=task.method,
+                                   options=task.options, confirms=task.confirms,
+                                   hypothesis_id=task.hypothesis_id, state=task.state)
+            known.discard(task.id)
+        for task_id in known:                      # removed in the session
+            self.project.delete_task(task_id)
 
     def _save_dataset(self) -> None:
         session, project = self.session, self.project
@@ -526,7 +548,7 @@ class ProjectBinding:
                 entry.run, method=entry.method, dataset_id=dataset_id,
                 roles=entry.roles or {}, options=entry.options or {},
                 confirms=entry.confirms or {}, confirmations=entry.confirmations,
-                levels=levels, dataset_sha256=version or None)
+                levels=levels, dataset_sha256=version or None, task_id=entry.task_id)
             if previous is not None:   # only once the replacement is safely stored
                 self.project.delete_run(previous.id)
             entry.record_id = record.id

@@ -273,7 +273,10 @@ class RouteMapTests(unittest.TestCase):
         for key in analysis:
             for method in routes.SCREEN_METHODS[key]:
                 self.assertEqual(METHODS[method].section, key)
-        self.assertEqual({m.section for m in METHODS.values()}, set(analysis))
+        # Stage 36 adds batch analyses that have no classic screen.
+        self.assertEqual({m.section for m in METHODS.values()} - set(analysis),
+                         {"batch_correlation", "batch_groups"})
+        self.assertLessEqual(set(analysis), {m.section for m in METHODS.values()})
 
 
 if __name__ == "__main__":

@@ -541,6 +541,9 @@ class MigrationTests(StoreCase):
             dataset = project.import_dataset(EXAMPLES / "sample_scale.csv", mode="copy")
         database = info.path / ps.DB_NAME
         with closing(sqlite3.connect(database)) as db, db:   # back to what format 1 wrote
+            db.execute("DROP TABLE research_tasks")          # format 4 (Stage 36)
+            db.execute("ALTER TABLE runs DROP COLUMN task_id")
+            db.execute("ALTER TABLE runs DROP COLUMN structured")
             db.execute("DROP TABLE ai_permissions")
             db.execute("DROP TABLE plan_versions")
             db.execute("ALTER TABLE project DROP COLUMN data_anonymous")
@@ -562,6 +565,9 @@ class MigrationTests(StoreCase):
             project.add_question("Kept?")
         database = info.path / ps.DB_NAME
         with closing(sqlite3.connect(database)) as db, db:
+            db.execute("DROP TABLE research_tasks")          # format 4 (Stage 36)
+            db.execute("ALTER TABLE runs DROP COLUMN task_id")
+            db.execute("ALTER TABLE runs DROP COLUMN structured")
             db.execute("DROP TABLE plan_versions")
             db.execute("PRAGMA user_version = 2")
         with self.restart().open(info.id) as project:
@@ -574,6 +580,9 @@ class MigrationTests(StoreCase):
         info = self.store.create("Interrupted")
         database = info.path / ps.DB_NAME
         with closing(sqlite3.connect(database)) as db, db:
+            db.execute("DROP TABLE research_tasks")          # format 4 (Stage 36)
+            db.execute("ALTER TABLE runs DROP COLUMN task_id")
+            db.execute("ALTER TABLE runs DROP COLUMN structured")
             db.execute("DROP TABLE plan_versions")
             db.execute("DROP TABLE ai_permissions")
             db.execute("ALTER TABLE project DROP COLUMN data_anonymous")
@@ -593,6 +602,61 @@ class MigrationTests(StoreCase):
         self.assertNotIn("ai_permissions", tables, "the half-done change was rolled back")
         with self.store.open(info.id) as project:          # and opens normally afterwards
             self.assertEqual(project.ai_permissions(), {})
+
+
+class ResearchTaskTests(StoreCase):
+    """Stage 36 (format 4): research tasks and structured results survive a restart."""
+
+    def test_a_format_3_project_gains_tasks_and_keeps_its_runs(self):
+        info = self.store.create("Format three")
+        with self.store.open(info.id) as project:
+            project.add_question("Kept?")
+        database = info.path / ps.DB_NAME
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute("DROP TABLE research_tasks")
+            db.execute("ALTER TABLE runs DROP COLUMN task_id")
+            db.execute("ALTER TABLE runs DROP COLUMN structured")
+            db.execute("PRAGMA user_version = 3")
+        with self.restart().open(info.id) as project:
+            self.assertEqual(project.questions()[0]["text"], "Kept?")
+            self.assertEqual(project.tasks(), [])
+        self.assertEqual(len(list((self.store.root / ps.BACKUPS).glob(f"{info.id}-v3-*.sqlite3"))), 1)
+
+    def test_tasks_and_structured_results_round_trip(self):
+        import pandas as pd
+
+        from analysis_runs import run_batch_correlation
+        from result_store import from_json
+
+        info = self.store.create("Tasks")
+        frame = pd.read_csv(EXAMPLES / "sample_scale.csv")
+        items = [c for c in frame.columns if c.startswith("stress_q")][:3]
+        with self.store.open(info.id) as project:
+            dataset = project.import_dataset(EXAMPLES / "sample_scale.csv", mode="copy")
+            task = project.save_task(task_id=None, title="Fictional batch", goal="relate",
+                                     selection={"x": items[0], "y": items[1:]},
+                                     method="batch_correlation", options={"method": "spearman"},
+                                     state={"open": ["table"]})
+            run = run_batch_correlation(frame, items[0], items[1:], "spearman")
+            record = project.record_run(run, method="batch_correlation", dataset_id=dataset.id,
+                                        roles={"x": items[0], "ys": items[1:]},
+                                        options={"method": "spearman"}, confirms={},
+                                        task_id=task.id)
+            project.save_task(task_id=task.id, title="Renamed batch", goal="relate",
+                              selection={"x": items[0], "y": items[1:]},
+                              method="batch_correlation")
+        with self.restart().open(info.id) as project:
+            tasks = project.tasks()
+            self.assertEqual([t.title for t in tasks], ["Renamed batch"])
+            self.assertEqual(tasks[0].selection["y"], items[1:])
+            saved = project.run(record.id)
+            self.assertEqual(saved.task_id, task.id)
+            family = from_json(saved.structured)
+            self.assertEqual(family, run.result, "the numbers come back without recalculating")
+            project.delete_task(task.id)
+            self.assertIsNone(project.run(record.id).task_id, "results stay, unlinked")
+            with self.assertRaises(ps.ProjectError):
+                project.save_task(task_id=None, title=" ", goal="relate", selection={})
 
 
 class ResearchPlanTests(StoreCase):

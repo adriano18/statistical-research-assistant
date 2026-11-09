@@ -59,6 +59,11 @@ def suggest_level(name: str, values: pd.Series) -> tuple[str, str, int, bool]:
         return "number", "scale", distinct, binary
     if distinct <= 20 or distinct <= max(2, len(clean) // 3):
         return "text", "nominal", distinct, False
+    if distinct == len(clean) == len(values) and len(clean) >= 10:
+        # A different text code in every row (P001, q17, fictional_003): a
+        # participant code, suggested as identifier (Stage 36 audit). Still
+        # only a suggestion; the researcher confirms it.
+        return "text", "id", distinct, False
     return "text", "unknown", distinct, False
 
 
@@ -102,10 +107,27 @@ class ResultEntry:
     # (SHA-256 of its table), the confirmed level of every variable used,
     # group labels, and how many rows were complete for those variables.
     provenance: dict = field(default_factory=dict)
+    task_id: str | None = None      # Stage 36: the research task this run belongs to
 
     @property
     def title(self) -> str:
         return self.run.title
+
+
+@dataclass
+class ResearchTask:
+    """Stage 36 (spec §4): one research question's analysis set-up, kept so
+    it can be run again or continued, also after a restart."""
+
+    id: str
+    title: str
+    goal: str
+    selection: dict
+    method: str = ""
+    options: dict = field(default_factory=dict)
+    confirms: dict = field(default_factory=dict)
+    hypothesis_id: str | None = None
+    state: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -123,6 +145,7 @@ class ResearchSession:
     report_order: list[int] = field(default_factory=list)
     selected_result: int | None = None
     guided: dict = field(default_factory=dict)       # guided-analysis selections
+    tasks: list[ResearchTask] = field(default_factory=list)   # Stage 36 research tasks
     language: str = "en"
     theme: str = "light"
     corners: str = "windows"
@@ -152,6 +175,7 @@ class ResearchSession:
         self.report_order = []
         self.selected_result = None
         self.guided = {}
+        self.tasks = []
         self.notify("dataset")
         self.notify("results")
 
@@ -246,7 +270,7 @@ class ResearchSession:
                    confirms: dict | None = None, dataset: str | None = None,
                    rows: int | None = None, created: datetime | None = None,
                    record_id: str | None = None, restored: bool = False,
-                   provenance: dict | None = None) -> ResultEntry:
+                   provenance: dict | None = None, task_id: str | None = None) -> ResultEntry:
         if provenance is None:
             provenance = {} if restored else self.provenance_for(roles)
         entry = ResultEntry(
@@ -254,7 +278,7 @@ class ResearchSession:
             rows=(0 if self.df is None else len(self.df)) if rows is None else rows,
             created=created or datetime.now(), confirmations=tuple(confirmations),
             method=method, roles=roles, options=options, confirms=confirms,
-            record_id=record_id, restored=restored, provenance=provenance,
+            record_id=record_id, restored=restored, provenance=provenance, task_id=task_id,
         )
         self.results.append(entry)
         self.selected_result = entry.id
@@ -281,6 +305,24 @@ class ResearchSession:
         return {"dataset_sha256": hashlib.sha256(table).hexdigest(), "variables": used,
                 "levels": levels, "groups": groups, "complete": complete,
                 "rows": len(self.df), "confirmed_in": how}
+
+    # ------------------------------------------------------ research tasks
+    def task(self, task_id: str | None) -> ResearchTask | None:
+        return next((t for t in self.tasks if t.id == task_id), None)
+
+    def save_task(self, task: ResearchTask) -> ResearchTask:
+        """Add the task or replace the one with its id; listeners save it."""
+        for index, existing in enumerate(self.tasks):
+            if existing.id == task.id:
+                self.tasks[index] = task
+                break
+        else:
+            self.tasks.append(task)
+        self.notify("tasks")
+        return task
+
+    def task_results(self, task_id: str) -> list[ResultEntry]:
+        return [entry for entry in self.results if entry.task_id == task_id]
 
     def result(self, entry_id: int | None) -> ResultEntry | None:
         return next((r for r in self.results if r.id == entry_id), None)

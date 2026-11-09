@@ -371,13 +371,31 @@ class WorkspaceApp:
             self._classic_seen = id(self.bridge.current_dataset()[0])
 
     # --------------------------------------------------------- navigation
-    def navigate(self, route: str, *, refresh: bool = True):
+    def navigate(self, route: str, *, refresh: bool = True, section: str | None = None):
+        """Open ``route``; ``section`` names a part of it (a research step such
+        as "variables" or "method"), which the page scrolls to and the journey
+        marks as current (Stage 36, D1)."""
         if route == "project" and not self.projects.active:
             route = "home"            # the project page needs an open project
         self.route = route
+        self.section = section
         self.area = "questionnaires" if route == "import" else route
         if refresh:
             self.render()
+            key = self.SECTION_KEYS.get((self.route, section or ""))
+            if key and self.page is not None:
+                try:
+                    self.page.run_task(self._scroll_to_section, key)
+                except Exception:    # no event loop (tests): the section is still marked
+                    pass
+
+    async def _scroll_to_section(self, key: str):
+        control = self.page_control
+        if control is not None:
+            try:
+                await control.scroll_to(scroll_key=key, duration=250)
+            except Exception:
+                pass
 
     @property
     def page_control(self) -> ft.Control | None:
@@ -394,11 +412,18 @@ class WorkspaceApp:
             self.status(self.t(message[0]), message[1])
 
     # The research journey (Issue #32): where the researcher is, what is done.
+    # Each research step opens its own place: Variables is the dictionary on
+    # the Data page, Design and Method are steps 3 and 4 of the analysis.
     JOURNEY = (("question", "project"), ("data", "data"), ("variables", "data"),
                ("design", "analyze"), ("method", "analyze"), ("result", "results"),
                ("report", "reports"))
     JOURNEY_ROUTES = {"project": "question", "data": "data", "analyze": "design",
                       "results": "result", "reports": "report"}
+    SECTION_KEYS = {("data", "data"): "data-top", ("data", "variables"): "data-variables",
+                    ("analyze", "design"): "step-design", ("analyze", "method"): "step-method",
+                    ("analyze", "variables"): "step-variables",
+                    ("analyze", "task-result"): "task-result"}
+    section: str | None = None
 
     def journey_status(self) -> dict[str, bool]:
         s = self.session
@@ -423,7 +448,10 @@ class WorkspaceApp:
         ui = self.ui
         status = self.journey_status()
         current = self.JOURNEY_ROUTES.get(self.route)
-        if current == "data" and self.session.has_data and self.session.pending_levels():
+        steps = {key for key, route in self.JOURNEY if route == self.route}
+        if self.section in steps:
+            current = self.section             # the step the researcher opened
+        elif current == "data" and self.session.has_data and self.session.pending_levels():
             current = "variables"
         chips = []
         for number, (key, route) in enumerate(self.JOURNEY, start=1):
@@ -435,7 +463,8 @@ class WorkspaceApp:
                 icon=ft.Icons.CHECK_CIRCLE if done else (
                     ft.Icons.ARROW_CIRCLE_RIGHT if key == current else ft.Icons.CIRCLE_OUTLINED),
                 tooltip=ui.t("journey." + key + ".tip"),
-                on_click=lambda e, r=target: self.navigate(r), data=f"journey-{key}"))
+                on_click=lambda e, r=target, k=key: self.navigate(r, section=k),
+                data=f"journey-{key}"))
         return ft.Row(chips, wrap=True, spacing=tk.SPACE_1, data="journey")
 
     def render(self):
@@ -979,7 +1008,8 @@ class DataPage:
                     col={"xs": 12, "md": 6, "lg": 3}),
         ], spacing=tk.SPACE_3, run_spacing=tk.SPACE_3)
         return app.constrained(ft.Column([
-            header, stats, self._next_step(), self._dictionary(), self._preview(),
+            ft.Container(header, key=ft.ScrollKey("data-top")), stats, self._next_step(),
+            ft.Container(self._dictionary(), key=ft.ScrollKey("data-variables")), self._preview(),
             self._import_options(), self._preparation_card(), self._sample_picker(),
         ], spacing=tk.SPACE_5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 
