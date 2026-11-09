@@ -74,6 +74,23 @@ class ProjectHubTests(ProjectWorkspaceCase):
         self.assertEqual([r.id for r in runs], [entry.record_id])
         self.assertEqual([r.id for r in ws.app.projects.project.report_runs()], [entry.record_id])
 
+    def test_a_new_project_starts_a_new_analysis(self):
+        """Stage 36 (found by the packaged-program journey stage36-charts):
+        choices and the research task of the previous project's analysis do
+        not carry over into a newly created project."""
+        ws = self.workspace()
+        self.create(ws, "First fictional study")
+        self.analyse(ws)
+        page = ws.app.pages["analyze"]
+        page.goal, page.selection, page.task_id = "relate", {"x": "stress_q1"}, "task-1"
+        self.create(ws, "Second fictional study")
+        self.assertIsNone(page.goal)
+        self.assertEqual(page.selection, {})
+        self.assertIsNone(page.task_id, "a task belongs to the project it was made in")
+        self.assertTrue(ws.run(ws.app.load_path(str(self.data))))   # the same columns again
+        ws.click("nav-analyze")
+        self.assertTrue(ws.find("goal-compare"), "the questions are offered again")
+
     def test_reopening_after_a_restart_restores_data_levels_results_and_report(self):
         ws = self.workspace()
         info = self.create(ws, "Restart check")
