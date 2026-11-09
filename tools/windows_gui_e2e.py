@@ -1774,6 +1774,9 @@ def journey_update_a_to_b(gui: Gui, work: Path, journey: Journey) -> None:
 
 # ------------------------------------------------ Stage 36 research tasks
 STAGE36_PROJECT = "Fictional Stage 36 study"
+# UI Automation names a chip by its label, then ". " and its tooltip (or a
+# new line and its explanation), e.g. "5. Method. The recommended method…".
+CHIP_END = r"(\.|\n|$)"
 
 
 def stage36_options() -> list[str]:
@@ -1830,10 +1833,10 @@ def journey_stage36_tasks(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text(T("task.versions", count=2), timeout=120)
         gui.shot("task run again")
     with journey.step("each research step opens its own step (D1)"):
-        gui.click(regex=r"^5\. " + re.escape(T("journey.method")) + r"(\n|$)",
+        gui.click(regex=r"^5\. " + re.escape(T("journey.method")) + CHIP_END,
                   control_type=("Button", "Text", "Group", "Custom"))
         gui.find(T("step.method"), timeout=15)        # scrolled into view
-        gui.click(regex=r"^3\. " + re.escape(T("journey.variables")) + r"(\n|$)",
+        gui.click(regex=r"^3\. " + re.escape(T("journey.variables")) + CHIP_END,
                   control_type=("Button", "Text", "Group", "Custom"))
         gui.find(option_label("UCLA_Level", "ordinal"), timeout=15)   # the dictionary
     with journey.step("restart: the task and its result come back"):
@@ -1841,7 +1844,7 @@ def journey_stage36_tasks(gui: Gui, work: Path, journey: Journey) -> None:
         gui.start()
         open_project(gui, STAGE36_PROJECT)
         nav(gui, "nav.analyze")
-        gui.click(regex="^" + re.escape(title) + r"(\n|$)",
+        gui.click(regex="^" + re.escape(title) + CHIP_END,
                   control_type=("Button", "Text", "Group", "Custom"))
         gui.wait_text("p (Holm)", timeout=30)
         gui.shot("task after restart")
