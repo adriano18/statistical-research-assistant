@@ -110,6 +110,7 @@ class AnalyzePage:
         """Forget choices made for another project's data."""
         self.goal, self.selection, self.confirms, self.override = None, {}, {}, None
         self.choosing_goal = False
+        self.task_id = None              # a task belongs to the project it was made in
         self.method, self.form_roles, self.form_options, self.form_confirms = None, {}, {}, {}
         self.message = None
 
