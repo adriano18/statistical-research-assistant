@@ -163,8 +163,16 @@ The existing PSQ-like strain-table scan of the test kit
 column: with the geometry path it gives the same 30 items, the same 30
 prompts and the same header scheme as the text-only path.
 
-Full suite: `python -m unittest discover -s tests -q` → OK with 6 skips and
-7 expected failures (D1–D5, D9, D10; 36.0 had 10).
+Full suite on the Stage 36 stack (`claude/stage36-import`, on top of 36.1):
+`python -m unittest discover -s tests -q` → 847 tests OK with 6 skips and
+1 expected failure (D5, fixed by 36.3; D1–D4, D6–D10 are fixed; 36.0 had 10).
+
+**Private check after round 2 (counts only).** The owner's real scan gives
+51 of 52 (first 36.5 version: 45; 36.0: 16); 3 prompts still end in
+digit-like tokens (was 32). The missing row (17) is read as text because
+its first statement word starts 0.63 digit widths left of the fitted
+statement column, just beyond the 0.6 tolerance; the next commit widens the
+tolerance for rows whose number column holds a clean number.
 
 ## OCR confidence semantics
 
