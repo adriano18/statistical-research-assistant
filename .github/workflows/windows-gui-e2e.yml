@@ -24,6 +24,7 @@ on:
       - "import_review.py"
       - "scientific_survey_import.py"
       - "visual_survey_review.py"
+      - "ocr_*.py"
       - "survey_*.py"
       - "requirements.txt"
       - "pyproject.toml"

@@ -800,6 +800,89 @@ class LooseFirstWordTests(unittest.TestCase):
         self.assertNotIn("abcdefghijk", rows[16].prompt)
 
 
+class TimesSetTableTests(unittest.TestCase):
+    """Stage 36.7: what the packaged Windows program met on the table set in
+    Times New Roman (the fixture's font on that runner before 36.7). Words,
+    positions and scores are invented in the shapes of that reading."""
+
+    MISREAD = {1: "ls", 2: "vē", 3: "K"}     # how OCR read "1.", "2.", "3."
+
+    def unreadable(self, sheet, n, *, answers=True):
+        sheet.row(self.MISREAD[n], invented(n),
+                  tokens_at("1 2 3 4 5".split()) if answers else [], number_x=0.16,
+                  number_conf=30.0, more=("turpinājums ar dažiem vārdiem",) if n == 1 else ())
+
+    def test_unreadable_numbers_above_the_first_readable_one_are_numbered_back(self):
+        rows, tables = rows_of([first_page(range(1, 9),
+                                           special=dict.fromkeys(self.MISREAD, self.unreadable))])
+        self.assertEqual(sorted(rows), list(range(1, 9)))
+        self.assertEqual([(rows[n].number_source, rows[n].number_text) for n in (1, 2, 3)],
+                         [("inferred", "ls"), ("inferred", "vē"), ("inferred", "K")])
+        self.assertEqual(rows[1].prompt, invented(1) + " turpinājums ar dažiem vārdiem")
+        self.assertEqual(rows[2].prompt, invented(2))
+        self.assertEqual(rows[4].number_source, "printed")
+        text = [str(line) for line in tables.lines[1]]
+        self.assertIn("5 atbilžu variantiem zemāk:", text, "the instruction stays plain text")
+        self.assertEqual([legend.pairs for legend in tables.legends], [tuple(zip("12345", LABELS))])
+
+    def test_inferred_top_numbers_are_flagged_for_checking(self):
+        lines = _structured_lines(first_page(range(1, 9),
+                                             special=dict.fromkeys(self.MISREAD, self.unreadable)))
+        flags = {line.number: line.flags for line in lines}
+        for n in (1, 2, 3):
+            self.assertIn("item number inferred from order", flags[n])
+        self.assertFalse(any("inferred" in f for f in flags[4]))
+
+    def test_nothing_is_numbered_back_when_the_rows_above_do_not_fit(self):
+        def broken(sheet, n):       # row 2 without answer digits: not a clear table row
+            self.unreadable(sheet, n, answers=n != 2)
+        rows, _ = rows_of([first_page(range(1, 9), special=dict.fromkeys(self.MISREAD, broken))])
+        self.assertEqual(sorted(rows), list(range(4, 9)))
+
+    def test_a_header_row_above_the_table_is_never_an_item(self):
+        def header_then_row(sheet, n):
+            if n == 1:
+                sheet.add([("Nr.", 0.15, 0.172, 90.0)] + sheet.words("Apgalvojums", 0.21)
+                          + tokens_at("1 2 3 4 5".split()))
+            sheet.row(self.MISREAD[n], invented(n), tokens_at("1 2 3 4 5".split()),
+                      number_x=0.16, number_conf=30.0)
+        rows, tables = rows_of([first_page(range(1, 9),
+                                           special={1: header_then_row, 2: header_then_row})])
+        self.assertEqual(sorted(rows), list(range(1, 9)))
+        self.assertEqual(rows[1].prompt, invented(1))
+        self.assertFalse(any("Apgalvojums" in row.prompt for row in rows.values()))
+
+    @staticmethod
+    def second_page():
+        """Page 2: the legend again (its "4-" read as "4"), rows 27-52, references."""
+        sheet = RealLayout(2)
+        for code, label in zip("12345", LABELS):
+            token = "4" if code == "4" else f"{code}-"
+            sheet.add([(token, 0.355, 0.37, 93.0)] + sheet.words(label, 0.377), step=0.017)
+        for n in range(27, 53):
+            sheet.row(f"{n}.", invented(n), tokens_at("1 2 3 4 5".split()))
+        sheet.add(sheet.words("Atsauces (nav aptaujas jautājumi):", 0.11))
+        for k, name in ((1, "Autors"), (2, "Redaktors")):
+            sheet.add([(f"{k}.", 0.11, 0.125, 95.0)]
+                      + sheet.words(f"Izdomāts {name} (2099). Testa piezīme.", 0.135))
+        return sheet.ocr_page()
+
+    def test_a_legend_line_read_as_a_numbered_row_does_not_tilt_the_column(self):
+        geo = page_geometry(self.second_page())
+        self.assertIsNotNone(geo, "the statement column is found")
+        self.assertEqual(geo.rows, 26)
+        self.assertAlmostEqual(geo.statement_a, 0.21, delta=0.003)
+        self.assertAlmostEqual(geo.statement_b, 0.0, delta=0.005)
+        rows, tables = rows_of([self.second_page()])
+        self.assertEqual(sorted(rows), list(range(27, 53)))
+        self.assertTrue(all(row.answers == ("1", "2", "3", "4", "5") for row in rows.values()))
+
+
+def _structured_lines(page):
+    tables = reconstruct_tables([page])
+    return [line for line in tables.lines[page.page_number] if hasattr(line, "number_source")]
+
+
 @unittest.skipUnless(shutil.which("tesseract"), "local OCR engine")
 class RealOCRTableTests(unittest.TestCase):
     """Real local Tesseract on the synthetic scans (D8 and the older inline scan)."""
@@ -812,6 +895,8 @@ class RealOCRTableTests(unittest.TestCase):
         cls.review = vsr.ocr_scientific_pdf(source, fx.SCAN_TABLE_LV, [1, 2], "lav")
         inline = vsr.load_document_bytes(fx.fixture(fx.SCAN_INLINE))
         cls.inline = vsr.ocr_scientific_pdf(inline, fx.SCAN_INLINE, [1, 2], "eng")
+        stix = vsr.load_document_bytes(fx.fixture(fx.SCAN_TABLE_LV_STIX))
+        cls.stix = vsr.ocr_scientific_pdf(stix, fx.SCAN_TABLE_LV_STIX, [1, 2], "lav")
 
     def test_all_52_statements_with_latvian_letters_and_no_answer_digits(self):
         (instrument,) = self.review.instruments
@@ -854,6 +939,20 @@ class RealOCRTableTests(unittest.TestCase):
         warnings = " ".join(self.review.warnings)
         self.assertIn("OCR confidence measures character recognition only", warnings)
         self.assertIn("Found 52 candidate items", warnings)
+
+    def test_the_same_table_set_in_a_times_like_font_gives_52(self):
+        # Before 36.7 this reading kept no row at all: the rules made Tesseract
+        # drop text lines and a legend line tilted the statement column.
+        (instrument,) = self.stix.instruments
+        self.assertEqual([q.number for q in instrument.questions], list(range(1, 53)))
+        for q in instrument.questions:
+            self.assertTrue(q.question["prompt"].startswith("Izdomātā situācijā Nr. "),
+                            q.question["prompt"])
+            self.assertNotRegex(q.question["prompt"], r"\d{3,}", "answer digits are not text")
+        (scheme,) = instrument.schemes
+        self.assertEqual((scheme.evidence, len(scheme.items)), ("legend", 52))
+        prompts = " ".join(q.question["prompt"] for q in instrument.questions)
+        self.assertNotIn("Izdomāts Autors", prompts)
 
     def test_the_inline_number_scan_still_gives_52(self):
         numbers = [q.number for x in self.inline.instruments for q in x.questions]

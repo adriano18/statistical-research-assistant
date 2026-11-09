@@ -8,7 +8,13 @@ These are artificial instrument names and fictional question texts. The fixture
 is intentionally unsuitable for scientific interpretation or scale validation.
 
 Usage: python tests/fixtures/stage36/generate_fixtures.py --out-dir .stage36-fixtures
-Dependencies for developers/CI: python-docx, Pillow. No end-user install needed.
+Dependencies for developers/CI: python-docx, Pillow, matplotlib (for its bundled
+fonts). No end-user install needed.
+
+The scans are drawn with fonts that matplotlib ships (DejaVu, STIX), never
+with the fonts of the computer: the same fixture on Linux and Windows. Before
+36.7 the Windows runner drew the Latvian table in Times New Roman, so the
+packaged-EXE journey read a different document than the Linux tests did.
 """
 from __future__ import annotations
 
@@ -25,6 +31,14 @@ COLUMNS = [
 ]
 SCALES = COLUMNS[4:12]
 SEED = 360612
+
+
+def bundled_font(name: str, size: int):
+    """A TrueType font shipped with matplotlib: identical on every platform."""
+    import matplotlib
+    from PIL import ImageFont
+
+    return ImageFont.truetype(str(Path(matplotlib.get_data_path()) / "fonts" / "ttf" / name), size)
 
 
 def create_csv(out_dir: Path) -> Path:
@@ -103,20 +117,10 @@ def create_docx(out_dir: Path) -> Path:
 
 
 def create_scan_pdf(out_dir: Path) -> Path:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
     def choose_font(size: int):
-        for candidate in (
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "C:/Windows/Fonts/arial.ttf",
-            "DejaVuSans.ttf",
-            "Arial.ttf",
-        ):
-            try:
-                return ImageFont.truetype(candidate, size)
-            except OSError:
-                continue
-        return ImageFont.load_default()
+        return bundled_font("DejaVuSans.ttf", size)
 
     pages = []
     for page in (0, 1):
@@ -218,7 +222,17 @@ def _lv_statement(index: int) -> str:
     return text + "."
 
 
-def create_lv_table_scan_pdf(out_dir: Path) -> Path:
+LV_TABLE_TYPEFACES = {
+    # typeface: (font file shipped with matplotlib, fixture name)
+    "dejavu": ("DejaVuSerif.ttf", "synthetic_lv_table_scan_52.pdf"),
+    # A Times-like serif. Set in Times New Roman, this table lost rows in
+    # OCR: the ruling lines made Tesseract skip text lines, and single-digit
+    # item numbers were misread (found by the packaged Windows run, 36.7).
+    "stix": ("STIXGeneral.ttf", "synthetic_lv_table_scan_52_stix.pdf"),
+}
+
+
+def create_lv_table_scan_pdf(out_dir: Path, typeface: str = "dejavu") -> Path:
     """Two image-only pages of a 52-item table, the way a scan looks.
 
     Item numbers stand in their own column, statements wrap onto a second
@@ -227,19 +241,17 @@ def create_lv_table_scan_pdf(out_dir: Path) -> Path:
     line that opens with a bare "5", the page is slightly rotated, and a
     tick-like mark precedes some numbers (scan artifacts that OCR reads
     as quotes). Latvian letters with diacritics test the OCR language.
+    ``typeface`` picks the font (``LV_TABLE_TYPEFACES``); the layout, the
+    text and the noise are the same.
     """
     import random as _random
 
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
+
+    font_file, file_name = LV_TABLE_TYPEFACES[typeface]
 
     def font(size: int):
-        for candidate in ("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
-                          "C:/Windows/Fonts/times.ttf", "DejaVuSerif.ttf"):
-            try:
-                return ImageFont.truetype(candidate, size)
-            except OSError:
-                continue
-        return ImageFont.load_default()
+        return bundled_font(font_file, size)
 
     rnd = _random.Random(SEED + 52)
     title, body = font(28), font(21)
@@ -316,7 +328,7 @@ def create_lv_table_scan_pdf(out_dir: Path) -> Path:
             draw.point((px, py), fill="#9a9a9a")
         pages.append(image.rotate(0.35 if page == 0 else -0.3, resample=Image.BICUBIC,
                                   fillcolor="white", expand=False))
-    target = out_dir / "synthetic_lv_table_scan_52.pdf"
+    target = out_dir / file_name
     pages[0].save(target, "PDF", save_all=True, append_images=pages[1:], resolution=150)
     return target
 
@@ -328,7 +340,8 @@ def main() -> None:
     out_dir = Path(args.out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     for path in (create_csv(out_dir), create_docx(out_dir), create_scan_pdf(out_dir),
-                 create_docx_unnumbered(out_dir), create_lv_table_scan_pdf(out_dir)):
+                 create_docx_unnumbered(out_dir), create_lv_table_scan_pdf(out_dir),
+                 create_lv_table_scan_pdf(out_dir, "stix")):
         print(f"{path} ({path.stat().st_size} bytes)")
 
 
