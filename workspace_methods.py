@@ -102,6 +102,25 @@ def _run_omega(df, roles, options, confirms, session):
                           int(options.get("ci", "0")))
 
 
+def _run_item_diagnostics(df, roles, options, confirms, session):
+    """Reverse keys come only from a confirmed questionnaire definition."""
+    from item_diagnostics import confirmed_reverse_keys
+
+    questionnaire = None
+    loader = getattr(session, "questionnaire_loader", None)
+    if session.dataset_survey_id and loader is not None:
+        try:
+            questionnaire = loader(session.dataset_survey_id)
+        except Exception:
+            questionnaire = None
+    keys = confirmed_reverse_keys(roles["items"], questionnaire=questionnaire)
+    return runs.run_item_diagnostics(df, roles["items"], confirms.get("one_construct", False),
+                                     resamples=int(options.get("ci", "300")),
+                                     reverse_keyed=keys.items if keys.confirmed else (),
+                                     reverse_source=keys.source if keys.confirmed else "",
+                                     items_confirmed=confirms.get("items_not_totals", False))
+
+
 def _run_factor(df, roles, options, confirms, session):
     return runs.run_factor(df, roles["items"], options["method"], int(options["count"]),
                            options["rotation"], confirms.get("design", False))
@@ -217,6 +236,16 @@ METHODS: dict[str, MethodSpec] = {spec.key: spec for spec in (
             "construct",
             "I checked that the items measure one construct and reversed items are recoded"),),
         runner=_run_omega),
+    MethodSpec(
+        "item_diagnostics", "reliability", "measurement", "Scale quality: α, ω and item diagnostics",
+        "Cronbach’s α with its interval, one-factor ω and every item: item–total correlation, "
+        "α and ω if deleted, distribution, floor and ceiling, possible reverse keying.",
+        (Role("items", "role.items", ORDERED, multiple=True, minimum=3, maximum=40),),
+        options=(Option("ci", "Omega 95% bootstrap CI",
+                        (("0", "Off (fast)"), ("300", "300 resamples")), "300"),),
+        confirmations=(Confirmation(
+            "one_construct", "I checked that the items are meant to measure one construct"),),
+        runner=_run_item_diagnostics),
     MethodSpec(
         "factor", "factor", "measurement", "Exploratory factor / component analysis",
         "Factorability, retention (scree, parallel analysis) and loadings for EFA or PCA.",
@@ -451,6 +480,33 @@ def role_problems(spec: MethodSpec, roles: dict, session) -> list[tuple[str, dic
     if spec.key == "omnibus" and roles.get("group") and session.has_data:
         problems += group_count_problems(roles["group"], session)
     return problems
+
+
+# Stage 36.3 (D5): reliability needs item responses, not totals.
+RELIABILITY_METHODS = ("alpha", "omega", "item_diagnostics")
+ITEMS_NOT_TOTALS = Confirmation(
+    "items_not_totals",
+    "I checked that these columns hold answers to single items, not total or mean scores")
+
+
+def total_score_problem(spec: MethodSpec, roles: dict, session) -> tuple[str, dict] | None:
+    """The D5 explanation when chosen "items" look like totals, else None.
+
+    The guided advice offers no coefficient then. Among all methods the form
+    shows the same explanation and asks for ``ITEMS_NOT_TOTALS`` before Run,
+    because the heuristic cannot be certain (0–100 visual-analogue items look
+    like totals); item diagnostics record that confirmation. EFA/PCA are not
+    reliability coefficients and are not checked."""
+    if spec.key not in RELIABILITY_METHODS or not roles.get("items") or not session.has_data:
+        return None
+    from item_diagnostics import item_response_problems
+
+    names = [n for n in roles["items"] if n in session.df.columns]
+    totals = [p.name for p in item_response_problems(session.df, names) if p.looks_like_total]
+    if not totals:
+        return None
+    key = "block.totals_not_items" if len(totals) == len(names) else "block.total_among_items"
+    return key, {"names": ", ".join(totals)}
 
 
 def group_count_problems(group: str, session) -> list[tuple[str, dict]]:
@@ -838,15 +894,19 @@ def _scale(sel, session, level):
             key = ("block.totals_not_items" if len(totals) == len(items)
                    else "block.total_among_items")
             return Advice(blockers=((key, {"names": ", ".join(totals)}),))
+    # Stage 36.3 (spec §7): α, ω and every item's statistics in one result;
+    # the single coefficients stay one click away.
     if len(items) <= 12:
-        return Advice("omega", {"ci": "0"}, {"items": items},
-                      reasons=(("why.omega", {}),),
-                      alternatives=(Alternative("alpha", {}, "alt.alpha"),),
-                      design_checks=("construct",))
+        return Advice("item_diagnostics", {"ci": "300"}, {"items": items},
+                      reasons=(("why.item_diagnostics", {}),),
+                      alternatives=(Alternative("omega", {"ci": "0"}, "alt.omega_only"),
+                                    Alternative("alpha", {}, "alt.alpha")),
+                      design_checks=("one_construct",))
     # The validated one-factor omega accepts 3–12 items.
-    return Advice("alpha", {}, {"items": items},
-                  reasons=(("why.alpha_many", {"count": len(items)}),),
-                  design_checks=("construct",))
+    return Advice("item_diagnostics", {"ci": "0"}, {"items": items},
+                  reasons=(("why.item_diagnostics_many", {"count": len(items)}),),
+                  alternatives=(Alternative("alpha", {}, "alt.alpha"),),
+                  design_checks=("one_construct",))
 
 
 def _structure(sel, session, level):

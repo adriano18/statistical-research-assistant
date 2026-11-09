@@ -519,6 +519,12 @@ class ProjectBinding:
                 self.message = ("project.new_version", "warning")
         elif origin == "prepared":
             record = project.add_frame(frame, name, origin="derived", parent_id=self.dataset_id)
+            # Stage 36.3: the rule that made a derived variable is kept with
+            # the dataset version it created.
+            for step in session.pending_transformations:
+                project.add_transformation(record.id, step["kind"], step["params"],
+                                           step["output_columns"])
+            session.pending_transformations.clear()
         else:
             # A sample, an uploaded copy or the classic interface's table:
             # the same content is not stored twice.

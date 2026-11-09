@@ -147,7 +147,7 @@ class ItemsVersusTotalsTests(unittest.TestCase):
                                            {"names": fx.ITEM_TOTAL}),))
         genuine = wm.advise("scale", {"items": list(fx.ITEMS)}, items)
         self.assertTrue(genuine.ready, genuine.blockers)
-        self.assertEqual(genuine.method, "omega")
+        self.assertEqual(genuine.method, "item_diagnostics")
 
     def test_the_explanation_is_in_three_languages_with_the_required_russian_text(self):
         from workspace_text import T, t

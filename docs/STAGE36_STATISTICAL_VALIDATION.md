@@ -139,7 +139,9 @@ Decisions:
 
 A column breaking any rule "looks like a total"; non-numeric and empty columns are reported but are not called totals. The guided advice for "Check a questionnaire scale" then offers no coefficient (`block.totals_not_items` when every chosen column looks like a total, `block.total_among_items` for a mixed selection, in EN/LV/RU with the request to import item-level data), and `diagnose_items` refuses unless the researcher confirms the columns are item responses (`items_confirmed=True`, recorded in the result). On the 55-row fixture the eight scale totals, UCLA and Age look like totals; UCLA_Level (3 codes) and Sex (0/1) do not; all ten items of the item fixture pass and its total does not.
 
-Limitations: a total of a few binary items (0–3) looks like an item; transformed item scores (0, 25, …, 100) and visual-analogue items look like totals. The "All methods" reliability forms still run on any column the researcher chooses; only the guided advice and `diagnose_items` apply the heuristic.
+Among all methods (`total_score_problem`), the α, ω and item-diagnostics forms show the same explanation before Run and stay disabled until the researcher confirms "these columns hold answers to single items, not total or mean scores"; the confirmation is reset when the chosen columns change, listed with the result's confirmations and passed to `diagnose_items` as `items_confirmed`. It exists for the heuristic's false positives below; the guided advice never offers it. EFA/PCA are not reliability coefficients and are not checked. The engine entry point `run_method` is unchanged, so the ground-truth tests (continuous simulated items) run as before.
+
+Limitations: a total of a few binary items (0–3) looks like an item; transformed item scores (0, 25, …, 100) and visual-analogue items look like totals.
 
 ## Groups from scales (36.3, `scale_groups.py`)
 

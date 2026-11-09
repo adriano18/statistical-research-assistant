@@ -191,10 +191,12 @@ class PdfQuestionnaireToAnalysisJourney(unittest.TestCase):
         ws.click("goal-scale")
         for item in items:
             ws.check(f"role-items-{item}")
-        # 20 items: the validated ω accepts 3–12, so the advisor proposes α for
-        # the whole set and says so before anything runs.
+        # 20 items: the validated ω accepts 3–12, so the advisor says so before
+        # anything runs; α alone stays one click away (Stage 36.3 recommends
+        # the item diagnostics, which include α).
         self.assertTrue(ws.has_text("Cronbach’s α"))
         self.assertTrue(ws.has_text("3–12 items"))
+        ws.click("alt-alpha-")
         ws.check("design-confirm-construct")
         ws.click("guided-run")
         alpha = ws.app.session.results[-1].run
@@ -205,6 +207,7 @@ class PdfQuestionnaireToAnalysisJourney(unittest.TestCase):
         for item in items[10:]:
             ws.check(f"role-items-{item}", False)
         self.assertTrue(ws.has_text("McDonald’s ω + item analysis"))
+        ws.click("alt-omega-")
         ws.check("design-confirm-construct")
         ws.click("guided-run")
         omega = ws.app.session.results[-1].run
@@ -229,7 +232,8 @@ class PreparationToFactorJourney(unittest.TestCase):
             ws.app.session.confirm_level(item, "ordinal")
         ws.app.navigate("analyze")
         ws.segment("analyze-mode", "all")
-        self.assertEqual(len(ws.find_all("method-")), 17)   # 15 classic + 2 batch (Stage 36)
+        # 15 classic + 2 batch (36.1) + item diagnostics (36.3)
+        self.assertEqual(len(ws.find_all("method-")), 18)
         ws.click("method-factor")
         for item in items:
             ws.check(f"form-items-{item}")

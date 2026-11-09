@@ -185,6 +185,10 @@ class WorkspaceApp:
             "help": HelpPage(self), "charts": ChartStudioPage(self),
         }
         self.session.subscribe(self._on_session_change)
+        from survey_storage import get_survey
+
+        self.session.questionnaire_loader = lambda survey_id: get_survey(self.survey_root,
+                                                                         survey_id)
 
     # ------------------------------------------------------------ context
     @property
@@ -972,6 +976,9 @@ class DataPage:
         self.opened: set[str] = set()
         self.sample = SAMPLES[0][0]
         self._preparation = None
+        from workspace_groups import GroupsCard
+
+        self.groups = GroupsCard(app)      # Stage 36.3: groups from a scale
         self.options = {"sheet": None, "header_row": "1", "data_start": "", "separator": "auto",
                         "decimal": "auto", "encoding": "auto", "missing": "NA;N/A;NULL"}
 
@@ -1012,7 +1019,8 @@ class DataPage:
         ], spacing=tk.SPACE_3, run_spacing=tk.SPACE_3)
         return app.constrained(ft.Column([
             ft.Container(header, key=ft.ScrollKey("data-top")), stats, self._next_step(),
-            ft.Container(self._dictionary(), key=ft.ScrollKey("data-variables")), self._preview(),
+            ft.Container(self._dictionary(), key=ft.ScrollKey("data-variables")),
+            ft.Container(self.groups.build(), key=ft.ScrollKey("data-groups")), self._preview(),
             self._import_options(), self._preparation_card(), self._sample_picker(),
         ], spacing=tk.SPACE_5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 

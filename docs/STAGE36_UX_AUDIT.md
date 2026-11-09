@@ -22,9 +22,9 @@ test next to the baseline one), and the final numbers are collected in
 | Correlate UCLA with 8 scales (Spearman) | **43** interactions, 16 page changes; 8 separate results, no shared table, no correction for 8 tests | 4 main actions (goal, UCLA, the scales, Run) → **8 interactions, 1 page change** (36.1): the dropdown counts 2, "All quantitative" 1, clearing Age 1, choosing Spearman over the recommended Pearson 1 | one batch run with a family table, N per pair, CI, raw and adjusted p | eight tests are eight hypotheses: the family, its size and the correction (Holm by default) are shown, raw p is never altered |
 | Repeat an analysis with another variable | **5** | 1–2 → **2** (36.1: Analyze, Run again) | the task keeps variables, method and options | a re-run on changed data is marked as a new version, never merged silently with the old one |
 | Compare 3 groups (UCLA_Level 3/47/5) on 8 scales | refused **after** Run each time (9 interactions spent before the refusal) | ≤ 6 → **8 interactions** for all 8 scales (36.1: new task, goal, group, the first task's 8 scales in one action, two design confirmations, Run); the small groups are explained before Run (36.2) | batch Kruskal–Wallis that runs with small groups and says how p was obtained | a group of 3 makes the χ² approximation unreliable: a permutation p is reported and the warning stays in the result and report |
-| Create groups from a scale (UCLA) | not available (only an existing column can be used) | scale, rule, preview, create: **≤ 5** | derived categorical variable with its rule and history | user thresholds are never presented as clinical norms; original scores stay unchanged |
-| Two-category group for a 3–8 group test | technical refusal after Run | explanation and the two-group alternative **before** Run | — | — |
-| Reliability with total scores only | ω/α offered on totals (fictitious) | explanation: item responses are needed | — | no coefficient is ever computed from totals |
+| Create groups from a scale (UCLA) | not available (only an existing column can be used) | scale, rule, preview, create: **≤ 5** → **4 interactions** (36.3: Data, the scale, Create; quantiles in three groups are the default rule) | derived ordered categorical variable with its rule in the project's history; an existing grouping (UCLA_Level) is offered for use instead | user thresholds are never presented as clinical norms (documented cut points need their source); original scores stay unchanged |
+| Two-category group for a 3–8 group test | technical refusal after Run | explanation and the two-group alternative **before** Run → **done** (36.2) | — | — |
+| Reliability with total scores only | ω/α offered on totals (fictitious) | explanation: item responses are needed → **done** (36.3: the guided advice offers no coefficient; among all methods the same explanation appears before Run and Run stays disabled until the researcher confirms the columns are item responses) | α, ω and every item's statistics in one result for item data | the guided path never computes a coefficient from totals; the expert path only after an explicit, recorded confirmation |
 | Change a chart type | not possible | **1–2** in Chart Studio, no re-run → **2 interactions** (36.4: Edit chart, choose the type; no analysis runs) | figures are drawn from the stored result data | chart settings never change the statistics (every analysis runner fails the test if it is called) |
 | Copy a chart to the clipboard | not possible (text copy only) | **1** (real image on the clipboard) → **1 interaction** (36.4), from Chart Studio or from the result's figure | — | the clipboard is checked to hold an image, not a path: a bitmap (CF_DIB, plus PNG) of the announced size, read back in the EXE journey `stage36-charts` |
 | Word report from 8 results | **19** interactions + Save dialog | **2** (add the task's results, export) + Save dialog → **3 interactions** + Save dialog (36.6: add the task's result, open Reports, export) | one research report in fifteen sections (question, hypotheses, data, … limitations, reproducibility); a task's results under one heading, repeated paragraphs written once | results from different data versions are labelled, never merged silently; post hoc hypotheses are marked exploratory |
@@ -73,3 +73,12 @@ opening the Reports page is kept as a step on purpose: it shows the report
 structure (which of the fifteen sections have content, which the researcher
 left out, and whether results come from several data versions) before the
 document is written.
+
+## Measured after 36.3
+
+`test_create_groups_from_a_scale_in_at_most_five_interactions` creates three
+quantile groups of UCLA in 4 interactions (open Data, choose the scale,
+Create). The preview shows every group's bounds, inclusivity, N and percent
+before anything is created. The EXE journey `stage36-groups` creates the
+groups on the packaged program and runs the eight-scale Kruskal–Wallis batch
+by them.

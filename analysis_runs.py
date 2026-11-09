@@ -228,6 +228,61 @@ def run_omega(df: pd.DataFrame, items: list[str], construct_confirmed: bool,
     )
 
 
+def _item_report(result) -> str:
+    """The report text of the item diagnostics, from the result's own values."""
+    lines = ["Scale quality: internal consistency and item diagnostics (Stage 36.3)",
+             f"Items: k = {len(result.items)} ({', '.join(result.items)}); complete cases "
+             f"n = {result.n_complete} of {result.n_total} (listwise).",
+             f"Cronbach’s α = {result.alpha.text()}"
+             + (f", 95% CI {result.alpha.ci_text()}" if result.alpha.ci_text() else "")
+             + (f" — {result.alpha.note}" if result.alpha.note and not result.alpha.ok else ""),
+             f"McDonald’s ω (one factor) = {result.omega.text()}"
+             + (f", 95% CI {result.omega.ci_text()}" if result.omega.ci_text() else "")
+             + (f" — {result.omega.note}" if result.omega.note and not result.omega.ok else ""),
+             "Model assumptions for ω: " + "; ".join(result.omega_assumptions) + "."]
+    if result.flagged_reverse:
+        lines.append("Possibly reverse-keyed and not recoded (check the scoring key; nothing "
+                     "was recoded): " + ", ".join(result.flagged_reverse) + ".")
+    if result.reverse_keyed:
+        lines.append(f"Reverse-keyed items from {result.reverse_source or 'a confirmed definition'}: "
+                     + ", ".join(result.reverse_keyed) + ".")
+    lines.append(f"Floor and ceiling use the codes {result.bounds_text}.")
+    lines += [f"Warning: {warning}" for warning in result.warnings]
+    lines += list(result.notes)
+    return "\n".join(lines)
+
+
+def run_item_diagnostics(df: pd.DataFrame, items: list[str], construct_confirmed: bool, *,
+                         resamples: int = 300, reverse_keyed=(), reverse_source: str = "",
+                         items_confirmed: bool = False) -> AnalysisRun:
+    """α, ω and every item's statistics in one result (Stage 36.3, spec §7).
+
+    Nothing is recoded or deleted; possible reverse keying is flagged."""
+    if not construct_confirmed:
+        raise ValueError("Confirm that the items are meant to measure one construct first.")
+    import warnings as _warnings
+
+    from item_diagnostics import diagnose_items, make_item_diagnostics_chart
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")      # library chatter; ours are in the result
+        result = diagnose_items(df, list(items), reverse_keyed=tuple(reverse_keyed),
+                                reverse_source=reverse_source, resamples=int(resamples),
+                                items_confirmed=bool(items_confirmed))
+        png = make_item_diagnostics_chart(result)
+    table = result.table()
+    summary = (f"Cronbach’s α = {result.alpha.text()}; McDonald’s ω = {result.omega.text()}; "
+               f"k = {len(result.items)}, n = {result.n_complete}.")
+    return AnalysisRun(
+        "reliability", "Scale quality: α, ω and item diagnostics", _item_report(result), png,
+        result, summary=summary, warnings=tuple(result.warnings),
+        tables=(ResultTable(table.title, tuple(table.columns),
+                            tuple(tuple(row) for row in table.rows)),),
+        inputs={"items": list(items), "resamples": int(resamples),
+                "reverse_keyed": list(reverse_keyed), "items_confirmed": bool(items_confirmed)},
+    )
+
+
 def run_factor(df: pd.DataFrame, items: list[str], method: str, count: int,
                rotation: str, confirmed: bool) -> AnalysisRun:
     result = analyze_factor_exploration(

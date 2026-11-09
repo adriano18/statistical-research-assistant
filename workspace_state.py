@@ -149,6 +149,12 @@ class ResearchSession:
     selected_result: int | None = None
     guided: dict = field(default_factory=dict)       # guided-analysis selections
     tasks: list[ResearchTask] = field(default_factory=list)   # Stage 36 research tasks
+    # Stage 36.3: a saved questionnaire by id (set by the application), so
+    # item diagnostics can use reverse keys the researcher confirmed.
+    questionnaire_loader: Callable[[str], object] | None = field(default=None, repr=False)
+    # Stage 36.3: history records of derived variables not yet stored with
+    # the dataset version they created (the project stores and clears them).
+    pending_transformations: list[dict] = field(default_factory=list, repr=False)
     language: str = "en"
     theme: str = "light"
     corners: str = "windows"
@@ -179,6 +185,7 @@ class ResearchSession:
         self.selected_result = None
         self.guided = {}
         self.tasks = []
+        self.pending_transformations = []
         self.notify("dataset")
         self.notify("results")
 
@@ -201,6 +208,28 @@ class ResearchSession:
         self.dataset_origin = origin or ("file" if path else "copy")
         self.dataset_survey_id = survey_id
         self.guided = {}
+        self.notify("dataset")
+
+    def add_derived_column(self, frame: pd.DataFrame, column: str, level: str,
+                           record: dict) -> None:
+        """Use ``frame`` (the dataset with one new derived column) as the new
+        version of the data: every other variable keeps its confirmed level,
+        the new one gets ``level`` (it is defined by its rule), and the rule
+        is kept as a history record. The source columns are not changed."""
+        if column not in frame.columns or (self.df is not None and column in self.df.columns):
+            raise ValueError(f"{column} must be a new column.")
+        if level not in LEVELS:
+            raise ValueError(f"Unknown measurement level: {level}")
+        name = self.source_name or "Dataset"
+        variables = build_dictionary(frame, self.variables)
+        variables[column] = replace(variables[column], confirmed=level, confirmed_in="derived")
+        self.variables = variables
+        self.df = frame
+        if not name.endswith("(prepared)"):
+            name = f"{name} (prepared)"
+        self.source_name = name
+        self.dataset_origin = "prepared"
+        self.pending_transformations.append(dict(record))
         self.notify("dataset")
 
     def confirm_level(self, name: str, level: str, where: str = "data") -> None:

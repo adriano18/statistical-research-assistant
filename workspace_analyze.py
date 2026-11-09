@@ -17,8 +17,8 @@ import flet as ft
 import workspace_components as wc
 import workspace_tokens as tk
 from workspace_methods import (
-    FAMILIES, GOAL_ROLES, GOALS, METHODS, RoleProblems, advise, default_options,
-    required_confirmations, run_method,
+    FAMILIES, GOAL_ROLES, GOALS, ITEMS_NOT_TOTALS, METHODS, RoleProblems, advise,
+    default_options, required_confirmations, run_method, total_score_problem,
 )
 from workspace_state import LEVELS, ResearchTask
 from workspace_text import count_text, label as engine_label
@@ -607,6 +607,8 @@ class AnalyzePage:
             app.render()
             return None
         confirmed = [c.label for c in METHODS[key].confirmations if confirms.get(c.key)]
+        if confirms.get(ITEMS_NOT_TOTALS.key):
+            confirmed.append(ITEMS_NOT_TOTALS.label)
         effective = {**default_options(METHODS[key]), **options}
         task = self._remember_task(key, roles, effective)
         entry = app.session.add_result(
@@ -694,11 +696,17 @@ class AnalyzePage:
             self.form_options.get(option.key, option.default),
             on_select=lambda e, k=option.key: self._form_option(k, e.control.value),
             width=320, data=f"form-option-{option.key}") for option in spec.options]
+        # D5: chosen "items" that look like totals are explained before Run and
+        # need an explicit confirmation here (the guided advice refuses them).
+        totals = total_score_problem(spec, self.form_roles, s)
+        needed = list(required_confirmations(spec, self.form_options))
+        if totals:
+            needed.append(ITEMS_NOT_TOTALS)
         confirmations = [wc.checkbox(
             ui, engine_label(ui.language, c.label), bool(self.form_confirms.get(c.key)),
             on_change=lambda e, k=c.key: self._form_confirm(k, e.control.value),
             data=f"form-confirm-{c.key}")
-            for c in required_confirmations(spec, self.form_options)]
+            for c in needed]
         from workspace_methods import role_problems
         problems = role_problems(spec, self.form_roles, s)
         unknown = [p["name"] for k, p in problems if k == "design.confirm_level"]
@@ -707,8 +715,7 @@ class AnalyzePage:
             [(lvl, ui.t(f"level.{lvl}")) for lvl in LEVELS if lvl != "id"], "unknown",
             on_select=lambda e, n=name: self._confirm_level(n, e.control.value), width=300,
             data=f"form-level-{name}") for name in unknown]
-        missing = [c for c in required_confirmations(spec, self.form_options)
-                   if not self.form_confirms.get(c.key)]
+        missing = [c for c in needed if not self.form_confirms.get(c.key)]
         content: list[ft.Control] = [
             ft.Row(roles, wrap=True, spacing=tk.SPACE_4) if not any(r.multiple for r in spec.roles)
             else ft.Column(roles, spacing=tk.SPACE_2)]
@@ -717,6 +724,9 @@ class AnalyzePage:
         if option_controls:
             content += [wc.section_label(ui, ui.t("form.options")),
                         ft.Row(option_controls, wrap=True, spacing=tk.SPACE_3)]
+        if totals:
+            content.append(wc.notice(ui, problems_text(ui, [totals]), "warning",
+                                     data="form-totals"))
         if confirmations:
             content += [wc.section_label(ui, ui.t("form.confirmations")), *confirmations]
         other = [p for p in problems if p[0] != "design.confirm_level"]
@@ -736,6 +746,7 @@ class AnalyzePage:
 
     def _form_pick(self, role, value):
         self.form_roles[role] = value or None
+        self.form_confirms.pop(ITEMS_NOT_TOTALS.key, None)   # given for other columns
         self.app.render()
 
     def _form_toggle(self, role, name, value):
@@ -745,6 +756,7 @@ class AnalyzePage:
         if not value and name in chosen:
             chosen.remove(name)
         self.form_roles[role] = chosen
+        self.form_confirms.pop(ITEMS_NOT_TOTALS.key, None)   # given for other columns
         self.app.render()
 
     def _form_option(self, key, value):
@@ -762,7 +774,10 @@ class AnalyzePage:
 
     async def _run_form(self, e=None):
         if self.method:
-            await self._execute(self.method, self.form_roles, self.form_options, self.form_confirms)
+            confirms = dict(self.form_confirms)
+            if not total_score_problem(METHODS[self.method], self.form_roles, self.app.session):
+                confirms.pop(ITEMS_NOT_TOTALS.key, None)
+            await self._execute(self.method, self.form_roles, self.form_options, confirms)
 
 
 # ================================================================= results
