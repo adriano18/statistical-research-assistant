@@ -58,7 +58,7 @@ class ChartStudioPage:
         self._previews: dict[tuple, bytes] = {}
 
     # ------------------------------------------------------------ entry
-    def open(self, entry_id: int) -> None:
+    def open_charts(self, entry_id: int) -> None:
         """Show the charts of result ``entry_id`` (from Results or a task)."""
         self.entry_id = entry_id
         self.app.session.selected_result = entry_id
@@ -86,11 +86,20 @@ class ChartStudioPage:
         if entry.charts is not None:
             return entry.charts
         session = self.app.session
+        expected = str((entry.provenance or {}).get("dataset_sha256") or "")
+        if entry.restored and not expected:
+            # The data version of this result was never recorded: its charts
+            # could be drawn from other values than its numbers.
+            self.problem[entry.id] = ("chart.version_unknown", {})
+            return None
+        if any("data changed" in reason for reason in entry.stale_reasons or ()):
+            self.problem[entry.id] = ("chart.data_changed", {})
+            return None
         try:
             entry.charts = cv.create_state(
                 method=entry.method, roles=entry.roles, options=entry.options,
                 frame=session.df if session.has_data else None, level=self._level(entry),
-                expected_sha256=str((entry.provenance or {}).get("dataset_sha256") or ""))
+                expected_sha256=expected)
         except cv.ChartsUnavailable as error:
             self.problem[entry.id] = (error.key, error.params)
             return None
@@ -121,7 +130,7 @@ class ChartStudioPage:
         if state is None:
             key, params = self.problem.get(entry.id, ("chart.no_numeric", {}))
             actions = []
-            if key == "chart.data_changed" and entry.method:
+            if key in ("chart.data_changed", "chart.version_unknown") and entry.method:
                 actions.append(wc.button(ui, ui.t("chart.recalculate"),
                                          lambda e: self._recalculate(entry.id),
                                          kind="primary", icon=ft.Icons.REFRESH,
@@ -272,7 +281,9 @@ class ChartStudioPage:
         count = cs.figure_count(spec, data)
         self.index = min(self.index, count - 1)
         png = self.preview_png(entry, state)
-        controls: list[ft.Control] = [wc.figure(ui, png, caption_text="", max_height=520)]
+        alt = cs.describe(spec, data, self.index if count > 1 else None)
+        controls: list[ft.Control] = [wc.figure(ui, png, caption_text="", max_height=520,
+                                                semantics=alt)]
         if count > 1:
             controls.append(ft.Row([
                 wc.icon_button(ui, ft.Icons.CHEVRON_LEFT, ui.t("chart.previous"),
@@ -289,8 +300,7 @@ class ChartStudioPage:
             controls.append(wc.notice(ui, "\n".join("• " + w for w in warnings), "warning",
                                       title=ui.t("chart.warnings"), data="chart-warnings"))
         controls.append(wc.caption(ui, ui.t("chart.unchanged"), data="chart-unchanged"))
-        controls.append(wc.caption(ui, ui.t("chart.alt", text=cs.describe(
-            spec, data, self.index if count > 1 else None)), data="chart-alt"))
+        controls.append(wc.caption(ui, ui.t("chart.alt", text=alt), data="chart-alt"))
         return wc.card(ui, controls, title=ui.t("chart.preview"), data="chart-preview")
 
     def preview_png(self, entry, state) -> bytes:
@@ -568,8 +578,8 @@ class ChartStudioPage:
                     high = _number(values[high_key]) if high_key in values else current[1]
                     fields[f"{axis}_limits"] = (None if low is None and high is None
                                                 else (low, high))
-        except ValueError as error:
-            self.error = str(error)
+        except ValueError:
+            self.error = self.app.t("chart.not_a_number")
             self.app.render()
             return False
         limits_incomplete = [axis for axis in ("x", "y")

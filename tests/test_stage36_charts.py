@@ -18,6 +18,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+import flet as ft
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -327,7 +328,7 @@ class ChartStudioWorkspaceTests(unittest.TestCase):
     def test_comparable_ranges_share_an_axis_without_a_warning(self):
         ws = self.ws
         first = ws.app.session.results[0]          # UCLA with the eight scales
-        ws.app.pages["charts"].open(first.id)
+        ws.app.pages["charts"].open_charts(first.id)
         ws.click("chart-kind-multi_boxplot")
         ws.segment("chart-layout", "single")
         self.assertEqual(first.charts.view.variables, ("UCLA", *fx.SCALES))
@@ -416,7 +417,7 @@ class ChartStudioWorkspaceTests(unittest.TestCase):
         self.assertEqual([view.to_dict() for view in restored.charts.views], expected)
         self.assertEqual((restored.charts.active, restored.charts.report), (1, 1))
         again.app.session.df = None                     # the data file is gone
-        again.app.pages["charts"].open(restored.id)
+        again.app.pages["charts"].open_charts(restored.id)
         self.assertFalse(again.has_text("could not be shown"))
         self.assertTrue(again.find("chart-preview"))
         self.assertTrue(restored.charts.render("png").startswith(PNG))
@@ -428,10 +429,46 @@ class ChartStudioWorkspaceTests(unittest.TestCase):
         ws.app.session.set_dataset(changed, "changed.csv")
         for name, value in LEVELS.items():
             ws.app.session.confirm_level(name, value)
-        ws.app.pages["charts"].open(entry.id)
+        ws.app.pages["charts"].open_charts(entry.id)
         self.assertTrue(ws.find("chart-unavailable"))
         self.assertTrue(ws.has_text("not the version this result was calculated on"))
         self.assertIsNone(entry.charts)
+
+
+class ChartStudioGuardTests(unittest.TestCase):
+    """Charts are never prepared from data that cannot be matched to the result."""
+
+    def setUp(self):
+        self.ws = prepared_workspace()
+        self.addCleanup(self.ws.close)
+        self.entry = kruskal_in_task(self.ws)
+
+    def test_a_restored_result_without_a_data_version_is_not_drawn(self):
+        entry = self.entry
+        entry.restored, entry.provenance = True, {}
+        self.ws.app.pages["charts"].open_charts(entry.id)
+        self.assertTrue(self.ws.find("chart-unavailable"))
+        self.assertTrue(self.ws.has_text("does not record which version of the data"))
+        self.assertTrue(self.ws.find("chart-recalculate"))
+        self.assertIsNone(entry.charts)
+
+    def test_a_result_whose_data_changed_is_not_drawn(self):
+        entry = self.entry
+        entry.stale_reasons = ("data changed after this result",)
+        self.ws.app.pages["charts"].open_charts(entry.id)
+        self.assertTrue(self.ws.has_text("not the version this result was calculated on"))
+        self.assertIsNone(entry.charts)
+
+    def test_a_typed_value_that_is_not_a_number_is_explained(self):
+        ws = self.ws
+        ws.click("task-edit-chart")
+        ws.type("chart-font-size", "large")
+        ws.click("chart-apply")
+        self.assertTrue(ws.has_text("Type a number"))
+        self.assertEqual(self.entry.charts.view.font_size, 10.0, "the view is unchanged")
+        image = next(c for c in ws.controls() if isinstance(c, ft.Image))
+        self.assertTrue(image.semantics_label.startswith("Boxplots of 8 Variables"),
+                        "the image carries its text alternative")
 
 
 class ChartStudioLanguageTests(unittest.TestCase):

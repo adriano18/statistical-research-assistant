@@ -325,10 +325,14 @@ def apa_table(ui: Ui, columns: tuple[str, ...], rows: tuple[tuple[str, ...], ...
 
 
 def figure(ui: Ui, png: bytes, *, caption_text: str = "", on_enlarge=None,
-           max_height: int = 460, enlarge_label: str = "") -> ft.Control:
-    """Figure that scales to its container instead of a fixed pixel size."""
+           max_height: int = 460, enlarge_label: str = "",
+           semantics: str | None = None) -> ft.Control:
+    """Figure that scales to its container instead of a fixed pixel size.
+    ``semantics`` is what a screen reader says for the image (its text
+    alternative); by default the caption."""
     image = ft.Image(src=png, fit=ft.BoxFit.CONTAIN, height=max_height,
-                     semantics_label=caption_text or "Figure", gapless_playback=True)
+                     semantics_label=semantics or caption_text or "Figure",
+                     gapless_playback=True)
     controls: list[ft.Control] = [
         ft.Container(image, bgcolor="#FFFFFF", border_radius=ui.radius("card"),
                      padding=tk.SPACE_2, border=ft.Border.all(1, ui.p.border),

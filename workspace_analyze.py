@@ -412,7 +412,7 @@ class AnalyzePage:
                       lambda e, i=entry.id: self._toggle_report(i), kind="secondary",
                       icon=ft.Icons.CHECK if entry.in_report else ft.Icons.PLAYLIST_ADD,
                       data="task-add-report"),
-            wc.button(ui, ui.t("chart.open"), lambda e, i=entry.id: self.app.pages["charts"].open(i),
+            wc.button(ui, ui.t("chart.open"), lambda e, i=entry.id: self.app.pages["charts"].open_charts(i),
                       kind="secondary", icon=ft.Icons.BAR_CHART, data="task-edit-chart"),
             wc.button(ui, ui.t("task.change_variables"),
                       lambda e: self.app.navigate("analyze", section="variables"), kind="quiet",
@@ -1084,7 +1084,7 @@ class ResultsPage:
         if entry.charts is not None or chart_views.may_have_charts(
                 entry.roles, (entry.provenance or {}).get("levels") or {}):
             buttons.append(wc.button(ui, ui.t("chart.open"),
-                                     lambda e, i=entry.id: self.app.pages["charts"].open(i),
+                                     lambda e, i=entry.id: self.app.pages["charts"].open_charts(i),
                                      icon=ft.Icons.BAR_CHART, data="result-edit-chart"))
         if entry.run.png:
             buttons.append(wc.button(ui, ui.t("chart.copy"), wc.handler(self._copy_image, entry),

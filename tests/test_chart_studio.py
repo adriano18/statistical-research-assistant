@@ -449,7 +449,7 @@ class PurityTests(unittest.TestCase):
         "show_points": True, "show_outliers": False, "grid": False,
         "x_limits": (30.0, 75.0), "y_limits": (0.0, 20.0), "number_format": ".3f",
         "apa_style": False, "bins": 12, "bandwidth": "silverman", "group_order": ("1", "0"),
-        "note": "Synthetic data only.", "figure_number": 2,
+        "note": "Synthetic data only.", "figure_number": 2, "caption_in_image": False,
     }
     #: Fields a histogram does not draw; tested on a boxplot instead.
     BOX_FIELDS = {"show_points", "show_outliers"}
