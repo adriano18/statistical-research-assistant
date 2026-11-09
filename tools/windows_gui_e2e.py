@@ -26,6 +26,13 @@ Journeys (synthetic data only; see JOURNEYS):
 * responses      publish a questionnaire, collect responses in its form,
                  analyze them as an explicitly named dataset, export CSV +
                  codebook, and return to the original dataset
+* import-cope-docx
+                 a Word document with two unnumbered 60-item table forms:
+                 both shown, the situational one chosen, its own answer
+                 options reviewed, 60 items, a draft of exactly 60
+* import-scan-lv a scanned Latvian 52-item table: the scan is detected,
+                 read with local OCR in Latvian, its legend offered as one
+                 documented scale, a draft of exactly 52
 
 Every step is recorded in OUT_DIR: a screenshot, the UI Automation tree
 when something is missing, an animated recording per journey
@@ -153,6 +160,18 @@ def top_windows(pid: int | None = None) -> list[dict]:
     with contextlib.suppress(Exception):
         user32.EnumWindows(visit_type(visit), 0)
     return found
+
+
+def window_guard_events(log: Path) -> list[dict]:
+    """The ``window_guard`` lines of the program's startup log."""
+    events = []
+    with contextlib.suppress(OSError):
+        for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+            with contextlib.suppress(ValueError):
+                record = json.loads(line)
+                if isinstance(record, dict) and record.get("event") == "window_guard":
+                    events.append(record)
+    return events
 
 
 # ====================================================================== app
@@ -1312,14 +1331,19 @@ def journey_project_b(gui: Gui, work: Path, journey: Journey) -> None:
         expect(gui.has_text(T("project.no_results")), "project B shows A's results")
 
 
-def import_document(gui: Gui, journey: Journey, pdf: Path, *, expected_items: int) -> None:
+def import_document(gui: Gui, journey: Journey, pdf: Path, *, expected_items: int = 0,
+                    instruments: int = 1, shows: str | None = None) -> None:
+    """Questionnaires → Import PDF / Word… → the document in the Windows Open
+    dialog, until the reading is announced ("Read 1 instrument(s) and 30
+    candidate items from …") or, for a scan waiting for its OCR language,
+    until ``shows`` is on screen."""
     with journey.step(f"import {pdf.name} in the Windows Open dialog"):
         nav(gui, "nav.questionnaires")
         gui.click(T("q.import"), control_type=("Button", "Text"))
         gui.file_dialog(pdf, save=False)
         # Reading (and local OCR of image pages) runs with a progress line.
-        gui.wait_text(T("imp.read_ok", instruments=1, items=expected_items, name=pdf.name),
-                      timeout=180)
+        gui.wait_text(shows or T("imp.read_ok", instruments=instruments, items=expected_items,
+                                 name=pdf.name), timeout=180)
 
 
 def wizard_step(gui: Gui, number: int) -> None:
@@ -1399,6 +1423,116 @@ def journey_review_120(gui: Gui, work: Path, journey: Journey) -> None:
     finish_import(gui, journey)
     with journey.step("the builder holds the 120 items"):
         gui.wait_text("120. ", timeout=30)
+
+
+# ------------------------------------------- Stage 36.5 scientific import review
+COPE_GENERAL = "INVENTORY FORM: GENERAL"
+COPE_SITUATIONAL = "INVENTORY FORM: SITUATIONAL"
+SITUATIONAL_OPTIONS = "Not at all / Slightly / Moderately / Strongly"
+GENERAL_OPTIONS = "Hardly ever / Now and then / Fairly often / Very often"
+
+
+def review_form(gui: Gui, title: str, *, index: int, then: str) -> None:
+    """Press "Review this form" on the card of the form ``title`` (the
+    ``index``-th card), until ``then`` is on screen. Every card has a button
+    of that name; its tooltip names the form, and Windows exposes a tooltip
+    as an element over the button itself (as for Home's Open buttons)."""
+    tip = T("imp.form.use_tip", title=title)
+    try:
+        holder = gui.find(regex=re.escape(tip),
+                          control_type=("Button", "Group", "Custom", "Text"), timeout=15)
+    except StepFailure:
+        # No tooltip element: the cards stand in document order.
+        print(f"  [form] no tooltip names {title!r}; using card {index + 1}", flush=True)
+        holder = gui.find(T("imp.form.use"), control_type="Button", index=index)
+    rect = holder.element_info.rectangle
+    button = next((b for b in gui.query(T("imp.form.use"), control_type="Button")
+                   if b.element_info.rectangle == rect), holder)
+    button.click_input()
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline and not gui.has_text(then):
+        time.sleep(0.5)
+    if not gui.has_text(then):
+        print(f"  [form] the click did not open {title!r}; pressing it through UI Automation",
+              flush=True)
+        Gui.activate(button)
+    gui.wait_text(then, timeout=20)
+
+
+def journey_import_cope_docx(gui: Gui, work: Path, journey: Journey) -> None:
+    """Spec §14 journey 5 on the packaged EXE: a Word document with two
+    60-item table forms without item numbers; both are shown, the researcher
+    chooses the situational one, its own answer options are reviewed, the
+    items step counts 60 and the draft holds exactly those 60 items."""
+    from stage36_fixtures import generator
+
+    docx = generator().create_docx_unnumbered(work)
+    import_document(gui, journey, docx, expected_items=120, instruments=2)
+    with journey.step("both forms are shown; none is chosen for the researcher"):
+        gui.wait_text(T("imp.state.found"))
+        gui.wait_text(T("imp.state.found_detail", items=120, forms=2, sizes="60, 60"))
+        gui.wait_text(T("imp.state.choose"))
+        gui.wait_text(COPE_GENERAL)
+        gui.wait_text(COPE_SITUATIONAL)
+        gui.wait_text(T("imp.form.options", labels=GENERAL_OPTIONS))
+        gui.wait_text(T("imp.form.options", labels=SITUATIONAL_OPTIONS))
+        with contextlib.suppress(StepFailure):
+            step2 = gui.find(regex=r"^2\. [^\n]* · ", control_type="Button", timeout=5,
+                             scroll=False, visible=False)
+            journey.facts["step_2_enabled_before_choice"] = bool(step2.element_info.enabled)
+    with journey.step("review the second (situational) form: its own options"):
+        # Only the choice shows "form 2 of 2" (step 1's label); the options
+        # are on the form's card before it, so they cannot tell a click.
+        review_form(gui, COPE_SITUATIONAL, index=1,
+                    then=T("imp.status.form_of", number=2, total=2))
+        gui.wait_text(T("imp.scale_items", count=60))           # its scale step
+        gui.wait_text(SITUATIONAL_OPTIONS)
+        expect(not gui.has_text(GENERAL_OPTIONS), "the general form's options are shown")
+    with journey.step("the items step counts 60 situational items"):
+        wizard_step(gui, 3)
+        gui.wait_text(T("imp.counts", total=60, attention=0, checked=0))
+        gui.wait_text("In this invented situational case 1 I would")
+        expect(not gui.has_text("In this invented general case"), "items of the other form")
+    finish_import(gui, journey)
+    with journey.step("the builder holds the 60 items of the chosen form"):
+        gui.wait_text("60. ", timeout=30)
+        expect(not gui.has_text("61. "), "a 61st question was created")
+        gui.wait_text(COPE_SITUATIONAL)
+
+
+def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
+    """Spec §14 journey 6 on the packaged EXE: a scanned Latvian 52-item
+    table without a text layer is detected, read with the bundled local OCR
+    in Latvian, offers its legend as one documented (unconfirmed) scale and
+    becomes a draft of exactly 52 items after the researcher's review."""
+    from stage36_fixtures import generator
+    from workspace_questionnaires import ocr_language_options
+
+    pdf = generator().create_lv_table_scan_pdf(work)
+    import_document(gui, journey, pdf, shows=T("imp.state.scan"))
+    with journey.step("the scan is detected: local OCR is offered with its language"):
+        gui.wait_text(T("imp.scan.detail", pages="Pages 1 and 2"))
+        gui.find(T("imp.ocr_run"), control_type="Button")
+    with journey.step("read it with local OCR in Latvian (lav)"):
+        options = [label for _, label in ocr_language_options("en")]
+        gui.choose(T("imp.ocr_language"), T("imp.ocr_lang.lav"), options=options)
+        gui.click(T("imp.ocr_run"), control_type="Button")
+        gui.wait_text(T("imp.read_ok", instruments=1, items=52, name=pdf.name), timeout=300)
+    with journey.step("52 candidates; the OCR stays a visible fact"):
+        gui.wait_text("52 candidate items")
+        gui.wait_text(T("imp.state.ocr_used", pages="pages 1 and 2",
+                        ocr=T("imp.ocr_lang.lav")))
+    with journey.step("the legend is offered as one documented scale for all 52 items"):
+        wizard_step(gui, 2)
+        gui.wait_text(T("imp.scale_items", count=52))
+        gui.wait_text(T("imp.evidence.legend"))
+        scales = gui.query(T("imp.apply_scale"), control_type="Button")
+        journey.facts["documented_scales"] = len(scales)
+        expect(len(scales) == 1, f"{len(scales)} scales offered instead of one")
+    finish_import(gui, journey)
+    with journey.step("the draft holds the 52 items"):
+        gui.wait_text("52. ", timeout=30)
+        expect(not gui.has_text("53. "), "a 53rd question was created")
 
 
 def answer_form(gui: Gui, group: str, stress: str, age: int) -> None:
@@ -1984,6 +2118,10 @@ JOURNEYS = {
     "review-120": journey_review_120,
     "responses": journey_responses,
     "blocked-design": journey_blocked_design,
+    # Stage 36.5 (spec §14 journeys 5 and 6), after the journeys above so
+    # that their order and the state they meet stay as they were.
+    "import-cope-docx": journey_import_cope_docx,
+    "import-scan-lv": journey_import_scan_lv,
 }
 
 
@@ -2061,6 +2199,11 @@ def main(argv=None) -> int:
     report["seconds"] = round(time.monotonic() - started, 1)
     report["ok"] = bool(report["journeys"]) and all(j["ok"] for j in report["journeys"]) \
         and "error" not in report
+    # Evidence for the window guard (window_guard.py): each time the program
+    # had to show its own still-hidden window, its startup log says so.
+    report["window_guard"] = window_guard_events(out / "app-logs" / "startup.log")
+    print(f"window guard: {len(report['window_guard'])} intervention(s)"
+          + "".join(f"\n  {event}" for event in report["window_guard"]), flush=True)
     (out / "gui-e2e-result.json").write_text(json.dumps(report, indent=1, ensure_ascii=False),
                                              encoding="utf-8")
     for name in ("ancova_report.txt", "combined_report.txt", "pilot_responses.csv"):

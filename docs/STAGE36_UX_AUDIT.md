@@ -28,8 +28,8 @@ test next to the baseline one), and the final numbers are collected in
 | Change a chart type | not possible | **1–2** in Chart Studio, no re-run → **2 interactions** (36.4: Edit chart, choose the type; no analysis runs) | figures are drawn from the stored result data | chart settings never change the statistics (every analysis runner fails the test if it is called) |
 | Copy a chart to the clipboard | not possible (text copy only) | **1** (real image on the clipboard) → **1 interaction** (36.4), from Chart Studio or from the result's figure | — | the clipboard is checked to hold an image, not a path: a bitmap (CF_DIB, plus PNG) of the announced size, read back in the EXE journey `stage36-charts` |
 | Word report from 8 results | **19** interactions + Save dialog | **2** (add the task's results, export) + Save dialog → **3 interactions** + Save dialog (36.6: add the task's result, open Reports, export) | one research report in fifteen sections (question, hypotheses, data, … limitations, reproducibility); a task's results under one heading, repeated paragraphs written once | results from different data versions are labelled, never merged silently; post hoc hypotheses are marked exploratory |
-| Review a 60-item table form without item numbers | blocked ("no numbered questions") | choose the form, review, confirm | both forms detected, each with its own options | wording and scoring keys are never approved automatically |
-| Import a scanned 52-item table (OCR) | 16 of 52 items found; 36 must be typed in by hand | 52 candidates, each linked to its page region | — | OCR confidence is shown as character confidence only; every item is reviewed |
+| Review a 60-item table form without item numbers | blocked ("no numbered questions") | choose the form, review, confirm → **9 interactions** after the Open dialog (36.5 UI): "Review this form" on the second form's card (1, opens its scale step), structure and codes (2), apply (1), step 4 (1), the three confirmations (3), create (1); a draft of exactly 60 | both forms detected and shown as cards, each with its own options and their evidence; the researcher chooses, nothing is chosen silently | wording and scoring keys are never approved automatically; the scale, the codes and the three confirmations stay separate clicks |
+| Import a scanned 52-item table (OCR) | 16 of 52 items found; 36 must be typed in by hand | 52 candidates, each linked to its page region → **12 interactions** after the Open dialog in the English interface (36.5 UI): the OCR language dropdown (2), "Read with local OCR" (1), Next (1), structure and codes (2), apply (1), step 4 (1), the three confirmations (3), create (1); **10** in the Latvian interface, which proposes Latvian; 52 candidates, the legend as one scale | the scan is detected before OCR, which runs in the language the researcher chooses; the OCR stays a visible fact | OCR confidence is shown as character confidence only; the legend scale is proposed, never confirmed; items needing attention are listed (F8 / F9) |
 | Move between research steps | **Variables** opens Data; **Method** opens Design | each step opens itself (1 click) → **done** (36.1): every step opens and marks itself; the page scrolls to it | — | — |
 | Resume after a restart | project and results return; selections and settings do not | tasks, selections and chart settings return → **tasks, selections and the structured result return** (36.1, project format 4); **chart views and the report view return** (36.4, format 5), drawn without the dataset | — | — |
 
@@ -54,6 +54,29 @@ count is 8 because a dropdown counts twice, Age has to be cleared from
 "All quantitative", and the researcher chose Spearman over the recommended
 Pearson. Selecting a variable range in one gesture would remove one more
 interaction; Flet's checkboxes give no modifier keys, so it is not offered.
+
+## Measured after 36.5 UI (review wizard)
+
+`tests/test_stage36_import_ui.py` (`ImportInteractionCounts`) counts the
+review of the two synthetic documents with the same `CountingWorkspace`
+(a dropdown counts as two), from the moment the document is chosen in the
+Open dialog (one more click opens that dialog) to the created draft, and
+checks the draft: 60 items of the chosen situational form, or 52 items of
+the scan. The scan needs real local OCR (Tesseract with `lav`), so its
+count is skipped where that is not installed.
+
+| Workflow | Interactions | Of which |
+|---|---:|---|
+| Two unnumbered 60-item Word forms → draft of the second form | **9** | choose the form 1, scale 3, step 4 1, confirmations 3, create 1 |
+| Scanned Latvian 52-item table → draft (English interface) | **12** | OCR language 2, read 1, Next 1, scale 3, step 4 1, confirmations 3, create 1 |
+| The same in the Latvian interface | **10** | Latvian is proposed: the dropdown is not needed |
+
+Before 36.5 the Word document could not be imported at all and the scan
+gave 16 of 52 items, so there is no earlier count to compare with; the
+36.5 import engine made them readable and the wizard keeps every scientific
+decision (form, scale, codes, version, rights, item count) with the
+researcher. Packaged-EXE journeys: `import-cope-docx` and `import-scan-lv`
+in `tools/windows_gui_e2e.py`.
 
 ## Measured after 36.4
 
