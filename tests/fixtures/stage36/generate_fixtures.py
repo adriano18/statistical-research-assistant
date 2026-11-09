@@ -243,7 +243,13 @@ def create_lv_table_scan_pdf(out_dir: Path) -> Path:
     rnd = _random.Random(SEED + 52)
     title, body = font(28), font(21)
     width, height = 1240, 1754
-    left_number, left_text, digits_x, right = 120, 175, 905, 1150
+    # Stage 36.5: the statement column ends at x = 935 (digits at 965), so
+    # only the 13 long statements wrap and all 26 rows of a page stay above
+    # the footer. With digits at 905, page 1 drew item 26 below the bottom
+    # edge (y = 1761 of 1754) and the footer over item 24: no reader could
+    # find 52 items in that scan.
+    left_number, left_text, digits_x, right = 120, 175, 965, 1150
+    footer_top = height - 90
 
     def wrap(draw, text):
         words, lines, line = text.split(), [], ""
@@ -288,14 +294,18 @@ def create_lv_table_scan_pdf(out_dir: Path) -> Path:
             shift = 7 if page == 1 and local % 3 == 1 else 0   # digits slightly off the row
             draw.text((digits_x, y + shift), "1    2    3    4    5", font=body, fill="black")
             y += 27 * len(lines) + 12
+            if y > footer_top:
+                raise ValueError(f"item {index} does not fit on page {page + 1}")
         if page == 1:
             y += 30
+            if y + 66 + 27 > footer_top:
+                raise ValueError("the references do not fit above the footer")
             draw.text((left_number, y), "Atsauces (nav aptaujas jautājumi):", font=body, fill="black")
             draw.text((left_number, y + 34), "1. Izdomāts Autors (2099). Testa piezīme.", font=body,
                       fill="black")
             draw.text((left_number, y + 66), "2. Izdomāts Redaktors (2098). Testa piezīme.",
                       font=body, fill="black")
-        draw.text((470, height - 90), "Izdomāta laboratorija", font=body, fill="black")
+        draw.text((470, footer_top), "Izdomāta laboratorija", font=body, fill="black")
         for _ in range(900):                                  # light, fixed speckle noise
             px, py = rnd.randrange(width), rnd.randrange(height)
             draw.point((px, py), fill="#9a9a9a")
