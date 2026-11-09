@@ -221,7 +221,8 @@ class SecretStoreTests(unittest.TestCase):
     def test_no_plain_text_fallback_without_an_os_store(self):
         with mock.patch.object(secret_store, "_BACKEND", None), \
                 mock.patch.object(secret_store, "_Keyring", side_effect=ImportError("no keyring")), \
-                mock.patch.object(secret_store.os, "name", "posix"):
+                mock.patch.object(secret_store, "_WindowsCredentials",
+                                  side_effect=OSError("no credential store")):
             self.assertFalse(secret_store.available())
             with self.assertRaises(secret_store.SecretStoreUnavailable):
                 secret_store.set_key("openai", KEY)

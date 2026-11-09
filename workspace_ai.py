@@ -10,7 +10,6 @@ AI is off until the researcher connects a provider with their own key.
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 
 import flet as ft
@@ -64,27 +63,9 @@ def t(language: str, key: str, **values) -> str:
     return TEXT.get(language, TEXT["en"]).get(key, TEXT["en"].get(key, key)).format(**values)
 
 
-def settings_path(data_root: Path) -> Path:
-    return Path(data_root) / "ai" / "settings.json"
-
-
-def load_settings(data_root: Path) -> dict:
-    try:
-        value = json.loads(settings_path(data_root).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        value = {}
-    if not isinstance(value, dict):
-        value = {}
-    provider = value.get("provider") if value.get("provider") in ap.PROVIDERS else "openai"
-    return {"provider": provider, "model": str(value.get("model") or ""),
-            "daily_tokens": int(value.get("daily_tokens") or 0)}
-
-
-def save_settings(data_root: Path, value: dict) -> None:
-    path = settings_path(data_root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({k: value[k] for k in ("provider", "model", "daily_tokens")}),
-                    encoding="utf-8")
+# The settings live in ``ai_providers`` so that the assistant's availability
+# check (``ai_context.readiness``) reads them without the interface.
+settings_path, load_settings, save_settings = ap.settings_path, ap.load_settings, ap.save_settings
 
 
 class AiProvidersCard:

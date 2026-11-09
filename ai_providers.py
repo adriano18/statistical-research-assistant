@@ -199,7 +199,45 @@ def test_connection(provider: str, key: str, **http) -> int:
     return len(list_models(provider, key, refresh=True, **http))
 
 
+# --------------------------------------------------------------- settings
+# Which provider and model the researcher chose, and the daily token limit
+# (Settings -> AI providers). The key itself is never here: it lives only
+# in the OS credential store (``secret_store``).
+
+def settings_path(data_root: Path) -> Path:
+    return Path(data_root) / "ai" / "settings.json"
+
+
+def usage_path(data_root: Path) -> Path:
+    """Today's token count for the daily limit (``Budget``)."""
+    return Path(data_root) / "ai" / "usage.json"
+
+
+def load_settings(data_root: Path) -> dict:
+    value = _read_cache(settings_path(data_root))
+    provider = value.get("provider") if value.get("provider") in PROVIDERS else "openai"
+    try:
+        daily = max(0, int(value.get("daily_tokens") or 0))
+    except (TypeError, ValueError):
+        daily = 0
+    return {"provider": provider, "model": str(value.get("model") or ""), "daily_tokens": daily}
+
+
+def save_settings(data_root: Path, value: dict) -> None:
+    path = settings_path(data_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({k: value[k] for k in ("provider", "model", "daily_tokens")}),
+                    encoding="utf-8")
+
+
 # --------------------------------------------------------------- generate
+
+def estimate_tokens(text: str) -> int:
+    """A deliberately high estimate (about three characters per token, which
+    also holds for Latvian and Russian): what the budget check and the
+    researcher's preview both use before anything is sent."""
+    return len(text) // 3
+
 
 def generate(provider: str, key: str, model: str, prompt: str, *, max_output_tokens: int = 800,
              budget: "Budget | None" = None, cancel=None, **http) -> Reply:
@@ -207,7 +245,7 @@ def generate(provider: str, key: str, model: str, prompt: str, *, max_output_tok
     if not model or len(model) > 200 or any(ch.isspace() for ch in model):
         raise ProviderError("bad_model", "choose a model")
     if budget is not None:
-        budget.check(len(prompt) // 3 + max_output_tokens)
+        budget.check(estimate_tokens(prompt) + max_output_tokens)
     if provider == "openai":
         body = {"model": model, "input": prompt, "max_output_tokens": max_output_tokens}
         payload = _request(provider, "POST", "/v1/responses", key, body=body, cancel=cancel, **http)
