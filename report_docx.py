@@ -330,6 +330,78 @@ def build_report_docx(blocks: list[ReportBlock], *, title: str = "", language: s
     return document
 
 
+def build_research_docx(plan, *, version: str = "",
+                        generated: datetime | None = None) -> Document:
+    """The fifteen-section research report (``research_report.ReportPlan``)
+    as an editable Word document: numbered section headings, APA tables and
+    figures numbered in document order, notes and warnings as text."""
+    labels = LABELS.get(plan.language, LABELS["en"])
+    if not plan.sections:
+        raise ValueError("The report has no content.")
+    when = generated or datetime.now()
+    title = (plan.title or "").strip()[:250] or labels["default_title"]
+    document = Document()
+    _style(document)
+    document.core_properties.title = title
+    document.core_properties.subject = "Research report (editable draft)"
+    document.core_properties.keywords = "statistics; research report; editable"
+    document.core_properties.author = ""
+    _header_footer(document, title, labels)
+    heading = document.add_paragraph(style="Title")
+    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    heading.add_run(title)
+    if plan.project and plan.project != title:
+        sub = document.add_paragraph(plan.project)
+        sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    note = document.add_paragraph(labels["generated"].format(
+        version=version or "", date=when.strftime("%Y-%m-%d"), project=plan.project or title))
+    note.runs[0].italic = True
+    table_number = figure_number = 0
+    for number, section in enumerate(plan.sections, start=1):
+        document.add_heading(f"{number}. {section.title}", level=1)
+        for item in section.items:
+            if item.kind == "heading":
+                document.add_heading(item.text, level=2)
+            elif item.kind == "subheading":
+                document.add_heading(item.text, level=3)
+            elif item.kind == "paragraph":
+                _paragraphs(document, item.text)
+            elif item.kind == "list":
+                for line in item.text.splitlines():
+                    if line.strip():
+                        document.add_paragraph(line.strip(), style="List Bullet")
+            elif item.kind in ("note", "warning"):
+                paragraph = document.add_paragraph()
+                if item.kind == "warning":
+                    paragraph.add_run(item.text).bold = True
+                else:
+                    paragraph.add_run(item.text).italic = True
+            elif item.kind == "table":
+                table_number += 1
+                _caption(document, f"{labels['table']} {table_number}", item.title)
+                _word_table(document, _TableView(item.title, item.columns, item.rows))
+            elif item.kind == "figure" and item.image:
+                figure_number += 1
+                _caption(document, f"{labels['figure']} {figure_number}", item.title)
+                document.add_picture(_figure_body(item.image, "" if item.studio else item.section),
+                                     width=Inches(6.0))
+                if item.note.strip():
+                    text = item.note.strip()
+                    if text.startswith("Note."):
+                        text = text[len("Note."):].strip()
+                    paragraph = document.add_paragraph()
+                    paragraph.add_run(labels["note"]).italic = True
+                    paragraph.add_run(" " + text)
+    return document
+
+
+@dataclass(frozen=True)
+class _TableView:
+    title: str
+    columns: tuple
+    rows: tuple
+
+
 def default_file_name(title: str, when: datetime | None = None) -> str:
     """A new name for every export, so a report edited in Word is never
     replaced by the next export unless the researcher chooses that file."""

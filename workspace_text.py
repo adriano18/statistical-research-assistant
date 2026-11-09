@@ -1787,6 +1787,25 @@ T.update({
 })
 
 
+# Research report builder (Stage 36.6).
+T.update({
+    "reports.language": ("Report language", "Atskaites valoda", "Язык отчёта"),
+    "reports.structure": ("Report structure", "Atskaites struktūra", "Структура отчёта"),
+    "reports.structure_hint": (
+        "The report follows the order of a study write-up. Sections without content are left out; untick a section to leave it out yourself.",
+        "Atskaite seko pētījuma apraksta secībai. Sadaļas bez satura tiek izlaistas; noņemiet atzīmi, lai sadaļu izlaistu pats.",
+        "Отчёт следует порядку описания исследования. Разделы без содержания не включаются; снимите отметку, чтобы исключить раздел самостоятельно."),
+    "reports.section_title": ("the title page", "titullapa", "титульный лист"),
+    "reports.section_items": ("{count} parts", "{count} daļas", "частей: {count}"),
+    "reports.section_empty": ("nothing to report yet", "vēl nav ko ziņot", "пока нечего включить"),
+    "reports.section_off": ("left out", "izlaista", "исключён"),
+    "reports.versions": (
+        "The chosen results come from {count} versions of the data. The report names the version of every result and does not combine them into one finding.",
+        "Izvēlētie rezultāti iegūti no {count} datu versijām. Atskaite norāda katra rezultāta versiju un neapvieno tos vienā secinājumā.",
+        "Выбранные результаты получены на {count} версиях данных. В отчёте у каждого результата указана версия, и они не объединяются в один вывод."),
+})
+
+
 # Chart Studio (Stage 36.4).
 T.update({
     "nav.charts": ("Chart Studio", "Diagrammu studija", "Редактор графиков"),
