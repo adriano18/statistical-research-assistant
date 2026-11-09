@@ -17,3 +17,7 @@ bundled_ocr/
 build_info.json
 packaging/windows/generated-layout.iss
 dist/
+
+# Private research acceptance documents; never commit participant data or licensed instruments.
+private-test-data/
+.stage36-fixtures/
