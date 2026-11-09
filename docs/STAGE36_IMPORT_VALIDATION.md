@@ -183,12 +183,22 @@ Full suite on the Stage 36 stack (`claude/stage36-import`, on top of 36.1):
 1 expected failure with the round-3 change (847 before its 3 tests; D5,
 fixed by 36.3; D1–D4, D6–D10 are fixed; 36.0 had 10).
 
-**Private check after round 2 (counts only).** The owner's real scan gives
-51 of 52 (first 36.5 version: 45; 36.0: 16); 3 prompts still end in
-digit-like tokens (was 32). The missing row (17) is read as text because
-its first statement word starts 0.63 digit widths left of the fitted
-statement column, just beyond the 0.6 tolerance; the next commit widens the
-tolerance for rows whose number column holds a clean number.
+**Private check (authorized, local only; counts only).** The owner's real
+two-page SACS-LV scan, read with local Tesseract:
+
+| Importer | `lav` | `lav+rus+eng` | `eng` |
+|---|---|---|---|
+| Stage 36.0 | 16 of 52 | — | — |
+| first 36.5 version | 45 of 52 | — | — |
+| round 2 | 51 of 52 (17 read as text) | — | — |
+| **round 3 (this branch)** | **52 of 52**, 1–52, no number twice | **52 of 52** | 51 of 52 (45 missing) |
+
+With `lav`: one documented scale from the legend (5 labels, codes 1–5)
+linked to all 52 items and **not confirmed**; 52 source regions; 3 prompts
+still end in digit-like tokens from the answer area (was 32), which the
+researcher removes in the review. English OCR is the wrong language for a
+Latvian form; the review offers Latvian. No wording, image or value of the
+private document is in this repository; these counts are the only record.
 
 ## OCR confidence semantics
 
