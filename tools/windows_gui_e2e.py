@@ -1490,6 +1490,21 @@ def journey_import_cope_docx(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text(COPE_SITUATIONAL)
 
 
+def direct_ocr_seconds(pdf: Path, language: str, page: int = 1):
+    """Seconds for one page read by this driver with the program's OCR code
+    and runtime (as the program renders it), or why it could not be read."""
+    from visual_survey_review import _render_pdf_page, recognize_page_layout
+
+    try:
+        png, dpi = _render_pdf_page(pdf.read_bytes(), page, scale=2.0, max_width=1800,
+                                    rotation=0)
+        started = time.monotonic()
+        result = recognize_page_layout(png, language, page_number=page, dpi=dpi, timeout=240)
+        return {"seconds": round(time.monotonic() - started, 1), "words": len(result.words)}
+    except Exception as error:      # a diagnostic: never fails the journey
+        return f"{type(error).__name__}: {error}"
+
+
 def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
     """Spec §14 journey 6 on the packaged EXE: a scanned Latvian 52-item
     table without a text layer is detected, read with the bundled local OCR
@@ -1499,6 +1514,11 @@ def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
     from workspace_questionnaires import ocr_language_options
 
     pdf = generator().create_lv_table_scan_pdf(work)
+    # The bundled engine's own speed on this page, with no interface around
+    # it (run 42656712671: in the program both pages hit the per-page limit).
+    journey.facts["direct_ocr_page_1_lav"] = direct_ocr_seconds(pdf, "lav")
+    print(f"  [ocr] page 1 in Latvian outside the program: "
+          f"{journey.facts['direct_ocr_page_1_lav']}", flush=True)
     import_document(gui, journey, pdf, shows=T("imp.state.scan"))
     with journey.step("the scan is detected: local OCR is offered with its language"):
         gui.wait_text(T("imp.scan.detail", pages="Pages 1 and 2"))
@@ -1507,7 +1527,9 @@ def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
         options = [label for _, label in ocr_language_options("en")]
         gui.choose(T("imp.ocr_language"), T("imp.ocr_lang.lav"), options=options)
         gui.click(T("imp.ocr_run"), control_type="Button")
-        gui.wait_text(T("imp.read_ok", instruments=1, items=52, name=pdf.name), timeout=300)
+        started = time.monotonic()
+        gui.wait_text(T("imp.read_ok", instruments=1, items=52, name=pdf.name), timeout=600)
+        journey.facts["ocr_in_program_seconds"] = round(time.monotonic() - started, 1)
     with journey.step("52 candidates; the OCR stays a visible fact"):
         gui.wait_text("52 candidate items")
         gui.wait_text(T("imp.state.ocr_used", pages="pages 1 and 2",
