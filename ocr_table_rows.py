@@ -7,27 +7,41 @@ column on the right. Read as plain text, a tick or speck before a number
 sequence. This module works from Tesseract word boxes instead
 (:class:`ocr_layout.OCRPage`, normalised 0..1 page coordinates):
 
-1. **Columns.** Lines that start with a clean number (``12.``) followed by a
+1. **Visual lines.** A number or a run of answer digits that OCR put on a
+   line of its own, at the height of a statement line, joins that line.
+2. **Columns.** Lines that start with a clean number (``12.``) followed by a
    word give the number column; the left edges of those words give the
-   statement column (fitted against the page height, so a slight rotation
-   does not matter) and the aligned code-like tokens at the line ends give
-   the answer column. A number followed by its text at an ordinary word gap
+   statement column (fitted against the page height, so rotation does not
+   matter). A number followed by its text at an ordinary word gap
    (``12. Text``) is NOT a column: such pages keep the line parser.
-2. **Rows.** A line whose number-column text reads as the next number of
-   the sequence starts a row. OCR noise is normalised in the number column
-   only: quotes, ticks and dashes are stripped; look-alike glyphs (I l | ī →
-   1, O o → 0) are mapped only when the result is the expected next number.
-   A row whose number cannot be read but whose statement and answer digits
-   are in place gets the expected number. Every normalised or inferred
-   number is flagged "check this number" — never silently accepted.
-3. **Continuations.** A line without a number whose text starts in the
+3. **Answer tokens** are removed from the END of a line only: a trailing
+   run of tokens in the answer area made of digits and the glyphs OCR
+   produces for them (``12375``, ``1—2``, ``[1``, ``|``, ``5”``, ``—``, one
+   letter glued to digits such as ``a2345``, a single digit look-alike
+   letter such as ``L`` or ``Z``, any other lone letter scored below 60).
+   A token with two or more letters is never removed (OCR junk such as
+   ``LZ`` for ``1 2`` therefore stays, flagged by its low OCR score).
+4. **Rows**, in two passes with look-ahead. A line whose number-column text
+   reads as the next number starts a row. A sequence starts only where the
+   following rows confirm it (a bare ``5`` opening an instruction line, or
+   legend lines ``1- …`` printed in another column, never start or advance
+   it), and a number style differing from the page's (``5`` among ``12.``)
+   cannot start one. OCR noise is normalised in the number column only:
+   quotes, ticks and dashes are stripped; look-alike glyphs (A → 4,
+   I l | ī í ì i ! [ ] → 1, S → 5, Z → 2, B → 8, G → 6, T → 7, O o → 0) are
+   mapped only when the result is the expected next number, and a reading
+   the next row contradicts is refused. A row whose number is unreadable
+   or partial (``_4.`` for 49) gets the expected number when the next row
+   reads the number after it, or when its statement and answer digits are
+   in place. Every normalised or inferred number is flagged "check this
+   number" — never silently accepted. Rows without answer digits count as
+   long as their number fits the sequence.
+5. **Continuations.** A line without a number whose text starts in the
    statement column, directly under a row, is appended to that row.
-4. **Answer digits** are removed from the statement by position (the
-   answer column), not by a pattern on the text.
-5. **Legend.** Lines such as ``1- …`` to ``5- …`` (also when repeated at
+6. **Legend.** Lines such as ``1- …`` to ``5- …`` (also when repeated at
    the top of the next page) are the answer legend: evidence for ONE shared
-   response scale, never items. Lines that look like noise from table rules
-   or specks (low OCR confidence, no letters) inside the table are dropped.
+   response scale, never items. Lines inside the table that look like noise
+   from table rules or specks (no confidently read word) are dropped.
 
 Every row keeps its page and box (number + statement words) as the source
 region shown in review. OCR confidence stays Tesseract's per-word character
@@ -36,6 +50,7 @@ score; nothing here is a measure of item quality, reliability or validity.
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from statistics import median
@@ -45,32 +60,45 @@ from ocr_layout import (
     BBox, OCRLine, OCRPage, OCRWord, Region, SpatialEvidence, question_ref, union_box,
 )
 from response_scales import code_label_pairs, legend_run, line_code_label, normalize_tokens
-from scientific_survey_import import DocumentedScale, StructuredItemLine, is_title_line
+from scientific_survey_import import (
+    DocumentedScale, StructuredItemLine, is_reference_line, is_title_line,
+)
 
 MIN_ROWS = 3
-MAX_JUMP = 3            # a printed number may skip at most this many missing rows
-NOISE_CONFIDENCE = 50.0  # mean word score below which a line inside the table is noise
-_NUMBER = re.compile(r"^(\d{1,3})[.)]?$")
+MAX_JUMP = 3             # a printed number may skip at most this many missing rows
+LOOKAHEAD = 3            # numbered lines read ahead to confirm or contradict a number
+TEXT_CONFIDENCE = 60.0   # a word scored below this is no evidence of real text
+REAL_CONFIDENCE = 40.0   # a word scored below this cannot anchor the statement column
+SPECK_CONFIDENCE = 60.0  # a lone letter scored below this in the answer area is a speck
+_NUMBER = re.compile(r"^(\d{1,3})([.)]?)$")
 # Characters scan artifacts become around a number; they never stand for a digit.
 _ARTIFACTS = "\"'`´‘’‚‛“”„‟«»‹›,:;_~^*°·•-–—/\\"
 # Glyphs OCR reads instead of a digit; mapped only to reach the expected number.
 _LOOKALIKES = str.maketrans({
     "I": "1", "l": "1", "|": "1", "ī": "1", "Ī": "1", "í": "1", "ì": "1", "i": "1",
-    "!": "1", "]": "1", "[": "1", "O": "0", "o": "0",
+    "!": "1", "]": "1", "[": "1", "O": "0", "o": "0", "A": "4", "S": "5", "Z": "2",
+    "B": "8", "G": "6", "T": "7",
 })
+_DIGIT_GLYPHS = "0123456789Il|īĪíìi!][OoASZBGT"
+# A single letter OCR reads instead of an answer digit (L for 1 as well).
+_ANSWER_LOOKALIKES = set("IlīĪíìiOoASZBGTL")
+_NUMBER_SHAPE = re.compile(
+    rf"^[{re.escape(_ARTIFACTS + '.')}]{{0,3}}[{re.escape(_DIGIT_GLYPHS)}]{{1,3}}"
+    rf"[.),]?[{re.escape(_ARTIFACTS)}]{{0,2}}$")
 
 
 @dataclass(frozen=True)
 class PageGeometry:
     """Columns of one scanned table page (x as page fractions)."""
     page: int
-    statement_a: float        # statement column left edge: x = a + b * y
+    statement_a: float          # statement column left edge: x = a + b * y
     statement_b: float
-    number_reach: float       # how far left of the statement column numbers start
-    answer_left: float | None  # left edge of the answer-code column, if printed
-    line_height: float        # median text line height (y fraction)
-    unit_x: float             # the line height as an x fraction
-    rows: int = 0             # lines that start with a clean number in the column
+    number_reach: float         # how far left of the statement column numbers start
+    answer_floor: float | None  # answer tokens are never stripped left of this
+    line_height: float          # median text line height (y fraction)
+    unit_x: float               # the line height as an x fraction
+    rows: int = 0               # lines that start with a clean number in the column
+    number_style: str = "dot"   # "dot" ("12.") or "bare" ("12") on this page
 
     def statement_x(self, y: float) -> float:
         return self.statement_a + self.statement_b * y
@@ -87,7 +115,7 @@ class TableRow:
     box: BBox                 # number and statement words of all its lines
     line_ids: tuple[str, ...]
     prompt_lines: int
-    answers: tuple[str, ...]  # tokens read in the answer column (not in the prompt)
+    answers: tuple[str, ...]  # tokens read in the answer area (not in the prompt)
     group: str
 
 
@@ -108,6 +136,29 @@ class TableReconstruction:
     dropped_lines: int        # noise lines inside the table (rules, specks)
 
 
+@dataclass
+class _Parts:
+    """One visual line split into number column, statement and answer tokens."""
+    page: int
+    line: OCRLine
+    number: list
+    statement: list
+    answers: list
+    aligned: bool
+    texty: bool
+    real: bool
+
+    @property
+    def number_text(self) -> str:
+        return "".join(w.text for w in self.number)
+
+    @property
+    def has_answers(self) -> bool:
+        return any(ch.isdigit() for w in self.answers for ch in w.text)
+
+
+# ---------------------------------------------------------------- tokens
+
 def _x0(word: OCRWord) -> float:
     return word.box[0]
 
@@ -126,6 +177,46 @@ def _letters(text: str) -> int:
 
 def _words(line: OCRLine) -> list[OCRWord]:
     return sorted(line.words, key=_x0)
+
+
+def _scored(word: OCRWord, threshold: float) -> bool:
+    return word.confidence is None or word.confidence >= threshold
+
+
+def _real(word: OCRWord) -> bool:
+    """A word OCR read with some confidence (evidence that a line holds text)."""
+    return len(re.findall(r"[^\W_]", word.text)) >= 2 and _scored(word, REAL_CONFIDENCE)
+
+
+def _speck(word: OCRWord) -> bool:
+    """A tiny low-scored mark (``,`` ``'`` ``a``), never a word or a digit."""
+    text = word.text.strip()
+    return len(text) <= 2 and not any(ch.isdigit() for ch in text) \
+        and not _scored(word, REAL_CONFIDENCE)
+
+
+def _texty(words) -> bool:
+    """Real text: at least one confidently read word (two, or one of 4+ letters)."""
+    confident = [w for w in words if _letters(w.text) >= 2 and w.box[2] - w.box[0] <= 0.35
+                 and _scored(w, TEXT_CONFIDENCE)]
+    return len(confident) >= 2 or any(_letters(w.text) >= 4 for w in confident)
+
+
+def answer_like(word: OCRWord) -> bool:
+    """A token OCR makes of printed answer codes (shape only, no position).
+
+    Digits with the glyphs OCR produces for them (``12375``, ``1—2``, ``[1``,
+    ``|``, ``5”``, ``—``, ``-``), one letter glued to digits (``a2345``), a
+    single digit look-alike letter (``L``, ``Z``, ``S`` …), or any other lone
+    letter scored below 60 (a speck). Never a token with two letters.
+    """
+    text = word.text.strip()
+    letters = [ch for ch in text if ch.isalpha()]
+    if not text or len(letters) >= 2:
+        return False
+    if not letters or any(ch.isdigit() for ch in text) or letters[0] in _ANSWER_LOOKALIKES:
+        return True
+    return len(text) == 1 and word.confidence is not None and word.confidence < SPECK_CONFIDENCE
 
 
 def _fit(points) -> tuple[float, float]:
@@ -165,33 +256,84 @@ def read_number(text: str, expected: int | None) -> tuple[int, str] | None:
     return None
 
 
-def _codeish(text: str) -> bool:
-    t = text.strip()
-    digits = sum(ch.isdigit() for ch in t)
-    return bool(t) and len(t) <= 9 and digits >= max(1, len(t) // 2)
+def _read_words(words, expected: int | None):
+    """``(number, source, text read)`` from number-column words, or None.
+
+    The whole column is read first; a speck left of the number does not
+    hide it (the last word, then the last two words, are tried too).
+    """
+    texts = ["".join(w.text for w in words)]
+    if len(words) > 1:
+        texts += [words[-1].text, "".join(w.text for w in words[-2:])]
+    for text in texts:
+        found = read_number(text, expected)
+        if found is not None:
+            return found[0], found[1], text
+    return None
 
 
-def _mean_confidence(words) -> float | None:
-    scores = [w.confidence for w in words if w.confidence is not None]
-    return sum(scores) / len(scores) if scores else None
+def _strict(parts: _Parts) -> int | None:
+    found = _read_words(parts.number, None)
+    return found[0] if found is not None else None
 
 
-def _texty(words) -> bool:
-    """Real text: mostly letters and, when OCR scored it, a fair score."""
+def _partial(text: str, expected: int) -> bool:
+    """Nothing readable, or digits that are part of the expected number (``_4.`` → 49)."""
+    digits = re.sub(r"\D", "", text.translate(_LOOKALIKES))
+    return not digits or digits in str(expected)
+
+
+# ----------------------------------------------------------- visual lines
+
+def _fragment(line: OCRLine) -> str | None:
+    """"number" or "answers" for a piece OCR split off a table row, else None."""
+    words = _words(line)
     text = "".join(w.text for w in words)
-    if _letters(text) < 2 or _letters(text) < 0.5 * len(text.replace(" ", "")):
-        return False
-    if any(w.box[2] - w.box[0] > 0.35 for w in words):
-        return False   # one "word" across the page: a ruled line read as text
-    score = _mean_confidence(words)
-    return score is None or score >= NOISE_CONFIDENCE
+    if len(words) <= 2 and line.box[2] - line.box[0] <= 0.08 and _NUMBER_SHAPE.fullmatch(text):
+        return "number"
+    if all(answer_like(w) for w in words) and any(ch.isdigit() for ch in text):
+        return "answers"
+    return None
 
+
+def _visual_lines(page: OCRPage) -> list[OCRLine]:
+    """Tesseract lines, with split-off numbers and answer runs joined to their row."""
+    lines = [line for line in page.lines if line.words]
+    if not lines:
+        return []
+    heights = sorted(line.box[3] - line.box[1] for line in lines)
+    height = heights[len(heights) // 2]
+    kinds = {line.id: _fragment(line) for line in lines}
+    hosts = [line for line in lines if kinds[line.id] is None]
+    joined = {line.id: list(line.words) for line in hosts}
+    alone = []
+    for piece in (line for line in lines if kinds[line.id] is not None):
+        best = None
+        for host in hosts:
+            dy = abs(_cy(host.box) - _cy(piece.box))
+            side = (piece.box[2] <= host.box[0] if kinds[piece.id] == "number"
+                    else piece.box[0] >= host.box[2])
+            if side and dy <= 0.45 * height and (best is None or dy < best[0]):
+                best = (dy, host)
+        if best is None:
+            alone.append(piece)
+        else:
+            joined[best[1].id].extend(piece.words)
+    out = [OCRLine(host.id, host.block_id, tuple(sorted(joined[host.id], key=_x0)),
+                   union_box(w.box for w in joined[host.id])) for host in hosts]
+    return sorted(out + alone, key=lambda line: (line.box[1], line.box[0]))
+
+
+# --------------------------------------------------------------- columns
 
 def page_geometry(page: OCRPage) -> PageGeometry | None:
     """Number, statement and answer columns of a table page, or None."""
     if not page.has_geometry:
         return None
-    lines = [line for line in page.lines if line.words]
+    return _geometry(page, _visual_lines(page))
+
+
+def _geometry(page: OCRPage, lines) -> PageGeometry | None:
     if len(lines) < MIN_ROWS:
         return None
     starts = []
@@ -218,57 +360,68 @@ def page_geometry(page: OCRPage) -> PageGeometry | None:
     if median(gaps) < max(1.8 * word_gap, 0.010):
         return None   # "12. Text": a number inline with its text, not a column
     reach = max((a + b * _cy(line.box)) - words[0].box[0] for line, words in inliers)
-    answer_left = _answer_column(inliers)
-    return PageGeometry(page.page_number, a, b, reach, answer_left, line_height, unit_x,
-                        len(inliers))
+    dotted = sum(1 for _, words in inliers if _NUMBER.fullmatch(words[0].text.strip()).group(2))
+    return PageGeometry(page.page_number, a, b, reach, _answer_floor(inliers), line_height,
+                        unit_x, len(inliers), "dot" if dotted >= 0.6 * len(inliers) else "bare")
 
 
-def _answer_column(rows) -> float | None:
-    """Left edge of the code-like tokens aligned at the end of most rows."""
+def _answer_floor(rows) -> float | None:
+    """Left of this x, answer tokens are never stripped (None: no answer column).
+
+    A row's answer run is its trailing run of answer-like tokens that ends
+    near the right edge shared by most rows. The floor lies a little left of
+    the earliest such runs, because skew and digits OCR lost move them.
+    """
+    right = median(words[-1].box[2] for _, words in rows)
     lefts = []
     for _line, words in rows:
-        tail = []
-        for word in reversed(words[2:]):
-            text = word.text.strip()
-            if _codeish(text) or (len(text) <= 3 and _letters(text) <= 2):
-                tail.append(word)
-            else:
-                break
-        tail.reverse()
-        if tail and any(ch.isdigit() for w in tail for ch in w.text):
-            lefts.append(tail[0].box[0])
-    need = max(MIN_ROWS, len(rows) // 2)
-    if len(lefts) < need:
+        k = len(words)
+        while k > 2 and answer_like(words[k - 1]):
+            k -= 1
+        run = words[k:]
+        if run and any(ch.isdigit() for w in run for ch in w.text) \
+                and run[-1].box[2] >= right - 0.06:
+            lefts.append(run[0].box[0])
+    if len(lefts) < max(MIN_ROWS, len(rows) // 3):
         return None
-    middle = median(lefts)
-    cluster = [x for x in lefts if abs(x - middle) <= 0.02]
-    return min(cluster) - 0.004 if len(cluster) >= need else None
+    lefts.sort()
+    return lefts[len(lefts) // 10] - 0.03
 
 
-def _zones(line: OCRLine, geo: PageGeometry):
-    """(number-column words, statement words, answer words) of one line."""
+def _split_answers(words, geo: PageGeometry):
+    """(words, answer tokens): a trailing run of answer-like tokens right of
+    the floor comes off the END of the line; nothing else is removed."""
+    if geo.answer_floor is None:
+        return list(words), []
+    k = len(words)
+    while k > 0 and words[k - 1].box[0] >= geo.answer_floor and answer_like(words[k - 1]):
+        k -= 1
+    return list(words[:k]), list(words[k:])
+
+
+def _parts(line: OCRLine, page: int, geo: PageGeometry) -> _Parts:
+    rest, answers = _split_answers(_words(line), geo)
     left = geo.statement_x(_cy(line.box))
     cut = left - 0.3 * geo.unit_x
     reach = left - geo.number_reach - 1.2 * geo.unit_x
-    number, statement, answer = [], [], []
-    for word in _words(line):
+    number, statement = [], []
+    for word in rest:
         x = _cx(word)
-        if geo.answer_left is not None and x >= geo.answer_left:
-            answer.append(word)
-        elif x >= cut:
+        if x >= cut:
             if word.box[2] - word.box[0] <= 0.35:
                 statement.append(word)
         elif x >= reach:
             number.append(word)
-    return number, statement, answer
-
-
-def _aligned(words, geo: PageGeometry, line: OCRLine) -> bool:
-    if not words:
-        return False
+    while statement and _speck(statement[0]):
+        statement.pop(0)   # a speck before the first word
+    first = next((w for w in statement if len(re.findall(r"[^\W_]", w.text)) >= 2), None)
     tolerance = max(0.6 * geo.unit_x, 0.01)
-    return abs(words[0].box[0] - geo.statement_x(_cy(line.box))) <= tolerance
+    aligned = first is not None and abs(first.box[0] - left) <= tolerance
+    return _Parts(page, line, number, statement, answers, aligned,
+                  _texty(statement), any(_real(w) for w in statement))
 
+
+# ---------------------------------------------------------------- legends
 
 def _legends(lines, page: int) -> list[Legend]:
     """Answer legends among plain lines: one per line or all on one line."""
@@ -293,95 +446,146 @@ def _legends(lines, page: int) -> list[Legend]:
     return found
 
 
+# ------------------------------------------------------------------- rows
+
 def reconstruct_tables(pages) -> TableReconstruction | None:
     """Rebuild numbered table rows on OCR pages (in page order), or None."""
     pages = sorted((p for p in pages if p.has_geometry), key=lambda p: p.page_number)
-    geometries = {p.page_number: g for p in pages if (g := page_geometry(p)) is not None}
-    if not geometries:
-        return None
-    state = {"expected": 1, "group": 0, "current": None, "started": False}
-    plans = {}            # page → list of (line, kind, row or None)
-    rows: list[dict] = []
+    entries, geometries = [], {}
     for page in pages:
-        geo = geometries.get(page.page_number)
+        lines = _visual_lines(page)
+        geo = _geometry(page, lines)
         if geo is None:
             continue
-        plan = []
-        for line in sorted(page.lines, key=lambda l: (l.box[1], l.box[0])):
-            if line.words:
-                kind = _classify(line, page.page_number, geo, state, rows)
-                plan.append((line, kind, state["current"] if kind == "row" else None))
-        plans[page.page_number] = plan
+        geometries[page.page_number] = geo
+        entries += [_parts(line, page.page_number, geo) for line in lines]
+    if not geometries:
+        return None
+    kinds, rows = _Sequence(entries, geometries).run()
     if len(rows) < MIN_ROWS:
         return None
-    return _assemble(pages, plans, rows, geometries)
+    return _assemble(pages, entries, kinds, rows, geometries)
 
 
-def _classify(line: OCRLine, page: int, geo: PageGeometry, state: dict, rows: list) -> str:
-    """'row', 'continuation', 'noise' or 'text'; a row is appended to ``rows``."""
-    number_words, statement, answer = _zones(line, geo)
-    number_text = "".join(w.text for w in number_words)
-    aligned = _aligned(statement, geo, line) and _texty(statement)
-    has_answers = any(ch.isdigit() for w in answer for ch in w.text)
-    started, expected, current = state["started"], state["expected"], state["current"]
+class _Sequence:
+    """Second pass: the numbered sequence, with look-ahead over later lines."""
 
-    def start(number: int, source: str, new_group: bool) -> str:
+    def __init__(self, entries, geometries):
+        self.entries, self.geometries = entries, geometries
+        self.numbered = [i for i, p in enumerate(entries) if p.aligned and p.real and p.number]
+        self.expected, self.group, self.current, self.started = 1, 0, None, False
+        self.rows: list[dict] = []
+
+    def upcoming(self, i: int) -> list[_Parts]:
+        k = bisect_right(self.numbered, i)
+        return [self.entries[j] for j in self.numbered[k:k + LOOKAHEAD]]
+
+    def confirmed(self, i: int, value: int) -> bool:
+        """A following numbered line reads value + 1 (or value + 2)."""
+        for parts in self.upcoming(i):
+            found = _read_words(parts.number, value + 1)
+            if found is not None and found[0] in (value + 1, value + 2):
+                return True
+        return False
+
+    def contradicted(self, i: int, value: int) -> bool:
+        """The next numbered line prints this number, or an earlier one."""
+        ahead = self.upcoming(i)
+        strict = _strict(ahead[0]) if ahead else None
+        return strict is not None and strict <= value
+
+    def run(self):
+        kinds = [self.classify(i, parts) for i, parts in enumerate(self.entries)]
+        return kinds, self.rows
+
+    def start(self, parts: _Parts, number: int, source: str, text: str, new_group: bool) -> str:
         if new_group:
-            state["group"] += 1
-        state.update(started=True, expected=number + 1, current={
-            "page": page, "number": number, "source": source, "number_text": number_text,
-            "lines": [line], "number_words": number_words, "statement": list(statement),
-            "answers": list(answer), "group": f"ocr-table-{state['group']}",
-            "bottom": line.box[3]})
-        rows.append(state["current"])
+            self.group += 1
+        self.started, self.expected = True, number + 1
+        self.current = {
+            "page": parts.page, "number": number, "source": source, "number_text": text,
+            "lines": [parts.line], "number_words": list(parts.number),
+            "statement": list(parts.statement), "answers": list(parts.answers),
+            "group": f"ocr-table-{self.group}", "bottom": parts.line.box[3],
+        }
+        self.rows.append(self.current)
         return "row"
 
-    if aligned and number_text:
-        read = read_number(number_text, expected if started else 1)
-        if read is not None:
-            value, source = read
-            if not started:
-                return start(value, source, True)
-            if value == 1 and expected > 1 and has_answers:
-                return start(1, source, True)     # numbering restarts: another table
-            if expected <= value <= expected + MAX_JUMP:
-                return start(value, source, False)
-    if (started and current is not None and geo.answer_left is not None and aligned
-            and has_answers and current["answers"]):
-        # A visible row (statement and answer digits) whose number cannot be
-        # read as the next one gets the expected number, flagged for checking.
-        return start(expected, "inferred", False)
-    if (current is not None and current["page"] == page and aligned
-            and not any(ch.isdigit() for ch in number_text)
-            and (not has_answers or not current["answers"])
-            and line.box[1] > current["lines"][0].box[1]
-            and line.box[1] - current["bottom"] <= 1.2 * geo.line_height):
-        current["lines"].append(line)
-        current["statement"].extend(statement)
-        current["answers"].extend(answer)
-        current["bottom"] = line.box[3]
-        return "continuation"
-    texty = _texty([w for w in line.words if w.box[2] - w.box[0] <= 0.35])
-    return "text" if texty else "noise"
+    def classify(self, i: int, parts: _Parts) -> str:
+        geo = self.geometries[parts.page]
+        expected, current = self.expected, self.current
+        statement_text = " ".join(w.text for w in parts.statement)
+        row_like = parts.aligned and parts.real and not is_reference_line(statement_text)
+        if row_like and parts.number:
+            found = _read_words(parts.number, expected if self.started else 1)
+            if found is not None:
+                value, source, text = found
+                style = (geo.number_style != "dot" or source != "printed"
+                         or bool(_NUMBER.fullmatch(text.strip()).group(2)))
+                if not self.started:
+                    if style and self.confirmed(i, value):
+                        return self.start(parts, value, source, text, True)
+                elif value == 1 and expected > 1:
+                    if style and self.confirmed(i, 1) and (
+                            parts.has_answers or geo.answer_floor is None):
+                        return self.start(parts, 1, source, text, True)   # another table
+                elif value == expected and (source == "printed"
+                                            or not self.contradicted(i, value)):
+                    return self.start(parts, value, source, text, False)
+                elif expected < value <= expected + MAX_JUMP \
+                        and not self.contradicted(i, value - 1):
+                    return self.start(parts, value, source, text, False)
+            if self.started and parts.texty and _partial(parts.number_text, expected) \
+                    and self.confirmed(i, expected) and not self.contradicted(i, expected):
+                # Between rows n - 1 and n + 1: an unreadable or partial number.
+                return self.start(parts, expected, "inferred", parts.number_text, False)
+        if (self.started and current is not None and row_like and parts.texty
+                and geo.answer_floor is not None and parts.has_answers
+                and _has_answers(current) and not self.contradicted(i, expected)):
+            # A visible row (statement and answer digits) whose number cannot be
+            # read as the next one gets the expected number, flagged for checking.
+            return self.start(parts, expected, "inferred", parts.number_text, False)
+        if (current is not None and current["page"] == parts.page and parts.aligned
+                and parts.texty and not any(ch.isdigit() for ch in parts.number_text)
+                and (not parts.has_answers or not _has_answers(current))
+                and parts.line.box[1] > current["lines"][0].box[1]
+                and parts.line.box[1] - current["bottom"] <= 1.2 * geo.line_height):
+            current["lines"].append(parts.line)
+            current["number_words"].extend(parts.number)
+            current["statement"].extend(parts.statement)
+            current["answers"].extend(parts.answers)
+            current["bottom"] = parts.line.box[3]
+            return "continuation"
+        words = [*parts.number, *parts.statement]
+        return "text" if _texty(words) else "noise"
 
 
-def _assemble(pages, plans, rows, geometries) -> TableReconstruction:
+def _has_answers(row: dict) -> bool:
+    return any(ch.isdigit() for w in row["answers"] for ch in w.text)
+
+
+# ------------------------------------------------------------- assembling
+
+def _assemble(pages, entries, kinds, rows, geometries) -> TableReconstruction:
     """Page text with one StructuredItemLine per row, plus evidence."""
     legends_by_group: dict[str, list[Legend]] = {}
     titles: dict[str, str] = {}
     first_row_top: dict[tuple[int, str], float] = {}
     for row in rows:
         first_row_top.setdefault((row["page"], row["group"]), row["lines"][0].box[1])
+    plans: dict[int, list] = {}
+    row_at = {id(row["lines"][0]): row for row in rows}
+    for parts, kind in zip(entries, kinds):
+        plans.setdefault(parts.page, []).append((parts.line, kind))
     all_legends = []
     for page in pages:
         plan = plans.get(page.page_number)
         if plan is None:
             continue
-        text_lines = [line for line, kind, _ in plan if kind == "text"]
+        text_lines = [line for line, kind in plan if kind == "text"]
         page_legends = _legends(text_lines, page.page_number)
         all_legends.extend(page_legends)
-        groups = [g for (p, g) in first_row_top if p == page.page_number]
-        for group in groups:
+        for group in [g for (p, g) in first_row_top if p == page.page_number]:
             top = first_row_top[(page.page_number, group)]
             above = [legend for legend in page_legends if legend.top < top]
             if group not in titles and not above:
@@ -394,9 +598,8 @@ def _assemble(pages, plans, rows, geometries) -> TableReconstruction:
                 titles[group] = heading[-1] if heading else ""
     scales = {group: _legend_scale(legends, rows, group)
               for group, legends in legends_by_group.items() if legends}
-    built = [_table_row(row) for row in rows]
-    notes = _group_notes(built, scales, legends_by_group)
-    by_identity = {id(row): item for row, item in zip(rows, built)}
+    built = {id(row): _table_row(row) for row in rows}
+    notes = _group_notes(list(built.values()), scales, legends_by_group)
     lines, dropped = {}, 0
     for page in pages:
         plan = plans.get(page.page_number)
@@ -409,9 +612,10 @@ def _assemble(pages, plans, rows, geometries) -> TableReconstruction:
                  max(r["bottom"] for r in rows_on_page) + 1.5 * height)
                 if rows_on_page else None)
         out = []
-        for line, kind, payload in plan:
+        for line, kind in plan:
             if kind == "row":
-                out.append(_structured(by_identity[id(payload)], scales, titles, notes))
+                row = row_at[id(line)]
+                out.append(_structured(built[id(row)], scales, titles, notes))
             elif kind == "continuation":
                 continue
             elif kind == "noise" and band is not None and band[0] <= _cy(line.box) <= band[1]:
@@ -419,22 +623,28 @@ def _assemble(pages, plans, rows, geometries) -> TableReconstruction:
             else:
                 out.append(line.text)
         lines[page.page_number] = out
-    return TableReconstruction(lines, tuple(built), tuple(all_legends),
+    return TableReconstruction(lines, tuple(built[id(row)] for row in rows), tuple(all_legends),
                                tuple(geometries[p] for p in sorted(geometries)), dropped)
 
 
 def _table_row(row: dict) -> TableRow:
-    statement = row["statement"]
-    rank = {line.id: k for k, line in enumerate(row["lines"])}
-    ordered = sorted(statement, key=lambda w: (rank.get(w.line_id, 0), w.box[0]))
+    # Visual line first (a joined fragment keeps its own Tesseract line id),
+    # then left to right.
+    rank = {word.id: k for k, line in enumerate(row["lines"]) for word in line.words}
+    ordered = sorted(row["statement"], key=lambda w: (rank.get(w.id, 0), w.box[0]))
+    used_ids = {w.id for w in (*row["number_words"], *ordered)}
+    lines_used: dict[str, None] = {}
+    for line in row["lines"]:
+        for word in line.words:
+            if word.id in used_ids:
+                lines_used[word.line_id] = None
     prompt = " ".join(" ".join(w.text for w in ordered).split())
     words = [*row["number_words"], *ordered]
     box = union_box(w.box for w in words) if words else row["lines"][0].box
-    used = [line.id for line in row["lines"] if any(w.line_id == line.id for w in words)]
     return TableRow(
         row["page"], row["number"], row["number_text"], row["source"], prompt,
-        row["lines"][0].text, box, tuple(used or [row["lines"][0].id]),
-        len({w.line_id for w in ordered}), tuple(w.text for w in row["answers"]), row["group"],
+        row["lines"][0].text, box, tuple(lines_used) or (row["lines"][0].id,),
+        len(row["lines"]), tuple(w.text for w in row["answers"]), row["group"],
     )
 
 
@@ -487,8 +697,8 @@ def _group_notes(rows, scales, legends) -> dict[str, tuple[str, ...]]:
         answers = sum(1 for row in mine if row.answers)
         text = [f"Table rows were rebuilt from OCR word positions on page(s) {pages}: "
                 f"{len(mine)} rows from the item-number column and the statement column"
-                + (f"; answer digits printed in {answers} rows were left out of the statements "
-                   "by their position" if answers else "") + "."]
+                + (f"; answer tokens printed in {answers} rows were left out of the statements "
+                   "by their position and shape" if answers else "") + "."]
         if joined:
             text.append(f"{joined} wrapped statement(s) were joined from their lines.")
         if checked:
@@ -557,6 +767,6 @@ def attach_row_regions(evidence: SpatialEvidence | None, review, rows) -> Spatia
 
 
 __all__ = [
-    "Legend", "PageGeometry", "TableReconstruction", "TableRow", "attach_row_regions",
-    "page_geometry", "read_number", "reconstruct_tables",
+    "Legend", "PageGeometry", "TableReconstruction", "TableRow", "answer_like",
+    "attach_row_regions", "page_geometry", "read_number", "reconstruct_tables",
 ]
