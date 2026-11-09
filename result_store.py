@@ -11,10 +11,12 @@ from __future__ import annotations
 def _kinds():
     from batch_correlation import CorrelationFamily
     from batch_groups import GroupFamily, TwoGroupFamily
+    from item_diagnostics import ItemDiagnostics
     from stat_results import StructuredResult
 
     return {"structured": StructuredResult, "correlation_family": CorrelationFamily,
-            "group_family": GroupFamily, "two_group_family": TwoGroupFamily}
+            "group_family": GroupFamily, "two_group_family": TwoGroupFamily,
+            "item_diagnostics": ItemDiagnostics}
 
 
 def to_json(result) -> dict | None:

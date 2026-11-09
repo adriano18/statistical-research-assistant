@@ -143,8 +143,16 @@ async def apply(app, name: str) -> None:
             page.selection = {"items": ["stress_q1", "stress_q2", "stress_q3", "stress_q4"]}
             for item in page.selection["items"]:
                 s.confirm_level(item, "ordinal", "analyze")
-            page.confirms = {"construct": True}
+            # Confirm what the current recommendation asks for (Stage 36.3:
+            # item diagnostics ask "one_construct"); a blocked run must not
+            # pass silently, or the report would lose its first result.
+            from workspace_methods import advise
+
+            page.confirms = dict.fromkeys(advise("scale", page.selection, s).design_checks, True)
+            before = len(s.results)
             await page._run_guided()
+            if len(s.results) != before + 1:
+                raise RuntimeError("the reports scenario's scale analysis did not run")
             s.toggle_report(s.results[-1].id)
             app.navigate("reports")
         return

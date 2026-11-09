@@ -168,7 +168,7 @@ class BatchAnalysisReproduction(unittest.TestCase):
 
 
 class ReliabilityReproduction(unittest.TestCase):
-    @unittest.expectedFailure    # 36.0 D5, fixed in 36.3
+    # 36.0 D5, FIXED in 36.3 (item_diagnostics.item_response_problems in the advice)
     def test_no_reliability_from_total_scores(self):
         """Spec §7: with only total scores, no fictitious alpha/omega; say
         that item responses are needed."""

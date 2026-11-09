@@ -141,10 +141,11 @@ class AdvisorTests(unittest.TestCase):
             (("predict", {"outcome": "passed", "predictors": ["hours"]}), ("logistic", None)),
             (("predict", {"outcome": "score", "predictors": ["hours"]}), ("regression", None)),
             (("predict", {"outcome": "score", "predictors": ["group", "hours"]}), ("ancova", None)),
-            (("scale", {"items": ["t1", "t2", "t3"]}), ("omega", None)),
+            # Stage 36.3: α, ω and every item's statistics in one result.
+            (("scale", {"items": ["t1", "t2", "t3"]}), ("item_diagnostics", None)),
             (("scale", {"items": ["t1", "t2", "t3", "likert", "t1_b", "t2_b", "t3_b",
                                   "l_b", "t1_c", "t2_c", "t3_c", "l_c", "t1_d"]}),
-             ("alpha", None)),
+             ("item_diagnostics", None)),
             (("structure", {"items": ["t1", "t2", "t3"]}), ("factor", None)),
             (("describe", {"variable": "score", "group": "group"}), ("explore", None)),
             (("describe", {"variable": "group"}), ("descriptive", None)),

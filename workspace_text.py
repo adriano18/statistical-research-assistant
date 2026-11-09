@@ -1899,6 +1899,15 @@ T.update({
     "block.binary": ("{name} must be coded 0/1. Recode it in Data → Prepare first.",
                      "{name} jābūt kodētam 0/1. Vispirms pārkodējiet sadaļā Dati → Sagatavot.",
                      "{name} должен быть закодирован 0/1. Сначала перекодируйте в «Данные → Подготовка»."),
+    # Stage 36.3 (D5): no α/ω from total or derived scores (item_diagnostics heuristics).
+    "block.totals_not_items": (
+        "Reliability analysis needs the separate answers to the items of the scale. Only a total score is available now. These variables look like total or derived scores (many different values, decimals or a wide range), not item responses: {names}. Import the item-level data, one column per item, to calculate α or ω.",
+        "Uzticamības analīzei vajag atsevišķas atbildes uz skalas jautājumiem. Pašlaik pieejams tikai kopējais rādītājs. Šie mainīgie izskatās pēc kopējiem vai atvasinātiem rādītājiem (daudz dažādu vērtību, daļskaitļi vai plašs diapazons), nevis pēc atbildēm uz jautājumiem: {names}. Importējiet datus ar atbildēm uz katru jautājumu (katram jautājumam sava kolonna), lai aprēķinātu α vai ω.",
+        "Для анализа надёжности нужны отдельные ответы на пункты шкалы. Сейчас доступен только суммарный показатель. Эти переменные похожи на суммарные или производные баллы (много разных значений, дробные значения или широкий диапазон), а не на ответы на пункты: {names}. Импортируйте данные с ответами на каждый пункт (по столбцу на пункт), чтобы вычислить α или ω."),
+    "block.total_among_items": (
+        "Some chosen variables look like total or derived scores (many different values, decimals or a wide range), not item responses: {names}. Reliability is calculated from the answers to the items only; remove them from the items.",
+        "Daži izvēlētie mainīgie izskatās pēc kopējiem vai atvasinātiem rādītājiem (daudz dažādu vērtību, daļskaitļi vai plašs diapazons), nevis pēc atbildēm uz jautājumiem: {names}. Uzticamību aprēķina tikai no atbildēm uz jautājumiem; izņemiet tos no izvēles.",
+        "Некоторые выбранные переменные похожи на суммарные или производные баллы (много разных значений, дробные значения или широкий диапазон), а не на ответы на пункты: {names}. Надёжность вычисляется только по ответам на пункты; уберите их из выбора."),
     "pick.all_scale": ("All quantitative ({count})", "Visi kvantitatīvie ({count})", "Все количественные ({count})"),
     "pick.all_ordinal": ("All ordinal ({count})", "Visi ranga ({count})", "Все порядковые ({count})"),
     "pick.clear": ("Clear", "Notīrīt", "Очистить"),
@@ -2008,6 +2017,144 @@ T.update({
     "kind.long_text": ("Long text", "Garš teksts", "Длинный текст"),
     "kind.date": ("Date", "Datums", "Дата"),
     "kind.consent": ("Consent", "Piekrišana", "Согласие"),
+})
+
+
+# Scales and psychometrics (Stage 36.3).
+T.update({
+    "why.item_diagnostics": (
+        "One result gives Cronbach’s α with its interval, one-factor ω with its stated assumptions and every item’s statistics: item–total correlation, α and ω if the item were deleted, distribution, floor and ceiling, and items that look reverse-keyed but not recoded. Nothing is deleted or recoded.",
+        "Viens rezultāts sniedz Kronbaha α ar intervālu, viena faktora ω ar norādītajiem pieņēmumiem un katra jautājuma statistiku: korelāciju ar kopsummu, α un ω bez jautājuma, sadalījumu, grīdas un griestu efektu, kā arī jautājumus, kas izskatās apgriezti, bet nav pārkodēti. Nekas netiek dzēsts vai pārkodēts.",
+        "Один результат даёт α Кронбаха с интервалом, однофакторную ω с указанными допущениями и статистику каждого пункта: корреляцию с итогом, α и ω без пункта, распределение, эффекты пола и потолка, а также пункты, похожие на обратные, но не перекодированные. Ничего не удаляется и не перекодируется."),
+    "why.item_diagnostics_many": (
+        "{count} items: α and every item’s statistics are calculated; the validated one-factor ω accepts 3–12 items, so ω is reported as not calculated, with the reason.",
+        "{count} jautājumi: aprēķina α un katra jautājuma statistiku; pārbaudītā viena faktora ω pieņem 3–12 jautājumus, tāpēc ω norāda kā neaprēķinātu ar iemeslu.",
+        "Пунктов: {count}. Рассчитываются α и статистика каждого пункта; проверенная однофакторная ω принимает 3–12 пунктов, поэтому ω указывается как не рассчитанная, с причиной."),
+    "alt.omega_only": (
+        "McDonald’s ω with item loadings only (the earlier analysis)",
+        "Tikai Makdonalda ω ar jautājumu slodzēm (iepriekšējā analīze)",
+        "Только ω Макдональда с нагрузками пунктов (прежний анализ)"),
+    "groups.title": ("Create groups from a scale", "Izveidot grupas no skalas",
+                     "Создать группы по шкале"),
+    "groups.subtitle": (
+        "A new categorical variable from a quantitative score, with a preview of every group. The score itself is not changed and the rule is kept in the project’s history.",
+        "Jauns kategoriāls mainīgais no kvantitatīva rādītāja ar katras grupas priekšskatījumu. Pats rādītājs netiek mainīts, un likums tiek saglabāts projekta vēsturē.",
+        "Новая категориальная переменная по количественному показателю с предпросмотром каждой группы. Сам показатель не меняется, правило сохраняется в истории проекта."),
+    "groups.source": ("Scale", "Skala", "Шкала"),
+    "groups.choose_source": ("Choose the score whose values should form the groups.",
+                             "Izvēlieties rādītāju, kura vērtības veidos grupas.",
+                             "Выберите показатель, значения которого образуют группы."),
+    "groups.method": ("Rule", "Likums", "Правило"),
+    "groups.method.documented": ("Documented cut points", "Dokumentēti sliekšņi",
+                                 "Пороги из методики"),
+    "groups.method.custom": ("My own ranges", "Savi diapazoni", "Свои диапазоны"),
+    "groups.method.quantile": ("Equal-sized groups (quantiles)", "Vienāda lieluma grupas (kvantiles)",
+                               "Равные по численности группы (квантили)"),
+    "groups.method.equal_width": ("Equal-width intervals", "Vienāda platuma intervāli",
+                                  "Интервалы равной ширины"),
+    "groups.k": ("Number of groups", "Grupu skaits", "Число групп"),
+    "groups.cuts": ("Cut points (comma-separated)", "Sliekšņi (atdalīti ar komatu)",
+                    "Пороги (через точку с запятой или запятую)"),
+    "groups.cuts_hint": ("e.g. 39; 59", "piem., 39; 59", "напр., 39; 59"),
+    "groups.labels": ("Group names (one more than cut points)",
+                      "Grupu nosaukumi (par vienu vairāk nekā sliekšņu)",
+                      "Названия групп (на одно больше, чем порогов)"),
+    "groups.closed": ("A value exactly on a cut point goes to", "Vērtība tieši uz sliekšņa pieder",
+                      "Значение ровно на пороге относится к"),
+    "groups.closed.right": ("the lower group", "zemākajai grupai", "нижней группе"),
+    "groups.closed.left": ("the upper group", "augstākajai grupai", "верхней группе"),
+    "groups.citation": ("Source of the cut points (manual, edition, page)",
+                        "Sliekšņu avots (rokasgrāmata, izdevums, lappuse)",
+                        "Источник порогов (руководство, издание, страница)"),
+    "groups.target": ("Name of the new variable", "Jaunā mainīgā nosaukums",
+                      "Имя новой переменной"),
+    "groups.preview": ("Preview", "Priekšskatījums", "Предпросмотр"),
+    "groups.col.group": ("Group", "Grupa", "Группа"),
+    "groups.col.range": ("Range", "Diapazons", "Диапазон"),
+    "groups.col.n": ("N", "N", "N"),
+    "groups.col.percent": ("%", "%", "%"),
+    "groups.counts": ("{valid} values grouped · {missing} missing · {outside} outside every group",
+                      "{valid} vērtības grupētas · {missing} trūkst · {outside} ārpus grupām",
+                      "сгруппировано значений: {valid} · пропусков: {missing} · вне групп: {outside}"),
+    "groups.create": ("Create the variable", "Izveidot mainīgo", "Создать переменную"),
+    "groups.created": (
+        "{target} was created from {source}: {groups}. {source} itself is unchanged; the rule is in the project’s history.",
+        "{target} izveidots no {source}: {groups}. Pats {source} nav mainīts; likums ir projekta vēsturē.",
+        "Переменная {target} создана по {source}: {groups}. Сама {source} не изменена; правило сохранено в истории проекта."),
+    "groups.invalid": ("These groups cannot be created: {reason}", "Šīs grupas nevar izveidot: {reason}",
+                       "Эти группы нельзя создать: {reason}"),
+    "groups.need_citation": (
+        "Name the source of documented cut points (manual, edition, page).",
+        "Norādiet dokumentēto sliekšņu avotu (rokasgrāmata, izdevums, lappuse).",
+        "Укажите источник порогов из методики (руководство, издание, страница)."),
+    "groups.need_cuts": ("Type the cut points, for example 39; 59.",
+                         "Ierakstiet sliekšņus, piemēram, 39; 59.",
+                         "Введите пороги, например 39; 59."),
+    "groups.existing": (
+        "{name} already groups {source} ({categories}). You can use it directly instead of creating new groups.",
+        "{name} jau grupē {source} ({categories}). To var izmantot uzreiz, neveidojot jaunas grupas.",
+        "{name} уже группирует {source} ({categories}). Её можно использовать сразу, не создавая новые группы."),
+    "groups.use_existing": ("Compare groups by {name}", "Salīdzināt grupas pēc {name}",
+                            "Сравнить группы по {name}"),
+    "groups.no_scale": ("Confirm a quantitative variable first (Variables).",
+                        "Vispirms apstipriniet kvantitatīvu mainīgo (Mainīgie).",
+                        "Сначала подтвердите количественную переменную (Переменные)."),
+    "groups.statement.documented": (
+        "Cut points as entered by the researcher from: {source}. This program has not checked them; verify them against the instrument’s manual (edition, scoring and population) before reporting the groups as the manual’s categories.",
+        "Sliekšņi, kā tos ievadījis pētnieks no: {source}. Programma tos nav pārbaudījusi; pirms grupas ziņojat kā rokasgrāmatas kategorijas, salīdziniet tās ar instrumenta rokasgrāmatu (izdevums, vērtēšana un populācija).",
+        "Пороги введены исследователем по источнику: {source}. Программа их не проверяла; сверьте их с руководством к методике (издание, подсчёт, выборка), прежде чем называть группы категориями методики."),
+    "groups.statement.custom": (
+        "Researcher-defined ranges{note}. They are not clinical norms or validated cut-offs; report how and why they were chosen.",
+        "Pētnieka noteikti diapazoni{note}. Tie nav kliniskās normas vai validēti sliekšņi; aprakstiet, kā un kāpēc tie izvēlēti.",
+        "Диапазоны, заданные исследователем{note}. Это не клинические нормы и не валидированные пороги; опишите, как и почему они выбраны."),
+    "groups.statement.quantile": (
+        "Data-derived groups: sample quantiles of the {n} values of {name} in this dataset (cut points {cuts}). They depend on this sample and are not norms; another sample would give other cut points.",
+        "No datiem iegūtas grupas: izlases kvantiles {n} vērtībām mainīgajā {name} šajā datu kopā (sliekšņi {cuts}). Tās atkarīgas no šīs izlases un nav normas; citai izlasei sliekšņi būtu citi.",
+        "Группы по данным: выборочные квантили {n} значений {name} в этом наборе (пороги {cuts}). Они зависят от этой выборки и не являются нормами; в другой выборке пороги будут иными."),
+    "groups.statement.equal_width": (
+        "Data-derived groups: {k} intervals of equal width from {low} to {high} ({span}). They are not norms.",
+        "No datiem iegūtas grupas: {k} vienāda platuma intervāli no {low} līdz {high} ({span}). Tās nav normas.",
+        "Группы по данным: {k} интервала(ов) равной ширины от {low} до {high} ({span}). Это не нормы."),
+    "groups.empty": ("Group “{label}” {interval} has no values.",
+                     "Grupā “{label}” {interval} nav vērtību.",
+                     "В группе «{label}» {interval} нет значений."),
+    "groups.small": (
+        "Group “{label}” {interval} has only {n} value(s), fewer than {minimum}; comparisons involving it are unstable.",
+        "Grupā “{label}” {interval} ir tikai {n} vērtība(s), mazāk nekā {minimum}; salīdzinājumi ar to ir nestabili.",
+        "В группе «{label}» {interval} только {n} знач., меньше {minimum}; сравнения с ней неустойчивы."),
+    "groups.out_of_range": (
+        "{n} value(s) of {name} fall outside every group; they will be missing in the new variable.",
+        "{n} {name} vērtība(s) neietilpst nevienā grupā; jaunajā mainīgajā tās būs trūkstošas.",
+        "{n} знач. {name} не попадают ни в одну группу; в новой переменной они будут пропусками."),
+    "groups.missing": ("{n} value(s) of {name} are missing; they stay missing.",
+                       "{n} {name} vērtība(s) trūkst; tās paliek trūkstošas.",
+                       "{n} знач. {name} пропущены и остаются пропусками."),
+    "groups.non_numeric": (
+        "{n} non-numeric value(s) of {name} cannot be grouped; they will be missing in the new variable.",
+        "{n} neskaitliskas {name} vērtības nevar grupēt; jaunajā mainīgajā tās būs trūkstošas.",
+        "{n} нечисловых знач. {name} нельзя сгруппировать; в новой переменной они будут пропусками."),
+    "groups.overlap": (
+        "The ranges of “{first}” and “{second}” overlap ({detail}): a value there would belong to both groups. Make one bound exclusive or move it.",
+        "Diapazoni “{first}” un “{second}” pārklājas ({detail}): vērtība tur piederētu abām grupām. Padariet vienu robežu neiekļaujošu vai pārvietojiet to.",
+        "Диапазоны «{first}» и «{second}» перекрываются ({detail}): значение там попало бы в обе группы. Сделайте одну границу невключающей или сдвиньте её."),
+    "groups.overlap_values": ("{n} value(s) of {name} fall into more than one range.",
+                              "{n} {name} vērtība(s) iekrīt vairākos diapazonos.",
+                              "{n} знач. {name} попадают более чем в один диапазон."),
+    "groups.gap": ("No group covers {detail}; such values would be missing in the new variable.",
+                   "Neviena grupa neaptver {detail}; šādas vērtības jaunajā mainīgajā būtu trūkstošas.",
+                   "Ни одна группа не охватывает {detail}; такие значения станут пропусками."),
+    "groups.quantile_ties": (
+        "Cut point {cut} falls on {ties} tied values of {name}; all of them go to “{label}”, so the groups are unequal ({sizes}).",
+        "Slieksnis {cut} iekrīt {ties} vienādās {name} vērtībās; tās visas nonāk grupā “{label}”, tāpēc grupas ir nevienādas ({sizes}).",
+        "Порог {cut} приходится на {ties} одинаковых значений {name}; все они попадают в «{label}», поэтому группы неравны ({sizes})."),
+    "groups.non_integer_threshold": (
+        "Threshold {value} is not a whole number, but every value of {name} is: no value can equal it, so whether it is inclusive makes no difference. If the source gives thresholds for another scoring (for example a mean instead of a sum), convert them first.",
+        "Slieksnis {value} nav vesels skaitlis, bet visas {name} vērtības ir: neviena vērtība nevar būt tam vienāda, tāpēc iekļaušanai nav nozīmes. Ja avots dod sliekšņus citai vērtēšanai (piemēram, vidējam, nevis summai), vispirms tos pārrēķiniet.",
+        "Порог {value} — не целое число, а все значения {name} целые: ни одно не может ему равняться, поэтому включение границы не важно. Если источник даёт пороги для другого подсчёта (например, среднего вместо суммы), сначала пересчитайте их."),
+    "groups.no_integer_in_range": (
+        "Group “{label}” {interval} cannot contain any whole-number value, and every value of {name} is a whole number.",
+        "Grupā “{label}” {interval} nevar būt neviena vesela skaitļa vērtība, bet visas {name} vērtības ir veseli skaitļi.",
+        "Группа «{label}» {interval} не может содержать целых значений, а все значения {name} целые."),
 })
 
 
@@ -2218,6 +2365,13 @@ T.update({
 # Engine-facing confirmation and option labels: canonical English (kept in
 # provenance) → displayed LV/RU. Method names stay international.
 LABELS: dict[str, tuple[str, str]] = {
+    "I checked that the items are meant to measure one construct": (
+        "Es pārbaudīju, ka jautājumi ir paredzēti viena konstrukta mērīšanai",
+        "Я проверил(а), что пункты предназначены для измерения одного конструкта"),
+    "300 resamples": ("300 atkārtotas izlases", "300 повторных выборок"),
+    "I checked that these columns hold answers to single items, not total or mean scores": (
+        "Es pārbaudīju, ka šajās kolonnās ir atbildes uz atsevišķiem jautājumiem, nevis kopējie vai vidējie rādītāji",
+        "Я проверил(а), что в этих столбцах ответы на отдельные пункты, а не суммарные или средние баллы"),
     "I checked that the items measure one construct and reversed items are recoded": (
         "Es pārbaudīju, ka jautājumi mēra vienu konstruktu un apgrieztie jautājumi ir pārkodēti",
         "Я проверил(а), что пункты измеряют один конструкт и обратные пункты перекодированы"),

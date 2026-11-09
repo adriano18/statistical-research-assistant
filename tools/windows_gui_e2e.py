@@ -2151,6 +2151,53 @@ def journey_stage36_charts(gui: Gui, work: Path, journey: Journey) -> None:
         gui.shot("chart after restart")
 
 
+STAGE36_GROUPS_PROJECT = "Fictional Stage 36 groups"
+
+
+def journey_stage36_groups(gui: Gui, work: Path, journey: Journey) -> None:
+    """Spec §14 journey 3 on the packaged EXE: groups from the UCLA score
+    (the existing UCLA_Level is offered first; three quantile groups are
+    previewed and created as a new variable, UCLA itself unchanged), then
+    the eight scales by the new groups in one Kruskal–Wallis batch."""
+    import pandas as pd
+
+    from stage36_fixtures import SCALES, generator
+
+    csv = generator().create_csv(work)
+    expected = pd.qcut(pd.read_csv(csv)["UCLA"], 3).value_counts(sort=False).tolist()
+    journey.facts["engine_group_sizes"] = expected
+    create_project(gui, journey, STAGE36_GROUPS_PROJECT)
+    open_data(gui, journey, csv)
+    accept_levels(gui, journey)
+    with journey.step("the existing UCLA_Level is offered for UCLA"):
+        nav(gui, "nav.data")
+        gui.choose(T("groups.source"), "UCLA", options=["Age", "UCLA", *SCALES])
+        gui.wait_text("UCLA_Level already groups UCLA", timeout=20)
+    with journey.step("three quantile groups previewed, then created"):
+        gui.wait_text(T("groups.counts", valid=55, missing=0, outside=0), timeout=20)
+        gui.shot("groups previewed")
+        gui.click(T("groups.create"), control_type="Button")
+        gui.wait_text("UCLA itself is unchanged", timeout=30)
+        # Windows exposes a preview row as one element, not a cell per number:
+        # the group sizes are read from the announcement ("Q1 [37, 46]: n = 18").
+        for size in expected:
+            gui.wait_text(f": n = {size}", timeout=10)
+        gui.shot("groups created")
+    title = T("task.title_compare", group="UCLA_groups", count=8)
+    with journey.step("the eight scales by the new groups: one Kruskal–Wallis batch"):
+        gui.click(T("groups.use_existing", name="UCLA_groups"), control_type="Button")
+        gui.click(T("pick.all_scale", count=10), control_type="Button")
+        gui.check(option_label("Age", "scale"), False)
+        gui.check(option_label("UCLA", "scale"), False)
+        gui.check("I confirm that the two groups contain independent observations")
+        gui.check("I reviewed the outcome distributions, outliers and group sizes")
+        gui.click(regex="^" + re.escape(T("rec.run", method="")), control_type="Button")
+        gui.wait_text(title, timeout=180)
+        for scale in SCALES:
+            gui.wait_text(scale, timeout=10)
+        gui.shot("kruskal-wallis by the new groups")
+
+
 def journey_installed_reopen(gui: Gui, work: Path, journey: Journey) -> None:
     """After an update (or a reinstall) the same projects open again."""
     expect(gui.real_data, "run installed journeys with --real-data")
@@ -2176,6 +2223,7 @@ INSTALLED_JOURNEYS = {
 JOURNEYS = {
     "stage36-tasks": journey_stage36_tasks,
     "stage36-charts": journey_stage36_charts,
+    "stage36-groups": journey_stage36_groups,
     "project-a": journey_project_a,
     "project-b": journey_project_b,
     "import-30": journey_import_30,

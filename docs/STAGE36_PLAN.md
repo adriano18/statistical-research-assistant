@@ -42,7 +42,7 @@ so an unexpected success fails CI.
 | D2 | Descriptive statistics show "Structured numeric results: Not captured" | `analysis_runs.run_descriptive` keeps no result object; `build_analysis_evidence` only knows Shapiro–Wilk/Levene rows for this section | `test_descriptive_statistics_are_structured_numbers` | 36.2 ✔ |
 | D3 | One variable against eight scales needs eight separate runs; no shared table, no multiple-comparison correction | correlation engine and guided roles take one pair | `test_one_variable_against_eight_scales_in_one_run` | 36.2 ✔ |
 | D4 | A two-category group (Sex) for a 3–8 group method is not explained before Run | `role_problems` does not count the categories of the group | `test_a_two_group_variable_is_explained_before_a_three_group_test` | 36.2 ✔ |
-| D5 | Reliability (ω/α) is offered for total scores | the guided advice cannot tell item responses from totals | `test_no_reliability_from_total_scores` | 36.3 |
+| D5 | Reliability (ω/α) is offered for total scores | the guided advice cannot tell item responses from totals | `test_no_reliability_from_total_scores` | 36.3 ✔ |
 | D6 | A Word document with two 60-item table forms **without numbers in the cells** is "not recognised" | `parse_scientific_lines` needs numbered lines; table structure is flattened first | `test_two_unnumbered_sixty_item_forms` | 36.5 ✔ |
 | D7 | The stated item count is read from a scoring note ("each with four items" → 4) | `expected_item_count` takes the first count phrase in the document | `test_the_stated_item_count_is_not_taken_from_a_scoring_note` | 36.5 ✔ |
 | D8 | A scanned table with a number column yields 16 of 52 items | line parser needs a clean number at the line start; a scan artifact (`"17.`) ends the sequence; no column geometry | `test_a_scanned_table_with_a_number_column_yields_all_52_items` | 36.5 ✔ |
@@ -67,6 +67,7 @@ Further audit observations, handled in the listed sub-stage:
 | `synthetic_cope_two_forms_60_unnumbered.docx` | two 60-item table forms **without numbers in the cells**, each with its own response options (added in 36.0; reproduces D6) |
 | `synthetic_sacs_scanned_52.pdf` | two image-only pages, numbers inline with the text |
 | `synthetic_lv_table_scan_52.pdf` | two image-only pages of a table: number column, wrapped rows, Latvian letters, repeated legend, slight rotation and tick artifacts before numbers (added in 36.0; reproduces D8 exactly: 16 of 52) |
+| `synthetic_items_scale.csv` | 200 × 12: ten invented 1–5 items of one invented construct, two reverse-keyed items not recoded, a floor effect, nine missing answers and an invented total (added in 36.3; item diagnostics, D5) |
 
 `tests/test_stage36_fixtures.py` checks the README's minimal verification
 (shape, group sizes, two 60-item forms, image-only pages, determinism).

@@ -2,7 +2,8 @@
 """Generate invented Stage 36 fixtures. NEVER use or commit real participant data.
 
 Output: a reproducible UCLA/SACS-shaped CSV, a 2-form 60-item DOCX,
-and an image-only 2-page PDF with 52 numbered items plus distractor references.
+an image-only 2-page PDF with 52 numbered items plus distractor references,
+their Stage 36.0 variants and (Stage 36.3) an item-level CSV of one invented scale.
 
 These are artificial instrument names and fictional question texts. The fixture
 is intentionally unsuitable for scientific interpretation or scale validation.
@@ -339,6 +340,63 @@ def create_lv_table_scan_pdf(out_dir: Path, typeface: str = "dejavu") -> Path:
     return target
 
 
+# --------------------------------------------------------------------------
+# Item-level responses added in Stage 36.3 (item diagnostics, reliability).
+# One wholly invented construct ("zephyr calmness", item names ZEP01-ZEP10):
+# no wording, keys, norms or data of any real questionnaire or participant.
+
+ITEMS = tuple(f"ZEP{i:02d}" for i in range(1, 11))
+ITEM_TOTAL = "ZEP_total"
+ITEM_COLUMNS = ["Code", *ITEMS, ITEM_TOTAL]
+ITEM_ROWS = 200
+# Keyed in the opposite direction and deliberately NOT recoded in the file.
+REVERSE_ITEMS = ("ZEP04", "ZEP08")
+# Most answers at the lowest code (about 60 % answer 1).
+FLOOR_ITEM = "ZEP06"
+ITEM_LOADINGS = (0.72, 0.66, 0.70, 0.62, 0.68, 0.55, 0.74, 0.63, 0.67, 0.58)
+ITEM_THRESHOLDS = (-1.55, -0.55, 0.45, 1.45)     # standard-normal cut points -> codes 1..5
+FLOOR_THRESHOLDS = (0.25, 0.90, 1.50, 2.10)
+# (row number, item) of the few unanswered items; row 104 skips two.
+ITEM_MISSING = ((17, "ZEP02"), (38, "ZEP05"), (61, "ZEP09"), (89, "ZEP03"), (104, "ZEP07"),
+                (104, "ZEP10"), (133, "ZEP01"), (171, "ZEP05"), (188, "ZEP08"))
+
+
+def create_items_csv(out_dir: Path) -> Path:
+    """200 invented respondents x 10 five-point items of one invented construct.
+
+    One common factor drives every answer (loadings 0.55-0.74, codes 1-5
+    from fixed thresholds). ZEP04 and ZEP08 are keyed in the opposite
+    direction and are NOT recoded, ZEP06 has a strong floor effect, nine
+    answers are missing, and ZEP_total is the invented scoring of a
+    complete row: the sum of the ten items with ZEP04 and ZEP08 reversed
+    (6 - code); it is empty when an answer is missing.
+    """
+    rnd = random.Random(SEED + 363)
+    missing = set(ITEM_MISSING)
+    path = out_dir / "synthetic_items_scale.csv"
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=ITEM_COLUMNS)
+        writer.writeheader()
+        for row_number in range(1, ITEM_ROWS + 1):
+            trait = rnd.gauss(0, 1)
+            row: dict[str, object] = {"Code": f"invented_{row_number:03d}"}
+            scored = []
+            for item, loading in zip(ITEMS, ITEM_LOADINGS):
+                direction = -1 if item in REVERSE_ITEMS else 1
+                value = direction * loading * trait + (1 - loading ** 2) ** 0.5 * rnd.gauss(0, 1)
+                cuts = FLOOR_THRESHOLDS if item == FLOOR_ITEM else ITEM_THRESHOLDS
+                code = 1 + sum(value > cut for cut in cuts)
+                if (row_number, item) in missing:
+                    row[item] = ""
+                    scored.append(None)
+                    continue
+                row[item] = code
+                scored.append(6 - code if item in REVERSE_ITEMS else code)
+            row[ITEM_TOTAL] = "" if None in scored else sum(scored)
+            writer.writerow(row)
+    return path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out-dir", default=".stage36-fixtures")
@@ -347,7 +405,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     for path in (create_csv(out_dir), create_docx(out_dir), create_scan_pdf(out_dir),
                  create_docx_unnumbered(out_dir), create_lv_table_scan_pdf(out_dir),
-                 create_lv_table_scan_pdf(out_dir, "stix")):
+                 create_lv_table_scan_pdf(out_dir, "stix"), create_items_csv(out_dir)):
         print(f"{path} ({path.stat().st_size} bytes)")
 
 
