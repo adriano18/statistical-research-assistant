@@ -168,10 +168,17 @@ count cannot be checked against it; compare the list with the source."
 |---|---|---|---|---|---|
 | numbered DOCX | 60 + 60, 0 schemes, stated count 4 | 60 + 60 | **60 + 60**, items 1–60 each | 2 (one per form): 4 labels from the instruction, codes 1–4, 60 items each, not confirmed | titles from headings; stated count `None`; 15 scoring groups; 2 references kept out |
 | unnumbered DOCX | not recognised (`NoQuestionsFound`), stated count 4 | 60 + 60 | **60 + 60**, numbered by row order | 2: form 1 from the header row, form 2 from the instruction; codes 1–4; 60 items each; not confirmed | header row not an item; stated count `None`; 15 scoring groups; 2 references kept out |
-| LV table scan (`lav`) | 16 of 52 | 52 | **52** (1–52); the bare `5` stays instruction text | 1 from the legend: 5 labels, codes 1–5, 52 items, not confirmed | 49 of 52 statements identical to the generator text (Latvian letters intact); the other 3 keep OCR junk of two or more letters from the answer area (`il`, `du`, `laiz BS.4`); 6 numbers flagged (17–21, 24); 13 wrapped statements joined; 44 noise lines dropped; 52 regions; 2 references kept out |
-| LV table scan (`eng`) | — | 52 | **52** | 1 from the legend (letters without diacritics), 52 items | numbers 17–21, 24 and 44 (`44,`) flagged; 0 statements identical (English OCR drops Latvian diacritics) |
+| LV table scan (`lav`) | 16 of 52 | 52 | **52** (1–52); the bare `5` stays instruction text | 1 from the legend: 5 labels, codes 1–5, 52 items, not confirmed | 51 of 52 statements identical to the generator text (Latvian letters intact; 49 before 36.7); the other keeps OCR junk of two letters from the answer area; 6 numbers flagged (17–21, 24); 13 wrapped statements joined; no noise lines left to drop (44 before the rules were whitened); 52 regions; 2 references kept out |
+| LV table scan (`eng`) | — | 52 | **52** | 1 from the legend (letters without diacritics), 52 items | numbers 17–21 and 24 flagged; 0 statements identical (English OCR drops Latvian diacritics) |
 | LV table scan (`lav+rus+eng`) | — | 52 | **52** | 1 from the legend: 5 labels, 52 items | 48 of 52 statements identical (the rest: OCR letter substitutions such as Cyrillic `Мг.` for `Nr.`, or two-letter junk); 6 numbers flagged |
+| LV table scan in STIX General, a Times-like font (`lav`) | — | 52 | **52** (1–52) | 1 from the legend: 5 labels, 52 items, not confirmed | 46 of 52 statements identical; 6 numbers flagged; 13 wrapped statements joined (before 36.7: 26 rows, page 2 kept no table) |
+| the same (`lav+rus+eng`) | — | 52 | **52** | 1 from the legend, 52 items | 41 of 52 statements identical; 6 numbers flagged |
+| the same (`eng`) | — | 52 | **52** | none from the legend (English OCR misreads its labels; a row scheme covers 2 items) | 16 numbers flagged; the wrong OCR language for a Latvian form |
 | inline scan (`eng`) | 52 | 52 | **52** | 0 (unchanged) | geometry path not used (inline numbers); 52 regions; 2 references kept out |
+
+The LV rows were measured again at Stage 36.7, on the fixtures drawn with
+matplotlib's fonts and Pillow's basic layout and with table rules whitened
+before OCR; the STIX rows are new at 36.7.
 
 The existing PSQ-like strain-table scan of the test kit
 (`tests/synthetic_documents.psq_like_pdf`, page 2) also has a number
@@ -227,9 +234,10 @@ proposals awaiting review, not verified items.
   number; a row missed entirely by OCR shifts inferred numbers until the
   next readable one (each inferred number is flagged).
 * Answer-area junk of two or more letters (`LZ` for `1 2`, `du`) is never
-  stripped and stays at the end of the prompt (3 of 52 on the Latvian scan
-  read with `lav`); a statement that really ends with digits right of the
-  answer floor would lose them.
+  stripped and stays at the end of the prompt (on the synthetic Latvian
+  table read with `lav`: 1 of 52 at 36.7, 3 of 52 before; 4 of 52 on the
+  Windows pages of the Times New Roman table); a statement that really ends
+  with digits right of the answer floor would lose them.
 * An unreadable number on the last row of a table without answer digits
   cannot be confirmed by a next row and stays plain text.
 * Rows above a table's first readable number are numbered back only when
