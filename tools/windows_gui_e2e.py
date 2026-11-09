@@ -1410,14 +1410,19 @@ SITUATIONAL_OPTIONS = "Not at all / Slightly / Moderately / Strongly"
 GENERAL_OPTIONS = "Hardly ever / Now and then / Fairly often / Very often"
 
 
-def review_form(gui: Gui, title: str, *, then: str) -> None:
-    """Press "Review this form" on the card of the form ``title``, until
-    ``then`` is on screen. Every card has a button of that name; its tooltip
-    names the form, and Windows exposes a tooltip as an element over the
-    button itself (as for the Open buttons of Home's projects)."""
+def review_form(gui: Gui, title: str, *, index: int, then: str) -> None:
+    """Press "Review this form" on the card of the form ``title`` (the
+    ``index``-th card), until ``then`` is on screen. Every card has a button
+    of that name; its tooltip names the form, and Windows exposes a tooltip
+    as an element over the button itself (as for Home's Open buttons)."""
     tip = T("imp.form.use_tip", title=title)
-    holder = gui.find(regex=re.escape(tip), control_type=("Button", "Group", "Custom", "Text"),
-                      timeout=15)
+    try:
+        holder = gui.find(regex=re.escape(tip),
+                          control_type=("Button", "Group", "Custom", "Text"), timeout=15)
+    except StepFailure:
+        # No tooltip element: the cards stand in document order.
+        print(f"  [form] no tooltip names {title!r}; using card {index + 1}", flush=True)
+        holder = gui.find(T("imp.form.use"), control_type="Button", index=index)
     rect = holder.element_info.rectangle
     button = next((b for b in gui.query(T("imp.form.use"), control_type="Button")
                    if b.element_info.rectangle == rect), holder)
@@ -1454,7 +1459,12 @@ def journey_import_cope_docx(gui: Gui, work: Path, journey: Journey) -> None:
                              scroll=False, visible=False)
             journey.facts["step_2_enabled_before_choice"] = bool(step2.element_info.enabled)
     with journey.step("review the second (situational) form: its own options"):
-        review_form(gui, COPE_SITUATIONAL, then=SITUATIONAL_OPTIONS)
+        # Only the choice shows "form 2 of 2" (step 1's label); the options
+        # are on the form's card before it, so they cannot tell a click.
+        review_form(gui, COPE_SITUATIONAL, index=1,
+                    then=T("imp.status.form_of", number=2, total=2))
+        gui.wait_text(T("imp.scale_items", count=60))           # its scale step
+        gui.wait_text(SITUATIONAL_OPTIONS)
         expect(not gui.has_text(GENERAL_OPTIONS), "the general form's options are shown")
     with journey.step("the items step counts 60 situational items"):
         wizard_step(gui, 3)
