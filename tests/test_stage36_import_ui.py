@@ -970,13 +970,36 @@ class LongListTests(Base):
                 times.append(time.perf_counter() - started)
             return 1000 * statistics.median(times)
 
-        windowed = median_ms()
+        def patch_ms() -> float | None:
+            """Flet's diff of the rebuilt page for one selection (what is
+            computed and sent to the window); informative only."""
+            import warnings
+
+            try:
+                from flet.controls.base_control import BaseControl
+                from flet.controls.object_patch import ObjectPatch
+            except ImportError:
+                return None
+            ws.click("imp-item-60")
+            before = ws.app.page_control
+            ws.click("imp-item-61")
+            after = ws.app.page_control
+            started = time.perf_counter()
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                ObjectPatch.from_diff(before, after, control_cls=BaseControl, frozen=True)
+            return 1000 * (time.perf_counter() - started)
+
+        windowed, windowed_patch = median_ms(), patch_ms()
         self.assertEqual(len(rows(ws)), 100)
         with mock.patch.object(type(page), "PAGE_LIMIT", 10_000):
-            everything = median_ms()
+            everything, everything_patch = median_ms(), patch_ms()
             self.assertEqual(len(rows(ws)), 200)
         print(f"\n[ux] items step with {self.COUNT} items: {windowed:.0f} ms per build "
               f"(100 rows shown); {everything:.0f} ms with all {self.COUNT} rows")
+        if windowed_patch is not None:
+            print(f"[ux] Flet patch of one selection: {windowed_patch:.0f} ms (100 rows); "
+                  f"{everything_patch:.0f} ms (all {self.COUNT} rows)")
         self.assertLess(windowed, 600, "the items step must build well under a second")
 
 
