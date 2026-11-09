@@ -20,6 +20,19 @@ The generator is deterministic and creates:
 | `synthetic_cope_two_forms_60.docx` | Two separate 60-item **fictional** tables, with different header conventions plus synthetic scoring metadata and numbered references. Verify the importer does not mistake citations for questions or combine versions. |
 | `synthetic_sacs_scanned_52.pdf` | Two image-only pages with 52 invented numbered items, five printed response columns, and two numbered reference distractors. Verify offline OCR, table rows, item count and review UX. |
 
+Stage 36.0 added two structural variants that reproduce the layouts which
+defeated the importer on the owner's private documents, with wholly
+invented text:
+
+| Filename | Intended regression |
+|---|---|
+| `synthetic_cope_two_forms_60_unnumbered.docx` | Two 60-item table forms with **no item numbers inside the cells** (first table 61 rows with a header of response labels, second 60 rows, 5 columns), each form with its own response options, a 15 × 4 scoring note and numbered references. |
+| `synthetic_lv_table_scan_52.pdf` | Two image-only pages of a table: item numbers in their own column, statements wrapped onto a second line, Latvian letters with diacritics, the response legend repeated at the top of page 2, a slight rotation and tick-like artifacts before some numbers. |
+
+`tests/test_stage36_fixtures.py` checks the minimal verification below;
+`tests/test_stage36_regressions.py` reproduces the documented defects on
+these files (see `docs/STAGE36_PLAN.md`).
+
 These are structural/functional fixtures only. They **do not validate any real UCLA, COPE or SACS instrument**, scoring key, translation or intellectual-property rights.
 
 ### Minimal independent verification expected
