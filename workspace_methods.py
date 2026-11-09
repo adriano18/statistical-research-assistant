@@ -385,7 +385,27 @@ def role_problems(spec: MethodSpec, roles: dict, session) -> list[tuple[str, dic
                 problems.append(("block.binary", {"name": name}))
     if len(chosen) != len(set(chosen)):
         problems.append(("block.same_variable", {}))
+    if spec.key == "omnibus" and roles.get("group") and session.has_data:
+        problems += group_count_problems(roles["group"], session)
     return problems
+
+
+def group_count_problems(group: str, session) -> list[tuple[str, dict]]:
+    """Explained before Run: a 3–8 group method needs 3–8 groups (Stage 36)."""
+    labels = session.group_labels(group)
+    if len(labels) == 2:
+        return [("block.two_groups_for_omnibus", {"name": group, "labels": ", ".join(labels)})]
+    if len(labels) > 8:
+        return [("block.group_count", {"name": group, "count": len(labels)})]
+    return []
+
+
+def small_group_note(group: str, outcome: str, session) -> str:
+    """Groups with fewer than five complete values for this outcome."""
+    from batch_groups import group_sizes
+
+    sizes = group_sizes(session.df, group, outcome)
+    return ", ".join(f"{label} ({n})" for label, n in sizes.items() if n < 5)
 
 
 class RoleProblems(ValueError):
@@ -550,6 +570,13 @@ def _compare(sel, session, level):
             "groups", {"method": "welch"}, {"outcome": outcome, "group": group},
             reasons=(facts, ("why.two_groups", {}), ("why.welch", {"outcome": outcome})),
             alternatives=(Alternative("groups", {"method": "mannwhitney"}, "alt.mannwhitney"),),
+            design_checks=("independent", "assumptions"))
+    small = small_group_note(group, outcome, session)
+    if small:
+        return Advice(
+            "omnibus", {"method": "kruskal"}, {"outcome": outcome, "group": group},
+            reasons=(facts, ("why.many_groups", {}), ("why.small_groups_rank",
+                                                       {"name": group, "groups": small})),
             design_checks=("independent", "assumptions"))
     if out_level == "ordinal":
         return Advice(

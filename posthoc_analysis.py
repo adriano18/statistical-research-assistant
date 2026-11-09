@@ -49,6 +49,47 @@ def holm_adjust(pvalues: list[float]) -> list[float]:
     return adjusted.tolist()
 
 
+def dunn_pairs(samples, labels) -> list[PairwiseComparison]:
+    """Dunn z tests between all pairs of groups, from the ranks of ALL groups,
+    with the global tie correction and Holm-adjusted p-values (Dunn, 1964)."""
+    all_values = np.concatenate(samples)
+    n_total = len(all_values)
+    ranks = stats.rankdata(all_values, method="average")
+    _, counts = np.unique(all_values, return_counts=True)
+    tie_sum = np.sum(counts.astype(float) ** 3 - counts)
+    base_variance = (
+        n_total * (n_total + 1) / 12
+        - tie_sum / (12 * (n_total - 1))
+    )
+    if base_variance <= 0:
+        raise ValueError("No rank variation for Dunn comparisons.")
+
+    rank_means = []
+    start = 0
+    for values in samples:
+        end = start + len(values)
+        rank_means.append(float(np.mean(ranks[start:end])))
+        start = end
+
+    raw_p = []
+    unfinished = []
+    for i, j in combinations(range(len(labels)), 2):
+        difference = rank_means[i] - rank_means[j]
+        standard_error = math.sqrt(
+            base_variance * (1 / len(samples[i]) + 1 / len(samples[j]))
+        )
+        z = difference / standard_error
+        p = float(2 * stats.norm.sf(abs(z)))
+        raw_p.append(p)
+        unfinished.append((i, j, difference, z, p))
+
+    adjusted = holm_adjust(raw_p)
+    return [PairwiseComparison(first=labels[i], second=labels[j], estimate=difference,
+                               statistic=z, p_adjusted=p_adj, p_raw=p,
+                               ci_low=None, ci_high=None)
+            for (i, j, difference, z, p), p_adj in zip(unfinished, adjusted)]
+
+
 def analyze_posthoc(omnibus) -> PosthocResult:
     """Pairwise tests for an already-computed independent-group result."""
     method_map = {
@@ -92,44 +133,7 @@ def analyze_posthoc(omnibus) -> PosthocResult:
             "Normality/independence/outliers and variance assumptions require review.",
         ]
     else:
-        all_values = np.concatenate(samples)
-        n_total = len(all_values)
-        ranks = stats.rankdata(all_values, method="average")
-        _, counts = np.unique(all_values, return_counts=True)
-        tie_sum = np.sum(counts.astype(float) ** 3 - counts)
-        base_variance = (
-            n_total * (n_total + 1) / 12
-            - tie_sum / (12 * (n_total - 1))
-        )
-        if base_variance <= 0:
-            raise ValueError("No rank variation for Dunn comparisons.")
-
-        rank_means = []
-        start = 0
-        for values in samples:
-            end = start + len(values)
-            rank_means.append(float(np.mean(ranks[start:end])))
-            start = end
-
-        raw_p = []
-        unfinished = []
-        for i, j in combinations(range(len(labels)), 2):
-            difference = rank_means[i] - rank_means[j]
-            standard_error = math.sqrt(
-                base_variance * (1 / len(samples[i]) + 1 / len(samples[j]))
-            )
-            z = difference / standard_error
-            p = float(2 * stats.norm.sf(abs(z)))
-            raw_p.append(p)
-            unfinished.append((i, j, difference, z, p))
-
-        adjusted = holm_adjust(raw_p)
-        for (i, j, difference, z, p), p_adj in zip(unfinished, adjusted):
-            pairs.append(PairwiseComparison(
-                first=labels[i], second=labels[j], estimate=difference,
-                statistic=z, p_adjusted=p_adj, p_raw=p,
-                ci_low=None, ci_high=None,
-            ))
+        pairs = dunn_pairs(samples, labels)
         warnings = [
             "Dunn compares mean ranks based on ALL groups (first minus second).",
             "The z statistic uses the global tie correction and a normal approximation.",

@@ -217,6 +217,10 @@ def build_analysis_evidence(
         raise ValueError("Run a successful analysis before opening the wizard.")
     if not isinstance(title, str) or not title.strip():
         raise ValueError("A completed analysis title is required.")
+    from stat_results import StructuredResult
+
+    if isinstance(result, StructuredResult):
+        return _structured_evidence(section, title, report, png, result, profile)
     rows: list[EvidenceRow] = []
     n_complete = getattr(result, "n_complete", None)
     n_total = getattr(result, "n_total", None)
@@ -360,6 +364,30 @@ def build_analysis_evidence(
         n_total=int(n_total) if isinstance(n_total, Integral) else None,
     )
 
+
+
+def _structured_evidence(section, title, report, png, result, profile) -> AnalysisEvidence:
+    """Evidence rows straight from a Stage 36 structured result: every value
+    is a computed quantity; an absent value says why (never 'Not captured')."""
+    rows = []
+    for quantity in (*result.quantities, *result.diagnostics):
+        ci = (f"[{quantity.ci_low:.2f}, {quantity.ci_high:.2f}]" if quantity.has_ci
+              else "Not calculated")
+        p_text = _p(quantity.p) if quantity.p is not None else "Not calculated"
+        rows.append(EvidenceRow(quantity.label, quantity.text(), ci, p_text))
+    warnings = tuple(result.warnings)
+    if section != "descriptive" and not any(row.ci != "Not calculated" for row in rows):
+        warnings += ("No confidence interval is available in this analysis summary. "
+                     "Do not infer one from the point estimate.",)
+    sample = result.sample or {}
+    n_used, n_total = sample.get("n_used"), sample.get("n_total")
+    return AnalysisEvidence(
+        section=section, title=title, method=title, rationale=profile.rationale,
+        assumptions=profile.assumptions, limitation=profile.limitation, rows=tuple(rows),
+        warnings=warnings, source_report=report, figure_png=png, has_structured_values=True,
+        n_complete=int(n_used) if isinstance(n_used, Integral) else None,
+        n_total=int(n_total) if isinstance(n_total, Integral) else None,
+    )
 
 def source_references(section: str) -> tuple[str, ...]:
     """Only cite works relevant to the current method plus APA 7 itself."""

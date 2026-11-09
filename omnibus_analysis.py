@@ -27,6 +27,8 @@ class OmnibusResult:
     effect_size: float
     p_method: str
     warnings: list[str]
+    # Stage 36: the chi-square p of H when a permutation p is primary.
+    p_asymptotic: float | None = None
 
 
 def recommend_omnibus_test(scale: str, independent: bool) -> str:
@@ -107,8 +109,14 @@ def analyze_omnibus(
         for label in labels
     ]
     ns = np.asarray([len(x) for x in samples], dtype=int)
-    if np.min(ns) < 5:
-        raise ValueError("At least five complete observations per group are required.")
+    # Kruskal–Wallis ranks any group of at least two values; with a group
+    # under five its chi-square p is unreliable, so a permutation p is used
+    # (Stage 36). ANOVA and Welch keep five per group.
+    minimum = 2 if method == "kruskal" else 5
+    if np.min(ns) < minimum:
+        raise ValueError(f"At least {minimum} complete observations per group are required."
+                         if minimum == 2 else
+                         "At least five complete observations per group are required.")
     n = int(np.sum(ns))
     combined = np.concatenate(samples)
     if np.unique(combined).size < 2:
@@ -116,6 +124,7 @@ def analyze_omnibus(
 
     df1 = float(k - 1)
     df2 = None
+    p_asymptotic = None
     means = np.asarray([np.mean(x) for x in samples])
     variances = np.asarray([np.var(x, ddof=1) for x in samples])
 
@@ -140,6 +149,15 @@ def analyze_omnibus(
         test = stats.kruskal(*samples)
         statistic, p_value = float(test.statistic), float(test.pvalue)
         p_method = "Tie-corrected Kruskal–Wallis H (SciPy asymptotic p-value)"
+        if np.min(ns) < 5:
+            from batch_groups import DEFAULT_PERMUTATIONS, DEFAULT_SEED, kruskal_permutation_p
+
+            p_asymptotic = p_value
+            p_value = kruskal_permutation_p(samples, permutations=DEFAULT_PERMUTATIONS,
+                                            seed=DEFAULT_SEED, observed=statistic)
+            p_method = (f"Tie-corrected Kruskal–Wallis H; Monte Carlo permutation p "
+                        f"({DEFAULT_PERMUTATIONS:,} permutations, seed {DEFAULT_SEED}) because a "
+                        f"group has fewer than five values (asymptotic p = {p_asymptotic:.3f})")
 
     if method in {"anova", "welch"}:
         grand_mean = float(np.mean(combined))
@@ -170,6 +188,10 @@ def analyze_omnibus(
         )
     if np.min(ns) < 10:
         warnings.append("Small groups can make estimates and assumptions fragile.")
+    if method == "kruskal" and np.min(ns) < 5:
+        small = ", ".join(f"{label} ({size})" for label, size in zip(labels, ns) if size < 5)
+        warnings.append(f"Groups with fewer than five values: {small}. The chi-square "
+                        "approximation is unreliable; the p-value is a permutation estimate.")
     if method == "anova":
         warnings.append(
             "Classical ANOVA assumes appropriate residual distributions and "
@@ -210,4 +232,5 @@ def analyze_omnibus(
         effect_size=float(effect),
         p_method=p_method,
         warnings=warnings,
+        p_asymptotic=p_asymptotic,
     )
