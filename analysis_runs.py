@@ -52,6 +52,7 @@ from regression_analysis import analyze_regression
 from regression_charts import make_regression_chart
 from regression_reporting import format_regression_report, regression_brief
 from reliability import analyze_cronbach
+from stat_results import describe_categorical, describe_quantitative
 from reliability_charts import make_reliability_chart
 from reliability_reporting import ALPHA_GUIDE, apa_reliability_report
 from repeated_analysis import analyze_repeated
@@ -148,9 +149,14 @@ def run_descriptive(df: pd.DataFrame, variable: str, scale: str) -> AnalysisRun:
             "response order matters; for nominal data, categories have no "
             "natural numeric distance."
         )
+    # Stage 36 (spec §8): the numbers also come as a structured result, so
+    # the evidence table shows N, missing, M, SD, median, IQR, min and max
+    # instead of "Not captured".
+    structured = (describe_quantitative(values, variable) if scale == "scale"
+                  else describe_categorical(values, variable, scale))
     return AnalysisRun(
         "descriptive", f"Descriptive: {variable}", text + "\n\n" + guide, png,
-        summary=text, guide=guide,
+        result=structured, summary=text, guide=guide,
         inputs={"variable": variable, "scale": scale},
     )
 

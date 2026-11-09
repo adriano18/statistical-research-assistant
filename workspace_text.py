@@ -1675,6 +1675,30 @@ T.update({
     "block.binary": ("{name} must be coded 0/1. Recode it in Data → Prepare first.",
                      "{name} jābūt kodētam 0/1. Vispirms pārkodējiet sadaļā Dati → Sagatavot.",
                      "{name} должен быть закодирован 0/1. Сначала перекодируйте в «Данные → Подготовка»."),
+    "block.two_groups_for_omnibus": (
+        "{name} has two groups ({labels}). A comparison of 3–8 groups does not apply; compare two independent groups instead (Welch t or Mann–Whitney U).",
+        "{name} ir divas grupas ({labels}). Salīdzinājums 3–8 grupām neder; salīdziniet divas neatkarīgas grupas (Velča t vai Manna–Vitnija U).",
+        "В {name} две группы ({labels}). Сравнение 3–8 групп здесь не подходит; сравните две независимые группы (t-критерий Уэлча или U-критерий Манна–Уитни)."),
+    "block.group_too_small": (
+        "{name}: these groups have fewer than {minimum} values: {groups}. They cannot be compared.",
+        "{name}: šajās grupās ir mazāk nekā {minimum} vērtības: {groups}. Tās nevar salīdzināt.",
+        "{name}: в этих группах меньше {minimum} значений: {groups}. Их нельзя сравнить."),
+    "block.small_groups_parametric": (
+        "ANOVA needs at least five values per group; {name} has {groups}. Use Kruskal–Wallis, which reports a permutation p-value.",
+        "ANOVA vajag vismaz piecas vērtības katrā grupā; {name}: {groups}. Izmantojiet Kraskela–Volisa testu ar permutāciju p vērtību.",
+        "Для ANOVA нужно минимум пять значений в группе; в {name}: {groups}. Используйте критерий Краскела–Уоллиса с перестановочным p."),
+    "warn.small_groups_permutation": (
+        "Small groups in {name}: {groups}. Kruskal–Wallis is used with a permutation p-value; results involving these groups are exploratory.",
+        "Mazas grupas mainīgajā {name}: {groups}. Kraskela–Volisa testam izmanto permutāciju p vērtību; rezultāti par šīm grupām ir pētnieciski.",
+        "Малые группы в {name}: {groups}. Для критерия Краскела–Уоллиса используется перестановочное p; выводы об этих группах носят разведочный характер."),
+    "warn.unequal_groups": (
+        "Very unequal group sizes in {name} ({sizes}); the comparison is dominated by the largest group.",
+        "Ļoti nevienādi grupu lielumi mainīgajā {name} ({sizes}); salīdzinājumu nosaka lielākā grupa.",
+        "Сильно неравные размеры групп в {name} ({sizes}); сравнение определяется самой большой группой."),
+    "why.small_groups_rank": (
+        "{name} has groups with fewer than five values ({groups}): Kruskal–Wallis with a permutation p-value is used instead of ANOVA, and results for these groups are exploratory.",
+        "{name} ir grupas ar mazāk nekā piecām vērtībām ({groups}): ANOVA vietā izmanto Kraskela–Volisa testu ar permutāciju p vērtību; rezultāti par šīm grupām ir pētnieciski.",
+        "В {name} есть группы меньше пяти значений ({groups}): вместо ANOVA используется критерий Краскела–Уоллиса с перестановочным p; выводы об этих группах носят разведочный характер."),
     "block.group_count": ("{name} has {count} groups; this question needs 2–8 groups.",
                           "{name} ir {count} grupas; šim jautājumam vajag 2–8 grupas.",
                           "У {name} групп: {count}; для этого вопроса нужно 2–8 групп."),

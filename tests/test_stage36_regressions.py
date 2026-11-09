@@ -72,7 +72,7 @@ class NavigationReproduction(unittest.TestCase):
 
 
 class StructuredResultReproduction(unittest.TestCase):
-    @unittest.expectedFailure    # 36.0 D2, fixed in 36.2
+    # 36.0 D2, FIXED in 36.2
     def test_descriptive_statistics_are_structured_numbers(self):
         """Spec §8: no 'Structured numeric results: Not captured'; N,
         missing, M, SD, median, IQR, min and max come from a structured
@@ -94,7 +94,7 @@ class StructuredResultReproduction(unittest.TestCase):
 
 
 class BatchAnalysisReproduction(unittest.TestCase):
-    @unittest.expectedFailure    # 36.0 D3, fixed in 36.2
+    # 36.0 D3, FIXED in 36.2
     def test_one_variable_against_eight_scales_in_one_run(self):
         """Spec §4-5: UCLA x 8 scales is one batch: 8 rows with N, rho,
         raw p, Holm-adjusted p and the stated p method."""
@@ -115,7 +115,7 @@ class BatchAnalysisReproduction(unittest.TestCase):
         for row, value in zip(family.rows, adjusted):
             self.assertAlmostEqual(row.p_adjusted, value, places=12)
 
-    @unittest.expectedFailure    # 36.0 D4, fixed in 36.2/36.3
+    # 36.0 D4, FIXED in 36.2/36.3
     def test_a_two_group_variable_is_explained_before_a_three_group_test(self):
         """Spec §6: Sex (2 categories) with a 3-8 group method is explained
         BEFORE the run, with the two-group comparison offered instead."""
@@ -129,7 +129,7 @@ class BatchAnalysisReproduction(unittest.TestCase):
         self.assertIn("groups", str(problems), "the two-group comparison is not offered")
 
 
-    @unittest.expectedFailure    # 36.0 D9, fixed in 36.2
+    # 36.0 D9, FIXED in 36.2
     def test_small_groups_are_handled_before_the_run_not_refused_after(self):
         """Spec §6: groups of 3/47/5 (UCLA_Level) get small/unequal-group
         warnings; the researcher never learns after Run that nothing ran."""
@@ -148,7 +148,7 @@ class BatchAnalysisReproduction(unittest.TestCase):
             ws.click("guided-run")
             self.assertEqual(len(ws.app.session.results), before + 1, page.message)
 
-    @unittest.expectedFailure    # 36.0 D10, fixed in 36.2
+    # 36.0 D10, FIXED in 36.2
     def test_kruskal_wallis_for_eight_outcomes_with_a_group_of_three(self):
         """Spec §6: one grouping variable, several outcomes; H, df and p
         with the p method stated; epsilon-squared defined; warnings about

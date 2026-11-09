@@ -93,7 +93,16 @@ class OmnibusTests(unittest.TestCase):
             )
         df["small"] = ["A"] * 2 + ["B"] * 17 + ["C"] * 17
         with self.assertRaisesRegex(ValueError, "five"):
-            analyze_omnibus(df, "small", "score", "kruskal", "ordinal", True, True)
+            analyze_omnibus(df, "small", "score", "anova", "scale", True, True)
+        # Stage 36 (spec §6): Kruskal–Wallis ranks a group of two; its p-value
+        # is then a permutation estimate, and the small group is named.
+        result = analyze_omnibus(df, "small", "score", "kruskal", "ordinal", True, True)
+        self.assertIn("permutation", result.p_method)
+        self.assertIsNotNone(result.p_asymptotic)
+        self.assertTrue(any("A (2)" in w for w in result.warnings))
+        df["tiny"] = ["A"] * 1 + ["B"] * 18 + ["C"] * 17
+        with self.assertRaisesRegex(ValueError, "At least 2"):
+            analyze_omnibus(df, "tiny", "score", "kruskal", "ordinal", True, True)
 
     def test_invalid_values_and_constant_groups(self):
         df = self.df.copy()

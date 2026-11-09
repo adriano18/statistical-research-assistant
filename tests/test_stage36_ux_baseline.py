@@ -105,9 +105,11 @@ class BaselineWorkflows(unittest.TestCase):
         self.assertEqual(ws.total, 5)
         print(f"\n[ux-baseline] repeat with another variable: {ws.total} interactions")
 
-    def test_group_comparison_by_an_existing_level_variable_is_refused_after_run(self):
-        """UCLA_Level has groups of 3, 47 and 5: every omnibus method needs
-        five per group, and the researcher learns it only after Run."""
+    def test_group_comparison_by_an_existing_level_variable(self):
+        """UCLA_Level has groups of 3, 47 and 5. Before Stage 36.2 every
+        omnibus method was refused only after Run (9 interactions spent,
+        docs/STAGE36_UX_AUDIT.md). Now the small groups are explained before
+        Run and Kruskal–Wallis runs with a permutation p-value."""
         ws = prepared_workspace()
         self.addCleanup(ws.close)
         before = len(ws.app.session.results)
@@ -115,16 +117,16 @@ class BaselineWorkflows(unittest.TestCase):
         ws.click("goal-compare")
         ws.choose("role-group", "UCLA_Level")
         ws.choose("role-outcome", fx.SCALES[0])
-        self.assertFalse(ws.find_all("design-blockers"), "nothing is said before the run")
+        self.assertTrue(ws.has_text("fewer than five values"), "explained before Run")
         ws.check("design-confirm-independent")
         ws.check("design-confirm-assumptions")
         ws.click("guided-run")
-        page = ws.app.pages["analyze"]
-        self.assertEqual(len(ws.app.session.results), before)
-        self.assertIn("At least five complete observations per group", page.message[0])
+        added = ws.app.session.results[before:]
+        self.assertEqual([entry.method for entry in added], ["omnibus"])
+        self.assertIn("permutation", added[0].run.result.p_method)
         self.assertEqual(ws.total, 9)
-        print(f"\n[ux-baseline] group comparison by UCLA_Level: refused after Run, "
-              f"{ws.total} interactions spent; 8 scales would need 8 such attempts")
+        print(f"\n[ux] group comparison by UCLA_Level: runs after {ws.total} interactions "
+              "with the small groups explained before Run (before 36.2: refused after Run)")
 
     def test_a_word_report_from_eight_results(self):
         ws = prepared_workspace()
