@@ -425,7 +425,8 @@ class WorkspaceApp:
     SECTION_KEYS = {("data", "data"): "data-top", ("data", "variables"): "data-variables",
                     ("analyze", "design"): "step-design", ("analyze", "method"): "step-method",
                     ("analyze", "variables"): "step-variables",
-                    ("analyze", "task-result"): "task-result"}
+                    ("analyze", "task-result"): "task-result",
+                    ("settings", "ai"): "settings-ai"}
     section: str | None = None
 
     def journey_status(self) -> dict[str, bool]:

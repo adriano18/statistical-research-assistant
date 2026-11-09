@@ -1033,12 +1033,19 @@ class Project:
         with self._db() as db:
             return [dict(r) for r in db.execute("SELECT * FROM research_questions ORDER BY position")]
 
-    def log_ai_request(self, provider: str, model: str, sources, tokens: int) -> None:
+    def log_ai_request(self, provider: str, model: str, sources, tokens: int, *,
+                       task: str = "", outcome: str = "ok") -> None:
         """Audit an AI request: provider, exact model, approved source types and
-        token count. Neither the prompt nor the reply is stored (#43)."""
+        token count, and (Stage 36) the assistant task and how the request
+        ended ("ok", or why it failed). Neither the prompt nor the reply is
+        stored (#43)."""
+        detail = {"provider": str(provider)[:40], "model": str(model)[:200],
+                  "sources": sorted(map(str, sources)), "tokens": int(tokens),
+                  "outcome": str(outcome)[:40]}
+        if task:
+            detail["task"] = str(task)[:40]
         with self._write() as db:
-            _log(db, "ai_request", {"provider": str(provider)[:40], "model": str(model)[:200],
-                                    "sources": sorted(map(str, sources)), "tokens": int(tokens)})
+            _log(db, "ai_request", detail)
 
     # -------------------------------------------------------- research plan
     def save_plan(self, plan: dict, note: str = "") -> int:

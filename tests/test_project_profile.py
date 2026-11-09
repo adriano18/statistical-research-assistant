@@ -96,30 +96,78 @@ class AiContextTests(TempCase):
         self.first = self.store.create("First")
         self.second = self.store.create("Second")
 
-    def test_every_source_is_off_and_no_request_can_be_made_in_this_version(self):
+    def test_every_source_is_off_and_no_request_can_be_made_without_a_provider(self):
+        """Stage 36: the assistant is usable only when a provider, a model and
+        the researcher's key are set up; otherwise every request is refused."""
+        not_set_up = "No AI provider is set up: connect a provider with your own key and " \
+                     "choose a model in Settings."
         with self.store.open(self.first.id) as project:
             self.assertEqual(ai_context.permissions(project),
                              {key: False for key in ai_context.SOURCE_KEYS})
             ai_context.allow(project, "dictionary", True, remote=True)
             reasons = ai_context.check_request(project, ["dictionary"], remote=False)
-        self.assertFalse(ai_context.AI_AVAILABLE)
-        self.assertEqual(reasons, ["AI assistance is not available in this version."])
+            no_model = ai_context.check_request(
+                project, ["dictionary"], remote=False,
+                available=ai_context.Readiness("openai", "", 0, "no_model"))
+            ready = ai_context.check_request(
+                project, ["dictionary"], remote=False,
+                available=ai_context.Readiness("openai", "gpt-test-1", 0, ""))
+        self.assertFalse(hasattr(ai_context, "AI_AVAILABLE"), "no global switch any more")
+        self.assertEqual(reasons, [not_set_up])
+        self.assertEqual(no_model, [not_set_up])
+        self.assertEqual(ready, [])
+
+    def test_readiness_needs_a_model_and_a_key_in_the_os_store(self):
+        import ai_providers
+        import secret_store
+
+        stored = {}
+        fake = mock.Mock(get=lambda target: stored.get(target))
+        root = self.base / "data"
+        with mock.patch.object(secret_store, "backend", return_value=fake):
+            self.assertEqual(ai_context.readiness(root).problem, "no_key")
+            stored["StatisticalResearchAssistant/ai/anthropic"] = "sk-test-0123456789"
+            ai_providers.save_settings(root, {"provider": "anthropic", "model": "",
+                                              "daily_tokens": 0})
+            self.assertEqual(ai_context.readiness(root).problem, "no_model")
+            ai_providers.save_settings(root, {"provider": "anthropic", "model": "claude-test-1",
+                                              "daily_tokens": 500})
+            setup = ai_context.readiness(root)
+        self.assertTrue(setup.ready)
+        self.assertEqual((setup.provider, setup.model, setup.daily_tokens, setup.provider_name),
+                         ("anthropic", "claude-test-1", 500, "Anthropic"))
+        broken = mock.Mock(get=mock.Mock(side_effect=RuntimeError("keychain locked")))
+        with mock.patch.object(secret_store, "backend", return_value=broken):
+            self.assertEqual(ai_context.readiness(root).problem, "no_store")
+        with mock.patch.object(secret_store, "_BACKEND", None), \
+                mock.patch.object(secret_store, "_Keyring", side_effect=ImportError("none")), \
+                mock.patch.object(secret_store.os, "name", "posix"):
+            self.assertEqual(ai_context.readiness(root).problem, "no_store")
 
     def test_rules_a_future_assistant_must_pass(self):
-        with mock.patch.object(ai_context, "AI_AVAILABLE", True), \
-                self.store.open(self.first.id) as project:
-            self.assertEqual(ai_context.check_request(project, ["results"], remote=True),
-                             ["Not allowed for this project: results"])
+        with self.store.open(self.first.id) as project:
+            def check(sources, remote):
+                return ai_context.check_request(project, sources, remote=remote, available=True)
+
+            self.assertEqual(check(["results"], True), ["Not allowed for this project: results"])
             ai_context.allow(project, "results", True, remote=True)
-            self.assertEqual(ai_context.check_request(project, ["results"], remote=True), [])
+            self.assertEqual(check(["results"], True), [])
             # Data rows to a remote provider need the anonymity statement first.
             with self.assertRaises(ai_context.ContextRefused):
                 ai_context.allow(project, "raw_data", True, remote=True)
             ai_context.allow(project, "raw_data", True, remote=False)    # a local model
-            self.assertEqual(ai_context.check_request(project, ["raw_data"], remote=False), [])
-            self.assertTrue(ai_context.check_request(project, ["raw_data"], remote=True))
+            self.assertEqual(check(["raw_data"], False), [])
+            self.assertTrue(check(["raw_data"], True))
             project.set_data_anonymous(True)
-            self.assertEqual(ai_context.check_request(project, ["raw_data"], remote=True), [])
+            self.assertEqual(check(["raw_data"], True), [])
+            # Withdrawing the statement withdraws data rows as well.
+            ai_context.state_anonymous(project, False)
+            self.assertFalse(ai_context.permissions(project)["raw_data"])
+            # Without an open project no project source can be sent.
+            self.assertEqual([r.code for r in ai_context.refusals(None, ["results"], remote=True,
+                                                                  available=True)],
+                             ["no_project"])
+            self.assertEqual(ai_context.refusals(None, [], remote=True, available=True), [])
             kinds = [event["kind"] for event in project.events()]
             self.assertIn("ai_permission", kinds)
             self.assertIn("data_anonymous", kinds)
@@ -243,6 +291,31 @@ class ProfileWorkspaceTests(TempCase):
         self.assertIn("stress_q1", ws.find("ai-preview-dictionary").value)
         self.assertTrue(ws.has_text("Off"))
         self.assertFalse(ws.has_text("Allowed"))
+
+    def test_the_ai_card_allows_sources_per_project_and_rows_need_the_statement(self):
+        """Stage 36: the switches the assistant's permissions link opens."""
+        ws = self.workspace()
+        ws.app.projects.create("Switches")
+        ws.run(ws.app.load_sample("sample_scale.csv"))
+        ws.app.navigate("settings")
+        project = ws.app.projects.project
+        ws.check("ai-allow-overview", True)
+        self.assertTrue(ai_context.permissions(project)["overview"])
+        self.assertTrue(ws.find("ai-allow-raw_data").disabled, "rows need the statement first")
+        self.assertTrue(ws.has_text("First state below that this project’s data rows identify nobody."))
+        ws.check("ai-anonymous", True)
+        self.assertTrue(project.data_anonymous)
+        ws.check("ai-allow-raw_data", True)
+        self.assertTrue(ai_context.permissions(project)["raw_data"])
+        ws.check("ai-anonymous", False)          # withdrawing the statement withdraws rows
+        self.assertFalse(project.data_anonymous)
+        self.assertFalse(ai_context.permissions(project)["raw_data"])
+        self.assertTrue(ws.find("ai-allow-raw_data").disabled)
+        kinds = [event["kind"] for event in project.events()]
+        self.assertIn("ai_permission", kinds)
+        self.assertIn("data_anonymous", kinds)
+        ws.check("ai-allow-overview", False)
+        self.assertFalse(any(ai_context.permissions(project).values()))
 
     def test_settings_are_translated(self):
         for language, title in (("lv", "Pētnieka profils (pēc izvēles)"),

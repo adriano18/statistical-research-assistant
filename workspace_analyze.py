@@ -775,6 +775,9 @@ class ResultsPage:
         self.notes: dict[int, str] = {}
         self.feedback: dict[int, tuple[str, str]] = {}
         self.figure_number = "1"
+        from workspace_assistant import AssistantPanel
+
+        self.assistant = AssistantPanel(self)    # Stage 36 §12: AI drafts, per result
 
     def build(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session
@@ -924,10 +927,10 @@ class ResultsPage:
         ], title=ui.t("results.checks"), data="result-checks"))
         from interpretation_wizard import interpretation_summary
 
-        notes = wc.text_field(ui, "Researcher interpretation (optional, unverified)",
+        notes = wc.text_field(ui, ui.t("results.notes"),
                               self.notes.get(entry.id, ""), multiline=True,
                               on_change=lambda e, i=entry.id: self.notes.__setitem__(
-                                  i, e.control.value or ""))
+                                  i, e.control.value or ""), data="result-notes")
         if entry.id not in self._seen:
             # "Detailed" explanations (optional profile) open the interpretation
             # once; afterwards the researcher's own choice is kept.
@@ -978,6 +981,7 @@ class ResultsPage:
             key=f"interpretation-{entry.id}", opened=self.opened,
             subtitle=wc.caption(ui, ui.t("results.interpretation_hint")),
             data="result-interpretation-section"))
+        sections.append(self.assistant.section(entry))
         sections.append(wc.expansion(
             ui, wc.heading(ui, ui.t("results.report"), tk.TYPE_TITLE_S),
             [ft.Container(wc.text(ui, run.report, tk.TYPE_BODY, selectable=True,
