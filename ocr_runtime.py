@@ -90,7 +90,12 @@ class TesseractRuntime:
 
     def environment(self) -> dict[str, str]:
         env = dict(os.environ)
-        env["OMP_THREAD_LIMIT"] = env.get("OMP_THREAD_LIMIT", "2")
+        # One OpenMP thread: no slower here (Linux, 2 table pages: 5.8 s with
+        # one thread, 6.1 s with two, 6.4 s with four), while the packaged
+        # Windows engine was about 15 times slower than here and timed out on
+        # a dense Latvian table page with two (OpenMP threads spin while they
+        # wait). A researcher's own setting still wins.
+        env["OMP_THREAD_LIMIT"] = env.get("OMP_THREAD_LIMIT", "1")
         if self.tessdata_dir is not None:
             env["TESSDATA_PREFIX"] = str(self.tessdata_dir)
         if self.origin == "bundled":
