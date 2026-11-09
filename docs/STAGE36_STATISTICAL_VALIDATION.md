@@ -56,6 +56,19 @@ this repository; only agreement counts:
 | Reported 95% intervals | all 16 bounds within 0.03 of the engine's percentile bootstrap bounds (consistent with a bootstrap interval in the original analysis; exact agreement is not expected) |
 | Kruskal–Wallis by UCLA level (groups 3/47/5), 8 scales | all 8 reported p-values equal the engine's asymptotic p; the engine's primary p is the permutation p because of the group of 3 |
 
+Re-run at Stage 36.7 on the top of the stack (`claude/stage36-acceptance`), again
+counts only (`correlate_many`, `compare_many` and pandas on the private
+file, looked up among the numbers of the thesis's tables):
+
+| Comparison | Result |
+|---|---|
+| Dataset | 55 rows × 13 columns, no missing cells; the same columns as the synthetic fixture |
+| Spearman ρ and asymptotic p, UCLA with 8 scales | 8/8 and 8/8 found at 3 decimals (unchanged) |
+| Kruskal–Wallis H (tie-corrected), 8 scales | 8/8 found at 3 decimals (the thesis reports them in three tables); H without the tie correction matches none, so both use the correction |
+| Kruskal–Wallis asymptotic p | 7/8 found at 3 decimals; the eighth differs by 0.0001 (a rounding boundary) |
+| Means and SDs of UCLA and the 8 scales | 9/9 and 9/9 (2 and 3 decimals) |
+| Pearson r | 3/8 only: the thesis does not report Pearson coefficients for these pairs (it uses Spearman) |
+
 ## Chart Studio (36.4): charts never change a number
 
 A result's charts are drawn from the values it was calculated on, stored

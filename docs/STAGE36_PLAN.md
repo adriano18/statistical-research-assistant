@@ -11,24 +11,27 @@ Stage 36 builds on the integrated Stage 35 state (#47 → #48 → #49 → #50 �
 through the specification PR #52 (`stage36/spec-and-safe-fixtures`, base
 `claude/stage35-ai`). Nothing is merged into `main`; every PR is a draft.
 
-| Sub-stage | Branch | Scope (spec sections) |
-|---|---|---|
-| 36.0 Audit and failing tests | `claude/stage36-audit` | fixtures (README), defect matrix, UX baseline (§2, §15), reproductions |
-| 36.2 Statistical result engine | `claude/stage36-engine` | typed results (§8), batch correlations with CI, Holm/BH (§5), batch Kruskal–Wallis (§6) |
-| 36.1 Research tasks and navigation | `claude/stage36-tasks` | Research Task model and persistence (§4), batch selection, persistent context (§2B), journey navigation (§3) |
-| 36.3 Scales and psychometrics | `claude/stage36-scales` | Create Groups from Scale (§6), item diagnostics, no reliability from totals (§7) |
-| 36.4 Chart Studio | `claude/stage36-charts` | chart types, multi-boxplots, settings, PNG/SVG/PDF, image clipboard (§9) |
-| 36.5 Scientific import | `claude/stage36-import` | two-form DOCX, scanned tables with OCR, review wizard (§10) |
-| 36.6 Reports and AI assistant | `claude/stage36-reports` | report builder (§11), AI assistant with consent (§12) |
-| 36.7 Windows EXE acceptance | `claude/stage36-acceptance` | packaged EXE journeys 1–10, installer and update regression (§14), final documents (§18) |
+| Sub-stage | PR | Branch | Scope (spec sections) |
+|---|---|---|---|
+| 36.0 Audit and failing tests | #53 | `claude/stage36-audit` | fixtures (README), defect matrix, UX baseline (§2, §15), reproductions |
+| 36.2 Statistical result engine | #54 | `claude/stage36-engine` | typed results (§8), batch correlations with CI, Holm/BH (§5), batch Kruskal–Wallis (§6) |
+| 36.1 Research tasks and navigation | #55 | `claude/stage36-tasks` | Research Task model and persistence (§4), batch selection, persistent context (§2B), journey navigation (§3); the window guard |
+| 36.5 Scientific import | #56 | `claude/stage36-import` | two-form DOCX, scanned tables with OCR, review wizard (§10) |
+| 36.4 Chart Studio | #57 | `claude/stage36-charts` | chart types, multi-boxplots, settings, PNG/SVG/PDF, image clipboard (§9) |
+| 36.6 Research report | #58 | `claude/stage36-reports` | report builder (§11) |
+| 36.3 Scales and psychometrics | #59 | `claude/stage36-scales` | Create Groups from Scale (§6), item diagnostics, no reliability from totals (§7) |
+| 36.6 AI assistant | #60 | `claude/stage36-ai` | AI assistant with consent (§12) |
+| 36.7 Windows EXE acceptance | #61 | `claude/stage36-acceptance` | packaged EXE journeys 1–10, installer and update regression (§14), final documents (§18) |
 
 The engine (36.2) comes before the task model (36.1) because a research
 task stores and re-runs the structured batch results. Each PR is stacked
 on the previous one and carries its own tests and Windows E2E journeys.
 The import engine (36.5, D6–D8) was ready first, so it is stacked directly
-on 36.1; the import review wizard follows in a later PR. 36.4 (Chart
-Studio) is stacked on the import engine and 36.6 (research report) on
-36.4; 36.3 and the AI assistant follow on top.
+on 36.1; its review wizard was added to the same PR (#56). 36.4 (Chart
+Studio) is stacked on 36.5 and the research report (36.6, #58) on 36.4;
+36.3 (#59), the AI assistant (#60) and the acceptance PR (#61) follow on
+top. Fixes found lower in the stack are merged upward, so the top branch
+(#61) holds everything and its Windows CI runs every journey on it.
 
 ## Defect matrix (36.0 audit)
 
