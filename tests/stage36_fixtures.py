@@ -21,9 +21,16 @@ DOCX_NUMBERED = "synthetic_cope_two_forms_60.docx"
 DOCX_UNNUMBERED = "synthetic_cope_two_forms_60_unnumbered.docx"
 SCAN_INLINE = "synthetic_sacs_scanned_52.pdf"
 SCAN_TABLE_LV = "synthetic_lv_table_scan_52.pdf"
+ITEMS_CSV = "synthetic_items_scale.csv"
 
 SCALES = ("AssertiveAction", "SocialJoining", "SeekingSocialSupport", "CautiousAction",
           "InstinctiveAction", "Avoidancen", "IndirectAction", "AntisocialAction")
+
+# Item-level fixture (Stage 36.3): one invented construct, ten 1–5 items.
+ITEMS = tuple(f"ZEP{i:02d}" for i in range(1, 11))
+ITEM_TOTAL = "ZEP_total"
+REVERSE_ITEMS = ("ZEP04", "ZEP08")     # reverse-keyed and NOT recoded in the file
+FLOOR_ITEM = "ZEP06"
 
 _FOLDER: Path | None = None
 
@@ -40,7 +47,7 @@ def generate(out_dir: Path) -> dict[str, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = (module.create_csv(out_dir), module.create_docx(out_dir),
              module.create_scan_pdf(out_dir), module.create_docx_unnumbered(out_dir),
-             module.create_lv_table_scan_pdf(out_dir))
+             module.create_lv_table_scan_pdf(out_dir), module.create_items_csv(out_dir))
     return {path.name: path for path in paths}
 
 

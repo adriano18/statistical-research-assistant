@@ -29,6 +29,14 @@ invented text:
 | `synthetic_cope_two_forms_60_unnumbered.docx` | Two 60-item table forms with **no item numbers inside the cells** (first table 61 rows with a header of response labels, second 60 rows, 5 columns), each form with its own response options, a 15 × 4 scoring note and numbered references. |
 | `synthetic_lv_table_scan_52.pdf` | Two image-only pages of a table: item numbers in their own column, statements wrapped onto a second line, Latvian letters with diacritics, the response legend repeated at the top of page 2, a slight rotation and tick-like artifacts before some numbers. |
 
+Stage 36.3 added item-level responses for item diagnostics and the
+"no reliability from totals" check (D5). The construct ("zephyr
+calmness"), the item names, the scoring and every answer are invented:
+
+| Filename | Intended regression |
+|---|---|
+| `synthetic_items_scale.csv` | 200 invented respondents (`Code` = `invented_001` …) × 10 five-point items `ZEP01`–`ZEP10` (codes 1–5) generated from one common factor. `ZEP04` and `ZEP08` are keyed in the opposite direction and are **not recoded**; `ZEP06` has a strong floor effect (about 55 % answer 1); nine answers are missing (row 104 skips two); `ZEP_total` is the invented total of a complete row (sum with `ZEP04`/`ZEP08` reversed as 6 − code), empty otherwise. Tests α/ω, item–total correlations, α/ω if item deleted, reverse-key flags, floor/ceiling and the items-versus-totals heuristic. |
+
 `tests/test_stage36_fixtures.py` checks the minimal verification below;
 `tests/test_stage36_regressions.py` reproduces the documented defects on
 these files (see `docs/STAGE36_PLAN.md`).
@@ -38,6 +46,7 @@ These are structural/functional fixtures only. They **do not validate any real U
 ### Minimal independent verification expected
 
 - CSV: 55 data rows, 13 columns, unique fictional IDs, group sizes exactly 3/47/5.
+- Item CSV: 200 rows, 12 columns, codes 1–5 only, exactly the nine listed missing answers, the total equal to the stated scoring, the two reverse-keyed items correlating negatively with the rest, the floor item above 50 % at code 1.
 - DOCX: two table-based instrument forms of 60 items each; references/method notes excluded from extracted questions.
 - PDF: 2 pages, 52 numbered prompts, no selectable PDF text; references excluded; OCR word-level confidences must not be misrepresented as calibrated questionnaire confidence.
 - Independent SciPy/statsmodels numerical parity tests must be computed on generated data, not copied from any thesis or real participant dataset.
