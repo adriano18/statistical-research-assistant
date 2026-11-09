@@ -115,7 +115,7 @@ class PdfQuestionnaireToAnalysisJourney(unittest.TestCase):
         ws.app.navigate("import")
         ws.run(page.open_bytes(connectedness_text_pdf(), "synthetic_two_versions.pdf"))
         self.assertEqual(len(page.session.instruments), 2)
-        ws.choose("imp-instrument", "1")
+        ws.click("imp-instrument-use-1")   # the researcher chooses the form
         instrument = page.session.instrument
         self.assertEqual(len(instrument.questions), 20)
         scheme = instrument.schemes[0]

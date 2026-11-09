@@ -160,6 +160,6 @@ class Workspace:
                 return self.dispatch(control.on_click, SimpleNamespace(control=control))
         raise AssertionError(f"segment {key} not in {data}")
 
-    def key(self, key: str, *, ctrl=False, shift=False):
-        event = SimpleNamespace(key=key, ctrl=ctrl, shift=shift, alt=False, meta=False)
+    def key(self, key: str, *, ctrl=False, shift=False, alt=False):
+        event = SimpleNamespace(key=key, ctrl=ctrl, shift=shift, alt=alt, meta=False)
         return self.dispatch(self.app.on_keyboard, event)

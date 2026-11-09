@@ -36,7 +36,7 @@ class Base(unittest.TestCase):
         page = ws.app.pages["import"]
         ws.app.navigate("import")
         ws.run(page.open_bytes(connectedness_text_pdf(), "synthetic_two_versions.pdf"))
-        ws.choose("imp-instrument", "1")
+        ws.click("imp-instrument-use-1")   # the researcher chooses the form
         scheme = page.session.instrument.schemes[0]
         ws.click("imp-step-scale")
         ws.check(f"scale-{scheme.id}-structure")
@@ -102,7 +102,7 @@ class UnreadableDocumentTests(Base):
         ws.app.navigate("import")
         with mock.patch("workspace_questionnaires.shutil.which", return_value=None):
             ws.run(page.open_bytes(b"\xd0\xcf\x11\xe0fictional legacy word bytes", "inventory.doc"))
-        message = ws.find("imp-feedback")
+        message = ws.find("imp-status")      # the one processing status
         text = " ".join(c.value for c in ws.controls(message) if hasattr(c, "value")
                         and isinstance(c.value, str))
         self.assertIn(".docx", text)

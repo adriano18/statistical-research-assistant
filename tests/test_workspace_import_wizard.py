@@ -31,8 +31,13 @@ def texts_in(ws, data: str) -> str:
 
 
 def order(ws, prefix: str) -> list[str]:
+    """Ids ``<prefix><number>`` in screen order (the item rows, not their
+    "checked" box, which every item's editor has since Stage 36.5)."""
+    import re
+
+    pattern = re.compile(re.escape(prefix) + r"\d+$")
     return [c.data for c in ws.controls()
-            if isinstance(getattr(c, "data", None), str) and c.data.startswith(prefix)]
+            if isinstance(getattr(c, "data", None), str) and pattern.match(c.data)]
 
 
 class Base(unittest.TestCase):
