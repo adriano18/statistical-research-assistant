@@ -15,6 +15,7 @@ on:
   pull_request:
     paths:
       - "app.py"
+      - "window_guard.py"
       - "app_identity.py"
       - "app_paths.py"
       - "update_*.py"

@@ -26,7 +26,9 @@ import json
 import os
 from pathlib import Path
 
-from startup_diagnostics import StartupTimeline, write_startup_record, writable_log_directory
+from startup_diagnostics import (
+    StartupTimeline, write_event, write_startup_record, writable_log_directory,
+)
 
 
 def _hold_instance_mutex():
@@ -178,6 +180,7 @@ async def start(page, *, import_workspace=None, timeline: StartupTimeline = TIME
     page.add(splash)
     page.update()
     timeline.mark("splash_shown")
+    _guard_window()
     try:
         await page.window.center()
     except Exception:
@@ -206,6 +209,24 @@ async def start(page, *, import_workspace=None, timeline: StartupTimeline = TIME
             Path(smoke).write_text(json.dumps(result, indent=1), encoding="utf-8")
             hold = float(os.environ.get("SRA_STARTUP_SMOKE_HOLD", "10") or 10)
             asyncio.get_running_loop().call_later(hold, os._exit, 0 if timeline.outcome == "ok" else 1)
+
+
+_BACKGROUND_TASKS: set = set()
+
+
+def _guard_window() -> None:
+    """Windows: show this program's window if it is still hidden a few
+    seconds after start (``window_guard``); never blocks the start."""
+    if os.environ.get("SRA_WINDOW_GUARD", "").strip() == "0":
+        return
+    try:
+        import window_guard
+
+        task = asyncio.get_running_loop().create_task(window_guard.guard(log=write_event))
+    except Exception:
+        return
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
 def _after_start(page, language: str) -> None:
