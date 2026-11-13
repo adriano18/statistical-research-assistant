@@ -45,7 +45,7 @@ Not verified: a **keyboard-only** walk of a whole journey on the packaged progra
 | Scale | Result | Evidence |
 |---|---|---|
 | 100 %, 125 %, 150 % | window DPI 96/120/144 as expected; Home shows "Create project"; all 7 sidebar items; nothing clipped | runs 43418623308 (dff65c8) and 43421786800 (216353d), packaged program on Windows |
-| 175 % | added in cb6e58a: the runner's display offers up to 175 % | *result from the final commit's run* |
+| 175 % | window DPI 168 as expected; Home shows "Create project"; all 7 sidebar items; nothing clipped | run 43425712379 (48a09e8), packaged program; screenshot `home-175.png` in its artifact |
 | Browser rendering at 100/125/150 %, light/dark, EN/LV/RU | no blank pages or Flutter error placeholders | Python tests, job `workspace-screenshots` |
 
 At 175 % on 1920×1080 the program has 1097×617 logical pixels. That is the compact-window case.
@@ -66,6 +66,27 @@ Review finding K2 found that the researcher's notes, review ticks and report set
 
 ## 6. Russian and Latvian texts
 
-*Summary of `docs/STAGE368_LOCALE_REVIEW.md` (automated audit and the review list for native speakers).*
+Summary of `docs/STAGE368_LOCALE_REVIEW.md`: the automated audit and the review list for native speakers.
 
 **No native-speaker review has taken place.** The review list is the input for one. "Language review passed" stays **not yet** in `docs/STAGE368_REAL_USER_ACCEPTANCE.md`.
+
+`tools/locale_audit.py` checks every EN/LV/RU text table (2,034 texts in 20 tables) and the workspace screens. The same version of the checker was run on dff65c8 and after the fixes:
+
+| Finding | Before | After | Notes |
+|---|---:|---:|---|
+| Missing translation or key | 11 | **0** | the 11 method choices of the guided analysis showed English in LV/RU |
+| LV/RU identical to English | 0 | 0 | |
+| Placeholder mismatch | 0 | **0** | also enforced by a unit test |
+| English written directly in a workspace screen | 49 | **2** | import options, sample datasets, questionnaire templates and operators, "Table N", page-failure title, path field; the 2 left are in `workspace_analyze.py` |
+| Style (spaces, mixed scripts, diacritics) | 10 | 10 | in the classic interface's table; review input |
+| Long button or step label (layout risk) | 17 | 17 | review input; the display-scale check (§4) covers Home and the sidebar only, not these labels |
+
+`tests/test_locale_audit.py` keeps "missing" and "placeholder" at zero. The Word report now writes the assumption checks in the report's language.
+
+For the native-speaker review, the document lists by priority screen:
+- every text added in Stage 36.8 (51 keys, 11 method names);
+- terminology conflicts, for example RU «пункт»/«вопрос» for an item, LV «ticamība»/«uzticamība» for reliability, LV «lapa»/«lappuse» for a page;
+- about 20 texts with the wrong noun form after a number;
+- the English that the engine and the report builder still generate: batch tables, family warnings, Methods and Notes, Chart Studio texts, import diagnostics.
+
+Not translated, and why: the data-preparation panel (`preparation_ui.py`). Its item check boxes are also column names, so running them through the translator would break scale scoring. That needs a separate fix.
