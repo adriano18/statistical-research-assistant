@@ -32,7 +32,7 @@ Issue #63, Phase D: interface design and the specification of the Stage 37.0 inc
 
 ## Open questions for the owner
 
-Each is explained in §13 of the design document.
+Each is explained in §13 of the design document. For Stage 37.0a the coordinator recorded an architect default for each one; §13 lists them as *defaults, owner may change*.
 
 1. Accept project format F+1 (one additive table, a backup before migration, a copy for older versions)? Or should the release candidate first learn to open newer formats read-only?
 2. Ship the copy for an older version in 37.0, or in 37.0.x?

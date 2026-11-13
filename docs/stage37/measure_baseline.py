@@ -28,6 +28,20 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
+
+def _commit() -> str:
+    """The checkout measured (its short commit), for the printed tables."""
+    import subprocess
+
+    try:
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, check=True,
+                              capture_output=True, text=True).stdout.strip() or "this checkout"
+    except (OSError, subprocess.CalledProcessError):
+        return "this checkout"
+
+
+COMMIT = _commit()
+
 import stage36_fixtures as fx  # noqa: E402
 from test_stage36_ux_baseline import LEVELS, CountingWorkspace, eight_correlations  # noqa: E402
 
@@ -151,7 +165,7 @@ def beginner(folder: Path) -> dict:
     ws.run(ws.app.pages["reports"]._export_docx())
     assert ws.saved and ws.saved[-1].exists()
     ws.done("10 report: add, Reports, study title, Export Word (+ the Save dialog)")
-    ws.table("Beginner flow today (55f94b1)")
+    ws.table(f"Beginner flow ({COMMIT})")
     # Setup for the professor, not counted: a second analysis and a second hypothesis.
     task = ws.app.session.tasks[0]
     ws.click("nav-analyze")
@@ -205,7 +219,7 @@ def professor(folder: Path, facts: dict) -> None:
     lost["study title"] = not ws.app.pages["reports"].study_title
     ws.done("9 the report: structure and preview")
     ws.done("10 deviations, consistency, audit log: not shown anywhere")
-    ws.table("Professor flow today (55f94b1)")
+    ws.table(f"Professor flow ({COMMIT})")
     print("lost after the restart:", ", ".join(k for k, v in lost.items() if v) or "nothing")
     print("hypothesis_id of the tasks before the restart:", facts["hypothesis_ids"])
     ws.close()
@@ -227,7 +241,7 @@ def scale_quality(folder: Path) -> None:
         ws.check(control.data)
     ws.click("guided-run")
     ws.done(f"reliability of {len(fx.ITEMS)} items ({ws.app.session.results[-1].method})")
-    ws.table("Scale quality on item data today (55f94b1)")
+    ws.table(f"Scale quality on item data ({COMMIT})")
     ws.close()
 
 

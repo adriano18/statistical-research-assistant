@@ -471,9 +471,11 @@ class ResearcherEntriesTests(unittest.TestCase):
         self.assertEqual(len(settings), before + 1, "one entry for the edit")
         self.assertEqual(settings[-1], {"title": title, "sections_off": ["limitations"],
                                         "language": "lv"})
-        self.assertEqual(SCHEMA_VERSION, 5)
+        # Stage 37.0a moved the project to format 6 (protocol records, an
+        # additive table); the four K2 entries still use format-5 storage.
+        self.assertEqual(SCHEMA_VERSION, 6)
         with closing(sqlite3.connect(path)) as db:
-            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 5)
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 6)
             note, provenance = db.execute("SELECT note, provenance FROM runs WHERE id = ?",
                                           (entry.record_id,)).fetchone()
         self.assertEqual(note, NOTE)                         # runs.note (format 1)

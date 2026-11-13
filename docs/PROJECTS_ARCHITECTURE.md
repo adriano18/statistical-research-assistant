@@ -108,6 +108,24 @@ lost for that result. A confirmation without a recorded scope (any task saved
 before Stage 36.8) is asked again: nothing says which data, variables and
 method it was given for.
 
+**Format 6 (Stage 37.0a): the research protocol.** One additive table and
+optional JSON keys (docs/STAGE37_DESIGN.md §8); nothing existing is altered.
+
+| Entry | Stored in |
+|---|---|
+| The researcher's decisions about the plan: a priority changed after results (with its reason), a task linked to a hypothesis, a check acknowledged, a deviation from the plan, a justification, the withdrawal of one of them | `protocol_records` (append-only: triggers refuse `UPDATE` and `DELETE`; a withdrawal is a new record naming the one it withdraws) |
+| Typed research questions; a hypothesis's question, intended method, planned variables and expected group | the plan JSON in `plan_versions` (`plan_format: 2`, kept only when used) |
+| The hypothesis a result was calculated for (plan version, priority, direction, α) | `runs.provenance` JSON, key `hypothesis` |
+| Which hypothesis a task tests | `research_tasks.hypothesis_id` (a format-4 column, filled from 37.0a on) |
+| Steps of a task skipped by the researcher | `research_tasks.state` JSON, key `skipped` |
+| The last export of the report | the latest `events` entry of kind `report_exported` |
+
+A format-5 program (the 36.8 release candidate) lists a format-6 project but
+refuses to open it without writing anything (`migrate` reads the format
+through a read-only connection first). A format-5 project opens in 37.0a
+after its copy in `.backups/<id>-v5-<time>.sqlite3` (tests in
+`tests/test_stage37_store.py`).
+
 ## 5. Integrity
 
 - **Transactions.** Every change is one SQLite transaction (WAL journal,

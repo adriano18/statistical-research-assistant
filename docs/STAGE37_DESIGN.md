@@ -3,6 +3,7 @@
 Issue #63, **Phase D**: architecture and UX design with a clickable prototype. No product code is changed in this phase; the Stage 37.0 functional increment comes in its own PR.
 
 - Base: `55f94b1`, the head of the Stage 36.8 release-candidate branch. Branch: `claude/stage37-research-workflow`.
+- Updated for Stage 37.0a: the branch merges the RC head `07c37f6` (K1–K3 fixed, format 5 kept). §13 records the architect's defaults for the owner's questions, and `docs/STAGE37_0A_STATUS.md` lists what 37.0a implements and which test proves each item.
 - Companion files:
   - `docs/stage37/prototype.html`: the clickable prototype (approach A, approach B, the hybrid; a beginner flow and a professor flow; a built-in self-test).
   - `docs/stage37/README.md`: how to use the prototype, and the open questions.
@@ -35,9 +36,9 @@ The data change is additive: one new table and optional JSON fields, as project 
 | Flow | Today, measured | After 37.0, estimate |
 |---|---|---|
 | Beginner: question → hypothesis → data → scales → analysis → interpretation → report | 22 interactions, 10 typed fields, 5 page changes, 2 system dialogs. The analysis **cannot be linked** to the hypothesis. | 20 interactions, 5 typed fields, 4 page changes, 2 system dialogs. The link is made automatically. |
-| Professor: methodology, measurement quality and provenance of H1, then the status of H2, then the report | 14 interactions, 6 page changes. Analyses are matched to hypotheses **by title**; the consistency check is done by reading; deviations and their history are **not stored**; after a restart, the note, the review ticks and the study title are **lost** (K2). | 6 interactions, 2 page changes. Link, checks, deviations and history are on one page. |
+| Professor: methodology, measurement quality and provenance of H1, then the status of H2, then the report | 14 interactions, 6 page changes. Analyses are matched to hypotheses **by title**; the consistency check is done by reading; deviations and their history are **not stored**. At `55f94b1` the note, the review ticks and the study title were **lost** after a restart (K2); since the RC fix (`23f4f4a`, re-measured at `07c37f6`) they come back, and the counts are the same. | 6 interactions, 2 page changes. Link, checks, deviations and history are on one page. |
 
-The owner's decisions are listed in §13.
+The owner's questions are listed in §13, each with the default that 37.0a was built on (the owner may change it).
 
 ---
 
@@ -70,8 +71,8 @@ All six paths reproduce the counts in this document. They are **estimates of a d
 
 **State of the release candidate that matters here.**
 - Review findings K4 and K5 are fixed (`f193df2`).
-- K1, K2 and K3 are being fixed on the RC branch (`docs/STAGE368_REAL_USER_ACCEPTANCE.md`). At `55f94b1` the researcher's note, the review ticks and the report title are still lost after a restart; the baseline script shows it.
-- 37.0 depends on K1 (confirmations bound to the data and the variables) and on K2 (notes and review ticks saved in the project). It must be rebased onto the RC once those land.
+- K1, K2 and K3 were fixed on the RC branch in `23f4f4a` (merged into this branch with the RC head `07c37f6`). They kept project format 5: notes in `runs.note`, review ticks in the run's provenance, report settings in the activity log, confirmation scopes in the task state. At `55f94b1` the researcher's note, the review ticks and the report title were lost after a restart; re-measured at `07c37f6`, nothing is lost and the interaction counts are unchanged.
+- 37.0 depends on K1 (confirmations bound to the data and the variables) and on K2 (notes and review ticks saved in the project); both are in place.
 
 ---
 
@@ -109,7 +110,7 @@ The *standing* of a hypothesis is derived from the first version that contains i
   - **`hypothesis_id` is never filled.** The only constructor in the interface, `workspace_analyze.py:377`, does not pass it; `project_session` only saves and restores it. The baseline confirms it: both tasks have `hypothesis_id = None`.
   - The task is saved after its run (`_execute` → `_remember_task`).
 - **Result.** `ResultEntry` keeps the run, method, roles, options, confirmations and provenance: the dataset SHA-256, levels, complete cases and where each level was confirmed. The `runs` table also stores the report SHA-256, the structured result, the charts and `task_id`. `run_status` marks a run stale when its data or a level it relied on changes.
-- **Review state.** The review ticks and the researcher's note live in `ResultsPage.reviewed` and `ResultsPage.notes`. They are not persisted (K2, being fixed in 36.8).
+- **Review state.** At `55f94b1` the review ticks and the researcher's note lived in `ResultsPage.reviewed` and `ResultsPage.notes` and were not persisted. Since the RC fix of K2 (`23f4f4a`) they are `ResultEntry.reviewed` and `ResultEntry.note`, saved with the run.
 
 ### 2.4 Engine facts that decide the hypothesis checks
 
@@ -152,7 +153,7 @@ Beginner flow (Appendix A gives every control):
 Professor flow, after a restart: **14 interactions, 6 page changes**. The route is Project → Results → Analyze → Data → Results → Reports.
 - The analysis of H1 is found by its title.
 - The comparison of the plan's direction and method with the analysis is done by reading two pages.
-- After the restart, the student's note, the three review ticks and the study title are gone.
+- At `55f94b1`, the student's note, the three review ticks and the study title were gone after the restart (K2). K2 is fixed on the RC (`23f4f4a`). Re-measured at the RC head `07c37f6` (this branch's merge `e06736c`), all three come back, and every count in this section is unchanged (Appendix A).
 
 Scale quality on the 10-item fixture, for reference: 5 interactions, 2 page changes.
 
@@ -281,7 +282,7 @@ Two notes on these numbers:
 
 ### 5.3 What each flow gives the user (beyond the count)
 
-- **Today.** The beginner finishes, but the plan and the analysis are unrelated records. The professor rebuilds the relation from titles. After a restart the student's interpretation and review ticks are gone (K2, being fixed).
+- **Today.** The beginner finishes, but the plan and the analysis are unrelated records. The professor rebuilds the relation from titles. (At `55f94b1` the student's interpretation and review ticks were also gone after a restart; K2 is fixed in the RC.)
 - **Hybrid.** The beginner's H1 is planned before any result, and the analysis created from it carries the link. Every result records which plan version and designation it was calculated for. The professor sees on one page:
   - that H1 is one-sided while the test is two-sided, and the student's acknowledgement;
   - that Spearman was used where Pearson was planned, recorded as a deviation before the first result;
@@ -554,13 +555,17 @@ One draft PR, *Stage 37.0: hypothesis workflow*, in four reviewable commits. The
 3. Analyze and Results: link, step status, checks, review in the task, the journey statuses.
 4. The report lines, the Windows journey `stage37-hypothesis`, and `docs/STAGE37_UX_RESULTS.md` with the measured counts.
 
+**As built (default 14 of §13): 37.0a now, 37.0b later.** 37.0a is three commits: (1) the model (format 6, plan v2, protocol records, the hypothesis snapshot); (2) `research_workflow.py` with its unit tests and texts; (3) a minimal UI (the next-action bar, the hypothesis list and detail, the link in Analyze, the step row, the *Tests H…* line on Results). The report lines (§7.10), the Windows journey and the measured UX results are 37.0b. Two compatibility choices of 37.0a:
+- A project without a started plan keeps the Stage 34.5 next-step order, texts and `data` keys, which the Windows journeys and the tests use. The plan-first rules (N1–N6) apply once a question or a hypothesis is started.
+- The Question card (`project-question`) stays. The typed questions of the plan are added beside it, not in its place.
+
 ---
 
 ## 8. Data model: additive changes
 
 ### 8.1 Format F+1: one new table
 
-F is the release candidate's latest format: 5 at `55f94b1`, 6 if the K2 persistence lands as a migration. 37.0 adds format F+1 with one migration that only creates objects. It does not alter or rewrite an existing table.
+F is the release candidate's latest format. The RC fixed K2 without a migration, so F = 5 and 37.0a adds **format 6** (`_migrate_v6`), with one migration that only creates objects. It does not alter or rewrite an existing table. In 37.0a the table also has two triggers that refuse every `UPDATE` and `DELETE`, so append-only holds in the database itself, not only in the store's API.
 
 ```sql
 CREATE TABLE IF NOT EXISTS protocol_records (
@@ -758,28 +763,34 @@ Each criterion is an automated test unless it says otherwise. The *Test* column 
 
 ---
 
-## 13. Open questions for the owner
+## 13. Open questions for the owner, with the defaults used in 37.0a
 
-1. **Project format.** Accept format F+1 (one additive table, a backup before migration, a copy for older versions)? Or should the RC first learn to open newer formats read-only? That is not a small RC change (§8.7).
-2. **The copy for an older version.** In 37.0, or in 37.0.x?
-3. **Standing rule.** Keep today's strict rule: any result in the project makes a later hypothesis "added after results", with the variable overlap shown and a justification allowed. Or count only results that used the hypothesis's variables?
-4. **One-sided hypotheses.** Many theses state directional hypotheses. Keep two-sided tests with the check and acknowledgement of §7.7? Or add one-sided p-values to the engines in 37.2, with oracles?
-5. **α.** Pass the plan's α to the batch engines, which support it? In 37.0 (it changes result texts) or in 37.2?
-6. **Vocabulary.** *Designation: Primary / Secondary / Exploratory*, stored as `priority`? Or *Confirmatory / Exploratory* with primary/secondary as a second axis?
-7. **The first run as reference.** When the plan has no typed variables or method, may the first result linked to a hypothesis be the reference for later changes? Or must the variables be typed in the plan before Run?
-8. **The report in 37.0.** Add the hypothesis lines of §7.10 (links, deviations), or leave the report untouched until 37.3?
-9. **PR base and timing.** Stack 37.0 on the RC branch after K1–K3 land, or wait for the RC to merge to `main`?
-10. **Version and channel.** The 37.0 version number (for example 1.1.0-preview.1). Should 37.0 previews use the preview channel of 1.0.0-preview.1 users, whose projects would then be migrated?
-11. **The user test.** Who recruits the 4–5 students and 2 supervisors? Is a test on this prototype enough before 37.4, or should it run on a 37.0 preview?
-12. **Keyboard shortcut.** A shortcut for the next action: which key, given Ctrl+1…6, Ctrl+B, Ctrl+O, Ctrl+Enter and F1 are taken?
-13. **Native review.** Who reviews the new LV and RU texts, given that no native review of Stage 36 texts has taken place?
-14. **PR size.** One 37.0 PR in four commits, or 37.0a (model, link, statuses, next action) and 37.0b (checks, deviations)?
+The coordinator recorded an architect default for each question so that 37.0a could be built. **These are defaults; the owner may change any of them.** Where a default shaped the code, the last column names where.
+
+| # | Question | Default (owner may change) | Where it shows in 37.0a |
+|---|---|---|---|
+| 1 | **Project format.** Accept format F+1 (one additive table, a backup before migration, a copy for older versions)? Or should the RC first learn to open newer formats read-only (§8.7)? | Format F+1 = **6**, additive. The RC (format 5) refuses a format-6 project without writing to it. | `project_store._migrate_v6`; `tests/test_stage37_store.py` (`FormatSixTests`) proves the backup, the migration and that a format-5 reader refuses without changing a byte. |
+| 2 | **The copy for an older version.** In 37.0, or in 37.0.x? | Not in 37.0a. | — |
+| 3 | **Standing rule.** Keep today's strict rule (any result in the project makes a later hypothesis "added after results"), or count only results that used its variables? | Keep the strict rule. | `H-ADDED-AFTER` in `research_workflow.hypothesis_checks` uses `runs_before`, counted project-wide. |
+| 4 | **One-sided hypotheses.** Keep two-sided tests with the check and acknowledgement of §7.7, or add one-sided p-values to the engines in 37.2? | Engines stay two-sided; only the direction checks. No engine and no `analysis_runs` change. | `H-DIR-TWOSIDED`, `H-DIR-OMNIBUS`, `H-DIR-SIGN`. |
+| 5 | **α.** Pass the plan's α to the batch engines? In 37.0 or 37.2? | Not passed. The `H-ALPHA` check reports a plan α that differs from the α the result used. | `H-ALPHA`. |
+| 6 | **Vocabulary.** *Primary / Secondary / Exploratory*, stored as `priority`, or *Confirmatory / Exploratory* with a second axis? | Primary / Secondary / Exploratory, stored in `priority`. | The existing `plan-*-priority` dropdown and its texts. |
+| 7 | **The first run as reference.** When the plan has no typed variables or method, may the first result linked to a hypothesis be the reference for later changes? | Yes. | `H-SPEC-CHANGED` compares later results of the task with its first result linked to the hypothesis. |
+| 8 | **The report in 37.0.** Add the hypothesis lines of §7.10, or leave the report untouched? | The Word-report hypothesis lines are 37.0b. | The report is unchanged in 37.0a, except that an export is now logged (`report_exported`) for the next action. |
+| 9 | **PR base and timing.** | The PR stacks on `claude/stage368-rc`. | The branch merges the RC head `07c37f6`. |
+| 10 | **Version and channel.** | No version or channel change. | — |
+| 11 | **The user test.** Who recruits the students and supervisors? | The owner's task. | — |
+| 12 | **Keyboard shortcut** for the next action. | No shortcut. | — |
+| 13 | **Native review** of the new LV and RU texts. | LV and RU are drafts, marked "needs native review". | The Stage 37.0a block of `workspace_text.py`; the key list is in `docs/STAGE37_0A_STATUS.md`. |
+| 14 | **PR size.** One 37.0 PR, or 37.0a and 37.0b? | 37.0a now, 37.0b later (§7.13). | `docs/STAGE37_0A_STATUS.md`. |
 
 ---
 
-## Appendix A — Baseline measurement (55f94b1)
+## Appendix A — Baseline measurement (55f94b1, re-measured at 07c37f6)
 
-`python docs/stage37/measure_baseline.py`, from the repository root, with the locked environment (Python 3.12, Flet as locked). Counted controls by `data` key; ⟨…⟩ marks what is counted apart or not counted.
+`python docs/stage37/measure_baseline.py`, from the repository root, with the locked environment (Python 3.12, Flet as locked). Counted controls by `data` key; ⟨…⟩ marks what is counted apart or not counted. The script prints the short commit it measured in each table title.
+
+**Re-measured at the RC head `07c37f6`** (the merge `e06736c` on this branch, before any 37.0a change): beginner 22 interactions, 10 typed fields, 5 page changes and 2 system dialogs; professor 14 interactions, 0 typed, 6 page changes; scale quality 5 · 0 · 2; `hypothesis_id` of the tasks still `[None, None]`. The only difference from `55f94b1` is the line *lost after the restart*, which now reads `nothing`: K2 (`23f4f4a`) keeps the note, the review ticks and the study title.
 
 - **Beginner.**
   1. Project: `project-new-title` (typed), `project-create`.
@@ -804,7 +815,7 @@ Each criterion is an automated test unless it says otherwise. The *Test* column 
   9. `nav-reports`, `reports-preview`.
   10. No control exists.
 
-Output:
+Output at `55f94b1`:
 
 ```
 == Beginner flow today (55f94b1)                                   inter.  typed  pages
