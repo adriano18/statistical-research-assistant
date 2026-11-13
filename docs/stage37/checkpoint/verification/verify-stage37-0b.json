@@ -1,0 +1,419 @@
+{
+ "review": "verify-stage37-0b",
+ "branch": "claude/stage37-0b",
+ "reviewed_commit": "a8663ce",
+ "lenses_planned": [
+  "audit",
+  "report",
+  "workflow",
+  "windows"
+ ],
+ "lenses_completed": [
+  "audit",
+  "report",
+  "workflow",
+  "windows"
+ ],
+ "lenses_not_completed": [],
+ "fix_stage": "not run (paused before or at its start; no code changed)",
+ "results": {
+  "report": {
+   "findings": [
+    {
+     "id": "R1-raw-p-beside-correction",
+     "severity": "major",
+     "area": "Word report: numbers in the hypothesis block",
+     "claim": "For batch analyses the hypothesis block prints each test's unadjusted p, without a label, right after '<k> tests; correction: Holm (familywise error)'. The adjusted p the engine saved (which its own table and interpretation use) never appears in the Hypotheses section. As a result, two results that differ only in their correction print identical 'Result for H…' paragraphs.",
+     "evidence": "In-memory run on a8663ce: Pearson batch X vs Y1–Y8, n = 60, np.random.default_rng(11), adjust = holm, task linked to H1. Engine row Y4: p_raw = .0119, p_adjusted = .0956. The engine's table columns are 'p (raw)' and 'p (Holm)', and its interpretation reads 'X and Y4 … p (Holm) = .096 … do not provide evidence of an association at α = .05'. The block prints 'H1 tested by “X with 8 variables”: Pearson’s r; 8 tests; correction: Holm (familywise error); …' and then 'Result for H1: “Pearson r: X with 8 variables” (…): n = 60; … Pearson r: X – Y4 = -0.32, 95% CI [-0.53, -0.07], p = .012; …'. The value .096 appears nowhere in the Hypotheses section. Second run: the same task run with holm and then bh (Y1 adjusted .6099 vs .4574) gives two byte-identical 'Result for H1: …' paragraphs. Cause: _rows reads evidence rows whose p is Quantity.p = row.p_raw; the adjusted p is only in Quantity.note, which is dropped. batch_groups behaves the same way (p_primary and p_raw).",
+     "confirmed": true,
+     "file_line": "research_report.py:884-895 (_estimates), :1281-1290 (_rows), :935; raw p source: batch_correlation.py:140, batch_groups.py:168, :486",
+     "red_test": "In tests/test_stage37_reports.py: build an in-memory ResearchSession (Pearson batch X vs Y1..Y8 from default_rng(11) as above, holm, task t1 linked to H1, result toggled into the report) with a stub project providing plan(), plan_history(), hypothesis_status() and protocol_records(). Then ev = rr.hypothesis_evidence(s, project, s.report_entries())[HID]; text = '\\n'.join(i.text for i in rr.hypothesis_rows(ev, h1, 'en')); self.assertIn('.096', text). This fails today (only 'p = .012' is printed). Variant: holm and bh results of one task should give two different 'Result for H1' lines (assertNotEqual); this fails today because they are identical."
+    },
+    {
+     "id": "R2-two-group-batch-n",
+     "severity": "major",
+     "area": "Word report: numbers in the hypothesis block",
+     "claim": "For a two-group batch (Welch t or Mann–Whitney U on several outcomes), the 'n =' in the hypothesis result line is not an engine n. TwoGroupRow has only `ns`, and the structured sample has no n_used, so _n falls back to provenance['complete']: the session's listwise count over the group and all outcomes. After the project is reopened, the same result reads 'n = —'.",
+     "evidence": "In-memory run on a8663ce: G (A/B × 30), outcomes O1–O3 with 3/4/5 missing, Welch. Engine ns are (28,29), (28,28) and (27,28), i.e. n = 57, 56, 55 per outcome. The report prints 'Result for H1: “Welch t: 3 outcomes by G” (current; …): n = 48; …', where 48 is the number of rows complete on G+O1+O2+O3; the engine used that n for no test. Rebuilding the entry the way project_session restores it (structured result through result_store to_json/from_json, provenance without 'complete', project_session.py:300) gives rr._n(...) = '—'. Kruskal batches (GroupRow.n) and batch correlations (row.n) are not affected. The _n docstring promises 'the engine's n … or the n of each pair or outcome of a batch'.",
+     "confirmed": true,
+     "file_line": "research_report.py:1262-1278 (_n), :1252-1259 (_complete); batch_groups.py:418-438 (TwoGroupRow has no n), :490 (sample without n_used); project_session.py:300",
+     "red_test": "Same fixture, two groups, welch: ev = rr.hypothesis_evidence(s, project, s.report_entries())[HID]; self.assertEqual(ev.results[0].n, '57, 56, 55'). This fails today with '48'. For the restored entry, self.assertEqual(rr._n(restored), '57, 56, 55') fails with '—'."
+    },
+    {
+     "id": "R3-duplicate-result-line-identical-rerun",
+     "severity": "minor",
+     "area": "#8 no duplicated paragraphs",
+     "claim": "hypothesis_evidence lists every report entry, not the merged set the result blocks use. A task re-run on unchanged data (an identical result), with both results in the report, is written once in the result blocks ('written once') but twice as identical 'Result for H1: …' paragraphs in the Hypotheses section.",
+     "evidence": "In-memory, same batch run twice (identical engine report), both toggled into the report, saved docx re-read with python-docx. Section 10 says 'Calculated 2 times with an identical result; written once.' Using the exact #8 metric of ReportByHypothesisTests (body paragraphs, no headings or captions): 0 repeats with one result, 1 repeat with the re-run, namely 'Result for H1: “Pearson r: X with 8 variables” (current; calculated as a test of H1, plan version 1): n = 60; …' twice. The evidence table also gets two rows for the merged result.",
+     "confirmed": true,
+     "file_line": "research_report.py:1331-1353 (loop over all entries), :935-938; compare _merge at :618-631",
+     "red_test": "Run the batch twice, toggle both into the report, rr.plan_report and then report_docx.build_research_docx into a BytesIO, then Document(); count the non-heading, non-caption paragraphs as ReportByHypothesisTests does; self.assertEqual(repeated, []). This fails today ('Result for H1: …' appears twice)."
+    },
+    {
+     "id": "R4-version-line-not-unique",
+     "severity": "minor",
+     "area": "#8 no duplicated paragraphs",
+     "claim": "The 37.0b data line 'Data of “{title}”: …' is still written twice when two results share an engine title in the same minute. Every single correlation is titled 'Bivariate correlation', and a task re-run with another correction keeps its title. Not a regression (2f9af71 repeated 'Data: …'), but the #8 fix does not make the line unique.",
+     "evidence": "No plan; two different single correlations (X–Y1 and X–Y2), created in the same minute, both in the report: 'Data of “Bivariate correlation”: fictional.csv (50 rows), version 9a353707327b, calculated 2026-01-02 03:04.' is written twice (#8 metric). Linked case (holm then bh re-run of one H1 task): 'Data of “Pearson r: X with 3 variables”: …' is written twice, alongside R1's identical result lines.",
+     "confirmed": true,
+     "file_line": "research_report.py:671-673 (version_line uses result.title)",
+     "red_test": "Two single correlations X–Y1 and X–Y2 with created=datetime(2026,1,2,3,4) and no hypotheses; plan_report, then docx; assert that no body paragraph starting with 'Data of' occurs twice. This fails today."
+    },
+    {
+     "id": "R5-heading3-theme-font",
+     "severity": "minor",
+     "area": "D9 A4 and Heading 3",
+     "claim": "Heading 3 is not Times New Roman in Word. The style keeps w:asciiTheme and w:hAnsiTheme='majorHAnsi', which take precedence over the w:ascii and w:hAnsi set by _style, so Word uses the theme's major font, Calibri. Title and Heading 1/2 have the same issue (pre-existing). D9WordPageTests passes only because python-docx's font.name reads w:ascii.",
+     "evidence": "word/styles.xml of the exported research report: Heading3 rPr = <w:rFonts w:asciiTheme=\"majorHAnsi\" w:eastAsiaTheme=\"majorEastAsia\" w:hAnsiTheme=\"majorHAnsi\" w:cstheme=\"majorBidi\" w:ascii=\"Times New Roman\" w:hAnsi=\"Times New Roman\"/>. theme1.xml majorFont latin typeface = 'Calibri'. ECMA-376 §17.3.2.26: when asciiTheme is present, the ascii attribute is ignored. Size 12, bold, italic, colour 000000 and A4 are correct. Not rendered in Word here; the evidence is the XML.",
+     "confirmed": true,
+     "file_line": "interpretation_docx.py:61-70 (same pattern at :50-59)",
+     "red_test": "rf = report_docx.build_research_docx(rr.plan_report(rr.ReportInputs(title='F', question='Q?')), version='t').styles['Heading 3'].element.rPr.find(qn('w:rFonts')); self.assertIsNone(rf.get(qn('w:asciiTheme'))); self.assertIsNone(rf.get(qn('w:hAnsiTheme'))). This fails today ('majorHAnsi')."
+    },
+    {
+     "id": "R6-spearman-option-on-pearson",
+     "severity": "minor",
+     "area": "Word report: calculation text",
+     "claim": "Every Pearson or Kendall batch is described as using 'Spearman p-value = Permutation (as the single analysis)', in the tested-by line and in the table's Calculation column. Analyze saves all default options with a result, and calculation() prints every option except the title options.",
+     "evidence": "With the options Analyze saves (workspace_analyze.py:970, effective = {**default_options, **options}), a Pearson batch reads 'H1 tested by “X with 8 variables”: Pearson’s r; 8 tests; correction: Holm (familywise error); Spearman p-value = Permutation (as the single analysis); result current, in this report.' The table cell shows the same. LV: 'Spīrmena p vērtība = Permutāciju (kā atsevišķā analīzē)'; RU: 'p-значение Спирмена = Перестановочное …'. The option has no effect on a Pearson or Kendall run. Single correlation and batch_groups print no extra options.",
+     "confirmed": true,
+     "file_line": "research_report.py:752-778 (option loop :774; _TITLE_OPTIONS :701); workspace_analyze.py:970",
+     "red_test": "opts = {**wm.default_options(wm.METHODS['batch_correlation']), 'method': 'pearson'}; self.assertNotIn('Spearman p-value', rr.calculation('en', 'batch_correlation', opts, label_en='Pearson’s r', tests=8, correction='holm')). This fails today."
+    },
+    {
+     "id": "R7-plan-changed-justification-unnamed",
+     "severity": "minor",
+     "area": "S14 records in the report",
+     "claim": "A justification of the new H-PLAN-CHANGED check prints as 'Justification (a recorded decision)', so the report does not say what was justified. It is the only key of rw.RECORD_KIND without an about.* text.",
+     "evidence": "rr.record_lines on {'kind': 'justification', 'check_key': 'H-PLAN-CHANGED', …} gives 'Justification (a recorded decision), recorded 2026-01-03 05:00, after 1 result(s) of H1. Reason: …'. LV gives 'Pamatojums (ierakstīts lēmums)…' and RU 'Обоснование (записанное решение)…'. H-PLAN-CHANGED is in rw.JUSTIFY, and the UI writes such records through DECISIONS['justify'] (workspace_hypotheses.py:37-39, :555). [k for k in rw.RECORD_KIND if 'about.' + k not in rr.TEXT['en']] == ['H-PLAN-CHANGED'].",
+     "confirmed": true,
+     "file_line": "research_report.py:852-855; about.* texts end at :166 (EN), no 'about.H-PLAN-CHANGED' in any language",
+     "red_test": "for key in rw.RECORD_KIND: self.assertIn('about.' + key, rr.TEXT['en']). Or: line = rr.record_lines(rr.HypothesisEvidence(1, records=({'id': 'r9', 'kind': 'justification', 'at': '2026-01-03T05:00:00+00:00', 'check_key': 'H-PLAN-CHANGED', 'reason': 'x', 'results_of_hypothesis': 1, 'detail': {}},)), 'en')[0]; self.assertNotIn('a recorded decision', line). Both fail today."
+    },
+    {
+     "id": "R8-no-task-warning-hidden",
+     "severity": "minor",
+     "area": "S14 open checks in the report",
+     "claim": "The open H-NO-TASK warning is dropped from the report whenever the hypothesis still has a result. _COVERED_CHECKS treats it as covered by the 'No analysis … tests H… yet' line, but that line is written only when the block has no tested-by or result line. Example: a task that produced H1's result is re-linked to H2 in Analyze step 1.",
+     "evidence": "H1 and H2 in the plan; task t1 ran as a test of H1 (snapshot H1, result in the report), then task.hypothesis_id was set to H2. The app's H1 view has the open warning 'No analysis tests H1 yet.' (H-NO-TASK, open). H1's Word block is only: 'H1: direction Two-sided; α = 0.05; plan version 1.', 'Result for H1: “Pearson r: X with 2 variables” (current; calculated as a test of H1, plan version 1): …', 'No decision is recorded for H1.' There is no not_tested line and no limitation.",
+     "confirmed": true,
+     "file_line": "research_report.py:704 (_COVERED_CHECKS), :1220-1226 (_disclosed), :941-943 (not_tested only when no lines)",
+     "red_test": "Same fixture: text = '\\n'.join(i.text for i in rr.hypothesis_rows(rr.hypothesis_evidence(s, project, s.report_entries())[H1], h1, 'en')); self.assertTrue('No analysis tests H1 yet' in text or 'No analysis in this project tests H1' in text). This fails today."
+    },
+    {
+     "id": "R9-missing-rows-limitation-lost-after-restore",
+     "severity": "minor",
+     "area": "Evidence table consistency across a restart",
+     "claim": "The evidence table's 'N of M rows complete' limitation depends on provenance['complete'], which project_session does not restore. For batch results (no n_used), a second export after reopening the project drops that limitation, although status doc §4 step 12 says the export after a restart holds the same rows. The same mechanism affects Stage 36's limit.missing (pre-existing).",
+     "evidence": "Pearson batch X vs Y1, Y2 with 3 missing Y1. Fresh entry: rr._complete = 47, so the table cell reads '47 of 50 rows complete.'. The same entry rebuilt as project_session.py:300 restores it (structured result through to_json/from_json, provenance without 'complete'): rr._complete = None, so the cell loses the limitation. n stays '47, 50' because it comes from the engine rows.",
+     "confirmed": true,
+     "file_line": "research_report.py:1252-1259 (_complete), :972-973 (cell.missing); project_session.py:300",
+     "red_test": "Build the restored entry as above, then rows = rr.evidence_table(rr.ReportInputs(hypotheses=[h1], evidence=rr.hypothesis_evidence(s, project, [restored])), 'en')[0].rows; self.assertIn('47 of 50 rows complete', rows[0][5]). This fails today after the restore."
+    }
+   ],
+   "checked_and_fine": [
+    "Method: I did not create /tmp/verify-0b-report, because this agent may not create files anywhere, /tmp included. Instead I used the existing clean checkouts read-only: the branch tip a8663ce (.claude/worktrees/agent-a87ef40534c223f43, git status clean) and the base 2f9af71 (scratchpad/review37/repo). Every Python run used -B and PYTHONDONTWRITEBYTECODE=1, and every Word document was built and re-read in a BytesIO. Afterwards both checkouts were still clean at the same HEADs, and no .pyc or matplotlib cache file was newer than my runs. The 18-minute full suite was not run because it creates temporary project folders.",
+    "A4: <w:pgSz w:w=\"11906\" w:h=\"16838\"/> (Word's exact A4), 1-inch margins, one section. _style is called by all three Word builders (report_docx.build_report_docx, report_docx.build_research_docx and interpretation_docx), so every Word export is A4.",
+    "Heading 3 is 12 pt, bold, italic and black (the theme colour is removed), with keep-with-next. Only the font face is wrong (R5).",
+    "No verdict or causal wording: I scanned every new or changed research_report.TEXT value in EN/LV/RU and every check.* text for support/confirm/prove/cause stems and their LV/RU equivalents. The only hits are 'not a confirmatory test' (the designation), the 'Reason'/'Причина' labels, LV 'Pamatojums' (= justification) and LV 'pierādījumi' (= evidence). The rendered EN/LV/RU blocks of real runs contain no verdict.",
+    "Report without hypotheses: I diffed the base and branch Word output for the same engine results with no plan (batch in a task plus a single correlation). Only the documented data line differs ('Data:' became 'Data of “…”:'); the tables, their order and their numbering are identical.",
+    "Numbers for batch correlations match the engine's table: estimates, 95% CIs, family size ('8 tests'), correction ('Holm') and per-pair n. The hypothesis α and plan version come from the plan; record counts come from the stored records.",
+    "Stale vs current: after a data change and a re-run, the older report result reads 'needs review (data changed after this result)' and the new one 'current'. The tested-by line follows the task's latest result, and the table rows say the same. A restored project sets both in_report and report_order.",
+    "S14: deviations with planned and used (EN/LV/RU), acknowledgements, designation changes (recorded and unexplained), withdrawals and S8 plan-change deviations are listed. Open warnings and info checks (H-DIR-TWOSIDED, H-ASSUMPTIONS-OPEN, H-DIR-SIGN, H-LINKED-LATE) appear under 'Limitations of the evidence for H…'. A check resolved by a matching record moves to the records list.",
+    "Editable tables: python-docx re-reads the saved report. 'Hypotheses and evidence' is a real Word table with a repeating header row and text cells, its caption number follows document order, and it is written only when an analysis tests a hypothesis (AC-15).",
+    "LV and RU blocks have no leftover {placeholders}, and the direction and designation labels are localised.",
+    "#8 in the branch's own scenario (one result per task, different methods per hypothesis) holds: my in-memory run of a single batch per hypothesis had 0 repeated body paragraphs."
+   ]
+  },
+  "audit": {
+   "findings": [
+    {
+     "id": "C-S16-LEGACY-FLIP",
+     "severity": "major",
+     "area": "S16 standing / audit integrity (regression introduced by 0b)",
+     "claim": "Plan versions saved before 0b (every 37.0a project, every 36.x project migrated to 6, and every version a 36.x build saves in a returned copy) have no stored inferential_before. For these versions hypothesis_status() recounts the 'inferential results before the plan' from the CURRENT runs table by created_at. The program's own post-hoc step (Results > post-hoc on an omnibus result) stores the replacement run with a new id and created_at=now(), then deletes the old run. A hypothesis that entered the plan after an omnibus result therefore flips from 'added after results' to 'confirmatory'. H-ADDED-AFTER disappears, the Word report prints 'H1 was planned before the results.', and every later result of that hypothesis freezes standing 'confirmatory' into its immutable snapshot. At 2f9af71 the stored runs_before kept it post hoc.",
+     "evidence": "In-memory harness (python -I -B -c; modules loaded from git objects of a8663ce, plus the real 2f9af71 project_store for the legacy save; one sqlite3 ':memory:' connection; no files). Legacy event: [{'version': 1, 'hypotheses': 1, 'runs_before': 1}]. Before post-hoc: 2f9af71 standing added_after_results, a8663ce added_after_results. After record_run(method='posthoc') + delete_run(old), the same sequence as project_session._save_results: 'runs now: [('posthoc', '2026-11-13T10:00:07+00:00')] | plan saved_at: 2026-11-13T10:00:04+00:00'; a8663ce 'confirmatory' {'runs_before': 1, 'inferential_before': 0}; 2f9af71 'added_after_results'; H-ADDED-AFTER among checks: []. rr.plan_report hypotheses section: before ['H1 (primary): Groups differ in stress', 'H1 was added after results were calculated: exploratory (post hoc), not a confirmatory test.']; after ['H1 (primary): Groups differ in stress', 'H1 was planned before the results.']. S16InferentialResultsTests cover only versions saved by 0b (event carries inferential_before), so the legacy path is untested.",
+     "file_line": "claude/stage37-0b:project_store.py:1530-1549 (recount + min, planned = inferential_before == 0); project_store.py:1870 (created_at=now()); project_session.py:646-659 (replacement, then delete_run(previous.id)); workspace_analyze.py:453 (snapshot standing from hypothesis_status); research_report.py:1056",
+     "red_test": "test_stage37_review_fixes.S16LegacyTests.test_post_hoc_tests_keep_a_37_0a_post_hoc_hypothesis_post_hoc: create project; r1 = record_run(method='omnibus'); save_plan({'hypotheses':[{'text':'Groups differ'}]}); emulate a 37.0a event with sqlite3: UPDATE events SET detail=json_remove(detail,'$.inferential_before') WHERE kind='plan_saved'; assert standing == 'added_after_results'; then record_run(method='posthoc', ...) and delete_run(r1.id) (or ws.click('result-posthoc')); assertEqual(project.hypothesis_status()[hid]['standing'], 'added_after_results'). Fails today: 'confirmatory'.",
+     "confirmed": true
+    },
+    {
+     "id": "A-REMOVAL-UNRECORDED",
+     "severity": "major",
+     "area": "S8 / decisions recorded with a reason (S8 fix incomplete; AC-8)",
+     "claim": "After results, a saved hypothesis can be removed (the 'Remove' button, or clearing its H1 text) without a reason and without any protocol record. plan_changes() iterates only the new plan and skips ids it no longer contains. After removal the hypothesis and every decision recorded for it (acknowledgements; deviations with their reasons) disappear from the hypothesis panel, from the result card (only 'no longer in the plan' remains) and from the Word report's hypothesis section and evidence table. They stay only in the database. The branch says S8 asks a reason for 'any substantive change after results'; removal is not covered, and AC-8 (deviations appear in the detail, the result card and the Word report) stops holding for these records.",
+     "evidence": "In-memory (a8663ce). Control: a wording change after results raises DesignationReasonNeeded (True). Removal: 'removal saved as version 2 | H1 still in plan: False | plan_changes(v1, v2): [] | protocol records: [('acknowledgement', True)]'; hypothesis_status has no H1. Clearing H2's text after a result: 'saved as version 2 | H2 kept: False | records: []'. Report data path (rr.hypothesis_evidence + rr.plan_report with a minimal session): before removal 'evidence for H1: True | H1 text: True | ack reason: True | deviation reason: True'; after removal 'evidence for H1: False | H1 text: False | ack reason: False | deviation reason: False | word removed/no longer: False'; records still stored ['acknowledgement', 'deviation']. Result card for a removed hypothesis returns results.tests_gone without decisions. Pre-existing at 2f9af71, but now inside the claimed S8 scope, and 0b's report records vanish with it.",
+     "file_line": "claude/stage37-0b:project_store.py:548-571 (line 556 'if old is None: continue'), :691 (empty text dropped), :1453-1462; workspace_plan.py:343, :569-571 (_remove), :172-200 (_changes/_needs_reason); research_report.py:1307, :1043; workspace_analyze.py:1484-1488, :1926",
+     "red_test": "S8PlanChangeTests.test_removing_a_hypothesis_after_results_needs_a_reason_and_stays_reported: save_plan with H1 and H2; record_run with an H1 snapshot; add a deviation for H1; with assertRaises(ps.DesignationReasonNeeded): project.save_plan(plan without H1). Fails today: version 2 is saved. Then save with reasons={h1: ...}, assert a removal record for H1, and assert the plan_report text still contains H1's deviation reason.",
+     "confirmed": true
+    },
+    {
+     "id": "B-PLAN-SILENTLY-RECONCILED",
+     "severity": "major",
+     "area": "S8 / deviation checks (made reachable and silenceable by the new 0b roles editor)",
+     "claim": "After results, these plan fields can be changed with no reason and no record: the planned method and its options, the planned variables (the 0b planned-variables editor), and the question kind (which prunes roles). H-METHOD-DIFFERS and H-VARIABLES-DIFFER compare each result with the CURRENT plan, so editing the plan to match what was run silently dissolves both deviation checks. H-PLAN-CHANGED does not catch it either: the snapshot and _snapshot_changes cover priority, direction, α and wording only. The design's resolutions for these checks are 'record as a deviation, or change the analysis', never 'change the plan'.",
+     "evidence": "In-memory (a8663ce, workspace_methods imported with analysis_runs stubbed). Plan v1: method_key batch_correlation, roles {x:A, y:[B,C]}; run correlation with {x:A, y:[B,D]}. Checks at v1: [('H-METHOD-DIFFERS','open'), ('H-VARIABLES-DIFFER','open')]. save_plan with method_key correlation and roles {x:A, y:[B,D]}: 'saved WITHOUT a reason as version 2 | records: []'. Checks at v2: []. Question kind relate->associate with roles dropped: 'saved WITHOUT a reason as version 3 | records: 0'. workspace_plan._changes lists only designation/wording/direction/alpha; _planned_method and _planned_roles are never locked after results.",
+     "file_line": "claude/stage37-0b:workspace_plan.py:172-200, :319-320, :449-460 (_prune_roles), :490 (_planned_roles); project_store.py:548-571; research_workflow.py:372-396, :431-446",
+     "red_test": "S8PlanChangeTests.test_planned_method_or_variables_changed_after_results_need_a_reason: plan with method_key and roles; record_run; save_plan with a different method_key and roles inside assertRaises(ps.DesignationReasonNeeded). Fails today: version 2 is saved with no record. With a reason, assert deviation records what='method'/'variables' with from/to.",
+     "confirmed": true
+    },
+    {
+     "id": "E-OLDER-COPY-RETURNS-SILENTLY",
+     "severity": "major",
+     "area": "copy for an older version / AC-11 / design §8.6",
+     "claim": "The copy for 36.x comes back without notice and without the promised carry-forward. AC-11 (design §10, not changed by 0b) still says the copy 'comes back to F+1 with its records', and §8.6 says IF NOT EXISTS keeps the records and that typed fields dropped by a 36.x plan save 'are carried forward ... A notice names them; nothing is restored silently'. The implementation drops the table, and neither import_package nor open ever reads for_older_version or copied_for_format; no UI reads events at all. A returned copy is therefore restored as a plain success, with 0 records, typed plan fields gone after any 36.x plan save, and the snapshot gone from any result 36.x re-saved after post-hoc tests. The status file marks AC-11 done, but the branch's own test asserts the opposite (records == []).",
+     "evidence": "git grep: for_older_version, copied_for_format and protocol_records_left_out appear only in export_for_format and tests; no '.events(' call outside tests. import_package warnings: only 'already exists' and questionnaires; restore_files shows 'project.restored' as success. In-memory round trip using the real RC store code (07c37f6, SCHEMA_VERSION 5): the copy (export_for_format's DROP statements applied to an in-memory backup), one RC plan save, one RC post-hoc replacement, then migration 6 in 0b. Output: 'left out: 3 | back at format 6 | records: []'; 'plan typed fields after the way back: {question_id: None, method_key: None, roles: None} | questions: None'; 'snapshot of the task result after the way back: None'; facts.method_key '' roles {}, so the method/variables checks can no longer fire. tests/test_stage37_formats.py:237 asserts protocol_records() == []; :184 discards the import warnings.",
+     "file_line": "claude/stage37-0b:project_store.py:1040-1053, :1083-1114; workspace_projects.py:424-432; docs/STAGE37_DESIGN.md:660-661, :710; docs/STAGE37_0B_STATUS.md:60; tests/test_stage37_formats.py:237",
+     "red_test": "OlderVersionCopyTests.test_a_copy_that_comes_back_says_what_it_left_out: package, n = store.export_for_format(info.id, base/'c.sra'); restored, warnings = restart('elsewhere').import_package(package); assertTrue(any(str(n) in w for w in warnings)). Fails today: warnings == []. Second test: after a format-5 plan save without typed fields, opening in 0b carries question_id, method_key and roles forward from the last format-2 version and names them in a notice. Fails today.",
+     "confirmed": true
+    },
+    {
+     "id": "D-D12-RUN-ID-DANGLES",
+     "severity": "minor",
+     "area": "D12 run_id / append-only references",
+     "claim": "The run_id that D12 now writes points to a deleted run after the program's own post-hoc replacement. _save_results stores the replacement under a new uuid and deletes the previous run. Acknowledgement, deviation and link records that named the old run cannot be corrected (append-only), have no foreign key, and now reference a run that no longer exists. Nothing reads run_id yet, so the break goes unnoticed, which defeats D12's purpose ('a decision names the result it was made about').",
+     "evidence": "In-memory (a8663ce): records written with run_id=r1, then record_run(method='posthoc') + delete_run(r1) as in project_session.py:646-659. Output: 'records name runs: [True, True] | those runs exist: [0, 0] | current result of the task: True'. git grep: run_id from records is not read by research_report, research_workflow or the UI.",
+     "file_line": "claude/stage37-0b:workspace_hypotheses.py:568-574, :557; workspace_analyze.py:430; project_session.py:646-659; project_store.py:1946-1952, :316",
+     "red_test": "D12RunIdTests.test_a_record_still_names_a_saved_result_after_post_hoc_tests: record an acknowledgement with run_id = the task's latest record_id; run the post-hoc replacement (ws.click('result-posthoc') or record_run + delete_run); for every record with a run_id, project.run(run_id) must not raise. Fails today: ProjectError 'No analysis run ...'.",
+     "confirmed": true
+    },
+    {
+     "id": "H-DEVIATION-TOO-LONG",
+     "severity": "minor",
+     "area": "deviation recording (regression introduced by 0b)",
+     "claim": "Since 0b, a deviation recorded from a check stores the check's planned and actual facts in detail, and _insert_protocol_record caps the detail JSON at 8000 characters. A deviation about a wide batch with long, survey-export-style variable names can therefore no longer be recorded at all ('The record's details are too long.'), while the 2f9af71 detail {'what': ...} records fine. The check then stays open; its remaining resolutions are changing the analysis, or silently changing the plan (finding B).",
+     "evidence": "In-memory (a8663ce): 45 items with 90-character names, one item left out of the batch, giving an H-VARIABLES-DIFFER check. Output: '0b detail JSON length: 8460 | 2f9af71-style detail -> recorded | a8663ce detail -> NOT recorded: The record's details are too long.'",
+     "file_line": "claude/stage37-0b:workspace_hypotheses.py:546-553; project_store.py:776-778",
+     "red_test": "Record a deviation through the hypothesis panel for H-VARIABLES-DIFFER where planned and actual each hold 45 names of 90 characters; assert the record exists (detail shortened or hashed). Fails today: ProjectError.",
+     "confirmed": true
+    },
+    {
+     "id": "F-H0-CHANGE-UNCHECKED",
+     "severity": "minor",
+     "area": "H-PLAN-CHANGED coverage",
+     "claim": "H-PLAN-CHANGED ignores a change of H0 alone. save_plan requires a reason and records a 'wording' deviation (with an 'H0: ' prefix), but _snapshot_changes compares only the H1 text of the snapshot's plan version, and designation_history carries no h0. Results calculated for the old H0 are therefore never flagged, although the status says the check 'compares every result's snapshot with the plan' for wording 'H1 or H0'.",
+     "evidence": "In-memory (a8663ce): 'h0 changed after results | records: [('deviation', 'wording')] | H-PLAN-CHANGED: []' versus 'text changed after results | records: [('deviation', 'wording')] | H-PLAN-CHANGED: [('H-PLAN-CHANGED', 'recorded')]'.",
+     "file_line": "claude/stage37-0b:research_workflow.py:431-446, :573-594; project_store.py:565",
+     "red_test": "S8PlanChangeTests.test_an_h0_change_after_results_is_checked: change only h0 after a result, with a reason; hypothesis_checks must contain H-PLAN-CHANGED with 'wording' in facts['changed'] and state 'recorded'. Fails today: absent.",
+     "confirmed": true
+    },
+    {
+     "id": "G-REPLACE-BYPASSES-TRIGGERS",
+     "severity": "minor",
+     "area": "append-only guard (hardening; no live program path)",
+     "claim": "The append-only triggers cover only BEFORE UPDATE and BEFORE DELETE. REPLACE INTO (or INSERT OR REPLACE) with an existing id rewrites a protocol record in place, because SQLite fires no DELETE trigger for a REPLACE while recursive_triggers is off, which is the default. No program code issues REPLACE today, so this is a guard gap of the 'table only grows' claim (S15 class), not a reachable path.",
+     "evidence": "In-memory on the branch's own _migrate_v6 schema: 'DELETE -> protocol records are append-only', 'UPDATE -> protocol records are append-only', 'REPLACE INTO an existing id -> [('r1', 'REWRITTEN')]'; PRAGMA recursive_triggers = 0. git grep finds no REPLACE in *.py.",
+     "file_line": "claude/stage37-0b:project_store.py:325-328",
+     "red_test": "BackupTests: on a restored project, db.execute('REPLACE INTO protocol_records (id, at, kind, reason) VALUES (?,?,?,?)', (existing_id, ...)) must raise sqlite3.DatabaseError. Fails today: the row is rewritten. Fix: a BEFORE INSERT trigger that aborts when NEW.id already exists.",
+     "confirmed": true
+    }
+   ],
+   "checked_and_fine": [
+    "Method: no worktree was created at /tmp/verify-0b-audit, so there was nothing to remove. This session's read-only rules forbid creating files anywhere, including /tmp; the Fable review worked under the same rule. Everything ran in memory: python -I -B with PYTHONDONTWRITEBYTECODE=1; modules loaded straight from git objects of a8663ce (claude/stage37-0b), plus 2f9af71 and the RC 07c37f6 for cross-version cases; one sqlite3 ':memory:' connection; matplotlib, flet, docx and PIL blocked; synthetic data only. Not executed: the 18-minute suite, and the file-based migrate(), export_for_format() and import_package(). Their claims were checked by reading the code and the branch's tests.",
+    "Append-only: git grep finds no UPDATE or DELETE of protocol_records anywhere. The only writes are the INSERT at project_store.py:801 and DROP statements on the temporary snapshot in export_for_format. In memory, the triggers abort UPDATE and DELETE of matching rows. No code updates or deletes events or plan_versions either.",
+    "_insert_protocol_record: a reason is required for designation, acknowledgement, deviation, justification and withdrawal; an acknowledgement needs a check key and a fingerprint; a withdrawal must name an existing record that is not itself a withdrawal and is not already withdrawn; plan_version and result counts are captured at insert.",
+    "S8 store path: after results, changes to H1 wording, H0 wording, direction, α and priority are refused without a reason (DesignationReasonNeeded; verified in memory). With a reason they are recorded as deviation or designation records (what, from, to) in the same transaction as the new plan version, and the plan card asks for the reason (plan.change_reason_needed).",
+    "H-PLAN-CHANGED fires for H1 text, direction, α and priority against the snapshot, and shows 'recorded' once the change record exists. Withdrawn records are ignored (active_records).",
+    "Snapshot immutability: the only UPDATE of runs.provenance is set_reviewed's read-modify-write, which keeps the snapshot (in memory: unchanged after set_reviewed and set_note). The 0b post-hoc replacement carries the snapshot over (project_session.py:651).",
+    "Migrations 1–5 → 6 (code plus MigrationTests): a read-only probe refuses newer formats without writing; a backup copy is taken before BEGIN IMMEDIATE; every step and user_version run in one transaction, rolled back on failure; _migrate_v6 is additive and uses IF NOT EXISTS.",
+    ".sra round trip (code plus BackupTests): export uses the SQLite backup API, which copies the triggers and all rows. On import, migrate() returns early at format 6, so records and triggers survive. Import never overwrites an existing project: it gets a new id and '(restored)'. A format-5 package is migrated after a backup.",
+    "Copy for an older version: the original is opened read-only; DROP and VACUUM run only on a temporary snapshot; the manifest and the copy's event carry the omitted-record count; no event is written to the original (CopyInTheInterfaceTests); the dialog shows the count before the Save dialog, with {count} present in EN, LV and RU; only format 5 is offered. The only gap is the return path (finding E).",
+    "D12 is written as described: decisions about a check name the task's latest saved result (record_id); link records name the task's latest result; plan-level records carry no run. The only gap is dangling ids after post-hoc tests (finding D).",
+    "The Windows journey stage37-hypothesis reads the project database only through mode=ro connections (tools/windows_gui_e2e.py:2667-2675), so its record counts cannot alter records.",
+    "Word report: records of current-plan hypotheses are printed with their reasons; a withdrawn record stays, followed by its withdrawal; designation changes after results without a record are listed.",
+    "S15 (notes and review ticks overwritten without history): not made worse in storage. set_note still overwrites runs.note in place and set_reviewed still rewrites provenance.reviewed, exactly as at 2f9af71, and the post-hoc replacement copies note and ticks (no loss). Exposure grew, though: 0b adds a second place to edit the same fields (the in-task review, workspace_analyze.py:866-890, using the same session setters), and the Word report now prints the current review and note state next to the append-only records. STAGE37_0B_STATUS §8 correctly lists S15 as not done.",
+    "S15 class, unchanged: plan_versions and events have no trigger. S16 now reads the stored inferential_before from the unguarded events table; before 0b the standing came from plan_versions.runs_before, which was equally unguarded."
+   ]
+  },
+  "workflow": {
+   "findings": [
+    {
+     "id": "W1-footer-discards-the-analysis-on-screen",
+     "severity": "major",
+     "area": "next-action footer on Analyze (D4 targets, 'button does what it names')",
+     "file_line": "workspace_hypotheses.py:167-185 (GOES_TO hides by route only; every other action becomes a button), :262-265 (run_action create_analysis/open_task); workspace_analyze.py:456-492 (create_for_hypothesis), :494-503 (open_task_for), :561-576 (_open_task resets selection, confirms, confirm_scopes, override), :594-626 (_remember_task: on-screen choices are saved only at Run)",
+     "claim": "On Analyze the footer shows the next action for the very analysis that is on screen, and its primary button throws away the researcher's unsaved work. N6b/N6c 'Open the analysis of H1' targets the task already open; clicking it re-opens the task from its saved state, so the variables, the method override and the K1 confirmations chosen on screen are lost. N6a 'Create the analysis for H1' does the same while that analysis is being set up from step 1: it creates an empty task and resets the page. GOES_TO only compares routes, never the target task. This is the beginner's main path (bar → Create the analysis → choose variables), and the button is styled primary.",
+     "evidence": "In-memory run of the branch code. H1's task is created by the bar. On screen: x=UCLA, y=[C1,C2,C3], override ('batch_correlation', {'method':'pearson'}), confirms {'pearson': True}. footer_bar('analyze') gives title 'Next: run the analysis of H1' and buttons [('next-open-task','Open the analysis of H1'), ('footer-next-why','Why this step?')]. After run_action('open_task', task): selection {}, override None, confirms {}, navigate('analyze','variables'). Second case (pending_hypothesis=H1, no task yet, same on-screen choices): the footer shows [('next-create-analysis','Create the analysis for H1')]; after the click, tasks = [('Analysis for H1', {})] and the page holds {} None {}. _select/_toggle/_confirm only change page state (workspace_analyze.py:382-385, 326-334, 752-766). Before 37.0b the bar was only on the Project page, never on the analysis it targets.",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_footer.py\nclass FooterOnTheAnalysisTests(Case):\n    def test_the_footer_keeps_what_is_chosen_on_screen(self):\n        ws, hid = self.planned(direction=\"two-sided\")\n        ws.app.navigate(\"project\")\n        ws.click(\"next-create-analysis\")            # H1's task opens at step 2\n        ws.choose(\"role-x\", \"UCLA\")\n        ws.click(\"role-y-all-scale\")\n        ws.check(\"role-y-Age\", False)\n        ws.click(\"alt-batch_correlation-pearson\")\n        ws.check(\"design-confirm-pearson\")\n        page = ws.app.pages[\"analyze\"]\n        shown = (dict(page.selection), dict(page.confirms))\n        for data in (\"next-open-task\", \"next-create-analysis\"):\n            if ws.find_all(data):\n                ws.click(data)\n        self.assertEqual((dict(page.selection), dict(page.confirms)), shown,\n                         \"a footer button discarded the variables and the confirmation on screen\")\n# fails today: next-open-task is offered and resets both to ({}, {})"
+    },
+    {
+     "id": "W2-s16-legacy-recount-flips-standing-to-confirmatory",
+     "severity": "major",
+     "area": "S16 'added after results' (Project.hypothesis_status)",
+     "file_line": "project_store.py:1533-1549 (versions without inferential_before are recounted by runs.created_at <= saved_at, then min(..., runs_before); planned = inferential_before == 0); project_session.py:646-659 + workspace_analyze.py:1666-1668 (post-hoc tests re-record the result as a NEW row created now, method 'posthoc', then delete the old row)",
+     "claim": "For plan versions saved before 37.0b (36.x RC and 37.0a write no inferential_before), S16 recounts inferential runs by creation time. Post-hoc tests on an omnibus result replace that result with a new row timestamped now and delete the original row. Take a hypothesis that entered the plan after that omnibus result: running the post-hoc tests flips it from 'added after results' to 'confirmatory'. H-ADDED-AFTER disappears and the Word report says H1 was planned before the results. At 2f9af71 the standing came from the stored runs_before and could not change.",
+     "evidence": "In-memory run of the real Project code. An omnibus run; 1.2 s later a plan version and a plan_saved event are written as 37.0a wrote them (no inferential_before). hypothesis_status gives 'added_after_results runs_before = 1 inferential_before = 1'. 1.2 s later the post-hoc replacement is applied the way _save_results does it (record_run of the new row, then delete_run of the old). hypothesis_status now gives 'confirmatory runs_before = 1 inferential_before = 0'.",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_review_fixes.py::S16InferentialResultsTests\ndef test_post_hoc_tests_keep_a_36x_hypothesis_added_after_results(self):\n    import json, time\n    with TemporaryDirectory() as folder:\n        store = ps.ProjectStore(Path(folder)); info = store.create(\"Fictional\")\n        with store.open(info.id) as project:\n            dataset = project.import_dataset(EXAMPLES / \"sample_scale.csv\", mode=\"copy\")\n            import analysis_runs as runs\n            run = runs.run_groups(project.load_frame(dataset.id), \"group\", \"stress_q1\",\n                                  \"mannwhitney\", \"ordinal\", True, False)\n            roles = {\"group\": \"group\", \"outcome\": \"stress_q1\"}\n            old = project.record_run(run, method=\"omnibus\", dataset_id=dataset.id,\n                                     roles=roles, options={}, confirms={})\n            time.sleep(1.1)\n            plan = ps.normalise_plan({\"hypotheses\": [{\"id\": \"bbbbbbbbbbb1\",\n                \"text\": \"Group B reports more stress\", \"priority\": \"primary\"}]})\n            with project._write() as db:          # a version as 36.x / 37.0a saved it\n                cur = db.execute(\"INSERT INTO plan_versions (saved_at, plan, runs_before, note)\"\n                                 \" VALUES (?, ?, 1, '')\", (ps.now(), json.dumps(plan, sort_keys=True)))\n                ps._log(db, \"plan_saved\", {\"version\": cur.lastrowid, \"hypotheses\": 1,\n                                           \"runs_before\": 1})\n            self.assertEqual(project.hypothesis_status()[\"bbbbbbbbbbb1\"][\"standing\"],\n                             \"added_after_results\")\n            time.sleep(1.1)\n            project.record_run(run, method=\"posthoc\", dataset_id=dataset.id, roles=roles,\n                               options={}, confirms={})\n            project.delete_run(old.id)            # what _save_results does after post-hoc tests\n            self.assertEqual(project.hypothesis_status()[\"bbbbbbbbbbb1\"][\"standing\"],\n                             \"added_after_results\")   # fails today: 'confirmatory'"
+    },
+    {
+     "id": "W3-d5-posthoc-raw-key-in-word-report",
+     "severity": "major",
+     "area": "D5 (each result keeps its own title) / Word report",
+     "file_line": "workspace_analyze.py:1913 (report_inputs heads every result with task_title(entry.method, ...)), :1666-1668 (_posthoc sets entry.method = 'posthoc'); research_workflow.py:494-496 (method_title returns the raw key for a non-METHODS key), :520; research_report.py:1322-1326 (the new hypothesis rows also take latest.method)",
+     "claim": "D5 now heads each report result with task_title(language, entry.method, ...). After post-hoc tests on an omnibus result, entry.method is 'posthoc', which is not a METHODS key. The Word report heading therefore becomes 'Research task: posthoc: stress_total, year' in EN, LV and RU, and the new H rows print the calculation as 'posthoc'. At 2f9af71 the heading was the task's own title. Omnibus followed by post-hoc tests is a standard thesis flow.",
+     "evidence": "In memory, with the branch's task_title/result_info/plan_report. Omnibus gives 'Kruskal–Wallis H: stress_total, year' (EN), 'Kraskela–Volisa H: …' (LV), 'H-критерий Краскела–Уоллиса: …' (RU). Post-hoc gives 'posthoc: stress_total, year' in all three languages. plan_report headings: ['Research task: posthoc: stress_total, year'].",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_review_fixes.py::D5OwnSpecificationTests\ndef test_post_hoc_tests_keep_the_name_of_the_method(self):\n    import research_workflow as rw\n    roles, options = {\"outcome\": \"stress_q1\", \"group\": \"group\"}, {\"method\": \"kruskal\"}\n    for language in (\"en\", \"lv\", \"ru\"):\n        self.assertEqual(rw.task_title(language, \"posthoc\", roles, options),\n                         rw.task_title(language, \"omnibus\", roles, options))\n# fails today: 'posthoc: stress_q1, group' != 'Kruskal–Wallis H: stress_q1, group'"
+    },
+    {
+     "id": "W4-s8-reason-required-after-non-inferential-results",
+     "severity": "minor",
+     "area": "S8 vs S16 (meaning of 'after results')",
+     "file_line": "project_store.py:1453-1462 (runs = COUNT(*) of all runs, so DesignationReasonNeeded), :1486-1489 (deviation record per change); workspace_plan.py:196-201 (_needs_reason uses session.results, i.e. every result); research_report.py record.plan_change text",
+     "claim": "S8 asks for a reason, and writes an append-only 'deviation', for any change to wording, direction or α once any result exists. That includes descriptions and reliability checks, which S16 says do not count. So after only item diagnostics and a description, fixing a typo in H2 is refused without a reason. Once a reason is given, the report says 'H2 changed in the plan after results (wording)… 2 result(s) in the project' right beside 'H2 was planned before the results' (the S16 standing). This is the same penalty S16 removed ('a student who checks reliability first').",
+     "evidence": "In memory with the real Project: save_plan(v1), then record_run('item_diagnostics') and record_run('descriptive'). hypothesis_status: both hypotheses 'confirmatory' (inferential_before 0). save_plan with H2's text changed raises DesignationReasonNeeded: ['…b2'], runs = 2. With a reason, protocol_records gets deviation {'what': 'wording', 'from': 'Second hypothesis', 'to': 'Second hypothesis (typo fixed)'}, and the standing stays 'confirmatory'.",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_review_fixes.py::S8PlanChangeTests\ndef test_a_wording_fix_after_descriptions_only_needs_no_reason(self):\n    with TemporaryDirectory() as folder:\n        store = ps.ProjectStore(Path(folder)); info = store.create(\"Fictional\")\n        with store.open(info.id) as project:\n            dataset = project.import_dataset(EXAMPLES / \"sample_scale.csv\", mode=\"copy\")\n            import analysis_runs as runs\n            run = runs.run_groups(project.load_frame(dataset.id), \"group\", \"stress_q1\",\n                                  \"mannwhitney\", \"ordinal\", True, False)\n            plan = {\"hypotheses\": [{\"id\": \"bbbbbbbbbbb1\", \"text\": \"Group B reports more stress\",\n                                    \"priority\": \"primary\"}]}\n            project.save_plan(plan)\n            for method in (\"item_diagnostics\", \"descriptive\"):\n                project.record_run(run, method=method, dataset_id=dataset.id, roles={},\n                                   options={}, confirms={})\n            plan[\"hypotheses\"][0][\"text\"] += \".\"\n            project.save_plan(plan)          # raises DesignationReasonNeeded today\n            self.assertEqual([r for r in project.protocol_records() if r[\"kind\"] == \"deviation\"], [])"
+    },
+    {
+     "id": "W5-d4-strip-row-and-bar-follow-different-tasks",
+     "severity": "minor",
+     "area": "D4 / journey strip from task_steps (AC-5)",
+     "file_line": "workspace_shell.py:487-489 (focus_steps: FIRST task of the first hypothesis, finished or not); research_workflow.py:1082-1083 (row: first unfinished task), :796-840 (next action: first missing step across all tasks)",
+     "claim": "For a hypothesis with several analyses, the journey strip, the hypothesis row and the next action each follow a different task. The strip takes the hypothesis's first task even when it is finished, so the D4 fix was not applied to the AC-5 strip. The row takes the first unfinished task, and the bar takes the first missing step across all tasks.",
+     "evidence": "In memory. (i) Task A is finished (result, review, note, in the report) and task B is not run. journey_status gives {'design': True, 'method': True, 'result': True, 'report': True} (it follows task A). The hypothesis row shows task-B, 1 of 8 done. The next action is N6b [('open_task','task-B')]. (ii) T1 is run but not reviewed and T2 is not run. The row shows T1 '5 of 8 · next: checks' while the bar says N6b open T2.",
+     "confirmed": true,
+     "red_test": "# tests/test_workspace_journey_strip.py::TaskStatusTests\ndef test_the_strip_follows_the_hypothesis_task_that_is_not_done(self):\n    import flet as ft\n    from test_stage37_ui import run_correlations, write_plan\n    from test_stage36_ux_baseline import prepared_workspace\n    ws = prepared_workspace(); self.addCleanup(ws.close)\n    hid = write_plan(ws, direction=\"two-sided\")\n    ws.app.navigate(\"project\"); ws.click(\"next-create-analysis\"); run_correlations(ws)\n    for box in [c for c in ws.find_all(\"task-review-\") if isinstance(c, ft.Checkbox)]:\n        ws.check(box.data)\n    ws.type(\"task-notes\", \"Fictional note.\"); ws.click(\"task-add-report\")   # H1's first analysis: done\n    ws.click(\"task-new\"); ws.click(\"goal-relate\"); ws.choose(\"task-hypothesis\", hid)\n    run_correlations(ws)                         # H1's second analysis: not reviewed, not in the report\n    ws.app.pages[\"analyze\"].reset(); ws.app.navigate(\"data\")\n    self.assertEqual(tone_of(ws, \"report\"), \"neutral\")   # fails today: 'success' (first task)"
+    },
+    {
+     "id": "W6-strip-without-plan-unticks-design-and-method",
+     "severity": "minor",
+     "area": "journey strip from task_steps (AC-5), data-first work",
+     "file_line": "workspace_shell.py:453 (design/method default False), :481 (no plan: focus_steps returns None); workspace_analyze.py:119-128 (AnalyzePage.reset clears the goal whenever a project is opened)",
+     "claim": "Take a project with no plan and no task open in Analyze, which is the state after every reopening. The strip shows Design and Method as not done while Result and Report are done, even though each guided result belongs to a task whose own Design and Method steps are done. At 2f9af71 all four were ticked. The status doc justifies the change for results outside any task; this case is results inside tasks, the normal data-first workflow the design says must not be disturbed.",
+     "evidence": "In memory: no plan, one guided correlation in task t-1, in the report, Analyze reset. Running the 2f9af71 WorkspaceApp.journey_status (loaded from git) gives {'design': True, 'method': True, 'result': True, 'report': True}. The branch gives {'design': False, 'method': False, 'result': True, 'report': True}. The task's own steps are design 'done' and method 'done'.",
+     "confirmed": true,
+     "red_test": "# tests/test_workspace_journey_strip.py::TaskStatusTests\ndef test_without_a_plan_a_finished_task_ticks_design_and_method(self):\n    from test_stage37_ui import run_correlations\n    from test_stage36_ux_baseline import prepared_workspace\n    ws = prepared_workspace(); self.addCleanup(ws.close)\n    ws.click(\"nav-analyze\"); ws.click(\"goal-relate\"); run_correlations(ws)\n    ws.app.pages[\"analyze\"].reset()          # no task on screen, as after reopening the project\n    ws.app.navigate(\"results\")\n    self.assertEqual([tone_of(ws, k) for k in (\"design\", \"method\")], [\"success\", \"success\"])\n# fails today: ['neutral', 'neutral']"
+    },
+    {
+     "id": "W7-data-page-shows-two-different-next-steps",
+     "severity": "minor",
+     "area": "next-action footer on Data (right next action)",
+     "file_line": "workspace_shell.py:1097-1108 (DataPage._next_step: 'Next: choose an analysis' + data-next-analyze, unchanged); workspace_hypotheses.py:183 (footer adds create_analysis on Data)",
+     "claim": "With a saved plan, the Data page shows two different next steps: its own unchanged notice 'Next: choose an analysis [Choose an analysis]' and the new footer 'Next: create the analysis for H1 [Create the analysis for H1]'. The page's own button opens an analysis that tests no hypothesis, because the step-1 picker defaults to 'No hypothesis'. That is the opposite of what the footer asks for.",
+     "evidence": "In memory (plan with H1, levels confirmed). DataPage._next_step: ['Next: choose an analysis'] with [('data-next-analyze','Choose an analysis')]. footer_bar('data'): ['Next: create the analysis for H1'] with [('next-create-analysis','Create the analysis for H1')].",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_footer.py::FooterTests\ndef test_the_data_page_shows_one_next_step(self):\n    ws, hid = self.planned()\n    ws.app.navigate(\"data\")\n    self.assertEqual(ws.find(\"footer-next-title\").value, ws.app.t(\"next.create_analysis\", h=1))\n    self.assertEqual(ws.find_all(\"data-next-analyze\"), [],\n                     \"the page's own notice offers another next step\")   # fails today"
+    },
+    {
+     "id": "W8-footer-sends-the-beginner-out-of-the-in-task-review",
+     "severity": "minor",
+     "area": "next-action footer on Analyze + in-task review (§7.10)",
+     "file_line": "workspace_hypotheses.py:269-272 + :285-292 (review/write_note → open_result → navigate('results')); workspace_analyze.py:656, :866-897 (the review is in the task card)",
+     "claim": "On Analyze, the batch result card now holds the review ticks and the note. Yet the footer's N6e/N6f buttons ('Review the assumptions' / 'Write the note') call open_result and navigate to Results, taking the beginner out of the task. Design §7.10 put the review in the task 'so the beginner does not leave the task to review'. The footer never says 'It is done on this page' for these steps.",
+     "evidence": "In memory: H1's task with a batch result. _task_result() contains ['task-review-0','task-notes','task-skip-notes']. footer_bar('analyze') shows ['Next: review the assumptions of H1'] with [('next-review','Review the assumptions')]. run_action('review', …) calls navigate('results', None).",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_footer.py\ndef test_with_the_review_in_the_task_the_footer_keeps_the_researcher_there(self):\n    ws, hid = self.analysed(direction=\"two-sided\")\n    self.assertEqual(ws.app.route, \"analyze\")\n    self.assertTrue(ws.find_all(\"task-review-\"))\n    if ws.find_all(\"next-review\"):\n        ws.click(\"next-review\")\n    self.assertEqual(ws.app.route, \"analyze\")   # fails today: 'results'"
+    },
+    {
+     "id": "W9-in-task-review-binds-an-older-batch-result",
+     "severity": "minor",
+     "area": "in-task review bound to the result's state (K2)",
+     "file_line": "workspace_analyze.py:635-656 (card = latest BATCH entry; review bound to it); research_workflow.py task_facts (steps use the task's latest entry)",
+     "claim": "The in-task review is bound to the task's latest batch result, not to the task's latest result. A relate task narrowed to one Y runs a single correlation (advise returns 'correlation'). Back in the task, the card shows the earlier batch result's ticks and note as this task's review, while the step row and the next action say Checks needs attention for the new result.",
+     "evidence": "advise('relate', {'x':'UCLA','y':['C1']}) returns 'correlation'; two or more Y return 'batch_correlation'. In memory: entries [(1,'batch_correlation',['Monotonic'],'Note on the batch result.'), (2,'correlation',[],'')]. _task_result() shows [('task-review-0', True)] and note 'Note on the batch result.', while task steps from the latest result are checks 'attention' and interpretation 'current'.",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_task_review.py::TaskReviewTests\ndef test_the_review_in_the_task_belongs_to_its_latest_result(self):\n    import stage36_fixtures as fx\n    ws, hid = self.planned(direction=\"two-sided\")\n    ws.app.navigate(\"project\"); ws.click(\"next-create-analysis\"); run_correlations(ws)\n    for box in [c for c in ws.find_all(\"task-review-\") if isinstance(c, ft.Checkbox)]:\n        ws.check(box.data)\n    ws.type(\"task-notes\", NOTE)\n    ws.click(\"task-change-variables\")\n    for name in fx.SCALES[1:]:\n        ws.check(f\"role-y-{name}\", False)          # one Y: a single correlation\n    ws.click(\"guided-run\")\n    task_id = ws.app.pages[\"analyze\"].task_id\n    self.assertEqual(ws.app.session.task_results(task_id)[-1].method, \"correlation\")\n    ws.click(\"nav-analyze\")\n    ticked = [c.value for c in ws.find_all(\"task-review-\") if isinstance(c, ft.Checkbox)]\n    self.assertFalse(any(ticked), \"the earlier batch result's ticks shown as this task's review\")"
+    },
+    {
+     "id": "W10-d5-one-analysis-two-names-in-one-report",
+     "severity": "minor",
+     "area": "D5 titles in the Word report",
+     "file_line": "workspace_analyze.py:1913 (headings: task_title in the REPORT language), :621 (task.title in the UI language of the last run); research_report.py:1316/1322 (new H rows: AnalysisLine(task.title, …))",
+     "claim": "D5 now writes result headings in the report language, but the new hypothesis rows name the analysis by the stored task title, which is in the interface language of its last run. A report written in another language therefore gives the same analysis two different names.",
+     "evidence": "In memory: run with the UI in LV, report in EN. plan_report gives the H1 row 'H1 tested by “UCLA ar 3 mainīgajiem”: Spearman’s ρ; correction: Holm …' and the heading 'Research task: UCLA with 3 variables'.",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_reports.py\ndef test_one_analysis_has_one_name_in_the_report(self):\n    import research_report as rr, research_workflow as rw\n    ws, hid = self.planned(direction=\"two-sided\")\n    ws.app.session.language = \"lv\"\n    ws.app.navigate(\"project\"); ws.click(\"next-create-analysis\"); run_correlations(ws)\n    ws.click(\"task-add-report\")\n    ws.app.session.language = \"en\"\n    entry = ws.app.session.report_entries()[0]\n    plan = rr.plan_report(ws.app.pages[\"reports\"].report_inputs())\n    text = \"\\n\".join(i.text for s in plan.sections for i in s.items if i.text)\n    self.assertNotIn(rw.task_title(\"lv\", entry.method, entry.roles, entry.options), text)   # fails today"
+    },
+    {
+     "id": "W11-s16-matrix-and-explore-classed-non-inferential",
+     "severity": "minor",
+     "area": "S16 classification of method keys (policy)",
+     "file_line": "project_store.py:578-579 (NON_INFERENTIAL_METHODS)",
+     "claim": "'matrix' (pairwise ρ/r between the chosen variables) and 'explore' (optionally by group) count as non-inferential, yet both show the exact association or difference a later hypothesis predicts. A hypothesis written after a correlation matrix of its own variables stays 'confirmatory'. This is a documented, owner-changeable default (design §13 #3), so it is a policy question, not a verified defect. Separately, 'reliability' in the tuple is not a method key; that entry is dead but harmless.",
+     "evidence": "In memory: runs 'matrix' (items UCLA, COPE1, COPE2) and 'explore' (COPE1 by year) before the plan. H1 'UCLA is negatively related to COPE1' gives standing 'confirmatory', results then 2, counted 0.",
+     "confirmed": false,
+     "red_test": "# only if the owner wants matrices/explore-by-group to count\nproject.record_run(run, method=\"matrix\", dataset_id=None, roles={\"items\": [\"UCLA\", \"COPE1\"]}, options={}, confirms={})\nproject.save_plan(PLAN)\nself.assertEqual(project.hypothesis_status()[HID][\"standing\"], \"added_after_results\")   # 'confirmatory' today"
+    }
+   ],
+   "checked_and_fine": [
+    "Method note: no worktree was created at /tmp/verify-0b-workflow, the 18-minute suite was not run, and nothing was written anywhere (the session forbids creating files, /tmp included). Runtime evidence comes from executing the branch's own code (claude/stage37-0b = a8663ce): modules loaded from git objects by a meta-path loader (python -I -B), project_store._connect pointed at a shared in-memory SQLite DB, flet controls built without a page. The existing worktree of this branch (another agent's) was not touched. The red tests are proposed harness/store tests and were not executed; each one mirrors an in-memory reproduction that fails today.",
+    "Footer never has a disabled button: every button is built with wc.button without disabled (FooterTests checks this too). It appears only while a project is open and only on Data/Analyze/Results/Reports; Project, Home, Settings and Chart Studio define no footer(). GOES_TO hides buttons that lead to the page already open and shows 'It is done on this page'. footer_for catches exceptions, so a bug never blanks the page.",
+    "Footer never bypasses a confirmation. It never exports: N7 only navigates to Reports, where the stale-results gate and its include-stale checkbox remain. add_to_report (N6g) is reached only after the stale rule N6c. save_plan calls the same ResearchPlanCard.save() as the plan card, with the S8/designation reason check, then opens the plan card. open_data uses the same app.open_data_action as the Data page.",
+    "D4 next_action: the multi-task loop runs result, then stale, then open checks, then review, then note, then report, across all tasks, and targets the right task or result. In memory, N6b targets task-B and N6e targets that task's latest result.",
+    "K1 confirmation scopes unaffected: the confirms/confirm_scopes lines in _remember_task are unchanged (only the title line changed). current_steps/focus_steps build copies (dataclasses.replace with dict(...)), and checks_before_run reads no confirmation. In-task review checkboxes appear only for hypothesis-linked tasks, so the K1 'confirmations' journey and its harness checkbox count are unaffected.",
+    "In-task review uses the same setters as Results: session.set_reviewed / set_note → notify('notes') → ProjectBinding._save_notes write-through (project_session.py:501-512). Typing the note never re-renders, and TaskReviewTests covers the restart round-trip (task-notes and task-review-* restored).",
+    "Step-4 plan checks (checks_before_run) are pure (no engine runs; covered by a test), limited to the PRE_RUN keys, and shown only for a task that tests a plan hypothesis. They never block Run. Their fingerprint facts match the post-run ones (direction/method/test; k/adjust; plan α vs ENGINE_ALPHA; planned/actual method and roles), so a decision recorded after a run shows as acknowledged/recorded in step 4 of the same task.",
+    "S16 classification, every method key: 18 METHODS keys plus 'posthoc', the only other value that reaches runs.method (workspace_analyze.py:1667). Counted as inferential: ancova, batch_correlation, batch_groups, chi, correlation, groups, logistic, omnibus, paired, regression, repeated, posthoc. Not counted: alpha, descriptive, explore, factor, item_diagnostics, matrix, omega. Plans saved by 37.0b store inferential_before in the plan_saved event, so their standing is stable (in memory: item_diagnostics plus descriptive before the plan give 'confirmatory').",
+    "S17 predict drafts (EN/LV/RU): the H1 hint names one predictor with the others held constant, and the drafted H0 says 'the predictor named in H1 … its coefficient is 0'. Both are correct and have no leftover placeholders.",
+    "D5 for METHODS keys: task_title uses the run's options (a Pearson batch is no longer named after Spearman). There is no task-rename feature, so renaming at every run never overwrites a name the researcher typed.",
+    "Journeys: JOURNEYS has 19 entries, the 18 earlier ones unchanged and in order; STARTS_ITSELF is unchanged. The new journey only presses Project-page bar buttons, never footer buttons. 'Next step' (footer.next_step) is a unique text, so Gui.footer_top cannot misfire. accept_levels() still finds T('next.analyze') on Data with a plan (the page's own notice). Harness tests address controls by data key, so duplicate names such as 'Open CSV / Excel…' (header, empty state and footer, all calling app.open_data_action) do not matter. Remaining risk I could not test without Windows: Gui.clickable() now treats the footer's own buttons as covered (unlike the import footer's whitelisted names). That is harmless today because no journey clicks them.",
+    "Cost: footer_bar plus journey_status take about 4 ms per render in memory (98 columns, 6 hypotheses, 6 batch results), so rebuilding them on every render is not a measurable regression.",
+    "Copy for an older version: a modal confirmation stating how many records will be left out comes first, and the original project is read through a read-only connection.",
+    "Plan link after results without a plan (PLAN_LINK): offered as a secondary button only while the plan has not started. It takes over the automatic Q1 instead of adding a second question, and Q1 shown by itself does not count as starting the plan (facts_draft)."
+   ]
+  },
+  "windows": {
+   "findings": [
+    {
+     "id": "W1",
+     "severity": "minor",
+     "area": "driver: sticky footer / coverage",
+     "claim": "The driver cannot press any button of the new next-action bar. The journey therefore never uses the bar on Windows: every bar action is done from the Project page via to_top. So the bar (37.0b item 5, AC-9) and the footer path that the measured beginner flow counts have only harness coverage, and any future gui.click on a button that exists only in the bar fails with 'not found on screen'.",
+     "evidence": "tools/windows_gui_e2e.py:685-687 sets the bar limit to the 'Next step' label's top minus 18 px. :706-707 exempts only the import footer's three button names. :711-717 then needs rect.bottom <= limit, which no bar button meets because they sit at or below the label. I ran an in-memory probe: branch blobs loaded with git show, nothing written, a stubbed Gui using the 37.0a window (-8,-8,1928,1040) from run 43452577931, a bar label and a bar Button 'Create the analysis for H1'. Output: 'A footer_top: 923 F: 921 -> footer button clickable: False'. find() then scrolls 30 times with no effect and raises StepFailure at its timeout. docs/stage37/measure_baseline.py:280 and :294 count the beginner's 'Create the analysis for H1 (the footer)' and 'Open the report (the footer)'. journey_stage37_hypothesis (3981, 4002, 4065) always uses to_top(gui, 'nav.project') instead. No current step of the journey clicks a bar-only name, so this is a coverage gap, not a failing step.",
+     "file_line": "tools/windows_gui_e2e.py:685-717 (to_top 3921-3925)",
+     "red_test": "Stub Gui.elements/window_box with a 'Next step' Text at top 941 and a Button 'Create the analysis for H1' at 930-970 in a 1040-px window, then assert Gui.clickable(button) is True. It returns False on a8663ce. Journey level: after accept_levels on the Data page, gui.click(T('next.create_analysis_button', h=1), control_type='Button') raises StepFailure 'not found on screen' after 15 s.",
+     "confirmed": true
+    },
+    {
+     "id": "W2",
+     "severity": "minor",
+     "area": "driver: footer cache timing",
+     "claim": "footer_top() caches its answer for 2 s. For up to 2 s after a refresh on a page without the bar (Project, Home), clickable() accepts a control that lies half under the bar on Data, Analyze, Results or Reports. So the status-doc claim 'page content scrolled under it is never clicked' (docs/STAGE37_0B_STATUS.md §6.5) is not guaranteed.",
+     "evidence": "tools/windows_gui_e2e.py:674-676 and :688 use a 2.0 s time-based cache, and sidebar nav clicks return from clickable() early (:704-705) without refreshing it. The in-memory probe (same stub) computed footer_top on a page with no bar, then showed the bar and a Button spanning F-10..F+30. Output: 'B footer_top on the Project page: None / B content half under the bar clickable 1.9 s later: True / ... 2.1 s later: False'. In stage37-hypothesis, each click on a bar page comes at least 0.8 s settle + a sidebar find + 0.8 s settle + one or more full-tree queries after the last Project-page refresh. Its targets also sit high on the page: role-x after the step-variables reveal, result-add-report in the detail header, reports-export-docx in the page header. So no step is expected to fail. The risk is timing-dependent and applies to clicks near the bottom right after a route change.",
+     "file_line": "tools/windows_gui_e2e.py:670-689, 704-717",
+     "red_test": "Probe B as a unit test: footer_top() at t=2000.0 with no bar, then bar elements at t=2001.9; assert Gui.clickable(content_under_bar) is False. It is True on a8663ce.",
+     "confirmed": true
+    },
+    {
+     "id": "W3",
+     "severity": "minor",
+     "area": "CI trigger for the packaged journey",
+     "claim": "The packaged-program workflows that run stage37-hypothesis are not triggered when research_workflow.py, research_report.py or interpretation_docx.py change, though the journey checks their output: next-action titles, the check text, the hypothesis rows and the 'Hypotheses and evidence' table read from the .docx. A PR that touches only those files gets the Linux harness walk but no run on the packaged program. Stage36-report shared this gap before; 37.0b makes it wider.",
+     "evidence": ".github/workflows/windows-gui-e2e.yml:13-35 and windows-installer.yml:14-36 list workspace_*.py, research_app.py and tools/windows_gui_e2e.py, but not research_workflow.py, research_report.py or interpretation_docx.py. 37.0b changes these files by +300, +823 and +19 lines. In-memory fnmatch of each workflow's on.pull_request.paths gave: windows-gui-e2e.yml {'research_workflow.py': False, 'research_report.py': False, 'interpretation_docx.py': False, 'workspace_text.py': True, 'tools/windows_gui_e2e.py': True}; windows-installer.yml gave the same.",
+     "file_line": ".github/workflows/windows-gui-e2e.yml:13-35; .github/workflows/windows-installer.yml:14-36",
+     "red_test": "Parse on.pull_request.paths of windows-gui-e2e.yml and assert any(fnmatch('research_report.py', p)). It is False on a8663ce; research_workflow.py and interpretation_docx.py are also False.",
+     "confirmed": true
+    },
+    {
+     "id": "W4",
+     "severity": "minor",
+     "area": "driver: footer geometry",
+     "claim": "footer_top() assumes the 'Next step' label sits at least 18 px below the bar's top edge. That holds only when the first wrapped run of the bar's Row holds a 40-px button, which puts the label 20 px down. If the first run holds only text (narrow desktop, long title), the limit falls about 8 px above the bar. A control flush with the bar at maximum scroll can then never become clickable.",
+     "evidence": "workspace_hypotheses.py:195-224: the bar is a wrap Row with centred items, padding 8 px and a 1-px top border. workspace_tokens.py: TYPE_LABEL line height 18, CONTROL_HEIGHT 40. tools/windows_gui_e2e.py:685-687 subtracts 6 + 12. Probe C with the label 10 px below the bar top: 'limit: 913 F: 921 -> last control clickable: False'. At the CI window size from the 37.0a log, every bar state in this journey fits in one run that holds a button, so the limit is the bar top + 2 px and the problem does not arise. The states are: levels (caption + 'Why this step?'), N6a, N6b, N6d and N6e (an action button + 'Why this step?'). However, windows-gui-e2e.yml runs Set-DisplayResolution with continue-on-error: true, so a 1024-px desktop is possible. I computed the layout from the tokens; I did not measure it on Windows.",
+     "file_line": "tools/windows_gui_e2e.py:684-687; workspace_hypotheses.py:195-224",
+     "red_test": "Probe C: stub a 'Next step' Text at bar top + 10 and a Button whose bottom equals the bar top; assert Gui.clickable(button) is True. It is False on a8663ce.",
+     "confirmed": false
+    }
+   ],
+   "checked_and_fine": [
+    "How I checked, read-only: I did not create the /tmp/verify-0b-windows worktree, because this session may not create files anywhere, /tmp included. I read the branch with git show and git diff 2f9af71 claude/stage37-0b. I evaluated the driver's helpers and the journey's texts in memory from the branch's blobs with PYTHONDONTWRITEBYTECODE=1 and no files written. I read the 37.0a Windows run 43452577931 (519b1ec, all 18 journeys ok) through the GitHub API for real UI Automation behaviour and step times. I did not run the Windows journey or the 18-minute unit suite.",
+    "'Every button is enabled' pitfall: no step asserts enabled or disabled. The evidence is text on screen plus read-only SQL on plan_versions, runs.provenance, runs.roles and protocol_records. Every button pressed is really enabled in its state: Use suggestions after the tick, and Export Word with a current result in the report. The harness's ws.click raises on a disabled control, and the harness exports both before and after the restart.",
+    "Off-screen controls: the 37.0a log shows '[window] ... (-8, -8, 1928, 1040); content reaches y=1920 / 2118', so UI Automation lists controls below the window with their real coordinates. So wait_text(..., scroll=False) on the next card, and find_text for the hypothesis line, the check text, 'Acknowledged: ...', 'Tests H1: ...' and the reason-needed message, do not depend on scroll position. scroll_into_view moves toward the rectangle UI Automation reports.",
+    "Mouse wheel over inner lists: there is no inner vertical scrollable on the Project page (plan card, Q1 row, the H1 card's planned-variable checkboxes in a wrap Row, the hypothesis detail), nor on Analyze, Results or Reports. workspace_plan, workspace_hypotheses, workspace_projects and workspace_analyze have no scroll= and no ListView. Tables sit in horizontal Rows, which ignore a vertical wheel. Multiline fields allow 3–8 lines and hold one line. to_top works because each route gets a new keyed Column (workspace_shell.py:540-543). 30 wheel attempts of 200 px cover the roughly 1.5–2k px between the next card and H1's Priority dropdown.",
+    "Same-name buttons: 'Add a hypothesis to Q1' (bar and Q1 row), 'Open CSV / Excel…' (bar and sources card), 'Save plan version' (bar and plan card in the last step) and 'Add to report'. In each pair, found[0] in UI Automation traversal order is the upper control, which is the one the harness asserts first (next-add-hypothesis, next-save-plan, result-add-report), and both controls do the same thing. 'Acknowledge…', 'Show details', 'Show the checks of H1', 'Save the record' and 'Export Word report…' are unique on their pages.",
+    "Dropdowns: in run 43452577931 most Flet dropdowns exposed no menu entries ('opened by click; no entry ...; 0 new named elements') and were set by the keyboard fallback from value '' (Down pressed index+1 times). blocked-design re-chose 'group' this way from a dropdown already holding 'age', and passed. So Direction (Down×3 → 'Less (one-sided)'), Priority (Down×2 → 'Secondary') and the empty kind (Down×3 → 'Relationship between two variables') land on the intended entry. stage37_kinds, stage37_directions and stage37_priorities match the app's option order: I evaluated them in memory, and the harness asserts it.",
+    "Text fields: 'Research question Q1', 'Hypothesis (H1)' and 'Reason (kept with the record)' are unique Edit names on the Project page. H1's hint is not part of its name while the field is unfocused and empty. Multiline Edits have been typed into before (results.notes in report-composition). Selectable texts such as the check message and notices carry semantics_label = their text (workspace_components.py:64-66).",
+    "Sticky bar: 'Next step' (workspace_text.py:3341) occurs only in the bar. At the CI window size the click limit is the bar top + 2 px, so even a page's last control can be scrolled clear of the bar. The bar adds no checkboxes and no 'Run ...' buttons, so the negative checks in confirmations, blocked-design, stage36-report and psychometrics are unaffected. The import footer belongs to ImportPage only.",
+    "Q1 shown by itself does not change create_project's wait for 'Next: add the data': facts_draft drops the auto-generated Q1 (workspace_plan.py:149-156), so next_action still returns _add_data (research_workflow.py:738-740). The harness asserts this.",
+    "Restart: stop (WM_CLOSE, wait 40 s, then taskkill), start (wait for Home's Create project), then open_project by its tooltip. The hub lists the open or last-opened project first (workspace_projects.py:155-157). stage36-tasks and report-composition use the same pattern and passed in run 43452577931. The harness restart reloads from disk; there is no module-level run cache in project_session, project_store, workspace_state, research_report or research_workflow.",
+    "Open and Save dialogs: Open goes through the bar's or the sources card's 'Open CSV / Excel…', both using action=open_data_action. The Save dialog titled 'Export Word report…' is the same one seen in the 37.0a log ('... using 1001'). Target names are unique, and the journey waits for the file name in the status line.",
+    "Timing of the run: the title 'UCLA with 8 variables' appears only after _remember_task and add_result (workspace_analyze.py:971-981); until then the task is 'Analysis for H1'. So SELECT provenance FROM runs right after wait_text(task_title) sees the run. The link and acknowledgement records are written before the render the journey waits for.",
+    "Time budget: the 37.0a journeys took 30 min 08 s (run 43452577931) and the installed-program journeys 27 min (run 43440145158), against 45-minute step limits. Based on comparable 37.0a steps, the new journey adds about 4–5 minutes.",
+    "Harness fidelity: tests/test_stage37_journey.py walks the same actions in the same order with the journey's own constants and helpers. It asserts the same first controls and the same database states. The one journey check it does not repeat is the final SELECT roles FROM runs, and that check holds: batch roles keep x and ys (research_workflow.py:513).",
+    "Journey texts evaluated in memory from the branch: the check text ('H1 predicts a direction (“Less (one-sided)”), but Spearman’s ρ reports two-sided p-values only. ...') and all 12 Word-report fragments build without error. The fragments are: the H1 line; direction, α and plan version; the tested-by line; 'Acknowledged (a directional hypothesis, two-sided p-values)'; 'Reason: ...'; the table title; and its six column headings."
+   ]
+  }
+ }
+}

