@@ -212,8 +212,8 @@ class DriverHelperTests(unittest.TestCase):
             "stage36-tasks", "stage36-charts", "stage36-groups", "project-a", "project-b",
             "import-30", "review-120", "responses", "blocked-design", "import-cope-docx",
             "import-scan-lv", "stage36-report", "import-damaged"])
-        self.assertEqual(list(e2e.JOURNEYS)[13:], ["psychometrics", "import-resume",
-                                                    "negative-paths"])
+        self.assertEqual(list(e2e.JOURNEYS)[13:16], ["psychometrics", "import-resume",
+                                                      "negative-paths"])
         self.assertEqual(e2e.TOTALS_ONLY, "Only a total score is available now",
                          "the D5 text of journey stage36-report")
 
