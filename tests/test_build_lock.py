@@ -168,6 +168,12 @@ class WorkflowTests(unittest.TestCase):
             for command in re.findall(r"flet build windows \.[^\n]*\n(?:\s+--[^\n]*\n)*", text):
                 self.assertIn('--template "$env:SRA_FLET_TEMPLATE"', command, name)
 
+    def test_pyc_files_are_reproducible(self):
+        action = ACTION.read_text(encoding="utf-8")
+        self.assertIn("git log -1 --format=%ct", action)
+        self.assertIn('"SOURCE_DATE_EPOCH=$epoch"', action)
+        self.assertIn("$env:GITHUB_ENV", action)
+
     def test_inno_setup_comes_from_the_lock(self):
         for name, text in self.workflows.items():
             self.assertNotIn("choco install innosetup", text, name)
@@ -341,6 +347,14 @@ class ManifestCompareTests(unittest.TestCase):
             (b / "changed.dll").write_bytes(_pe(1000, b"\x01" * 16, b"two"))
             (a / "m.pyc").write_bytes(b"\x01" * 16 + b"body")
             (b / "m.pyc").write_bytes(b"\x02" * 16 + b"body")
+            folder_a = rb"C:\Temp\serious_python_temp1b2c3d4e-0000-11f0-9a6b-000d3a8b1c2d\app.py"
+            folder_b = rb"C:\Temp\serious_python_temp9f8e7d6c-1111-11f0-8b5a-000d3a8b1c2d\app.py"
+            (a / "app" / "app.pyc").write_bytes(b"\x01" * 16 + b"code" + folder_a + b"more")
+            (b / "app" / "app.pyc").write_bytes(b"\x02" * 16 + b"code" + folder_b + b"more")
+            (a / "app" / "other.pyc").write_bytes(b"\x01" * 16 + b"code" + folder_a + b"one")
+            (b / "app" / "other.pyc").write_bytes(b"\x01" * 16 + b"code" + folder_b + b"two")
+            (a / "app" / "short.pyc").write_bytes(b"\x01" * 16 + folder_a)
+            (b / "app" / "short.pyc").write_bytes(b"\x01" * 16 + folder_b.replace(b"-1111", b"-11"))
             self._zip(a / "lib.zip", (2026, 1, 1, 0, 0, 0))
             self._zip(b / "lib.zip", (2026, 2, 2, 0, 0, 0))
             (a / "notes.txt").write_text("x", encoding="utf-8")
@@ -354,10 +368,64 @@ class ManifestCompareTests(unittest.TestCase):
         self.assertEqual(kinds["runner.exe"], "PE link timestamp, checksum or PDB id only")
         self.assertEqual(kinds["changed.dll"], "content differs")
         self.assertEqual(kinds["m.pyc"], ".pyc header (source timestamp) only")
+        self.assertEqual(kinds["app/app.pyc"],
+                         ".pyc compile folder name (serious_python temp folder) only")
+        # Anything else that differs, or a name of another length, is not hidden.
+        self.assertEqual(kinds["app/other.pyc"], "content differs")
+        self.assertEqual(kinds["app/short.pyc"], "content differs")
         self.assertEqual(kinds["lib.zip"], "zip metadata (timestamps, order) only, same members")
         self.assertEqual(kinds["notes.txt"], "content differs")
         markdown = toolchain.comparison_markdown(result, "Test")
         self.assertIn("| PE link timestamp, checksum or PDB id only | 1 |", markdown)
+        self.assertEqual(sorted(toolchain.unexplained(result)),
+                         ["app/other.pyc", "app/short.pyc", "changed.dll", "notes.txt"])
+        self.assertIn("- Not explained by a known build-time difference: **4**", markdown)
+
+    @staticmethod
+    def _launcher(script: str, shebang: bytes, when: tuple) -> bytes:
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w") as handle:
+            handle.writestr(zipfile.ZipInfo("__main__.py", date_time=when), script)
+        return b"MZ launcher program #! inside it" + shebang + b"\r\n" + archive.getvalue()
+
+    def test_console_launchers_records_and_the_uninstall_log(self):
+        python_a, python_b = rb"#!C:\build\python.exe", rb"#!C:\other\python.exe"
+        record = ("pkg/__init__.py,sha256=same,10\n../../bin/tool.exe,sha256={},100\n"
+                  "pkg-1.0.dist-info/RECORD,,\n")
+        with tempfile.TemporaryDirectory() as temp:
+            a, b = Path(temp) / "a", Path(temp) / "b"
+            for folder in (a, b):
+                (folder / "bin").mkdir(parents=True)
+                (folder / "pkg-1.0.dist-info").mkdir()
+            (a / "bin" / "same.exe").write_bytes(self._launcher("run()", python_a, (2026, 1, 1, 0, 0, 0)))
+            (b / "bin" / "same.exe").write_bytes(self._launcher("run()", python_a, (2026, 2, 2, 0, 0, 0)))
+            (a / "bin" / "moved.exe").write_bytes(self._launcher("run()", python_a, (2026, 1, 1, 0, 0, 0)))
+            (b / "bin" / "moved.exe").write_bytes(self._launcher("run()", python_b, (2026, 2, 2, 0, 0, 0)))
+            (a / "bin" / "other.exe").write_bytes(self._launcher("run()", python_a, (2026, 1, 1, 0, 0, 0)))
+            (b / "bin" / "other.exe").write_bytes(self._launcher("walk()", python_a, (2026, 2, 2, 0, 0, 0)))
+            (a / "pkg-1.0.dist-info" / "RECORD").write_text(record.format("AAA"), encoding="utf-8")
+            (b / "pkg-1.0.dist-info" / "RECORD").write_text(record.format("BBB"), encoding="utf-8")
+            (a / "unins000.dat").write_bytes(b"installed at 10:00")
+            (b / "unins000.dat").write_bytes(b"installed at 11:00")
+            manifest_a = toolchain.manifest(a)
+            (a / "pkg-1.0.dist-info" / "RECORD").write_text(
+                record.format("AAA").replace("same,10", "changed,10"), encoding="utf-8")
+            changed_record = toolchain.manifest(a)
+            manifest_b = toolchain.manifest(b)
+        kinds = {d["path"]: d["kind"] for d in toolchain.compare_manifests(manifest_a, manifest_b)["deviations"]}
+        self.assertEqual(kinds["bin/same.exe"],
+                         "console launcher: zip timestamps only (same launcher, same script)")
+        self.assertEqual(kinds["bin/moved.exe"], "console launcher: zip timestamps and "
+                                                 "'#!' Python path (same launcher, same script)")
+        self.assertEqual(kinds["bin/other.exe"], "content differs")
+        self.assertEqual(kinds["pkg-1.0.dist-info/RECORD"], "RECORD: only the console launchers' hashes")
+        self.assertEqual(kinds["unins000.dat"], "uninstall log written at installation (Inno Setup)")
+        kinds = {d["path"]: d["kind"] for d in toolchain.compare_manifests(changed_record, manifest_b)["deviations"]}
+        self.assertEqual(kinds["pkg-1.0.dist-info/RECORD"], "content differs")
+
+    def test_not_a_launcher(self):
+        self.assertIsNone(toolchain.launcher_parts(b"MZ no archive"))
+        self.assertIsNone(toolchain.launcher_parts(b"PK\x05\x06" + b"\0" * 18))
 
     def test_not_a_pe_image(self):
         self.assertIsNone(toolchain.pe_normalized_sha256(b"not an executable"))

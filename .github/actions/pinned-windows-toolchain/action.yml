@@ -44,3 +44,14 @@ runs:
       run: |
         $manifest = (Resolve-Path packaging/python-build-manifest.json).Path
         "FLET_PYTHON_BUILD_MANIFEST=$manifest" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+    # With SOURCE_DATE_EPOCH set, compileall writes hash-based .pyc headers
+    # (PEP 552) instead of the source files' timestamps, so two clean builds of
+    # one commit write the same .pyc files. The program ships no .py sources,
+    # and Python never checks a .pyc without its source against one, so the
+    # program behaves the same. The value is the commit time.
+    - name: Reproducible .pyc files (SOURCE_DATE_EPOCH from the commit time)
+      shell: pwsh
+      run: |
+        $epoch = git log -1 --format=%ct
+        if ($LASTEXITCODE -ne 0 -or -not $epoch) { throw "the commit time could not be read" }
+        "SOURCE_DATE_EPOCH=$epoch" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8

@@ -20,7 +20,8 @@
     python tools/build_toolchain.py compare A.json B.json [--markdown FILE]
         Two manifests of the same commit built on two clean runners: identical
         files, and every deviation with its kind (zip metadata, PE link
-        timestamp, .pyc header, build metadata, content).
+        timestamp, .pyc header, the compile folder's random name, build
+        metadata, content).
 
 The lock is packaging/build_toolchain.lock.json; the Python package locks are
 requirements.txt (bundled) and requirements-dev.txt (build and test tools).
@@ -32,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import platform
@@ -614,6 +616,60 @@ def pe_normalized_sha256(data: bytes) -> str | None:
         return None
 
 
+# `flet build` packages the app with serious_python 6.1.3, which copies it into
+# Directory.systemTemp.createTemp('serious_python_temp') and runs
+# `python -m compileall -b` there (bin/package_command.dart, `package`). Dart
+# appends a random name to that folder, and compileall writes the folder into
+# every code object (co_filename), so the app's .pyc files of two clean builds
+# differ in those bytes alone. The site-packages are compiled in the build
+# folder, whose path is the same on every runner.
+COMPILE_FOLDER = re.compile(rb"serious_python_temp[0-9A-Za-z_-]+")
+_COMPILE_PREFIX = b"serious_python_temp"
+
+
+def pyc_masked_sha256(body: bytes) -> str | None:
+    """SHA-256 of a .pyc body with the compile folder's random name masked.
+
+    The mask keeps the length, so a name of another length still differs. None
+    if the body names no such folder."""
+    masked, count = COMPILE_FOLDER.subn(
+        lambda match: _COMPILE_PREFIX + b"*" * (len(match.group(0)) - len(_COMPILE_PREFIX)), body)
+    return hashlib.sha256(masked).hexdigest() if count else None
+
+
+def launcher_parts(data: bytes) -> dict | None:
+    """The parts of a console-script launcher that pip writes on Windows.
+
+    Such a file is distlib's launcher program, a '#!' line naming the Python it
+    was installed with, and a zip archive holding the script. Returns the
+    launcher program's SHA-256, the '#!' line and the zip members (CRC and size,
+    not their timestamps); None if the file is not built that way."""
+    end = data.rfind(b"PK\x05\x06")
+    if end < 0 or len(data) < end + 22:
+        return None
+    size_cd, offset_cd = struct.unpack_from("<II", data, end + 12)
+    start = end - size_cd - offset_cd           # where the appended zip begins
+    if start <= 0:
+        return None
+    shebang = data.rfind(b"#!", 0, start)
+    if shebang < 0 or b"\n" not in data[shebang:start]:
+        return None
+    try:
+        with zipfile.ZipFile(io.BytesIO(data[start:])) as handle:
+            members = {i.filename: [i.CRC, i.file_size] for i in handle.infolist()}
+    except (zipfile.BadZipFile, ValueError):
+        return None
+    return {"stub_sha256": hashlib.sha256(data[:shebang]).hexdigest(),
+            "shebang": data[shebang:start].decode("latin-1").strip(), "members": members}
+
+
+def record_without_launchers(text: str) -> str:
+    """SHA-256 of a dist-info RECORD without the lines of console launchers."""
+    lines = sorted(line for line in text.splitlines()
+                   if not re.search(r"(^|/)bin/[^,/]+\.exe,", line.replace("\\", "/")))
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
 def describe_file(path: Path) -> dict:
     data = path.read_bytes()
     entry = {"size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
@@ -622,8 +678,17 @@ def describe_file(path: Path) -> dict:
         normalized = pe_normalized_sha256(data)
         if normalized:
             entry["pe_normalized_sha256"] = normalized
+        launcher = launcher_parts(data) if suffix == ".exe" else None
+        if launcher:
+            entry["launcher"] = launcher
+    elif path.name == "RECORD" and path.parent.name.endswith(".dist-info"):
+        entry["record_without_launchers_sha256"] = record_without_launchers(
+            data.decode("utf-8", "replace"))
     elif suffix == ".pyc" and len(data) >= 16:
         entry["pyc_body_sha256"] = hashlib.sha256(data[16:]).hexdigest()
+        masked = pyc_masked_sha256(data[16:])
+        if masked:
+            entry["pyc_masked_sha256"] = masked
     elif suffix == ".zip":
         try:
             with zipfile.ZipFile(path) as handle:
@@ -643,15 +708,31 @@ def manifest(root: Path) -> dict:
 
 
 BUILD_METADATA = {"app/build_info.json"}
+# Written on the user's machine by the installer when it installs (Inno Setup's
+# uninstall log: installed files, time, folder), so never the same twice.
+INSTALL_LOGS = re.compile(r"(^|/)unins\d{3}\.dat$")
 
 
 def classify(path: str, a: dict, b: dict) -> str:
     if path in BUILD_METADATA or path.endswith("/build_info.json"):
         return "build metadata (version, commit, build time)"
+    if INSTALL_LOGS.search(path):
+        return "uninstall log written at installation (Inno Setup)"
     if "pe_normalized_sha256" in a and a.get("pe_normalized_sha256") == b.get("pe_normalized_sha256"):
         return "PE link timestamp, checksum or PDB id only"
+    launcher_a, launcher_b = a.get("launcher"), b.get("launcher")
+    if launcher_a and launcher_b and launcher_a["stub_sha256"] == launcher_b["stub_sha256"] \
+            and launcher_a["members"] == launcher_b["members"]:
+        if launcher_a["shebang"] == launcher_b["shebang"]:
+            return "console launcher: zip timestamps only (same launcher, same script)"
+        return "console launcher: zip timestamps and '#!' Python path (same launcher, same script)"
+    if "record_without_launchers_sha256" in a and \
+            a.get("record_without_launchers_sha256") == b.get("record_without_launchers_sha256"):
+        return "RECORD: only the console launchers' hashes"
     if "pyc_body_sha256" in a and a.get("pyc_body_sha256") == b.get("pyc_body_sha256"):
         return ".pyc header (source timestamp) only"
+    if "pyc_masked_sha256" in a and a.get("pyc_masked_sha256") == b.get("pyc_masked_sha256"):
+        return ".pyc compile folder name (serious_python temp folder) only"
     if "zip_members" in a and a.get("zip_members") == b.get("zip_members"):
         return "zip metadata (timestamps, order) only, same members"
     if "zip_members" in a and "zip_members" in b:
@@ -678,10 +759,19 @@ def compare_manifests(a: dict, b: dict) -> dict:
             "bytes_a": a.get("total_bytes"), "bytes_b": b.get("total_bytes")}
 
 
+UNEXPLAINED = {"content differs", "zip members differ"}
+
+
+def unexplained(result: dict) -> list[str]:
+    """Deviations that no known build-time difference explains."""
+    return [d["path"] for d in result["deviations"] if d["kind"] in UNEXPLAINED]
+
+
 def comparison_markdown(result: dict, title: str) -> str:
     lines = [f"## {title}", "",
              f"- Files: {result['files_a']} and {result['files_b']}; byte-identical: "
              f"**{result['identical']}**; deviating: **{len(result['deviations'])}**",
+             f"- Not explained by a known build-time difference: **{len(unexplained(result))}**",
              f"- Total size: {result['bytes_a']} and {result['bytes_b']} bytes",
              f"- Only in the first: {len(result['only_in_a'])}; only in the second: {len(result['only_in_b'])}",
              ""]
