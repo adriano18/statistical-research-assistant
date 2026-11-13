@@ -62,6 +62,13 @@ Journeys (synthetic data only; see JOURNEYS):
                  (review K2, spec G) report order, a note, a reviewed check,
                  title, a section left out and Latvian, kept over a restart
                  and in the Word report; none of it in a second project
+* stage37-hypothesis
+                 (Stage 37.0b, AC-16) a typed question, H1 and a saved plan;
+                 the analysis created for H1 and run; its check acknowledged
+                 with a reason; "Tests H1"; the hypothesis rows in the Word
+                 report; restart: plan, records, snapshot and report rows
+                 back; a priority change without a reason refused; the
+                 protocol records read from the database, never fewer
 
 Every step is recorded in OUT_DIR: a screenshot, the UI Automation tree
 when something is missing, an animated recording per journey
@@ -661,7 +668,9 @@ class Gui:
     _footer_cache = (0.0, None)
 
     def footer_top(self):
-        """Where the import review's sticky footer starts (None: no footer)."""
+        """Where a sticky footer starts (None: no footer): the import review's,
+        or (Stage 37.0b) the next-action bar below Data, Analyze, Results and
+        Reports, found by its fixed label "Next step" on its first line."""
         stamp, top = self._footer_cache
         if time.monotonic() - stamp < 2.0:
             return top
@@ -672,6 +681,9 @@ class Gui:
                     for name in (T("imp.back"), T("imp.next"), T("imp.create_draft"))
                     for e in self.query(name, control_type="Button")
                     if e.element_info.rectangle.top > bottom - 260]
+            # The bar's own padding and border lie above its label.
+            tops += [e.element_info.rectangle.top - 6 for e in self.query(T("footer.next_step"))
+                     if e.element_info.rectangle.top > bottom - 480]
             top = min(tops) - 12 if tops else None
         self._footer_cache = (time.monotonic(), top)
         return top
@@ -3854,6 +3866,223 @@ def journey_report_composition(gui: Gui, work: Path, journey: Journey) -> None:
         shot_at(gui, box, "second project report settings")
 
 
+# ------------------------------------- Stage 37.0b: the hypothesis workflow
+STAGE37_PROJECT = "Fictional Stage 37 hypothesis study"
+STAGE37_QUESTION = "Is loneliness related to how students cope with stress?"
+STAGE37_H1 = "Loneliness is negatively associated with the coping scales"
+STAGE37_REASON = "Fictional: the p-values are two-sided; each sign is compared with H1."
+
+
+def stage37_kinds() -> list[str]:
+    """The kinds of research question, as the plan's dropdown lists them."""
+    from research_workflow import QUESTION_TYPES
+
+    return [T(f"goal.{kind}") for kind in QUESTION_TYPES]
+
+
+def stage37_directions() -> list[str]:
+    return [T(f"plan.direction.{d}") for d in ("two-sided", "greater", "less")]
+
+
+def stage37_priorities() -> list[str]:
+    return [T(f"plan.priority.{p}") for p in ("primary", "secondary", "exploratory")]
+
+
+def stage37_check_text() -> str:
+    """The check a one-sided H1 gets with a Spearman batch (two-sided p)."""
+    from workspace_text import T as TABLE
+
+    return TABLE["check.dir_twosided"][0].format(h=1, direction=T("plan.direction.less"),
+                                                 method="Spearman’s ρ")
+
+
+def stage37_report_fragments() -> tuple[str, ...]:
+    """The hypothesis rows the Word report must hold (research_report)."""
+    import research_report as rr
+
+    text = rr.TEXT["en"]
+    tested = text["tested_by"].split("{calculation}")[0].format(
+        number=1, task=T("task.title_relate", x="UCLA", count=8))
+    return (f"H1 (primary): {STAGE37_H1}",
+            text["hyp_direction"].format(number=1, direction=T("plan.direction.less"),
+                                         alpha="0.05", version=1),
+            tested + "Spearman’s ρ; 8 tests; correction: Holm (familywise error)",
+            "Acknowledged (" + text["about.H-DIR-TWOSIDED"] + ")",
+            "Reason: " + STAGE37_REASON, text["evidence"], *text["evidence_columns"])
+
+
+def protocol_rows(gui: Gui, title: str) -> list[tuple]:
+    """(id, kind, reason) of every protocol record, in the order written
+    (the project's database, read-only)."""
+    return [tuple(row) for row in project_query(
+        gui, title, "SELECT id, kind, reason FROM protocol_records ORDER BY rowid")]
+
+
+def to_top(gui: Gui, key: str) -> None:
+    """Back to the top of a page: the mouse wheel over an inner list scrolls
+    that list, not the page, so the page is left and opened again."""
+    nav(gui, "nav.data" if key != "nav.data" else "nav.results")
+    nav(gui, key)
+
+
+def journey_stage37_hypothesis(gui: Gui, work: Path, journey: Journey) -> None:
+    """Stage 37.0b (design AC-16) on the packaged program: a typed research
+    question, H1 (primary, a direction) and a saved plan version; the
+    analysis created for H1 and run on the synthetic UCLA/SACS table; the
+    check that appears acknowledged with a reason; Results says "Tests H1";
+    the Word report, saved through the Save dialog, holds the hypothesis
+    rows; after a restart the plan, the records, the result's snapshot and
+    the report rows come back; a priority changed after results without a
+    reason is explained and nothing is saved. The project's database is
+    read read-only at each step: the protocol records stay and their count
+    never decreases. UI Automation reports every button as enabled
+    (docs/STAGE368_A11Y_AND_LOCALE.md §1): the database, not a button state,
+    is the evidence. tests/test_stage37_journey.py walks the same flow."""
+    from stage36_fixtures import SCALES, generator
+
+    title = STAGE37_PROJECT
+    task_title = T("task.title_relate", x="UCLA", count=8)
+    csv = generator().create_csv(work)
+    counts: list[int] = []
+
+    def record_count() -> int:
+        count = len(protocol_rows(gui, title))
+        counts.append(count)
+        expect(counts == sorted(counts), f"the protocol records decreased: {counts}")
+        return count
+
+    create_project(gui, journey, title)
+    with journey.step("Q1: the research question and its kind"):
+        gui.wait_text(T("plan.q.from_project"), timeout=20)    # Q1 is there by itself
+        gui.type_into(T("plan.q.text", n=1), STAGE37_QUESTION)
+        gui.choose(T("plan.q.type"), T("goal.relate"), options=stage37_kinds())
+        gui.wait_text(T("next.add_hypothesis", q=1), timeout=20)
+    with journey.step("H1: primary, less (one-sided)"):
+        gui.click(T("next.add_hypothesis_button", q=1), control_type="Button")
+        gui.type_into(T("plan.h.text"), STAGE37_H1)
+        gui.choose(T("plan.h.direction"), T("plan.direction.less"),
+                   options=stage37_directions())
+    with journey.step("Save plan version"):
+        gui.click(T("plan.save"), control_type="Button")
+        gui.wait_text(T("plan.saved", version=1), timeout=20)
+        (plan,) = project_query(gui, title, "SELECT plan FROM plan_versions")[0]
+        saved = json.loads(plan)
+        journey.facts["plan_version_1"] = saved
+        hypothesis = saved["hypotheses"][0]
+        expect(saved.get("plan_format") == 2 and saved["questions"][0]["type"] == "relate"
+               and saved["questions"][0]["text"] == STAGE37_QUESTION,
+               f"the typed question was not saved: {saved.get('questions')}")
+        expect((hypothesis["text"], hypothesis["direction"], hypothesis["priority"])
+               == (STAGE37_H1, "less", "primary"), f"H1 as saved: {hypothesis}")
+        record_count()
+    open_data(gui, journey, csv)
+    accept_levels(gui, journey)
+    with journey.step("Create the analysis for H1"):
+        to_top(gui, "nav.project")
+        gui.wait_text(T("next.create_analysis", h=1), timeout=20, scroll=False)
+        gui.click(T("next.create_analysis_button", h=1), control_type="Button")
+        gui.find(T("role.x"), timeout=20)          # Analyze opens at the variables
+        expect(record_count() == 1, "the link of the task to H1 was not recorded")
+    with journey.step("UCLA with the eight scales, Spearman, Run"):
+        gui.choose(T("role.x"), option_label("UCLA", "scale"), options=stage36_options())
+        gui.click(T("pick.all_scale", count=9), control_type="Button")
+        gui.check(option_label("Age", "scale"), False)
+        gui.click(T("rec.use_instead"), control_type="Button", index=0)   # Spearman
+        gui.click(regex="^" + re.escape(T("rec.run", method="")) + "Spearman",
+                  control_type="Button")
+        gui.wait_text(task_title, timeout=180)
+        runs = project_query(gui, title, "SELECT provenance FROM runs")
+        expect(len(runs) == 1, f"results in the project: {len(runs)}")
+        snapshot = json.loads(runs[0][0]).get("hypothesis") or {}
+        journey.facts["snapshot"] = snapshot
+        expect(snapshot.get("id") == hypothesis["id"] and snapshot.get("plan_version") == 1
+               and snapshot.get("direction") == "less",
+               f"the result does not keep H1 as planned: {snapshot}")
+    with journey.step("a check appears: H1 is one-sided, the p-values two-sided"):
+        to_top(gui, "nav.project")
+        gui.wait_text(T("next.decide", h=1), timeout=20, scroll=False)
+        gui.click(T("next.show_checks", h=1), control_type="Button")
+        element, _ = find_text(gui, stage37_check_text(), timeout=30)
+        shot_at(gui, element, "the check of H1")
+    with journey.step("acknowledge it, with a reason"):
+        before = record_count()
+        gui.click(T("hyp.acknowledge"), control_type="Button")
+        gui.type_into(T("hyp.reason"), STAGE37_REASON)
+        gui.click(T("hyp.save_record"), control_type="Button")
+        gui.wait_text(T("hyp.recorded"), timeout=20)
+        rows = protocol_rows(gui, title)
+        journey.facts["records"] = [(kind, reason) for _, kind, reason in rows]
+        expect(record_count() == before + 1 and rows[-1][1:] == ("acknowledgement",
+                                                                 STAGE37_REASON),
+               f"the acknowledgement was not recorded with its reason: {rows}")
+    with journey.step("Results shows Tests H1"):
+        nav(gui, "nav.results")
+        element, _ = find_text(gui, T("results.tests", h=1, text=STAGE37_H1), timeout=30)
+        shot_at(gui, element, "Tests H1")
+        gui.click(T("results.add_report"), control_type="Button")
+        gui.find(T("results.in_report"), control_type="Button", timeout=20)
+    with journey.step("the Word report"):
+        nav(gui, "nav.reports")
+    first = work / "stage37_hypothesis.docx"
+    save_via_dialog(gui, journey, T("reports.export_docx"), first, kind="docx",
+                    contains=stage37_report_fragments())
+    with journey.step("the Word report: one row of H1 in its table"):
+        import research_report as rr
+
+        table = next((t for t in docx_tables(first)
+                      if t and tuple(t[0]) == tuple(rr.TEXT["en"]["evidence_columns"])), None)
+        journey.facts["evidence_table"] = table
+        expect(table is not None and len(table) == 2 and table[1][0] == "H1 (primary)"
+               and table[1][1].startswith("Spearman ρ: UCLA with 8 variables (current)"),
+               f"the table Hypotheses and evidence: {table}")
+    with journey.step("restart the program and open the project"):
+        before_restart = [row[0] for row in protocol_rows(gui, title)]
+        gui.stop()
+        gui.start()
+        open_project(gui, title)
+    with journey.step("after the restart: the plan and the records are back"):
+        from workspace_hypotheses import alpha_text
+
+        line = " · ".join(("H1", T("plan.priority.primary"), T("plan.direction.less"),
+                           f"α = {alpha_text(0.05)}"))
+        find_text(gui, line, timeout=30)
+        gui.click(T("hyp.show"), control_type="Button")
+        element, _ = find_text(gui, T("hyp.check.acknowledged", reason=STAGE37_REASON),
+                               timeout=30)
+        shot_at(gui, element, "the acknowledgement after the restart")
+        after = [row[0] for row in protocol_rows(gui, title)]
+        expect(after[:len(before_restart)] == before_restart and record_count() >= len(
+            before_restart), f"records before the restart {before_restart}, after {after}")
+    with journey.step("after the restart: the result still tests H1"):
+        nav(gui, "nav.results")
+        find_text(gui, T("results.tests", h=1, text=STAGE37_H1), timeout=30)
+    with journey.step("after the restart: the report rows"):
+        nav(gui, "nav.reports")
+    second = work / "stage37_hypothesis_after_restart.docx"
+    save_via_dialog(gui, journey, T("reports.export_docx"), second, kind="docx",
+                    contains=stage37_report_fragments())
+    with journey.step("a priority changed after results without a reason: nothing saved"):
+        to_top(gui, "nav.project")
+        gui.choose(T("plan.h.priority"), T("plan.priority.secondary"),
+                   options=stage37_priorities())
+        gui.click(T("plan.save"), control_type="Button")
+        element, _ = find_text(gui, T("plan.reason_needed", h=1), timeout=30)
+        shot_at(gui, element, "the reason is asked for")
+        versions = project_query(gui, title, "SELECT COUNT(*) FROM plan_versions")[0][0]
+        journey.facts["plan_versions_after_refusal"] = versions
+        expect(versions == 1, f"a plan version was saved without the reason: {versions}")
+    with journey.step("the project database, read-only: the records are kept"):
+        rows = protocol_rows(gui, title)
+        journey.facts["record_counts"] = counts + [len(rows)]
+        expect([kind for _, kind, _ in rows] == ["link", "acknowledgement"],
+               f"protocol records at the end: {rows}")
+        expect(counts == sorted(counts) and len(rows) >= max(counts),
+               f"the record count decreased: {counts + [len(rows)]}")
+        roles = [json.loads(r[0]) for r in project_query(gui, title, "SELECT roles FROM runs")]
+        expect(len(roles) == 1 and sorted(roles[0].get("ys") or ()) == sorted(SCALES),
+               f"the result's variables: {roles}")
+
+
 # Journeys that prepare the machine and start the program themselves.
 STARTS_ITSELF = {"legacy-migration", "installed-reopen", "update-a-to-b"}
 
@@ -3893,6 +4122,9 @@ JOURNEYS = {
     # Stage 36.8 review findings K1 and K2 (#62), after the journeys above.
     "confirmations": journey_confirmations,
     "report-composition": journey_report_composition,
+    # Stage 37.0b (design AC-16): the hypothesis workflow, after the 18
+    # journeys above, which run unchanged and in their order.
+    "stage37-hypothesis": journey_stage37_hypothesis,
 }
 
 

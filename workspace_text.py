@@ -2802,14 +2802,20 @@ T.update({
         "The two category variables are independent.",
         "Abi kategoriju mainīgie ir neatkarīgi.",
         "Обе категориальные переменные независимы."),
+    # Stage 37.0b (review S17): one predictor, the others held constant.
     "hyp.draft.h1.predict": (
-        "For example: ‹predictors› predict ‹outcome›.",
-        "Piemēram: ‹prediktori› prognozē ‹rādītāju›.",
-        "Например: ‹предикторы› предсказывают ‹показатель›."),
+        "For example: ‹predictor› predicts ‹outcome› when ‹the other predictors› are held "
+        "constant.",
+        "Piemēram: ‹prediktors› prognozē ‹rādītāju›, ja ‹pārējie prediktori› ir nemainīgi.",
+        "Например: ‹предиктор› предсказывает ‹показатель› при неизменных ‹остальных "
+        "предикторах›."),
     "hyp.draft.h0.predict": (
-        "The predictors explain none of the outcome (every coefficient is 0).",
-        "Prediktori neizskaidro rādītāju (katrs koeficients ir 0).",
-        "Предикторы не объясняют показатель (каждый коэффициент равен 0)."),
+        "The predictor named in H1 is not associated with the outcome when the other predictors "
+        "are held constant (its coefficient is 0).",
+        "H1 nosauktais prediktors nav saistīts ar rādītāju, ja pārējie prediktori ir nemainīgi "
+        "(tā koeficients ir 0).",
+        "Предиктор, названный в H1, не связан с показателем при неизменных остальных "
+        "предикторах (его коэффициент равен 0)."),
     "hyp.draft.h1.other": (
         "For example: what you expect, in your own words (‹expectation›).",
         "Piemēram: ko jūs sagaidāt, saviem vārdiem (‹sagaidāmais›).",
@@ -3297,6 +3303,137 @@ T.update({
 
     # The next-action bar.
     "next.why.hide": ("Hide the reasons", "Paslēpt iemeslus", "Скрыть причины"),
+})
+
+
+# Stage 37.0b: the plan's Q1 and planned variables, the next-action bar in the
+# page footers, the review inside the task, the checks before Run, the result
+# card's decisions and the copy for an older version.
+# LV/RU drafts — needs native review (docs/STAGE37_0B_STATUS.md lists the keys).
+T.update({
+    "plan.q.from_project": (
+        "Q1 shows the project's research question. Choose its kind to use it in the plan; it "
+        "is saved with the next plan version.",
+        "Q1 rāda projekta pētījuma jautājumu. Izvēlieties tā veidu, lai to izmantotu plānā; tas "
+        "tiks saglabāts ar nākamo plāna versiju.",
+        "Q1 показывает исследовательский вопрос проекта. Выберите его тип, чтобы использовать "
+        "его в плане; он сохранится со следующей версией плана."),
+    "plan.h.roles": ("Planned variables", "Plānotie mainīgie", "Запланированные переменные"),
+    "plan.h.roles_body": (
+        "For each role of this kind of question, the variables the analysis is planned to use. "
+        "The checks compare them with the analysis that is run.",
+        "Katrai šī jautājuma veida lomai — mainīgie, ko plānots izmantot analīzē. Pārbaudes tos "
+        "salīdzina ar veikto analīzi.",
+        "Для каждой роли этого типа вопроса — переменные, которые планируется использовать в "
+        "анализе. Проверки сравнивают их с выполненным анализом."),
+    "plan.h.roles_hint": ("Names, separated by commas (chosen from the data once it is open)",
+                          "Nosaukumi, atdalīti ar komatiem (kad dati atvērti, tos izvēlas no "
+                          "datiem)",
+                          "Имена через запятую (когда данные открыты, их выбирают из данных)"),
+    "plan.h.role_none": ("Not planned", "Nav plānots", "Не запланировано"),
+    "plan.h.role_missing": ("{name} (not in the data)", "{name} (nav datos)",
+                            "{name} (нет в данных)"),
+    "plan.h.roles_missing": ("Planned, but not in the data now: {names}.",
+                             "Plānoti, bet pašlaik nav datos: {names}.",
+                             "Запланированы, но сейчас их нет в данных: {names}."),
+
+    # The next-action bar in the footer of Data, Analyze, Results and Reports.
+    "footer.next_step": ("Next step", "Nākamais solis", "Следующий шаг"),
+    "next.here": ("It is done on this page.", "To dara šajā lapā.", "Это делается на этой "
+                  "странице."),
+    "next.plan_link": ("Add the research question these analyses answer",
+                       "Pievienot pētījuma jautājumu, uz kuru atbild šīs analīzes",
+                       "Добавить исследовательский вопрос, на который отвечают эти анализы"),
+    "next.plan_link_note": (
+        "Results calculated before the plan count as exploratory.",
+        "Rezultāti, kas aprēķināti pirms plāna, tiek uzskatīti par izpētes rezultātiem.",
+        "Результаты, рассчитанные до плана, считаются поисковыми."),
+
+    # Analyze: the review inside the batch result card and the checks of step 4.
+    "task.review": ("Review this result", "Pārskatiet šo rezultātu", "Проверьте этот результат"),
+    "task.notes_skipped": ("Interpretation skipped.", "Interpretācija izlaista.",
+                           "Интерпретация пропущена."),
+    "task.checks": ("Checks against the plan of H{h}", "Pārbaudes pret hipotēzes H{h} plānu",
+                    "Проверки по плану H{h}"),
+    "task.checks_body": (
+        "They compare the analysis on screen with the plan. They never stop a run; decide on "
+        "them in the hypothesis on the Project page.",
+        "Tās salīdzina analīzi ekrānā ar plānu. Tās nekad neaptur aprēķinu; lēmumu par tām "
+        "pieņem hipotēzē projekta lapā.",
+        "Они сравнивают анализ на экране с планом. Они никогда не останавливают расчёт; "
+        "решение по ним принимается в гипотезе на странице проекта."),
+    "task.checks_none": ("Nothing in this analysis differs from the plan of H{h}.",
+                         "Nekas šajā analīzē neatšķiras no hipotēzes H{h} plāna.",
+                         "В этом анализе ничто не отличается от плана H{h}."),
+
+    # Results: the decisions and open checks on the Tests H… card.
+    "results.open_hypothesis": ("Open H{h}", "Atvērt H{h}", "Открыть H{h}"),
+    "results.open_checks": ("Waiting for a decision: {count}", "Gaida lēmumu: {count}",
+                            "Ждут решения: {count}"),
+    "results.decisions": ("Recorded for H{h}:", "Hipotēzei H{h} ierakstīts:",
+                          "Записано для H{h}:"),
+
+    # A hypothesis changed after results (review S8).
+    "check.plan_changed": (
+        "{count} result(s) were calculated for plan version {version}; the hypothesis has changed "
+        "in the plan since: {fields}.",
+        "Rezultāti ({count}) aprēķināti plāna {version}. versijai; kopš tā laika hipotēze plānā "
+        "mainīta: {fields}.",
+        "Результаты ({count}) рассчитаны для версии плана {version}; с тех пор гипотеза в "
+        "плане изменилась: {fields}."),
+    "check.field.priority": ("priority", "prioritāte", "приоритет"),
+    "check.field.direction": ("direction", "virziens", "направленность"),
+    "check.field.alpha": ("α", "α", "α"),
+    "check.field.wording": ("wording", "formulējums", "формулировка"),
+    "plan.change_reason_needed": (
+        "Write why H{h} changes: results were calculated before this change. Nothing was saved.",
+        "Uzrakstiet, kāpēc mainās H{h}: rezultāti tika aprēķināti pirms šīs izmaiņas. Nekas "
+        "netika saglabāts.",
+        "Напишите, почему меняется H{h}: результаты были рассчитаны до этого изменения. "
+        "Ничего не сохранено."),
+    "plan.h.change_reason": ("Why this hypothesis changes (needed: results exist)",
+                             "Kāpēc šī hipotēze mainās (obligāti: rezultāti jau ir)",
+                             "Почему меняется эта гипотеза (обязательно: результаты уже есть)"),
+
+    # The facts beside a hypothesis's standing (review S16).
+    "hyp.standing_facts": (
+        "When it entered the plan (version {version}), the project held {total} result(s); "
+        "{counted} of them were inferential tests, which decide the standing. Descriptions, "
+        "reliability and item checks, factor analyses and correlation matrices do not count.",
+        "Kad tā tika iekļauta plānā ({version}. versija), projektā bija rezultāti: {total}; no "
+        "tiem secinājumu testi: {counted} — tikai tie nosaka statusu. Apraksti, ticamības un "
+        "jautājumu pārbaudes, faktoru analīzes un korelāciju matricas netiek skaitītas.",
+        "Когда она вошла в план (версия {version}), в проекте было результатов: {total}; из "
+        "них статистических проверок: {counted} — только они определяют статус. Описания, "
+        "проверки надёжности и пунктов, факторный анализ и корреляционные матрицы не "
+        "учитываются."),
+
+    # The copy of a project for an older version (format 5).
+    "project.copy_older": ("Copy for version 36.x…", "Kopija versijai 36.x…",
+                           "Копия для версии 36.x…"),
+    "project.copy_older_title": ("A copy for version 36.x", "Kopija versijai 36.x",
+                                 "Копия для версии 36.x"),
+    "project.copy_older_body": (
+        "Version 36.x reads projects up to format 5; this project has format 6. The copy is a "
+        "backup file (.sra) that version 36.x restores. The {count} protocol record(s) of this "
+        "project — the decisions and deviations about the plan — are not carried into the copy: "
+        "they stay only in this project, which is not changed.",
+        "Versija 36.x lasa projektus līdz 5. formātam; šim projektam ir 6. formāts. Kopija ir "
+        "rezerves kopijas fails (.sra), ko versija 36.x atjauno. Šī projekta protokola ieraksti "
+        "({count}) — lēmumi un novirzes no plāna — kopijā netiek pārnesti: tie paliek tikai šajā "
+        "projektā, kas netiek mainīts.",
+        "Версия 36.x читает проекты до формата 5; у этого проекта формат 6. Копия — это файл "
+        "резервной копии (.sra), который версия 36.x восстанавливает. Записи протокола этого "
+        "проекта ({count}) — решения и отклонения от плана — в копию не переносятся: они "
+        "остаются только в этом проекте, который не изменяется."),
+    "project.copy_older_confirm": ("Save the copy…", "Saglabāt kopiju…", "Сохранить копию…"),
+    "project.copy_older_dialog": ("Save a copy for version 36.x",
+                                  "Saglabāt kopiju versijai 36.x",
+                                  "Сохранить копию для версии 36.x"),
+    "project.copy_older_saved": (
+        "Copy for version 36.x saved: {path}. The protocol records are not in it.",
+        "Kopija versijai 36.x saglabāta: {path}. Protokola ierakstu tajā nav.",
+        "Копия для версии 36.x сохранена: {path}. Записей протокола в ней нет."),
 })
 
 

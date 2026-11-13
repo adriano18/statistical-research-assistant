@@ -455,7 +455,12 @@ class PlanEditorTests(Case):
         ws.click("hyp-1-save")
         self.assertEqual(check_state(ws, "H-METHOD-DIFFERS"), "recorded")
         record = ws.app.projects.project.protocol_records(hypothesis_id=hid)[-1]
-        self.assertEqual((record["kind"], record["detail"]), ("deviation", {"what": "method"}))
+        # Stage 37.0b: a deviation recorded from a check also keeps what was
+        # planned and what was used (the facts its fingerprint was taken of).
+        self.assertEqual((record["kind"], record["detail"]), ("deviation", {
+            "what": "method",
+            "planned": {"method": "batch_correlation", "options": {"method": "pearson"}},
+            "actual": {"method": "batch_correlation", "options": {"method": "spearman"}}}))
 
 
 class StepIsolationTests(Case):

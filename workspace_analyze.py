@@ -180,6 +180,10 @@ class AnalyzePage:
         return app.constrained(ft.Column([header, *body], spacing=tk.SPACE_5,
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 
+    def footer(self) -> ft.Control | None:
+        """Stage 37.0b: the next action, below the page (design §7.9)."""
+        return self.app.pages["project"].hypotheses.footer_for("analyze")
+
     def _set_mode(self, mode: str):
         self.mode = mode
         self.message = None
@@ -420,8 +424,10 @@ class AnalyzePage:
         project = self._project()
         if project is None or old == new:
             return
+        entries = self.app.session.task_results(task.id)
         try:
             project.add_protocol_record("link", hypothesis_id=new or old, task_id=task.id,
+                                        run_id=entries[-1].record_id if entries else None,
                                         detail={"from": old, "to": new})
         except (ProjectError, OSError) as error:
             self.app.status(self.app.t("hyp.not_recorded", reason=str(error)), "danger")
@@ -495,26 +501,35 @@ class AnalyzePage:
         has_result = bool(self.app.session.task_results(task_id))
         self.app.navigate("analyze", section="task-result" if has_result else "variables")
 
-    def _steps_row(self) -> list[ft.Control]:
-        """The eight steps of the analysis on screen (§7.6)."""
+    def current_steps(self):
+        """The eight steps of the analysis on screen (§7.6), as it is set up
+        here (the confirmations given before a run count); None without a
+        goal. The journey strip shows the same steps (Stage 37.0b, AC-5)."""
         from dataclasses import replace
 
         import research_workflow as rw
-        from workspace_hypotheses import step_row
 
         if not self.goal:
-            return []
-        ui, session = self.app.ui, self.app.session
+            return None
+        session = self.app.session
         task = session.task(self.task_id) or ResearchTask(
             "", "", self.goal, {}, hypothesis_id=self.pending_hypothesis)
-        # The choices on screen: the confirmations given here, before a run.
         shown = replace(task, goal=self.goal, selection=dict(self.selection),
                         confirms=dict(self.confirms),
                         state={**(task.state or {}), "confirm_scopes": dict(self.confirm_scopes)})
         plan_ids = frozenset(h["id"] for h in self._plan_hypotheses())
         method, options = (self.override if self.override else (None, None))
-        steps = rw.task_steps(rw.task_facts(shown, session, plan_ids=plan_ids, method=method,
-                                            options=options))
+        return rw.task_steps(rw.task_facts(shown, session, plan_ids=plan_ids, method=method,
+                                           options=options))
+
+    def _steps_row(self) -> list[ft.Control]:
+        """The eight steps of the analysis on screen (§7.6)."""
+        from workspace_hypotheses import step_row
+
+        steps = self.current_steps()
+        if not steps:
+            return []
+        ui = self.app.ui
         return [ft.Column([wc.section_label(ui, ui.t("task.steps")),
                            step_row(ui, steps, data="task-steps")], spacing=tk.SPACE_2)]
 
@@ -569,15 +584,12 @@ class AnalyzePage:
         self.pending_hypothesis = None
         self.app.render()
 
-    def _task_title(self, key: str, roles: dict) -> str:
-        ui = self.app.ui
-        if key == "batch_correlation":
-            return ui.t("task.title_relate", x=roles["x"], count=len(roles["ys"]))
-        if key == "batch_groups":
-            return ui.t("task.title_compare", group=roles["group"], count=len(roles["outcomes"]))
-        names = [v for value in roles.values()
-                 for v in (value if isinstance(value, list) else [value]) if v]
-        return f"{method_label(key, {})}: {', '.join(names[:3])}"
+    def _task_title(self, key: str, roles: dict, options: dict | None = None) -> str:
+        """The task's name for what it runs (Stage 37.0b: with the options of
+        the run, so a Pearson correlation is not named after Spearman)."""
+        from research_workflow import task_title
+
+        return task_title(self.app.ui.language, key, roles, options)
 
     def _remember_task(self, key: str, roles: dict, options: dict, confirms: dict,
                        scopes: dict) -> ResearchTask | None:
@@ -591,7 +603,8 @@ class AnalyzePage:
         if task is None:
             # Stage 37.0a: a new analysis tests the hypothesis chosen in step 1.
             linked, self.pending_hypothesis = self.pending_hypothesis, None
-            task = ResearchTask(str(uuid.uuid4()), self._task_title(key, roles), self.goal, {},
+            task = ResearchTask(str(uuid.uuid4()), self._task_title(key, roles, options),
+                                self.goal, {},
                                 hypothesis_id=linked,
                                 state={"created": datetime.now().isoformat(timespec="seconds")})
         task.selection = {k: (list(v) if isinstance(v, list) else v)
@@ -600,9 +613,12 @@ class AnalyzePage:
         task.confirms = {k: True for k in confirms if confirms[k] and k in scopes}
         task.state = {**(task.state or {}),
                       "confirm_scopes": {k: scopes[k] for k in task.confirms}}
-        if task.state.pop("auto_title", None):
-            # Made for a hypothesis: named after the analysis at its first run.
-            task.title = self._task_title(key, roles)
+        task.state.pop("auto_title", None)
+        # Stage 37.0b (review D5): the task is named after what it runs now
+        # (a task made for a hypothesis, at its first run; a task whose
+        # variables changed, at the run with the new ones). Each result keeps
+        # its own specification and the report names it by that.
+        task.title = self._task_title(key, roles, options)
         self.task_id = task.id
         saved = self.app.session.save_task(task)
         if linked:
@@ -635,6 +651,9 @@ class AnalyzePage:
             rows.append(wc.text(ui, "• " + line, tk.TYPE_BODY, selectable=True))
         if len(entries) > 1:
             rows.append(wc.caption(ui, ui.t("task.versions", count=len(entries))))
+        task = s.task(self.task_id)
+        if task is not None and self._tested_hypothesis() is not None:
+            rows += self._task_review(entry, task)
         missing = bool(chosen) and bool(self._missing(chosen[0], chosen[1], holding or {}))
         why = (ui.t("disabled.confirm_first") if missing else
                ui.t("disabled.resolve_first") if not chosen else None)
@@ -788,6 +807,7 @@ class AnalyzePage:
         ]
         if alternatives:
             controls += [wc.section_label(ui, ui.t("rec.alternatives")), *alternatives]
+        controls += self._plan_checks(key, options)
         controls += [
             wc.notice(ui, ui.t("rec.not_automatic"), "neutral"),
             ft.Row([run, wc.button(ui, ui.t("rec.open_advanced"),
@@ -798,6 +818,88 @@ class AnalyzePage:
             controls.append(ft.Row([ft.ProgressRing(width=18, height=18, stroke_width=2),
                                     wc.text(ui, ui.t("run.running"))], spacing=tk.SPACE_2))
         return controls
+
+    def _tested_hypothesis(self) -> str | None:
+        """The hypothesis of the plan the analysis on screen tests, if any."""
+        task = self.app.session.task(self.task_id)
+        hypothesis_id = task.hypothesis_id if task is not None else self.pending_hypothesis
+        ids = {h["id"] for h in self._plan_hypotheses()}
+        return hypothesis_id if hypothesis_id in ids else None
+
+    def _plan_checks(self, method: str, options: dict) -> list[ft.Control]:
+        """Step 4 (design §7.10): the checks against the plan that apply
+        before Run (direction, method, variables, family, α). They inform and
+        never stop a run; the decision is taken in the hypothesis."""
+        import research_workflow as rw
+
+        hypothesis_id = self._tested_hypothesis()
+        if hypothesis_id is None:
+            return []
+        ui = self.app.ui
+        number, checks = rw.checks_before_run(
+            self.app.session, self._project(), hypothesis_id, task_id=self.task_id,
+            goal=self.goal, method=method, options=options, selection=dict(self.selection))
+        if not number:
+            return []
+        rows: list[ft.Control] = [wc.caption(ui, ui.t("task.checks_body"))]
+        reasons = {r["id"]: r.get("reason", "") for r in self._project().protocol_records(
+            hypothesis_id=hypothesis_id)} if checks else {}
+        for index, check in enumerate(checks):
+            state = {"open": "hyp.check.open", "info": "hyp.check.info"}.get(check.state)
+            rows.append(ft.Row([
+                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED if check.state == "open"
+                        else ft.Icons.CHECK_CIRCLE_OUTLINE, size=18,
+                        color=ui.p.warning if check.state == "open" else ui.p.success),
+                ft.Column([wc.text(ui, rw.check_message(check, ui.language), tk.TYPE_BODY,
+                                   selectable=True, data=f"task-check-{index}"),
+                           wc.caption(ui, ui.t(state) if state else ui.t(
+                               f"hyp.check.{check.state}",
+                               reason=reasons.get(check.record_id, "")))],
+                          spacing=2, expand=True),
+            ], spacing=tk.SPACE_2, vertical_alignment=ft.CrossAxisAlignment.START))
+        if not checks:
+            rows.append(wc.caption(ui, ui.t("task.checks_none", h=number),
+                                   data="task-checks-none"))
+        return [wc.section_label(ui, ui.t("task.checks", h=number)),
+                ft.Column(rows, spacing=tk.SPACE_2, data="task-checks")]
+
+    def _task_review(self, entry, task) -> list[ft.Control]:
+        """The review of a batch result inside its task, for a task that
+        tests a hypothesis (design §7.10): *Tests H…*, the assumption ticks and
+        the note, bound to the same saved state as Results (K2), so the
+        beginner does not leave the task to review."""
+        ui, session = self.app.ui, self.app.session
+        controls: list[ft.Control] = []
+        tested = self.app.pages["results"]._hypothesis_line(entry, data="task-result-hypothesis")
+        if tested is not None:
+            controls.append(tested)
+        try:
+            assumptions = tuple(entry.run.evidence().assumptions)
+        except Exception:          # an unreadable result: nothing to tick
+            assumptions = ()
+        controls.append(wc.section_label(ui, ui.t("task.review")))
+        controls += [wc.checkbox(ui, assumption, assumption in entry.reviewed,
+                                 on_change=lambda e, a=assumption, i=entry.id: self._review(
+                                     i, a, e.control.value), data=f"task-review-{index}")
+                     for index, assumption in enumerate(assumptions)]
+        controls.append(wc.text_field(
+            ui, ui.t("results.notes"), entry.note, multiline=True,
+            on_change=lambda e, i=entry.id: session.set_note(i, e.control.value or ""),
+            data="task-notes"))
+        skipped = "interpretation" in ((task.state or {}).get("skipped") or ())
+        if skipped and not (entry.note or "").strip():
+            controls.append(wc.caption(ui, ui.t("task.notes_skipped"), data="task-notes-skipped"))
+        elif not (entry.note or "").strip():
+            controls.append(wc.button(
+                ui, ui.t("next.skip_note"),
+                lambda e, t=task.id: self.app.pages["project"].hypotheses.skip_interpretation(t),
+                kind="quiet", icon=ft.Icons.SKIP_NEXT, data="task-skip-notes"))
+        return controls
+
+    def _review(self, entry_id: int, assumption: str, value: bool):
+        """A tick in the task's review: the same state as on Results (K2)."""
+        self.app.session.set_reviewed(entry_id, assumption, bool(value))
+        self.app.render()
 
     def _use(self, method: str, options: dict):
         self.override = (method, dict(options))
@@ -1174,6 +1276,10 @@ class ResultsPage:
             [body, wc.caption(self.app.ui, session_note(app), data="results-note")],
             spacing=tk.SPACE_3), tk.CONTENT_MAX_WIDTH + 200)
 
+    def footer(self) -> ft.Control | None:
+        """Stage 37.0b: the next action, below the page (design §7.9)."""
+        return self.app.pages["project"].hypotheses.footer_for("results")
+
     def _select(self, entry_id: int):
         self.app.session.selected_result = entry_id
         self.app.render()
@@ -1364,7 +1470,7 @@ class ResultsPage:
         return ft.Column(sections, spacing=tk.SPACE_4, data=f"result-detail-{entry.id}",
                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 
-    def _hypothesis_line(self, entry) -> ft.Control | None:
+    def _hypothesis_line(self, entry, data: str = "result-hypothesis") -> ft.Control | None:
         """Stage 37.0a: the hypothesis this result was calculated as a test of,
         as the plan stated it then (the snapshot kept with the result)."""
         from workspace_hypotheses import alpha_text
@@ -1380,20 +1486,49 @@ class ResultsPage:
             if found is None:
                 return wc.notice(ui, ui.t("results.tests_gone",
                                           version=snapshot.get("plan_version") or "—"),
-                                 "neutral", data="result-hypothesis")
+                                 "neutral", data=data)
             number, hypothesis = found
             detail = ui.t("results.tests_detail", version=snapshot.get("plan_version") or "—",
                           priority=ui.t(f"plan.priority.{snapshot.get('priority', 'primary')}"),
                           direction=ui.t(f"plan.direction.{snapshot.get('direction', 'two-sided')}"),
                           alpha=alpha_text(snapshot.get("alpha", 0.05)))
+            detail += self._hypothesis_decisions(project, hypothesis["id"], number)
+            panel = app.pages["project"].hypotheses
             return wc.notice(ui, detail, "info", title=ui.t(
                 "results.tests", h=number, text=hypothesis.get("text", "")),
-                data="result-hypothesis")
+                actions=[wc.button(ui, ui.t("results.open_hypothesis", h=number),
+                                   wc.handler(panel.show_hypothesis, hypothesis["id"]),
+                                   kind="quiet", icon=ft.Icons.OPEN_IN_NEW,
+                                   data=f"{data}-open")],
+                data=data)
         task = app.session.task(entry.task_id)
         if task is not None and task.hypothesis_id in numbers:
             return wc.notice(ui, ui.t("results.linked_late", h=numbers[task.hypothesis_id][0]),
-                             "neutral", data="result-hypothesis")
+                             "neutral", data=data)
         return None
+
+    def _hypothesis_decisions(self, project, hypothesis_id: str, number: int) -> str:
+        """Stage 37.0b (design §7.10, AC-8): on the result's *Tests H…* card,
+        the decisions recorded for the hypothesis (deviations,
+        acknowledgements, justifications, priority changes) and how many of
+        its checks wait for a decision."""
+        import research_workflow as rw
+
+        ui = self.app.ui
+        panel = self.app.pages["project"].hypotheses
+        records = [r for r in rw.active_records(project.protocol_records(
+            hypothesis_id=hypothesis_id)) if r.get("kind") in (
+                "deviation", "acknowledgement", "justification", "designation")]
+        text = ""
+        if records:
+            text += "\n" + ui.t("results.decisions", h=number) + "\n" + "\n".join(
+                "• " + panel._record_text(record) for record in records)
+        view = next((v for v in rw.hypothesis_views(self.app.session, project)
+                     if v.facts.id == hypothesis_id), None)
+        waiting = len(rw.open_checks(view.checks)) if view is not None else 0
+        if waiting:
+            text += "\n" + ui.t("results.open_checks", count=waiting)
+        return text
 
     def _provenance(self, entry, evidence) -> list[ft.Control]:
         """What the numbers rest on (Issue #32): the dataset version, complete
@@ -1751,6 +1886,10 @@ class ReportsPage:
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH), tk.READING_MAX_WIDTH + 240)
 
     # ------------------------------------------------- research report (36.6)
+    def footer(self) -> ft.Control | None:
+        """Stage 37.0b: the next action, below the page (design §7.9)."""
+        return self.app.pages["project"].hypotheses.footer_for("reports")
+
     def report_language(self) -> str:
         return self.language or self.app.session.language
 
@@ -1765,9 +1904,15 @@ class ReportsPage:
         from project_store import library_versions
 
         app, s = self.app, self.app.session
-        tasks = {task.id: task.title for task in s.tasks}
+        # Stage 37.0b (review D5): each result under the name of its own
+        # specification (method, variables and options as it was run).
+        from research_workflow import task_title
+
+        language = self.report_language()
         infos = [rr.result_info(entry, reviewed=entry.reviewed, note=entry.note,
-                                task_title=tasks.get(entry.task_id, ""))
+                                task_title=task_title(language, entry.method or "",
+                                                      entry.roles, entry.options)
+                                if entry.task_id and entry.method else "")
                  for entry in s.report_entries()]
         inputs = rr.ReportInputs(title=self.study_title, language=self.report_language(),
                                  question=app.research_question(), results=infos,
@@ -1780,6 +1925,9 @@ class ReportsPage:
             status = project.hypothesis_status() if plan else {}
             inputs.hypotheses = [{**h, "standing": status.get(h.get("id"), {}).get("standing")}
                                  for h in (plan or {}).get("plan", {}).get("hypotheses", [])]
+            # Stage 37.0b: per hypothesis, the analyses and results that test
+            # it, the recorded decisions and the open checks (saved data only).
+            inputs.evidence = rr.hypothesis_evidence(s, project, s.report_entries())
             inputs.questionnaires = [q["title"] for q in project.questionnaires()]
             names = {d.id: d.name for d in project.datasets()}
             for dataset_id, name in names.items():

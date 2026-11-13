@@ -51,14 +51,14 @@ ENGINE_ALPHA = 0.05
 
 CHECK_KEYS = ("H-NO-TASK", "H-DIR-TWOSIDED", "H-DIR-OMNIBUS", "H-FAMILY-UNCORRECTED", "H-ALPHA",
               "H-ASSUMPTIONS-OPEN", "H-RESULT-STALE", "H-ADDED-AFTER", "H-DESIGNATION-CHANGED",
-              "H-METHOD-DIFFERS", "H-VARIABLES-DIFFER", "H-SPEC-CHANGED", "H-LINKED-LATE",
-              "H-DIR-SIGN", "H-FAMILY-SPLIT")
+              "H-PLAN-CHANGED", "H-METHOD-DIFFERS", "H-VARIABLES-DIFFER", "H-SPEC-CHANGED",
+              "H-LINKED-LATE", "H-DIR-SIGN", "H-FAMILY-SPLIT")
 # How a warning is resolved by a record of the researcher (kind of record).
 ACKNOWLEDGE = ("H-DIR-TWOSIDED", "H-DIR-OMNIBUS", "H-FAMILY-UNCORRECTED", "H-FAMILY-SPLIT",
                "H-ALPHA")
 DEVIATION = {"H-METHOD-DIFFERS": "method", "H-VARIABLES-DIFFER": "variables",
              "H-SPEC-CHANGED": "method"}
-JUSTIFY = ("H-ADDED-AFTER", "H-DESIGNATION-CHANGED")
+JUSTIFY = ("H-ADDED-AFTER", "H-DESIGNATION-CHANGED", "H-PLAN-CHANGED")
 RECORD_KIND = {**{key: "acknowledgement" for key in ACKNOWLEDGE},
                **{key: "deviation" for key in DEVIATION},
                **{key: "justification" for key in JUSTIFY}}
@@ -200,8 +200,11 @@ class HypothesisFacts:
     method_options: dict = field(default_factory=dict)
     roles: dict = field(default_factory=dict)
     standing: str = "new"              # confirmatory | added_after_results | exploratory | new
-    runs_before: int = 0
+    runs_before: int = 0               # inferential results when it entered the plan
     question_type: str = ""
+    # Stage 37.0b (review S16): the facts beside the standing.
+    planned_version: int | None = None  # the plan version it entered
+    results_then: int = 0              # every result the project held then
 
 
 @dataclass(frozen=True)
@@ -363,6 +366,7 @@ def hypothesis_checks(h: HypothesisFacts, analyses=(), records=(), *, peers=(),
         else:
             add("H-DESIGNATION-CHANGED", "warning", "check.designation_unexplained", h,
                 facts=facts, params=params, resolution="justify")
+    out += _plan_changed(h, analyses, records, history)
     for a in analyses:
         tid = a.task_id
         if h.method_key and a.method:
@@ -424,6 +428,58 @@ def hypothesis_checks(h: HypothesisFacts, analyses=(), records=(), *, peers=(),
     return tuple(sorted(out, key=lambda c: order[c.key]))
 
 
+def _snapshot_changes(snapshot: dict, h: HypothesisFacts, then: dict | None) -> list[str]:
+    """What of the hypothesis differs now from what a result was calculated
+    for: its priority, direction, α (the snapshot) and wording (the plan
+    version of the snapshot)."""
+    changed = []
+    if snapshot.get("priority") and snapshot["priority"] != h.priority:
+        changed.append("priority")
+    if snapshot.get("direction") and snapshot["direction"] != h.direction:
+        changed.append("direction")
+    try:
+        if abs(float(snapshot.get("alpha", h.alpha)) - float(h.alpha)) > 1e-9:
+            changed.append("alpha")
+    except (TypeError, ValueError):
+        pass
+    if then is not None and then.get("text") is not None and then["text"] != h.text:
+        changed.append("wording")
+    return changed
+
+
+def _plan_changed(h: HypothesisFacts, analyses, records, history) -> list[Check]:
+    """H-PLAN-CHANGED (Stage 37.0b, review S8): results calculated for an
+    earlier version of the hypothesis. Recorded when the change was saved
+    with its reason (every substantive change after results needs one)."""
+    versions = {entry.get("version"): entry for entry in history}
+    count, fields, earliest = 0, set(), None
+    for a in analyses:
+        for r in a.results:
+            snapshot = r.snapshot or {}
+            if snapshot.get("id") != h.id:
+                continue
+            changed = _snapshot_changes(snapshot, h, versions.get(snapshot.get("plan_version")))
+            if changed:
+                count += 1
+                fields.update(changed)
+                version = snapshot.get("plan_version") or 0
+                earliest = version if earliest is None else min(earliest, version)
+    if not count:
+        return []
+    facts = {"changed": sorted(fields), "version": earliest}
+    params = {"count": count, "version": earliest or "—", "fields": sorted(fields)}
+    print_ = fingerprint("H-PLAN-CHANGED", h.id, None, facts)
+    later = [r for r in records if r.get("hypothesis_id") == h.id
+             and (r.get("plan_version") or 0) > (earliest or 0)
+             and (r.get("kind") == "designation"
+                  or (r.get("kind") == "deviation" and "from" in (r.get("detail") or {})))]
+    if later:
+        return [Check("H-PLAN-CHANGED", "warning", "recorded", "check.plan_changed", params,
+                      facts, print_, "", None, later[-1].get("id"))]
+    return [_check("H-PLAN-CHANGED", "warning", "check.plan_changed", h, facts=facts,
+                   params=params, resolution="justify", records=records)]
+
+
 def open_checks(checks) -> tuple[Check, ...]:
     """Warnings without a recorded decision (assumptions are reviewed, not
     acknowledged, and are counted apart)."""
@@ -443,6 +499,25 @@ def method_title(key: str, options: dict | None = None) -> str:
             value = (options or {}).get("method") or option.default
             return next((label for k, label in option.choices if k == value), spec.title)
     return spec.title
+
+
+def task_title(language: str, method: str, roles: dict | None,
+               options: dict | None = None) -> str:
+    """The name of an analysis as it was specified (Stage 37.0b, review D5):
+    ``UCLA with 8 variables`` for a batch, else the method and its first
+    variables. A task is named after what it runs now; each result keeps the
+    name of its own specification (its saved method, roles and options)."""
+    from workspace_text import label, t
+
+    roles = roles or {}
+    if method == "batch_correlation" and roles.get("x") and roles.get("ys"):
+        return t(language, "task.title_relate", x=roles["x"], count=len(roles["ys"]))
+    if method == "batch_groups" and roles.get("group") and roles.get("outcomes"):
+        return t(language, "task.title_compare", group=roles["group"],
+                 count=len(roles["outcomes"]))
+    names = [v for value in roles.values()
+             for v in (value if isinstance(value, list) else [value]) if v]
+    return f"{label(language, method_title(method, options or {}))}: {', '.join(names[:3])}"
 
 
 def _adjust_title(value: str) -> str:
@@ -487,6 +562,8 @@ def check_message(check: Check, language: str = "en") -> str:
             values[name] = label(language, _adjust_title(str(value)))
         elif name in ("plan", "analysis"):
             values[name] = _number(value)
+        elif name == "fields":
+            values[name] = ", ".join(t(language, f"check.field.{field}") for field in value)
         else:
             values[name] = value
     return t(language, check.text, **values)
@@ -510,7 +587,11 @@ def designation_history(plan_history, records, hypothesis_id: str) -> tuple[dict
         out.append({"version": version["version"], "saved_at": version.get("saved_at", ""),
                     "priority": priority, "previous": previous,
                     "runs_before": int(version.get("runs_before", 0)), "changed": changed,
-                    "record": reasons.get(version["version"]) if changed else None})
+                    "record": reasons.get(version["version"]) if changed else None,
+                    # Stage 37.0b (review S8): what a result's snapshot is compared with.
+                    "text": hypothesis.get("text", ""),
+                    "direction": hypothesis.get("direction", "two-sided"),
+                    "alpha": float(hypothesis.get("alpha", ENGINE_ALPHA))})
         previous = priority
     return tuple(out)
 
@@ -553,6 +634,15 @@ class NextAction:
 
 
 @dataclass(frozen=True)
+class TaskProgress:
+    """One task of a hypothesis: its steps and its latest result."""
+
+    task_id: str
+    steps: tuple[Step, ...] = ()
+    result_id: int | None = None
+
+
+@dataclass(frozen=True)
 class HypothesisProgress:
     id: str
     number: int
@@ -561,6 +651,14 @@ class HypothesisProgress:
     steps: tuple[Step, ...] = ()
     open_checks: tuple[str, ...] = ()   # check keys to decide (not assumptions)
     result_id: int | None = None        # the latest result of its task
+    # Stage 37.0b (review D4): every task that tests the hypothesis, in order.
+    # Empty: the single task above (as 37.0a built it).
+    tasks: tuple[TaskProgress, ...] = ()
+
+    def all_tasks(self) -> tuple[TaskProgress, ...]:
+        if self.tasks:
+            return self.tasks
+        return (TaskProgress(self.task_id, self.steps, self.result_id),) if self.task_id else ()
 
 
 @dataclass(frozen=True)
@@ -594,28 +692,36 @@ def _add_data(f: ProjectFacts, why) -> NextAction:
                       tuple(why))
 
 
+# Stage 37.0b (design §7.9): once a project has results but no plan, the
+# plan's first rules become this secondary link; the results stay exploratory.
+PLAN_LINK = Action("write_question", "next.plan_link", "next-plan-link", primary=False)
+
+
 def _tail(f: ProjectFacts, why) -> NextAction:
     """After the plan's hypotheses (and for work without a plan): results
-    that need attention, the report, its export."""
+    that need attention, the report, its export. Without a plan, the link
+    *Add the research question these analyses answer* is offered beside."""
+    link = () if f.plan_started else (PLAN_LINK,)
     if f.stale_results:
         why.append((False, "next.why.results_current", {"count": f.stale_results}))
         return NextAction("stale", "next.stale", "next.stale_body", {"count": f.stale_results},
-                          (Action("review_results", "next.review_results", "next-results"),),
-                          tuple(why))
+                          (Action("review_results", "next.review_results", "next-results"),
+                           *link), tuple(why))
     if not f.report_count:
         why.append((False, "next.why.report_started", {}))
         return NextAction("report", "next.report", "next.report_body", {},
-                          (Action("review_results", "next.review_results", "next-results"),),
-                          tuple(why))
+                          (Action("review_results", "next.review_results", "next-results"),
+                           *link), tuple(why))
     if not f.exported:
         why.append((False, "next.why.report_exported", {}))
         return NextAction("export", "next.export", "next.export_body",
                           {"count": f.report_count},
-                          (Action("open_report", "next.open_report", "next-report"),), tuple(why))
+                          (Action("open_report", "next.open_report", "next-report"), *link),
+                          tuple(why))
     why.append((True, "next.why.report_exported", {}))
     return NextAction("done", "next.done", "next.done_body", {},
-                      (Action("open_report", "next.open_report", "next-report", primary=False),),
-                      tuple(why))
+                      (Action("open_report", "next.open_report", "next-report", primary=False),
+                       *link), tuple(why))
 
 
 def next_action(f: ProjectFacts) -> NextAction:
@@ -679,7 +785,8 @@ def next_action(f: ProjectFacts) -> NextAction:
     rank = {"primary": 0, "secondary": 1, "exploratory": 2}
     for h in sorted(f.hypotheses, key=lambda x: (rank.get(x.priority, 3), x.number)):
         n = {"h": h.number}
-        if h.task_id is None:
+        tasks = h.all_tasks()
+        if not tasks:
             if h.priority == "exploratory":
                 continue
             why.append((False, "next.why.task", n))
@@ -687,17 +794,21 @@ def next_action(f: ProjectFacts) -> NextAction:
                               (Action("create_analysis", "next.create_analysis_button",
                                       "next-create-analysis", h.id),), tuple(why))
         why.append((True, "next.why.task", n))
-        state = {step.key: step.state for step in h.steps}
-        if state.get("result") in ("todo", "current", None):
-            why.append((False, "next.why.result", n))
-            return NextAction("N6b", "next.run_analysis", "next.run_analysis_body", n,
-                              (Action("open_task", "next.open_task", "next-open-task",
-                                      h.task_id),), tuple(why))
-        if state.get("result") == "attention":
-            why.append((False, "next.why.result_current", n))
-            return NextAction("N6c", "next.recalculate", "next.recalculate_body", n,
-                              (Action("open_task", "next.open_task", "next-open-task",
-                                      h.task_id),), tuple(why))
+        # Stage 37.0b (review D4): every analysis of the hypothesis counts, in
+        # task order; the first one a step is missing in gives the next step.
+        states = [(t, {step.key: step.state for step in t.steps}) for t in tasks]
+        for t, state in states:
+            if state.get("result") in ("todo", "current", None):
+                why.append((False, "next.why.result", n))
+                return NextAction("N6b", "next.run_analysis", "next.run_analysis_body", n,
+                                  (Action("open_task", "next.open_task", "next-open-task",
+                                          t.task_id),), tuple(why))
+        for t, state in states:
+            if state.get("result") == "attention":
+                why.append((False, "next.why.result_current", n))
+                return NextAction("N6c", "next.recalculate", "next.recalculate_body", n,
+                                  (Action("open_task", "next.open_task", "next-open-task",
+                                          t.task_id),), tuple(why))
         why.append((True, "next.why.result_current", n))
         if h.open_checks:
             why.append((False, "next.why.checks", {**n, "count": len(h.open_checks)}))
@@ -706,23 +817,27 @@ def next_action(f: ProjectFacts) -> NextAction:
                               (Action("show_checks", "next.show_checks", "next-show-check",
                                       h.id),), tuple(why))
         why.append((True, "next.why.checks", {**n, "count": 0}))
-        if state.get("checks") == "attention":
-            why.append((False, "next.why.reviewed", n))
-            return NextAction("N6e", "next.review", "next.review_body", n,
-                              (Action("review", "next.review_button", "next-review",
-                                      str(h.result_id or "")),), tuple(why))
-        if state.get("interpretation") in ("todo", "current"):
-            why.append((False, "next.why.note", n))
-            return NextAction("N6f", "next.note", "next.note_body", n,
-                              (Action("write_note", "next.note_button", "next-note",
-                                      str(h.result_id or "")),
-                               Action("skip_note", "next.skip_note", "next-skip-note",
-                                      h.task_id, primary=False)), tuple(why))
-        if state.get("report") in ("todo", "current", "attention"):
-            why.append((False, "next.why.in_report", n))
-            return NextAction("N6g", "next.add_report", "next.add_report_body", n,
-                              (Action("add_to_report", "results.add_report", "next-add-report",
-                                      str(h.result_id or "")),), tuple(why))
+        for t, state in states:
+            if state.get("checks") == "attention":
+                why.append((False, "next.why.reviewed", n))
+                return NextAction("N6e", "next.review", "next.review_body", n,
+                                  (Action("review", "next.review_button", "next-review",
+                                          str(t.result_id or "")),), tuple(why))
+        for t, state in states:
+            if state.get("interpretation") in ("todo", "current"):
+                why.append((False, "next.why.note", n))
+                return NextAction("N6f", "next.note", "next.note_body", n,
+                                  (Action("write_note", "next.note_button", "next-note",
+                                          str(t.result_id or "")),
+                                   Action("skip_note", "next.skip_note", "next-skip-note",
+                                          t.task_id, primary=False)), tuple(why))
+        for t, state in states:
+            if state.get("report") in ("todo", "current", "attention"):
+                why.append((False, "next.why.in_report", n))
+                return NextAction("N6g", "next.add_report", "next.add_report_body", n,
+                                  (Action("add_to_report", "results.add_report",
+                                          "next-add-report", str(t.result_id or "")),),
+                                  tuple(why))
         why.append((True, "next.why.in_report", n))
     if not f.has_results:
         why.append((False, "next.why.results", {}))
@@ -754,6 +869,11 @@ def result_facts(entry) -> ResultFacts:
         estimates = tuple((str(row.y), float(row.estimate))
                           for row in getattr(structured, "rows", ())
                           if getattr(row, "estimate", None) is not None)
+    elif entry.method == "correlation" and structured is not None:
+        # Stage 37.0b (review D3): the single pair's coefficient, as saved.
+        coefficient = getattr(structured, "coefficient", None)
+        if isinstance(coefficient, (int, float)) and not isinstance(coefficient, bool):
+            estimates = ((str(getattr(structured, "y_name", "") or "r"), float(coefficient)),)
     return ResultFacts(
         key=str(entry.id), method=entry.method or "", options=dict(entry.options or {}),
         names=tuple(names), alpha=float(alpha) if isinstance(alpha, (int, float)) else ENGINE_ALPHA,
@@ -861,11 +981,67 @@ class HypothesisView:
     plan: dict                       # the hypothesis as saved in the plan
     tasks: tuple = ()                # the research tasks that test it
     analyses: tuple[AnalysisFacts, ...] = ()
-    steps: tuple[Step, ...] = ()     # of its first task
+    steps: tuple[Step, ...] = ()     # of the first of its tasks that is not done
     checks: tuple[Check, ...] = ()
     history: tuple[dict, ...] = ()
     records: tuple[dict, ...] = ()   # all its protocol records, oldest first
-    latest_result: int | None = None
+    latest_result: int | None = None  # the latest result of that task
+    # Stage 37.0b (review D4): every task that tests it, with its steps.
+    progress: tuple[TaskProgress, ...] = ()
+
+
+def plan_facts(plan: dict, status: dict) -> list[HypothesisFacts]:
+    """The facts of every hypothesis of a saved plan (its order is H1, H2…),
+    with its standing from ``Project.hypothesis_status``."""
+    questions = {q["id"]: q for q in plan.get("questions", [])}
+    facts = []
+    for number, h in enumerate(plan.get("hypotheses", []), start=1):
+        info = status.get(h["id"], {})
+        facts.append(HypothesisFacts(
+            id=h["id"], number=number, text=h.get("text", ""),
+            direction=h.get("direction", "two-sided"), priority=h.get("priority", "primary"),
+            alpha=float(h.get("alpha", ENGINE_ALPHA)), family=h.get("family", ""),
+            method_key=h.get("method_key", ""), method_options=dict(h.get("method_options") or {}),
+            roles=dict(h.get("roles") or {}), standing=info.get("standing", "new"),
+            runs_before=int(info.get("inferential_before", info.get("runs_before", 0))),
+            question_type=(questions.get(h.get("question_id", "")) or {}).get("type", ""),
+            planned_version=info.get("version"), results_then=int(info.get("runs_before", 0))))
+    return facts
+
+
+# The checks that can be judged before Run (design §7.10, step 4): direction,
+# method, variables, family and α of the analysis on screen against the plan.
+PRE_RUN = ("H-DIR-TWOSIDED", "H-DIR-OMNIBUS", "H-FAMILY-UNCORRECTED", "H-ALPHA",
+           "H-METHOD-DIFFERS", "H-VARIABLES-DIFFER")
+
+
+def checks_before_run(session, project, hypothesis_id: str, *, task_id: str | None, goal: str,
+                      method: str, options: dict, selection: dict) -> tuple[int, tuple[Check, ...]]:
+    """(hypothesis number, the checks of PRE_RUN that are not passed) for an
+    analysis as it is set up on screen, before it runs. Pure reading: no
+    engine runs and nothing is written."""
+    from workspace_methods import GOAL_ROLES, METHODS, default_options
+
+    current = project.plan() if project is not None else None
+    if current is None:
+        return 0, ()
+    facts = {f.id: f for f in plan_facts(current["plan"], project.hypothesis_status())}
+    h = facts.get(hypothesis_id)
+    if h is None or not method:
+        return 0, ()
+    options = {**(default_options(METHODS[method]) if method in METHODS else {}),
+               **(options or {})}
+    groups = 0
+    if session.has_data:
+        for role in GOAL_ROLES.get(goal, ()):
+            if role.key in ("group", "a", "b") and selection.get(role.key):
+                groups = max(groups, len(session.group_labels(str(selection.get(role.key)))))
+    family = _family_size(goal, selection) if method in FAMILY_METHODS else 1
+    analysis = AnalysisFacts(task_id or "", "", goal, method, options, dict(selection), family,
+                             groups, ())
+    records = [r for r in project.protocol_records() if r.get("hypothesis_id") == h.id]
+    checks = hypothesis_checks(h, (analysis,), records)
+    return h.number, tuple(c for c in checks if c.key in PRE_RUN and c.state != "passed")
 
 
 def hypothesis_views(session, project) -> tuple[HypothesisView, ...]:
@@ -879,24 +1055,13 @@ def hypothesis_views(session, project) -> tuple[HypothesisView, ...]:
     history = project.plan_history()
     records = project.protocol_records()
     plan_ids = frozenset(h["id"] for h in plan.get("hypotheses", []))
-    questions = {q["id"]: q for q in plan.get("questions", [])}
     analyses_of: dict[str, list] = {}
     tasks_of: dict[str, list] = {}
     for task in session.tasks:
         if task.hypothesis_id in plan_ids:
             tasks_of.setdefault(task.hypothesis_id, []).append(task)
             analyses_of.setdefault(task.hypothesis_id, []).append(analysis_facts(task, session))
-    facts = []
-    for number, h in enumerate(plan.get("hypotheses", []), start=1):
-        info = status.get(h["id"], {})
-        facts.append(HypothesisFacts(
-            id=h["id"], number=number, text=h.get("text", ""),
-            direction=h.get("direction", "two-sided"), priority=h.get("priority", "primary"),
-            alpha=float(h.get("alpha", ENGINE_ALPHA)), family=h.get("family", ""),
-            method_key=h.get("method_key", ""), method_options=dict(h.get("method_options") or {}),
-            roles=dict(h.get("roles") or {}), standing=info.get("standing", "new"),
-            runs_before=int(info.get("runs_before", 0)),
-            question_type=(questions.get(h.get("question_id", "")) or {}).get("type", "")))
+    facts = plan_facts(plan, status)
     views = []
     for fact, h in zip(facts, plan.get("hypotheses", [])):
         label = fact.family.strip().casefold()
@@ -907,14 +1072,20 @@ def hypothesis_views(session, project) -> tuple[HypothesisView, ...]:
         hist = designation_history(history, mine, fact.id)
         tasks = tuple(tasks_of.get(fact.id, ()))
         analyses = tuple(analyses_of.get(fact.id, ()))
-        steps = task_steps(task_facts(tasks[0], session, plan_ids=plan_ids)) if tasks else ()
-        latest = None
-        if tasks:
-            entries = session.task_results(tasks[0].id)
-            latest = entries[-1].id if entries else None
-        views.append(HypothesisView(fact, dict(h), tasks, analyses, steps,
+        progress = []
+        for task in tasks:
+            entries = session.task_results(task.id)
+            progress.append(TaskProgress(
+                task.id, task_steps(task_facts(task, session, plan_ids=plan_ids)),
+                entries[-1].id if entries else None))
+        # The row shows the first analysis that is not done (else the first).
+        focus = next((p for p in progress if steps_complete(p.steps) < len(STEP_KEYS)),
+                     progress[0] if progress else None)
+        views.append(HypothesisView(fact, dict(h), tasks, analyses,
+                                    focus.steps if focus else (),
                                     hypothesis_checks(fact, analyses, mine, peers=peers,
-                                                      history=hist), hist, mine, latest))
+                                                      history=hist), hist, mine,
+                                    focus.result_id if focus else None, tuple(progress)))
     return tuple(views)
 
 
@@ -952,7 +1123,8 @@ def project_facts(session, project, *, views=(), draft: dict | None = None,
             dirty = True           # an invalid value: saving explains it
     progress = tuple(HypothesisProgress(
         v.facts.id, v.facts.number, v.facts.priority, v.tasks[0].id if v.tasks else None,
-        v.steps, tuple(c.key for c in open_checks(v.checks)), v.latest_result) for v in views)
+        v.steps, tuple(c.key for c in open_checks(v.checks)), v.latest_result,
+        tuple(v.progress)) for v in views)
     return ProjectFacts(
         has_data=session.has_data or has_datasets, pending_levels=session.pending_levels(),
         has_results=bool(session.results),

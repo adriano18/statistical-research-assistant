@@ -78,6 +78,7 @@ class HypothesisPanel:
         self.app = app
         self.opened: set[str] = set()      # hypotheses whose detail is shown
         self.show_why = False
+        self.footer_why = False             # Why this step? in the page footers
         self.form: dict | None = None      # the record being written, if any
         self.reason = ""                   # its reason, as typed
         self.what = "method"               # what a free deviation is about
@@ -91,7 +92,7 @@ class HypothesisPanel:
     def reset(self) -> None:
         """Another project: no detail open, no form half written."""
         self.opened, self.form, self.reason, self.message = set(), None, "", None
-        self.show_why, self._views = False, ()
+        self.show_why, self.footer_why, self._views = False, False, ()
 
     # --------------------------------------------------------------- facts
     def views(self) -> tuple:
@@ -113,7 +114,7 @@ class HypothesisPanel:
     def next_action(self, datasets, views=None) -> rw.NextAction:
         app = self.app
         views = self._views if views is None else views
-        draft = app.pages["project"].plan.current_draft()
+        draft = app.pages["project"].plan.facts_draft()
         facts = rw.project_facts(app.session, self.project, views=views, draft=draft,
                                  questionnaire_draft=bool(app.pages["questionnaires"].draft),
                                  has_datasets=bool(datasets), exported=self.exported())
@@ -160,6 +161,80 @@ class HypothesisPanel:
         self.show_why = not self.show_why
         self.app.render()
 
+    # ------------------------------------- the bar in the page footers (37.0b)
+    # Where a next-action button takes the researcher: on that page itself
+    # the button is left out and the bar says the step is done here.
+    GOES_TO = {"sample_data": "data", "review_levels": "data", "choose_analysis": "analyze",
+               "review_results": "results", "open_report": "reports",
+               "questionnaire": "questionnaires", "continue_draft": "questionnaires"}
+
+    def footer_bar(self, route: str) -> ft.Control | None:
+        """The next action in the footer of Data, Analyze, Results and
+        Reports (design §7.9): one line with the step, its buttons and *Why
+        this step?*; never a disabled button. Only while a project is open."""
+        app, ui = self.app, self.app.ui
+        if not app.projects.active:
+            return None
+        project = app.projects.project
+        action = self.next_action(project.datasets(), self.views())
+        params = action.params
+        buttons, here = [], False
+        for item in action.actions:
+            if self.GOES_TO.get(item.action) == route:
+                here = True
+                continue
+            label = ui.t(item.label, **params)
+            kind = "primary" if item.primary else "secondary"
+            if item.action == "open_data":
+                buttons.append(wc.button(ui, label, action=app.open_data_action, kind=kind,
+                                         data=item.data))
+            else:
+                buttons.append(wc.button(ui, label, wc.handler(self.run_action, item.action,
+                                                               item.target),
+                                         kind=kind, data=item.data))
+        line: list[ft.Control] = [
+            ft.Icon(ft.Icons.ARROW_CIRCLE_RIGHT, size=18, color=ui.p.accent),
+            wc.text(ui, ui.t("footer.next_step"), tk.TYPE_LABEL, weight=ft.FontWeight.W_600,
+                    data="footer-next-label"),
+            wc.text(ui, ui.t(action.title, **params), tk.TYPE_BODY, data="footer-next-title"),
+        ]
+        if here and not buttons:
+            line.append(wc.caption(ui, ui.t("next.here"), data="footer-next-here"))
+        line += buttons
+        if action.why:
+            line.append(wc.button(
+                ui, ui.t("next.why.hide" if self.footer_why else "next.why.title"),
+                self._toggle_footer_why, kind="quiet",
+                icon=ft.Icons.EXPAND_LESS if self.footer_why else ft.Icons.HELP_OUTLINE,
+                data="footer-next-why"))
+        content: list[ft.Control] = [ft.Row(line, wrap=True, spacing=tk.SPACE_2,
+                                            run_spacing=tk.SPACE_1,
+                                            vertical_alignment=ft.CrossAxisAlignment.CENTER)]
+        if self.footer_why and action.why:
+            content.append(ft.Column([wc.text(
+                ui, ("✓ " if done else "○ ") + ui.t("next.why.done" if done else "next.why.todo")
+                + ": " + ui.t(key, **values), tk.TYPE_BODY,
+                color=None if done else ui.p.text_secondary, data=f"footer-next-why-{index}")
+                for index, (done, key, values) in enumerate(action.why)], spacing=2))
+        return ft.Container(ft.Column(content, spacing=tk.SPACE_1),
+                            padding=ft.Padding.symmetric(horizontal=tk.SPACE_4,
+                                                         vertical=tk.SPACE_2),
+                            bgcolor=ui.p.surface, border=ft.Border.only(
+                                top=ft.BorderSide(1, ui.p.border)),
+                            data="footer-next-action")
+
+    def _toggle_footer_why(self, e=None):
+        self.footer_why = not self.footer_why
+        self.app.render()
+
+    def footer_for(self, route: str) -> ft.Control | None:
+        """``footer_bar`` for a page's ``footer()``: a failure leaves the page
+        without the bar instead of blanking the window."""
+        try:
+            return self.footer_bar(route)
+        except Exception:          # pragma: no cover - a bug must not hide the page
+            return None
+
     def run_action(self, action: str, target: str = "") -> None:
         """Do what the button of the next action names."""
         app = self.app
@@ -174,12 +249,16 @@ class HypothesisPanel:
             app.navigate("results")
         elif action == "open_report":
             app.navigate("reports")
-        elif action == "write_question":
-            plan.add_question(prefill=True)
-        elif action == "add_hypothesis":
-            plan.add_hypothesis_for(int(target) if str(target).isdigit() else 0)
-        elif action == "save_plan":
-            plan.save()
+        elif action in ("write_question", "add_hypothesis", "save_plan"):
+            if action == "write_question":
+                plan.add_question(prefill=True)
+            elif action == "add_hypothesis":
+                plan.add_hypothesis_for(int(target) if str(target).isdigit() else 0)
+            else:
+                plan.save()
+            if app.route != "project":
+                # From a page footer: the plan card is on the Project page.
+                app.navigate("project")
         elif action == "create_analysis":
             app.pages["analyze"].create_for_hypothesis(target)
         elif action == "open_task":
@@ -197,6 +276,11 @@ class HypothesisPanel:
             self.add_to_report(target)
         else:
             app.render()
+
+    def show_hypothesis(self, hypothesis_id: str) -> None:
+        """*Open H…* (a result's card): the hypothesis's detail on the Project page."""
+        self.opened.add(hypothesis_id)
+        self.app.navigate("project", section="hypotheses")
 
     def open_result(self, target, *, interpretation: bool = False) -> None:
         app = self.app
@@ -285,6 +369,11 @@ class HypothesisPanel:
         out: list[ft.Control] = []
         if view.plan.get("h0"):
             out.append(wc.labeled(ui, ui.t("plan.h.h0"), view.plan["h0"]))
+        if f.planned_version is not None:
+            # Stage 37.0b (review S16): what the standing was decided on.
+            out.append(wc.caption(ui, ui.t("hyp.standing_facts", version=f.planned_version,
+                                           total=f.results_then, counted=f.runs_before),
+                                  data=f"hyp-{n}-standing-facts"))
         plan_ids = frozenset(v.facts.id for v in self._views)
         if view.tasks:
             for index, task in enumerate(view.tasks):
@@ -402,7 +491,10 @@ class HypothesisPanel:
                      "task_id": check.task_id if check else None,
                      "fingerprint": check.fingerprint if check else "",
                      "what": rw.DEVIATION.get(check.key) if check and kind == "deviation" else None,
-                     "record": record_id}
+                     "record": record_id,
+                     # Stage 37.0b: what was planned and what was done, kept
+                     # with a deviation so the report can say it.
+                     "facts": dict(check.facts) if check and kind == "deviation" else {}}
         self.reason, self.message = "", None
         self.app.render()
 
@@ -454,11 +546,17 @@ class HypothesisPanel:
         detail = {}
         if form["kind"] == "deviation":
             detail["what"] = form["what"] or self.what
+            facts = form.get("facts") or {}
+            planned = facts.get("planned", facts.get("first"))
+            actual = facts.get("actual", facts.get("later"))
+            if planned is not None and actual is not None:
+                detail["planned"], detail["actual"] = planned, actual
         try:
             self.project.add_protocol_record(
                 form["kind"], hypothesis_id=hypothesis_id, task_id=form["task_id"],
-                check_key=form["check_key"], fingerprint=form["fingerprint"], detail=detail,
-                reason=reason, supersedes=form["record"])
+                run_id=self._run_of(form["task_id"]), check_key=form["check_key"],
+                fingerprint=form["fingerprint"], detail=detail, reason=reason,
+                supersedes=form["record"])
         except (ProjectError, OSError) as error:
             self.message = (hypothesis_id, ui.t("hyp.not_recorded", reason=str(error)), "danger")
             self.app.render()
@@ -466,6 +564,14 @@ class HypothesisPanel:
         self.form, self.reason = None, ""
         self.message = (hypothesis_id, ui.t("hyp.recorded"), "success")
         self.app.render()
+
+    def _run_of(self, task_id: str | None) -> str | None:
+        """The saved result a decision about a task's check is made about:
+        the latest result of that task (Stage 37.0b, review D12)."""
+        if not task_id:
+            return None
+        entries = self.app.session.task_results(task_id)
+        return entries[-1].record_id if entries else None
 
     # ------------------------------------------------ records, history
     def _record_text(self, record: dict) -> str:
