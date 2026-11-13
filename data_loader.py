@@ -171,6 +171,28 @@ def _blank(value: Any) -> bool:
         return False
 
 
+def _undo_formula_protection(path: Path, rows: list[list]) -> tuple[int, str] | None:
+    """Undo the export's formula protection (csv_safety) in place, only when
+    the codebook written next to the CSV vouches for exactly this file; in a
+    CSV from anywhere else an apostrophe is the researcher's own text.
+    Returns (cells changed, the vouching file's name), or None when the file
+    is not one of this program's exports."""
+    import csv_safety
+
+    book = csv_safety.exported_codebook(path)
+    if book is None:
+        return None
+    changed = 0
+    for row in rows:
+        for index, cell in enumerate(row):
+            if isinstance(cell, str):
+                restored = csv_safety.restore(cell)
+                if restored != cell:
+                    row[index] = restored
+                    changed += 1
+    return changed, csv_safety.sidecar_name(path, book)
+
+
 def _raw_table(path: Path, options: ImportOptions):
     warnings: list[str] = []
     if path.suffix.lower() in {".csv", ".tsv"}:
@@ -216,6 +238,13 @@ def _raw_table(path: Path, options: ImportOptions):
             if len(row) < expected:
                 shortened += 1
             normalized_rows.append(row + [None] * (expected - len(row)))
+        restored = _undo_formula_protection(path, normalized_rows)
+        if restored is not None:
+            warnings.append(
+                f"Formula protection removed from {restored[0]} text cell(s): this CSV "
+                "was exported by Statistical Research Assistant and the file written "
+                f"with it ({restored[1]}) matches it."
+            )
         if shortened:
             warnings.append(
                 f"{shortened} short CSV row(s) padded with missing trailing cells."
