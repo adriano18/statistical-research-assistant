@@ -20,7 +20,7 @@ import workspace_tokens as tk
 from workspace_methods import (
     FAMILIES, GOAL_ROLES, GOALS, ITEMS_NOT_TOTALS, METHODS, RoleProblems, advise,
     confirmation_scope, default_options, method_confirmations, required_confirmations,
-    run_method, settle_confirmations, total_score_problem,
+    run_method, settle_confirmations, total_score_problem, unchosen_options,
 )
 from workspace_state import LEVELS, ResearchTask
 from workspace_text import count_text, label as engine_label
@@ -28,7 +28,8 @@ from workspace_text import count_text, label as engine_label
 GOAL_ICONS = {
     "compare": ft.Icons.COMPARE_ARROWS, "change": ft.Icons.TIMELINE,
     "relate": ft.Icons.SCATTER_PLOT_OUTLINED, "associate": ft.Icons.GRID_ON,
-    "predict": ft.Icons.TRENDING_UP, "scale": ft.Icons.FACT_CHECK_OUTLINED,
+    "predict": ft.Icons.TRENDING_UP, "process": ft.Icons.HUB_OUTLINED,
+    "scale": ft.Icons.FACT_CHECK_OUTLINED,
     "structure": ft.Icons.ACCOUNT_TREE_OUTLINED, "describe": ft.Icons.BAR_CHART,
 }
 
@@ -153,6 +154,16 @@ class AnalyzePage:
     @staticmethod
     def _missing(key: str, options: dict, holding: dict) -> list:
         return [c for c in required_confirmations(METHODS[key], options) if c.key not in holding]
+
+    @staticmethod
+    def _unchosen_text(ui, key: str, options: dict) -> str | None:
+        """Stage 37: what the researcher still has to choose (an option with
+        no default, such as the moderated path), or None."""
+        unchosen = unchosen_options(METHODS[key], {**default_options(METHODS[key]), **options})
+        if not unchosen:
+            return None
+        return "\n".join(ui.t("block.choose_option", option=ui.t(o.prompt) if o.prompt
+                              else engine_label(ui.language, o.label)) for o in unchosen)
 
     # ----------------------------------------------------------- layout
     def build(self) -> ft.Control:
@@ -773,9 +784,12 @@ class AnalyzePage:
                           data=f"alt-{alternative.method}-{alternative.options.get('method', '')}"),
             ], vertical_alignment=ft.CrossAxisAlignment.CENTER))
         missing = self._missing(key, options, holding)
+        unchosen = self._unchosen_text(ui, key, options)
         run = wc.button(ui, ui.t("rec.run", method=label), self._run_guided, kind="primary",
-                        icon=ft.Icons.PLAY_ARROW, disabled=bool(missing) or self.running,
-                        tooltip=ui.t("disabled.confirm_first") if missing else None,
+                        icon=ft.Icons.PLAY_ARROW,
+                        disabled=bool(missing or unchosen) or self.running,
+                        tooltip=(unchosen if unchosen else
+                                 ui.t("disabled.confirm_first") if missing else None),
                         data="guided-run")
         controls: list[ft.Control] = [
             ft.Row([wc.heading(ui, label, tk.TYPE_TITLE_M, data="guided-method"),
@@ -786,6 +800,8 @@ class AnalyzePage:
                    vertical_alignment=ft.CrossAxisAlignment.CENTER),
             wc.section_label(ui, ui.t("rec.why")), *reasons,
         ]
+        if unchosen:
+            controls.append(wc.notice(ui, unchosen, "warning", data="guided-choose-option"))
         if alternatives:
             controls += [wc.section_label(ui, ui.t("rec.alternatives")), *alternatives]
         controls += [
@@ -820,8 +836,9 @@ class AnalyzePage:
         if not chosen:
             return
         holding = self._holding(chosen)
-        if self._missing(chosen[0], chosen[1], holding):
-            self.app.status(self.app.t("disabled.confirm_first"), "warning")
+        unchosen = self._unchosen_text(self.app.ui, chosen[0], chosen[1])
+        if unchosen or self._missing(chosen[0], chosen[1], holding):
+            self.app.status(unchosen or self.app.t("disabled.confirm_first"), "warning")
             self.app.render()
             return
         await self._execute(chosen[0], chosen[2], chosen[1], {k: True for k in holding},
@@ -1005,10 +1022,15 @@ class AnalyzePage:
         if other:
             content.append(wc.notice(ui, problems_text(ui, other), "warning",
                                      data="form-problems"))
+        unchosen = self._unchosen_text(ui, self.method, self.form_options)
+        if unchosen:
+            content.append(wc.notice(ui, unchosen, "warning", data="form-choose-option"))
         content.append(ft.Row([
             wc.button(ui, ui.t("form.run"), self._run_form, kind="primary",
-                      icon=ft.Icons.PLAY_ARROW, disabled=bool(problems or missing) or self.running,
+                      icon=ft.Icons.PLAY_ARROW,
+                      disabled=bool(problems or missing or unchosen) or self.running,
                       tooltip=(ui.t("disabled.resolve_first") if problems else
+                               unchosen if unchosen else
                                ui.t("disabled.confirm_first") if missing else None),
                       data="form-run"),
             wc.button(ui, ui.t("form.back"), self._back, kind="quiet", icon=ft.Icons.ARROW_BACK),
@@ -1062,8 +1084,9 @@ class AnalyzePage:
         needed = list(required_confirmations(spec, self.form_options))
         if totals:
             needed.append(ITEMS_NOT_TOTALS)
-        if [c for c in needed if c.key not in holding]:
-            self.app.status(self.app.t("disabled.confirm_first"), "warning")
+        unchosen = self._unchosen_text(self.app.ui, self.method, self.form_options)
+        if unchosen or [c for c in needed if c.key not in holding]:
+            self.app.status(unchosen or self.app.t("disabled.confirm_first"), "warning")
             self.app.render()
             return
         confirms = {k: True for k in holding}

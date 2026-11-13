@@ -536,8 +536,8 @@ DIRECTIONS = ("two-sided", "greater", "less")
 PRIORITIES = ("primary", "secondary", "exploratory")
 # Stage 37.0a: the kinds of research question are the guided goals
 # (workspace_methods.GOALS; tests/test_stage37_workflow.py keeps them equal).
-QUESTION_TYPES = ("compare", "change", "relate", "associate", "predict", "scale", "structure",
-                  "describe")
+QUESTION_TYPES = ("compare", "change", "relate", "associate", "predict", "process", "scale",
+                  "structure", "describe")
 PROTOCOL_KINDS = ("designation", "link", "acknowledgement", "deviation", "justification",
                   "withdrawal")
 REASON_KINDS = ("designation", "acknowledgement", "deviation", "justification", "withdrawal")

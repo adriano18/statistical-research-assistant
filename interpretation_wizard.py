@@ -123,6 +123,40 @@ METHOD_PROFILES: dict[str, MethodProfile] = {
          "Review missing complete cases and time ordering",
          "Check sphericity or justified correction for RM ANOVA"),
         "Repeated observations and temporal trends do not alone show causality."),
+    # Stage 37 (Issue #66).
+    "linear_model": MethodProfile(
+        "Estimate conditional associations of a quantitative outcome with quantitative "
+        "predictors and dummy-coded categorical covariates against stated reference categories.",
+        ("Inspect linearity, residual patterns and influential observations",
+         "Check independence, multicollinearity and model specification",
+         "Check every reference category and the number of cases in each category"),
+        "Coefficients are associations given the other terms; they do not establish causality."),
+    "mediation": MethodProfile(
+        "Estimate the indirect path X → M → Y that the researcher specified (structure of "
+        "PROCESS Model 4), with a percentile bootstrap interval for each indirect effect.",
+        ("Name the mediators from theory before seeing results, never by p-values",
+         "Inspect linearity, residuals and influential cases in every equation",
+         "Remember that cross-sectional data cannot establish temporal order or causal "
+         "mediation"),
+        "An indirect effect is a product of conditional associations; it does not show that one "
+        "variable changes another."),
+    "moderation": MethodProfile(
+        "Estimate whether the association of X with Y differs across values of W (structure of "
+        "PROCESS Model 1), with simple slopes and Johnson–Neyman values.",
+        ("Name the moderator from theory before seeing results",
+         "Inspect linearity, residuals and influential cases in every equation",
+         "Check that simple slopes are read where W has data"),
+        "An interaction describes how an association differs across W; it does not establish "
+        "causal moderation."),
+    "conditional_process": MethodProfile(
+        "Estimate conditional indirect effects when the researcher states which path W "
+        "moderates (structure of PROCESS Model 7 or 14), with the index of moderated mediation.",
+        ("Choose the moderated path (Model 7 or 14) from theory, before seeing results",
+         "Inspect linearity, residuals and influential cases in every equation",
+         "Remember that cross-sectional data cannot establish temporal order or causal "
+         "mediation"),
+        "Conditional indirect effects are products of conditional associations; they do not "
+        "establish causal mediation."),
 }
 
 

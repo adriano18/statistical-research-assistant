@@ -3300,6 +3300,156 @@ T.update({
 })
 
 
+# Stage 37 (Issue #66): the linear model with categorical covariates and the
+# path models (mediation, moderation, conditional process).
+# LV/RU drafts — needs native review (docs/STAGE37_METHODS.md lists the keys).
+T.update({
+    "goal.process": ("Test a mediation or moderation model",
+                     "Pārbaudīt mediācijas vai moderācijas modeli",
+                     "Проверить модель медиации или модерации"),
+    "goal.process.body": (
+        "A path model you state: an indirect path through mediators (Model 4), a moderator "
+        "(Model 1), or both (Model 7 or 14). Nothing is chosen from the data.",
+        "Jūsu noteikts ceļu modelis: netiešais ceļš caur mediatoriem (4. modelis), moderators "
+        "(1. modelis) vai abi (7. vai 14. modelis). Nekas netiek izvēlēts pēc datiem.",
+        "Модель путей, которую задаёте вы: косвенный путь через медиаторы (модель 4), "
+        "модератор (модель 1) или оба (модель 7 или 14). Ничего не выбирается по данным."),
+    "role.process_x": ("X: predictor (quantitative or coded 0/1)",
+                       "X: prediktors (kvantitatīvs vai kodēts 0/1)",
+                       "X: предиктор (количественный или с кодами 0/1)"),
+    "role.process_y": ("Y: outcome (quantitative)", "Y: rezultāts (kvantitatīvs)",
+                       "Y: зависимая переменная (количественная)"),
+    "role.mediators": ("M: mediators you named before seeing results",
+                       "M: mediatori, ko noteicāt pirms rezultātu apskates",
+                       "M: медиаторы, заданные вами до просмотра результатов"),
+    "role.moderator": ("W: moderator (quantitative or coded 0/1)",
+                       "W: moderators (kvantitatīvs vai kodēts 0/1)",
+                       "W: модератор (количественный или с кодами 0/1)"),
+    "role.process_covariates": ("Covariates in every equation (optional)",
+                                "Kovariāti katrā vienādojumā (pēc izvēles)",
+                                "Ковариаты в каждом уравнении (необязательно)"),
+    "role.quantitative_predictors": ("Quantitative predictors", "Kvantitatīvi prediktori",
+                                     "Количественные предикторы"),
+    "role.factors": ("Categorical covariates (entered as dummy codes)",
+                     "Kategoriāli kovariāti (iekļauti kā fiktīvie kodi)",
+                     "Категориальные ковариаты (входят как фиктивные коды)"),
+    "role.product_a": ("Product term (optional): first predictor",
+                       "Reizinājuma loceklis (pēc izvēles): pirmais prediktors",
+                       "Член-произведение (необязательно): первый предиктор"),
+    "role.product_b": ("Product term: second predictor",
+                       "Reizinājuma loceklis: otrais prediktors",
+                       "Член-произведение: второй предиктор"),
+    "block.process_structure": (
+        "Name at least one mediator (M) or a moderator (W): the structure of the model is "
+        "yours to state; the program does not choose it.",
+        "Norādiet vismaz vienu mediatoru (M) vai moderatoru (W): modeļa struktūru nosakāt jūs; "
+        "programma to neizvēlas.",
+        "Укажите хотя бы один медиатор (M) или модератор (W): структуру модели задаёте вы; "
+        "программа её не выбирает."),
+    "block.process_nominal": (
+        "{name} is nominal with more than two categories; in a path model X, W and the "
+        "covariates are quantitative or coded 0/1. Create dummy codes (one 0/1 column per "
+        "category) first.",
+        "{name} ir nomināls ar vairāk nekā divām kategorijām; ceļu modelī X, W un kovariāti ir "
+        "kvantitatīvi vai kodēti 0/1. Vispirms izveidojiet fiktīvos kodus (pa vienai 0/1 "
+        "kolonnai katrai kategorijai).",
+        "{name} — номинальная переменная с более чем двумя категориями; в модели путей X, W и "
+        "ковариаты количественные или закодированы 0/1. Сначала создайте фиктивные коды (по "
+        "столбцу 0/1 на категорию)."),
+    "block.choose_option": ("Choose {option}: the program does not choose it for you.",
+                            "Izvēlieties: {option}. Programma to neizvēlas jūsu vietā.",
+                            "Выберите: {option}. Программа не выбирает это за вас."),
+    "option.moderated_path": (
+        "which path W moderates (Model 7: X → M, or Model 14: M → Y)",
+        "kuru ceļu moderē W (7. modelis: X → M vai 14. modelis: M → Y)",
+        "какой путь модерирует W (модель 7: X → M или модель 14: M → Y)"),
+    "block.linear_no_predictor": (
+        "Choose at least one quantitative predictor or categorical covariate.",
+        "Izvēlieties vismaz vienu kvantitatīvu prediktoru vai kategoriālu kovariātu.",
+        "Выберите хотя бы один количественный предиктор или категориальную ковариату."),
+    "block.product_pair": (
+        "A product term needs two different predictors.",
+        "Reizinājuma loceklim vajag divus dažādus prediktorus.",
+        "Для члена-произведения нужны два разных предиктора."),
+    "block.product_not_in_model": (
+        "{name} is in the product term but not in the model; add it as a predictor or a "
+        "categorical covariate.",
+        "{name} ir reizinājuma loceklī, bet nav modelī; pievienojiet to kā prediktoru vai "
+        "kategoriālu kovariātu.",
+        "{name} входит в произведение, но не в модель; добавьте его как предиктор или "
+        "категориальную ковариату."),
+    "why.mediation": (
+        "You named {m} as mediator(s) of {x} → {y} and no moderator: the model you stated has "
+        "the structure of PROCESS Model 4. Each indirect effect gets a percentile bootstrap "
+        "interval (5000 resamples, fixed seed).",
+        "Jūs norādījāt {m} kā mediatoru(s) ceļam {x} → {y} un nevienu moderatoru: jūsu "
+        "modelim ir PROCESS 4. modeļa struktūra. Katram netiešajam efektam aprēķina procentiļu "
+        "bootstrap intervālu (5000 atkārtotas izlases, fiksēta sākumvērtība).",
+        "Вы указали {m} как медиатор(ы) пути {x} → {y} и не указали модератор: ваша модель "
+        "имеет структуру модели 4 PROCESS. Для каждого косвенного эффекта вычисляется "
+        "процентильный бутстреп-интервал (5000 выборок, фиксированное зерно)."),
+    "why.moderation": (
+        "You named {w} as the moderator of {x} → {y} and no mediator: the model you stated has "
+        "the structure of PROCESS Model 1 (X × W), with simple slopes and Johnson–Neyman "
+        "values.",
+        "Jūs norādījāt {w} kā ceļa {x} → {y} moderatoru un nevienu mediatoru: jūsu modelim ir "
+        "PROCESS 1. modeļa struktūra (X × W) ar vienkāršajiem slīpumiem un Džonsona–Neimana "
+        "vērtībām.",
+        "Вы указали {w} как модератор пути {x} → {y} и не указали медиатор: ваша модель имеет "
+        "структуру модели 1 PROCESS (X × W) с простыми наклонами и значениями Джонсона–Неймана."),
+    "why.conditional_process": (
+        "You named {m} as mediator(s) and {w} as a moderator: this is a conditional process "
+        "model. Which path W moderates is your theoretical choice: Model 7 (X → M) or Model 14 "
+        "(M → Y). Choose it under Alternatives; the program never chooses it.",
+        "Jūs norādījāt {m} kā mediatoru(s) un {w} kā moderatoru: tas ir nosacīta procesa "
+        "modelis. Kuru ceļu moderē W, ir jūsu teorētiska izvēle: 7. modelis (X → M) vai 14. "
+        "modelis (M → Y). Izvēlieties to sadaļā “Alternatīvas”; programma to nekad neizvēlas.",
+        "Вы указали {m} как медиатор(ы) и {w} как модератор: это модель условного процесса. "
+        "Какой путь модерирует W — ваш теоретический выбор: модель 7 (X → M) или модель 14 "
+        "(M → Y). Выберите её в разделе «Альтернативы»; программа никогда не выбирает её."),
+    "why.process_stated": (
+        "Mediators are never chosen by p-values, and a significant total effect is not required "
+        "for an indirect effect (Hayes, 2022).",
+        "Mediatori nekad netiek izvēlēti pēc p vērtībām, un netiešajam efektam nav vajadzīgs "
+        "nozīmīgs kopējais efekts (Hayes, 2022).",
+        "Медиаторы никогда не выбираются по p-значениям, и для косвенного эффекта не требуется "
+        "значимый общий эффект (Hayes, 2022)."),
+    "why.linear_model": (
+        "{factors}: category variables enter the linear model only as dummy codes, against a "
+        "reference category that the result states.",
+        "{factors}: kategoriju mainīgie lineārajā modelī tiek iekļauti tikai kā fiktīvie kodi "
+        "attiecībā pret atsauces kategoriju, ko rezultāts norāda.",
+        "{factors}: категориальные переменные входят в линейную модель только как фиктивные "
+        "коды относительно опорной категории, которую указывает результат."),
+    "why.linear_model_many": (
+        "{count} quantitative predictors: the linear model takes up to 10 (linear regression "
+        "up to 5).",
+        "{count} kvantitatīvi prediktori: lineārais modelis pieņem līdz 10 (lineārā regresija "
+        "līdz 5).",
+        "Количественных предикторов: {count}; линейная модель принимает до 10 (линейная "
+        "регрессия — до 5)."),
+    "alt.model7": (
+        "Model 7: W moderates the a path (X → M); index of moderated mediation a3·b.",
+        "7. modelis: W moderē a ceļu (X → M); moderētās mediācijas indekss a3·b.",
+        "Модель 7: W модерирует путь a (X → M); индекс модерируемой медиации a3·b."),
+    "alt.model14": (
+        "Model 14: W moderates the b path (M → Y); index of moderated mediation a·b3.",
+        "14. modelis: W moderē b ceļu (M → Y); moderētās mediācijas indekss a·b3.",
+        "Модель 14: W модерирует путь b (M → Y); индекс модерируемой медиации a·b3."),
+    "hyp.draft.h1.process": (
+        "For example: ‹X› is associated with ‹Y› through ‹M› (an indirect path), or the "
+        "association of ‹X› with ‹Y› depends on ‹W›.",
+        "Piemēram: ‹X› ir saistīts ar ‹Y› caur ‹M› (netiešais ceļš), vai ‹X› saistība ar ‹Y› "
+        "ir atkarīga no ‹W›.",
+        "Например: ‹X› связан с ‹Y› через ‹M› (косвенный путь), или связь ‹X› с ‹Y› зависит "
+        "от ‹W›."),
+    "hyp.draft.h0.process": (
+        "The indirect path (or the interaction) is zero in the population.",
+        "Netiešais ceļš (vai mijiedarbība) populācijā ir nulle.",
+        "Косвенный путь (или взаимодействие) в популяции равен нулю."),
+})
+
+
 # Engine-facing confirmation and option labels: canonical English (kept in
 # provenance) → displayed LV/RU. Method names stay international.
 LABELS: dict[str, tuple[str, str]] = {
@@ -3416,6 +3566,81 @@ LABELS: dict[str, tuple[str, str]] = {
     "I reviewed the outcome distributions, outliers and group sizes": (
         "Es pārskatīju rezultātu sadalījumus, izlēcējus un grupu lielumus",
         "Я проверил(а) распределения, выбросы и размеры групп"),
+    # Stage 37 (Issue #66). LV/RU drafts — needs native review.
+    "Linear model with categorical covariates": (
+        "Lineārais modelis ar kategoriāliem kovariātiem",
+        "Линейная модель с категориальными ковариатами"),
+    "Mediation (PROCESS-equivalent Model 4)": (
+        "Mediācija (PROCESS 4. modelim līdzvērtīga struktūra)",
+        "Медиация (структура, эквивалентная модели 4 PROCESS)"),
+    "Moderation (PROCESS-equivalent Model 1)": (
+        "Moderācija (PROCESS 1. modelim līdzvērtīga struktūra)",
+        "Модерация (структура, эквивалентная модели 1 PROCESS)"),
+    "Conditional process (PROCESS-equivalent Model 7 or 14)": (
+        "Nosacīts process (PROCESS 7. vai 14. modelim līdzvērtīga struktūra)",
+        "Условный процесс (структура, эквивалентная модели 7 или 14 PROCESS)"),
+    "Reference category of categorical covariates": (
+        "Kategoriālo kovariātu atsauces kategorija",
+        "Опорная категория категориальных ковариат"),
+    "First category (lowest code)": ("Pirmā kategorija (zemākais kods)",
+                                     "Первая категория (наименьший код)"),
+    "Last category (highest code)": ("Pēdējā kategorija (augstākais kods)",
+                                     "Последняя категория (наибольший код)"),
+    "Most frequent category": ("Biežākā kategorija", "Самая частая категория"),
+    "Mean-centre the quantitative predictors of the product term": (
+        "Centrēt reizinājuma locekļa kvantitatīvos prediktorus ap vidējo",
+        "Центрировать количественные предикторы произведения по среднему"),
+    "I reviewed linearity, independence, outliers, every predictor’s measurement level and the reference categories": (
+        "Es pārskatīju linearitāti, neatkarību, izlēcējus, katra prediktora mērījuma līmeni un "
+        "atsauces kategorijas",
+        "Я проверил(а) линейность, независимость, выбросы, уровень измерения каждого предиктора "
+        "и опорные категории"),
+    "I named the mediators from theory or the research plan before seeing results, not by their p-values": (
+        "Es noteicu mediatorus pēc teorijas vai pētījuma plāna pirms rezultātu apskates, nevis "
+        "pēc to p vērtībām",
+        "Я задал(а) медиаторы по теории или плану исследования до просмотра результатов, а не "
+        "по их p-значениям"),
+    "I understand that cross-sectional data cannot establish causal mediation: an indirect path is a pattern of conditional associations": (
+        "Es saprotu, ka šķērsgriezuma dati nevar pierādīt cēlonisku mediāciju: netiešais ceļš "
+        "ir nosacītu saistību kopums",
+        "Я понимаю, что одномоментные данные не устанавливают причинную медиацию: косвенный "
+        "путь — это набор условных связей"),
+    "I named the moderator W from theory or the research plan before seeing results": (
+        "Es noteicu moderatoru W pēc teorijas vai pētījuma plāna pirms rezultātu apskates",
+        "Я задал(а) модератор W по теории или плану исследования до просмотра результатов"),
+    "I chose Model 7 (W moderates X → M) from theory, before seeing results": (
+        "Es izvēlējos 7. modeli (W moderē X → M) pēc teorijas pirms rezultātu apskates",
+        "Я выбрал(а) модель 7 (W модерирует X → M) по теории до просмотра результатов"),
+    "I chose Model 14 (W moderates M → Y) from theory, before seeing results": (
+        "Es izvēlējos 14. modeli (W moderē M → Y) pēc teorijas pirms rezultātu apskates",
+        "Я выбрал(а) модель 14 (W модерирует M → Y) по теории до просмотра результатов"),
+    "I reviewed linearity, residuals, influential cases, measurement scales and missing data": (
+        "Es pārskatīju linearitāti, atlikumus, ietekmīgos gadījumus, mērījumu skalas un "
+        "trūkstošos datus",
+        "Я проверил(а) линейность, остатки, влиятельные случаи, шкалы измерения и пропуски"),
+    "Bootstrap resamples (percentile interval)": (
+        "Bootstrap atkārtotās izlases (procentiļu intervāls)",
+        "Бутстреп-выборки (процентильный интервал)"),
+    "5000 (default)": ("5000 (noklusējums)", "5000 (по умолчанию)"),
+    "1000 (quick check only)": ("1000 (tikai ātrai pārbaudei)", "1000 (только для быстрой проверки)"),
+    "Mean-centre the variables that form products": (
+        "Centrēt ap vidējo mainīgos, kas veido reizinājumus",
+        "Центрировать по среднему переменные, образующие произведения"),
+    "Yes, mean-centre": ("Jā, centrēt", "Да, центрировать"),
+    "Monte Carlo sensitivity simulation at this N": (
+        "Monte Karlo jutīguma simulācija pie šī N",
+        "Симуляция чувствительности Монте-Карло при этом N"),
+    "Off": ("Izslēgts", "Выключено"),
+    "500 replications (assumed effect sizes)": (
+        "500 atkārtojumi (pieņemti efektu lielumi)",
+        "500 повторений (принятые размеры эффекта)"),
+    "PROCESS-equivalent model: which path W moderates": (
+        "PROCESS līdzvērtīgs modelis: kuru ceļu moderē W",
+        "Модель, эквивалентная PROCESS: какой путь модерирует W"),
+    "Model 7 · W moderates X → M (a path)": ("7. modelis · W moderē X → M (a ceļš)",
+                                             "Модель 7 · W модерирует X → M (путь a)"),
+    "Model 14 · W moderates M → Y (b path)": ("14. modelis · W moderē M → Y (b ceļš)",
+                                              "Модель 14 · W модерирует M → Y (путь b)"),
 }
 
 
