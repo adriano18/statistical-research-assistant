@@ -52,8 +52,12 @@ LOCK = ROOT / "packaging" / "build_toolchain.lock.json"
 RUNTIME_LOCK = ROOT / "requirements.txt"
 DEV_LOCK = ROOT / "requirements-dev.txt"
 OCR_LOCK = ROOT / "packaging" / "windows_ocr_runtime.lock.json"
-# Installer tools of the host Python itself, never in a lock.
-HOST_TOOLS = {"pip", "setuptools", "wheel"}
+# Installer tools of the host Python itself, never in a lock, and pipx with
+# its dependencies, which GitHub's Windows toolcache Python ships with
+# (seen on windows-2025-vs2026 20261103.298). None of them enters the bundle,
+# which is checked against requirements.txt on its own.
+HOST_TOOLS = {"pip", "setuptools", "wheel",
+              "pipx", "argcomplete", "filelock", "platformdirs", "userpath"}
 _CHUNK = 1 << 20
 
 

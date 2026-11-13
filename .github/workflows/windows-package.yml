@@ -161,7 +161,7 @@ jobs:
           # Host Python and packages, flet/flet-cli, Flutter SDK, Dart packages
           # and the Python packages inside the bundle, against the locks.
           New-Item -ItemType Directory -Force diagnostics | Out-Null
-          python tools/build_toolchain.py identity --bundle build/windows --out diagnostics/build-identity.json
+          python tools/build_toolchain.py identity --bundle build/windows --strict --out diagnostics/build-identity.json
           if ($LASTEXITCODE -ne 0) { throw "build identity failed" }
           python tools/build_sbom.py --out diagnostics/sbom.cdx.json --pubspec-lock build/flutter/pubspec.lock --licenses-md diagnostics/licenses.md
           if ($LASTEXITCODE -ne 0) { throw "SBOM failed" }
