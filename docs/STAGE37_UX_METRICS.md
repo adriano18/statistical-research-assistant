@@ -1,6 +1,6 @@
 # Stage 37 — UX metrics: the baseline of eight tasks (Issue #68)
 
-> **Status: baseline only.** No interface code changes here. The numbers below were measured on the application code of `2f9af71` (`stage37/master-acceptance-interoperability-spec`) with `tools/ux_metrics.py`, which this branch adds. Synthetic data only: the Stage 37 master fixture and the Stage 36 UCLA/SACS-shaped CSV, both generated into a temporary folder. Scroll distances are **estimates**, not measurements (§4.5).
+> **Status: the baseline (§2–§8), and its re-measurement after the variable panel and reuse (§9, branch `claude/stage37-ux-vars`).** The baseline numbers were measured on the application code of `2f9af71` (`stage37/master-acceptance-interoperability-spec`) with `tools/ux_metrics.py`, which the baseline branch adds. Synthetic data only: the Stage 37 master fixture and the Stage 36 UCLA/SACS-shaped CSV, both generated into a temporary folder. Scroll distances are **estimates**, not measurements (§4.5).
 
 ## 1. Command
 
@@ -245,3 +245,59 @@ Run the same command on the changed branch and compare it with §2. The tool ada
 - **Compact layout.** The Results dropdown of the compact layout is handled.
 
 Other changes of `data` keys need the task scripts in `tools/ux_metrics.py` updated. Keep the English texts and data keys the journeys use.
+
+## 9. Re-measured: the variable panel and reuse (UX-3, branch `claude/stage37-ux-vars`)
+
+Measured with the same command and the same synthetic fixtures. "Before" is `b83567c`, measured again: it gives exactly the numbers of §2 and §2.1. "After" is this branch. The design is in `docs/STAGE37_UX_VARIABLES.md`.
+
+### 9.1 At 1440 × 800
+
+| # | Task | Interactions (click · box · dropdown) | Typed | Pages | Dialogs | Repeat sel. | Focus lost | Scroll px (est.) |
+|---|---|---|---|---|---|---|---|---|
+| T1 | First start to an open project with data | 3 (3 · 0 · 0) | 1 | 3 | 1 | 0 | 0 | 162 |
+| T2 | Confirm the measurement levels of the 98-variable file | 4 (1 · 1 · 1) | 0 | 0 | 0 | 0 | 0 | 5,440 |
+| T3 | Define and score one 20-item scale, check its reliability | 51 (6 · 41 · 2) → **13 (8 · 1 · 2)** | 1 | 2 | 0 | 20 → **0** | 0 | 5,312 → **4,000** |
+| T4 | Eight correlations in one batch, add them to the report | 10 (7 · 1 · 1) | 0 | 1 | 0 | 0 | 0 | 1,146 → **1,284** |
+| T5 | Repeat a previous analysis with one variable changed | 5 (3 · 0 · 1) → **4 (2 · 0 · 1)** | 0 | 1 | 0 | 0 | 0 | 780 → **520** |
+| T6 | Export the Word report | 2 (2 · 0 · 0) | 0 | 1 | 1 | 0 | 0 | 0 |
+| T7 | Reopen the project after a restart, review every result | 4 (4 · 0 · 0) | 0 | 3 | 0 | 0 | 0 | 19,550 → **16,962** |
+| T8 | Change the language and the text size, continue | 5 (5 · 0 · 0) | 0 | 3 | 0 | 0 | 0 | 210 |
+| | **novice** | 68 → **30** | 2 | 6 | 1 | 20 → **0** | 0 | 12,060 → **10,886** |
+| | **supervisor** | 16 → **15** | 0 | 8 | 1 | 0 | 0 | 20,540 → **17,692** |
+
+### 9.2 At 1200 × 720 (the window every start opens with)
+
+| # | Task | Interactions (click · box · dropdown) | Typed | Pages | Dialogs | Repeat sel. | Focus lost | Scroll px (est.) |
+|---|---|---|---|---|---|---|---|---|
+| T1 | First start to an open project with data | 3 (3 · 0 · 0) | 1 | 3 | 1 | 0 | 0 | 286 |
+| T2 | Confirm the measurement levels of the 98-variable file | 4 (1 · 1 · 1) | 0 | 0 | 0 | 0 | 0 | 5,564 |
+| T3 | Define and score one 20-item scale, check its reliability | 51 (6 · 41 · 2) → **13 (8 · 1 · 2)** | 1 | 2 | 0 | 20 → **0** | 0 | 6,200 → **4,518** |
+| T4 | Eight correlations in one batch, add them to the report | 10 (7 · 1 · 1) | 0 | 1 | 0 | 0 | 0 | 1,386 → **1,524** |
+| T5 | Repeat a previous analysis with one variable changed | 5 (3 · 0 · 1) → **4 (2 · 0 · 1)** | 0 | 1 | 0 | 0 | 0 | 920 → **680** |
+| T6 | Export the Word report | 2 (2 · 0 · 0) | 0 | 1 | 1 | 0 | 0 | 0 |
+| T7 | Reopen the project after a restart, review every result | 5 (3 · 0 · 1) → **4 (4 · 0 · 0)** | 0 | 3 | 0 | 0 | 0 | 20,224 → **17,268** |
+| T8 | Change the language and the text size, continue | 5 (5 · 0 · 0) | 0 | 3 | 0 | 0 | 0 | 376 |
+| | **novice** | 68 → **30** | 2 | 6 | 1 | 20 → **0** | 0 | 13,436 → **11,892** |
+| | **supervisor** | 17 → **15** | 0 | 8 | 1 | 0 | 0 | 21,520 → **18,324** |
+
+### 9.3 What changed in each task
+
+- **T3** (51 → 13).
+  - Data → Prepare: the panel's name group "All SYN_LON_* (20)" (`prep-items:group:SYN_LON_`) replaces 20 boxes.
+  - Analyze: "Items of SYN_LON_MEAN (20)" (`role-items:score:SYN_LON_MEAN`, the items the score was made from) replaces 20 more boxes. The 20 repeated selections are gone.
+  - The mandatory confirmation `design-confirm-one_construct` is still one of the 13.
+  - The item list offers 96 variables instead of 98: the identifier and the nominal `employed_code` are left out, with the reason shown (D7).
+  - The confirmation is 550 px below the panel instead of ≈ 1,550 px, because a list of more than 40 shows the chosen variables until a search, a group or *Show all*.
+- **T5** (5 → 4).
+  - "Other results" now ends every result (`result-other-repeat-<id>`). T7 ends at the bottom of the reliability result, so the batch is repeated from there.
+  - The repeat opens a copy at its variables: UCLA → UCLA_Level, then Run.
+  - The run is a **new task**, and the batch task keeps UCLA and its title (`same_task: false`, `original_kept: true`). Before, the run overwrote the batch task in place (review D5).
+- **T7.** The second result is opened from "Other results" at the end of the first, shown from its top (`result-other-1`). It is not reached through the list ≈ 2,500 px above, nor (at 1200 × 720) through the dropdown (2 interactions). Reading the 20-item result itself is unchanged.
+- **T4** (+138 px, estimate). Step 2 of the batch is longer: it has the search row, the count and the "Not offered here" lines (Code — identifier). The interactions are unchanged.
+- **T1, T2, T6, T8.** Unchanged: their work is UX-1 and UX-2.
+
+### 9.4 How the tool follows the new controls
+
+- **T3.** The tool uses the name group in Data → Prepare and the score's items in Analyze when they are on screen; otherwise it ticks the 20 boxes as before. The fact `item_picker_choices` is counted by the panel's rule, because a long list no longer shows every box.
+- **T5 and T7.** When the same action is on the page more than once (the results list, "Other results"), the tool takes the nearer one (`Meter.nearest`, by the scroll estimate). A repeat action more than one screen away is not scrolled to. T5 then takes the sidebar and the task's *Duplicate*: 5 interactions. This was measured on this branch before "Other results" was added, when the only repeat action was in the results list ≈ 13,000 px above.
+- **Selections.** The panel's own controls (`role-items:search`, …) are never counted as a variable put into a role. Variables a name group or the score's items add are remembered as bulk selections and are not counted as repeated, by the rule of §4.3.
