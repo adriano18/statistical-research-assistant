@@ -257,3 +257,33 @@ The runner refuses to run without every confirmation the method asks for.
 | ω for more than 12 items (review S13) | not done | limitation |
 | Fixture v2 (consistent mediation, negative dimension, covariate effects, reverse items, patterned missingness), separate from the owner's v1 | done | `test_stage37_fixture_v2` (7 tests) |
 | Windows GUI journey for the new methods; native LV/RU review | not done | owner / 37.x |
+
+## 8. Licence path for pingouin (a separate commit the owner can drop)
+
+This section belongs to the last commit of the branch. Dropping that commit removes it together with the change it describes.
+
+**α in-house.** `cronbach.py` computes Cronbach's α, Feldt's interval and α if an item is deleted from the published formulas. No pingouin code was used. `reliability.py` calls it, and the Feldt bounds stay rounded to three decimals, so the reported values are those of earlier versions.
+
+**Validation** (`tests/test_cronbach.py`).
+
+- Exact-fraction hand calculation and the written-out Feldt formula.
+- pingouin as a **test-only oracle**:
+  - |Δα| ≤ 1e-12, observed ≤ 2.7e-15 over 310 data sets;
+  - the 3-decimal Feldt bounds are identical in all of them;
+  - α if deleted agrees to 1e-12.
+- pingouin's own `nan_policy="listwise"` takes Feldt's n before deletion. The program always passed the complete cases and still uses their n (tested).
+- A subprocess test shows that α and the item diagnostics import neither pingouin nor scikit-learn.
+
+**Other changes in the commit.**
+
+- `item_diagnostics.py`: the CI-method text and the provenance.
+- `project_store.LIBRARIES`: without pingouin and scikit-learn.
+- pingouin moves from `requirements.in` to `requirements-dev.in`. seaborn and scikit-learn are not used directly and are not kept.
+
+**The lock diff.**
+
+- Runtime lock: 49 → 41 packages. It loses cloudpickle 3.1.2, joblib 1.6.0, pandas-flavor 0.8.1, pingouin 0.7.0, scikit-learn 1.9.1, seaborn 0.13.2, tabulate 0.10.0 and xarray 2026.9.0. **No other pin changes** (version, marker and hashes).
+- Development lock: 58 → 82 packages. It gains pingouin and its closure at the runtime versions; none of its pins changes.
+- The main unit-test job installs both locks; the pruned-runtime job stays runtime-only, and the pingouin tests skip there.
+
+**The project licence remains the owner's decision.** This commit does not choose a licence and adds no LICENSE file; see `STAGE368_BUILD_LOCK.md` §5.3.

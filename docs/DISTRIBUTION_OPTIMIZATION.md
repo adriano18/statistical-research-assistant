@@ -181,7 +181,7 @@ before/after measurement, not as part of this one.
 
 | Option | ZIP saving | Installed | Cost / risk | Decision needed |
 |---|---:|---:|---|---|
-| Replace pingouin (used only for `cronbach_alpha`) with an in-house α verified against pingouin in tests; drops pingouin, scikit-learn, xarray, seaborn, joblib, tabulate, pandas_flavor | 9.7 MiB | 26.0 MiB | touches the calculation engine; α and Feldt CI must stay bit-identical | owner |
+| Replace pingouin (used only for `cronbach_alpha`) with an in-house α verified against pingouin in tests; drops pingouin, scikit-learn, xarray, seaborn, joblib, tabulate, pandas_flavor | 9.7 MiB | 26.0 MiB | touches the calculation engine. Stage 37 (one separate commit, `STAGE368_BUILD_LOCK.md` §5.3): the reported values stay identical (3-decimal Feldt bounds equal in 310 of 310 data sets); α agrees to ≤ 2.7e-15 but is not always bit-identical | owner |
 | Drop `osd.traineddata` (the app always runs `--psm 6`; rotation is chosen by the researcher) | 4.1 MiB | 10.6 MB | changes the pinned OCR lock and bundle manifest | owner |
 | Optional OCR module (scanned PDFs, Latvian/Russian OCR) downloaded on request | 21.5 MiB | 50.3 MiB | needs signed, hash-pinned module packages, offline module files for restricted networks, and the full installer kept | owner |
 | Identical DLL copies (`msvcp140` in numpy/pandas/scikit-learn) | ≈1.1 MiB | 1.1 MiB | delvewheel loads them by private path; deduplication is unsafe | no |

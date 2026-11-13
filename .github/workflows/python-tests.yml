@@ -26,7 +26,9 @@ jobs:
           tesseract --version
           tesseract --list-langs
       - name: Install dependencies
-        run: python -m pip install --require-hashes -r requirements.txt
+        # The development lock adds the test-only oracle pingouin (Stage 37);
+        # the pruned-runtime job below keeps the runtime lock alone.
+        run: python -m pip install --require-hashes -r requirements.txt -r requirements-dev.txt
       - name: Compile source
         run: python -m compileall -q .
       - name: Unit tests (real local OCR required)

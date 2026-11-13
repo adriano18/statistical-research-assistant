@@ -4,9 +4,10 @@
 internal consistency, reusing the validated engines:
 
 - Cronbach's α, its 95% interval and α if an item were deleted come from
-  :func:`reliability.analyze_cronbach` (pingouin; Feldt's F-based
-  interval, bounds rounded to three decimals by pingouin; α if deleted
-  for scales of at least four items).
+  :func:`reliability.analyze_cronbach`, computed in-house from the published
+  formulas (:mod:`cronbach`; Feldt's F-based interval, bounds rounded to
+  three decimals as earlier versions reported them; α if deleted for scales
+  of at least four items). pingouin is only a test oracle.
 - McDonald's ω total comes from :func:`omega_analysis.analyze_omega`: a
   one-factor maximum-likelihood model of the Pearson correlations of the
   complete cases (3–12 items, at least max(30, 5k) complete respondents).
@@ -674,8 +675,8 @@ def diagnose_items(df: pd.DataFrame, items: Sequence[str], *,
     warnings: list[str] = []
 
     alpha_ci = dict(ci_low=reliability.ci_low, ci_high=reliability.ci_high, ci_level=0.95,
-                    ci_method="Feldt (F distribution), as computed by pingouin; bounds rounded "
-                              "to 3 decimals") if ci else {}
+                    ci_method="Feldt (F distribution), computed by this program from the "
+                              "published formula; bounds rounded to 3 decimals") if ci else {}
     alpha = Quantity("alpha", "Cronbach’s α", float(reliability.alpha),
                      note=f"raw α of {k} items; complete cases N = {n}", **alpha_ci)
     omega, full, omega_warnings = _omega_full(df, items, n, ci, resamples, seed)
@@ -792,9 +793,9 @@ def diagnose_items(df: pd.DataFrame, items: Sequence[str], *,
                "items_confirmed": bool(items_confirmed)}
     provenance = _provenance(
         engine=ENGINE_VERSION,
-        pingouin=str(getattr(sys.modules.get("pingouin"), "__version__", "")),
         statsmodels=str(getattr(sys.modules.get("statsmodels"), "__version__", "")),
-        alpha="reliability.analyze_cronbach", omega="omega_analysis.analyze_omega",
+        alpha="reliability.analyze_cronbach (in-house: cronbach.py)",
+        omega="omega_analysis.analyze_omega",
         omega_interval="omega_bootstrap.bootstrap_omega" if ci and resamples else "")
     omega_fit = ()
     if full is not None:

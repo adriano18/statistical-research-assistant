@@ -5,8 +5,12 @@ import unittest
 
 import numpy as np
 import pandas as pd
-import pingouin as pg
 from scipy import stats
+
+try:            # a test-only oracle (requirements-dev.txt); absent in a runtime-only setup
+    import pingouin as pg
+except ImportError:
+    pg = None
 
 from repeated_analysis import analyze_repeated
 from repeated_reporting import repeated_main, format_repeated_report
@@ -39,6 +43,7 @@ class RepeatedTests(unittest.TestCase):
         )
         self.assertIn("Kendall", repeated_main(result))
 
+    @unittest.skipIf(pg is None, "pingouin (test-only oracle) is not installed")
     def test_repeated_anova_matches_pingouin(self):
         result = self.run_method("rm_anova", "scale")
         wide = self.df[COLS].dropna()

@@ -210,12 +210,16 @@ class ItemDiagnosticsOracleTests(unittest.TestCase):
             self.assertAlmostEqual(row.missing_percent, 100 * row.missing / 200, places=12)
 
     def test_alpha_matches_the_formula_and_pingouin(self):
-        import pingouin as pg
-
         x = self.complete.to_numpy(dtype=float)
         alpha = self.result.alpha
         self.assertAlmostEqual(alpha.value, alpha_by_hand(x), delta=TIGHT)
-        self.assertAlmostEqual(alpha.value, pg.cronbach_alpha(data=self.complete)[0], delta=TIGHT)
+        try:        # a test-only oracle (requirements-dev.txt)
+            import pingouin as pg
+        except ImportError:
+            pg = None
+        if pg is not None:
+            self.assertAlmostEqual(alpha.value, pg.cronbach_alpha(data=self.complete)[0],
+                                   delta=TIGHT)
         n, k = x.shape
         low = 1 - (1 - alpha.value) * stats.f.isf(0.025, n - 1, (n - 1) * (k - 1))
         high = 1 - (1 - alpha.value) * stats.f.isf(0.975, n - 1, (n - 1) * (k - 1))
