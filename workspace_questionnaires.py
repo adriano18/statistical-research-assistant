@@ -362,7 +362,7 @@ class QuestionnairesPage:
                 current_count=len(self.draft), incoming=incoming, count=count), tk.TYPE_BODY),
                 width=500),
             actions=[wc.button(ui, ui.t("common.cancel"), lambda e: app.page.pop_dialog(),
-                               kind="quiet", data="q-replace-cancel"),
+                               kind="quiet", data="q-replace-cancel", autofocus=True),
                      wc.button(ui, ui.t("q.replace_confirm"), confirm, kind="primary",
                                data="q-replace-confirm")],
         ))
@@ -612,7 +612,7 @@ class QuestionnairesPage:
             actions=[wc.button(ui, ui.t("common.cancel"), lambda e: self.app.page.pop_dialog(),
                                kind="quiet"),
                      wc.button(ui, ui.t("q.publish").rstrip("…"), self._publish, kind="primary",
-                               data="q-publish-confirm")],
+                               data="q-publish-confirm", autofocus=True)],
         )
         self.app.page.show_dialog(dialog)
 

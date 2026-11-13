@@ -3,7 +3,9 @@
 Rules every component follows (docs/UX_STAGE33_SPEC.md §7):
 
 * colours come from the resolved :class:`workspace_tokens.Palette`;
-* text sizes come from the type scale and are never below 12 px;
+* text sizes come from the type scale at the researcher's text size
+  (``Ui.size``, Stage 37) and are never below 12 px;
+* spacing and control heights come from the active density's tokens;
 * icon-only buttons always carry a tooltip (screen-reader label);
 * status is never shown by colour alone — tone chips have an icon and text;
 * headings are sentence case, never all caps.
@@ -23,14 +25,21 @@ from workspace_text import t as translate
 
 @dataclass
 class Ui:
-    """Rendering context: palette, language and corner style."""
+    """Rendering context: palette, language, corner style and (Stage 37,
+    issue #68) the researcher's text size (1.0 = 100 %) and typeface."""
 
     palette: tk.Palette
     language: str = "en"
     corners: str = "windows"
+    text_scale: float = 1.0
+    typeface: str = tk.DEFAULT_TYPEFACE
 
     def t(self, key: str, **values) -> str:
         return translate(self.language, key, **values)
+
+    def size(self, px: float) -> float:
+        """A design text size at the researcher's text size."""
+        return tk.scaled(px, self.text_scale)
 
     @property
     def p(self) -> tk.Palette:
@@ -56,7 +65,7 @@ def text(ui: Ui, value: str, kind=tk.TYPE_BODY, *, color: str | None = None,
          weight=None, italic: bool = False, data=None, align=None) -> ft.Text:
     size, height, default_weight = kind
     return ft.Text(
-        value, size=size, weight=weight or default_weight,
+        value, size=ui.size(size), weight=weight or default_weight,
         color=color or ui.p.text, selectable=selectable, max_lines=max_lines,
         overflow=ft.TextOverflow.ELLIPSIS if max_lines else None,
         style=ft.TextStyle(height=height / size, italic=italic),
@@ -111,7 +120,7 @@ def _states(default: str, hovered: str, disabled: str) -> dict:
 def _button_style(ui: Ui, *, kind: str) -> ft.ButtonStyle:
     shape = ft.RoundedRectangleBorder(radius=ui.radius("control"))
     padding = ft.Padding.symmetric(horizontal=tk.SPACE_4, vertical=tk.SPACE_2)
-    text_style = ft.TextStyle(size=14, weight=ft.FontWeight.W_500)
+    text_style = ft.TextStyle(size=ui.size(14), weight=ft.FontWeight.W_500)
     if kind == "primary":
         return ft.ButtonStyle(
             bgcolor=_states(ui.p.accent, ui.p.accent_hover, ui.p.surface_hover),
@@ -135,10 +144,14 @@ def _button_style(ui: Ui, *, kind: str) -> ft.ButtonStyle:
 
 def button(ui: Ui, label: str, on_click=None, *, kind: str = "secondary",
            icon=None, tooltip: str | None = None, disabled: bool = False,
-           action=None, data=None, key=None) -> ft.Control:
+           action=None, data=None, key=None, autofocus: bool = False) -> ft.Control:
+    """``autofocus``: the button has the keyboard focus when it first appears
+    (the safe or main answer of a dialog, Stage 37 U11)."""
     kwargs = dict(content=label, icon=icon, style=_button_style(ui, kind=kind),
                   tooltip=tooltip, disabled=disabled, height=tk.CONTROL_HEIGHT,
                   data=data)
+    if autofocus:
+        kwargs["autofocus"] = True
     if key is not None:
         kwargs["key"] = key
     if action is not None:
@@ -227,7 +240,7 @@ def notice(ui: Ui, message: str, tone: str = "info", *, title: str | None = None
 
 def card(ui: Ui, content: list[ft.Control], *, title: str | None = None,
          description: str | None = None, actions: Iterable[ft.Control] = (),
-         padding: int = tk.SPACE_5, expand=None, col=None, data=None,
+         padding: int | None = None, expand=None, col=None, data=None,
          bgcolor: str | None = None, border: str | None = None) -> ft.Container:
     body: list[ft.Control] = []
     if title:
@@ -241,8 +254,8 @@ def card(ui: Ui, content: list[ft.Control], *, title: str | None = None,
     return ft.Container(
         content=ft.Column(body, spacing=tk.SPACE_3, tight=True),
         bgcolor=bgcolor or ui.p.surface, border=ft.Border.all(1, border or ui.p.border),
-        border_radius=ui.radius("card"), padding=padding, expand=expand,
-        col=col, data=data,
+        border_radius=ui.radius("card"), padding=tk.SPACE_5 if padding is None else padding,
+        expand=expand, col=col, data=data,
     )
 
 
@@ -425,7 +438,8 @@ def segmented(ui: Ui, options: list[tuple[str, str]], value: str,
                 side=ft.BorderSide(1, ui.p.border_strong if selected else ui.p.surface_alt),
                 shape=ft.RoundedRectangleBorder(radius=ui.radius("control")),
                 elevation=0, text_style=ft.TextStyle(
-                    size=14, weight=ft.FontWeight.W_600 if selected else ft.FontWeight.W_500),
+                    size=ui.size(14),
+                    weight=ft.FontWeight.W_600 if selected else ft.FontWeight.W_500),
             ),
             tooltip=(tooltips or {}).get(key),
         ))
@@ -444,7 +458,7 @@ def dropdown(ui: Ui, label: str, options: list[tuple[str, str]], value: str | No
         options=[ft.DropdownOption(key=k, text=v) for k, v in options],
         on_select=on_select, border_radius=ui.radius("control"),
         border_color=ui.p.border_strong, focused_border_color=ui.p.focus,
-        text_size=14, tooltip=tooltip, dense=False,
+        text_size=ui.size(14), tooltip=tooltip, dense=False,
     )
 
 
@@ -456,7 +470,7 @@ def text_field(ui: Ui, label: str, value: str = "", *, width: int | None = None,
         min_lines=3 if multiline else None, max_lines=8 if multiline else 1,
         on_change=on_change, data=data, hint_text=hint, expand=expand,
         border_radius=ui.radius("control"), border_color=ui.p.border_strong,
-        focused_border_color=ui.p.focus, text_size=14,
+        focused_border_color=ui.p.focus, text_size=ui.size(14),
     )
 
 
@@ -464,7 +478,7 @@ def checkbox(ui: Ui, label: str, value: bool = False, on_change=None, *,
              data=None, disabled: bool = False) -> ft.Checkbox:
     return ft.Checkbox(
         label=label, value=value, on_change=on_change, data=data, disabled=disabled,
-        label_style=ft.TextStyle(size=14, color=ui.p.text),
+        label_style=ft.TextStyle(size=ui.size(14), color=ui.p.text),
         active_color=ui.p.accent, check_color=ui.p.on_accent,
     )
 

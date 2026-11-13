@@ -116,8 +116,12 @@ ACTIONS: dict[str, tuple[str, str, str]] = {
     "open_report_wizard": ("results", "workspace", "Results: assumptions, interpretation, Word"),
     "open_survey_import": ("questionnaires/import", "workspace", "Scientific import"),
     "open_survey_responses": ("questionnaires", "workspace", "Published questionnaires and responses"),
-    "open_workspace_preview": ("home", "workspace", "Entry point into this workspace"),
+    "open_workspace_preview": ("home", "workspace", "Entry point into this workspace (the "
+                               "normal start since Stage 37; the classic Home links back)"),
     "register_import_navigation": ("home", "retired", "Workspace routing replaces the classic screen switcher"),
+    "register_language_setter": ("settings", "workspace",
+                                 "Stage 37: the classic screens follow the language chosen in "
+                                 "the workspace (one settings file)"),
     "set_active_screen": ("home", "retired", "Results log replaces the per-screen output cache"),
 }
 

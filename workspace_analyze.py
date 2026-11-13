@@ -483,6 +483,8 @@ class AnalyzePage:
         app.session.save_task(task)
         self._record_link(task, None, hypothesis_id)
         self._open_task(task.id, render=False)
+        # The keyboard focus goes to the first variable choice (U11).
+        app.request_focus("step-variables" if goal else "step-goal", first_inside=True)
         app.navigate("analyze", section="variables" if goal else None)
 
     def open_task_for(self, task_id: str) -> None:
@@ -1510,7 +1512,7 @@ class ResultsPage:
                                  width=min(1100, self.app.content_width),
                                  bgcolor="#FFFFFF"),
             actions=[wc.button(ui, ui.t("common.close"),
-                               lambda e: self.app.page.pop_dialog())],
+                               lambda e: self.app.page.pop_dialog(), autofocus=True)],
         )
         self.app.page.show_dialog(dialog)
 
@@ -1797,12 +1799,21 @@ class ReportsPage:
         present = {section.key: len(section.items) for section in plan.sections}
         language = self.report_language()
         rows = []
+        if language != ui.language:
+            # Stage 37 (D11): each section is named as the report will name it;
+            # say so, so that two languages on one line are not a surprise.
+            from user_settings import LANGUAGE_NAMES
+
+            rows.append(wc.caption(ui, ui.t("reports.section_names",
+                                            name=LANGUAGE_NAMES.get(language, language)),
+                                   data="reports-section-language"))
         for number, key in enumerate(rr.SECTIONS, start=1):
             label = f"{number}. {rr.text(language, key)}"
             if key == "title":
                 rows.append(wc.caption(ui, label + " · " + ui.t("reports.section_title")))
                 continue
-            state = (ui.t("reports.section_items", count=present[key]) if key in present
+            # "1 part", "2 parts" (D11: never "1 parts"), in the interface language.
+            state = (count_text(ui.language, present[key], "parts") if key in present
                      else ui.t("reports.section_empty") if key in self.sections
                      else ui.t("reports.section_off"))
             rows.append(wc.checkbox(ui, f"{label} · {state}", key in self.sections,

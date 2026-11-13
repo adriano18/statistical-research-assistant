@@ -8,8 +8,12 @@ scientific import workspace in ``workspace_questionnaires``.
 
 The workspace runs standalone (``python workspace_app.py``) or inside the
 classic application through a :class:`ClassicBridge`, which shares the
-dataset, survey storage and language with the classic screens. The
-classic interface stays available and unchanged until parity is verified.
+dataset, survey storage and language with the classic screens. Since Stage
+37 (issue #68) it is the normal start of the program; the classic interface
+stays one click away (sidebar, Help, Settings) and can be chosen as the
+start interface. The researcher's settings (language, theme, accent, text
+size, density, typeface, window, sidebar, last page) are kept in one file
+(``user_settings``); the Settings page is ``workspace_settings``.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ import weakref
 import flet as ft
 import pandas as pd
 
+import user_settings as us
 import workspace_tokens as tk
 import workspace_components as wc
 from workspace_state import LEVELS, ResearchSession
@@ -48,6 +53,8 @@ SAMPLES = (
     ("sample_factor.csv", "sample.factor"),
 )
 AREAS = ("home", "data", "questionnaires", "analyze", "results", "reports")
+# Pages with a sidebar name (the last page offered on Home is named by it).
+_NAV_KEYS = {f"nav.{key}" for key in AREAS + ("project", "settings", "help")}
 _ACTIVE: "weakref.ReferenceType[WorkspaceApp] | None" = None
 
 
@@ -73,13 +80,16 @@ class ClassicBridge:
 
 
 def workspace_settings_path() -> Path:
-    """Workspace-only appearance choices, beside the classic preferences file."""
+    """Where versions before Stage 37 kept the workspace's accent colour
+    (beside the classic preferences file). Only read, once, when the settings
+    file (``user_settings``) is made; never written again."""
     from app_preferences import preferences_path
 
     return preferences_path().parent / "workspace.json"
 
 
 def load_workspace_settings() -> dict:
+    """The old workspace.json (only read; see ``workspace_settings_path``)."""
     import json
 
     try:
@@ -87,22 +97,6 @@ def load_workspace_settings() -> dict:
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
-
-
-def save_workspace_settings(values: dict) -> None:
-    """Merge ``values`` into the workspace settings (a convenience: never fatal)."""
-    import json
-    import os
-
-    try:
-        target = workspace_settings_path()
-        target.parent.mkdir(parents=True, exist_ok=True)
-        data = {**load_workspace_settings(), **values}
-        temporary = target.with_suffix(".tmp")
-        temporary.write_text(json.dumps(data, indent=1), encoding="utf-8")
-        os.replace(temporary, target)
-    except OSError:
-        pass
 
 
 def _cell(value) -> str:
@@ -122,14 +116,18 @@ class WorkspaceApp:
     """The Stage 33 shell. ``mount()`` shows it on ``page``."""
 
     def __init__(self, page: ft.Page, *, bridge: ClassicBridge | None = None,
-                 session: ResearchSession | None = None, language: str = "en",
-                 corners: str = "windows", survey_root: Path | None = None,
-                 project_root: Path | None = None):
+                 session: ResearchSession | None = None, language: str | None = None,
+                 corners: str | None = None, survey_root: Path | None = None,
+                 project_root: Path | None = None,
+                 settings: "us.UserSettings | None" = None):
+        """``language`` and ``corners`` apply only when the settings file holds
+        none (a fresh installation): the researcher's saved choice wins."""
         from project_session import ProjectBinding
 
         self.page = page
         self.bridge = bridge or ClassicBridge()
-        self.session = session or ResearchSession(language=language, corners=corners)
+        self.session = session or ResearchSession(language=language or "en",
+                                                  corners=corners or "windows")
         self.survey_root = Path(survey_root or self.bridge.survey_root or (ROOT / "data" / "surveys"))
         self.project_root = Path(project_root or self.bridge.project_root
                                  or (self.survey_root.parent / "projects"))
@@ -146,12 +144,40 @@ class WorkspaceApp:
 
         self.profile_path = profile_path(self.project_root.parent)
         self.profile = load_profile(self.profile_path)
-        if self.profile.language:
-            self.session.language = self.profile.language
+        # Stage 37 (#68): one settings file beside the projects folder; the
+        # first start of this version copies the older files' values into it
+        # (D1: the language no longer depends on a researcher profile).
+        if settings is None:
+            from app_preferences import preferences_path
+
+            settings = us.UserSettings.load(
+                us.path_for(self.project_root.parent),
+                legacy=us.LegacySources(preferences_path(), workspace_settings_path(),
+                                        self.profile_path))
+        self.settings = settings
+        if settings.is_set("language"):
+            # A language this version does not know is shown as English and
+            # kept in the file; Russian is kept and shown.
+            self.session.language = settings.get("language")
+        if settings.is_set("corners"):
+            self.session.corners = settings.get("corners")
+        self.session.accent = settings.get("accent")
+        self.theme_choice = settings.get("theme")          # light | dark | system
+        self.session.theme = self._resolved_theme()
+        self.text_scale = settings.get("text_scale")       # per cent
+        self.density = settings.get("density")
+        self.typeface = settings.get("typeface")
+        tk.apply_density(self.density)
         self.area = "home"
         self.route = "home"          # sub-route (e.g. "import" under questionnaires)
-        # Narrow windows start with the icon rail; the user's toggle wins afterwards.
-        self.sidebar_expanded = int(getattr(page, "width", None) or 1280) >= tk.BREAKPOINT_NARROW
+        # Narrow windows start with the icon rail; the user's toggle wins, also
+        # at the next start (D2).
+        stored = settings.get("sidebar_expanded")
+        self.sidebar_expanded = (stored if stored is not None else
+                                 int(getattr(page, "width", None) or 1280) >= tk.BREAKPOINT_NARROW)
+        # Where the researcher was when the program last closed (Home offers it).
+        self.last_place = (settings.get("last_project"), settings.get("last_route"))
+        self._focus_target: str | None = None
         self.pages: dict[str, object] = {}
         self.root: ft.Control | None = None
         self.status_text: ft.Text | None = None
@@ -166,15 +192,13 @@ class WorkspaceApp:
         self._handed_over = None       # id() of the workspace dataframe last handed over
         self._rendered_width = None
         self.last_folder: str | None = None   # the next save dialog opens here
-        accent = load_workspace_settings().get("accent")
-        if accent in tk.ACCENTS:
-            self.session.accent = accent
         self.question_draft = ""      # research question without a project
         self._install_services()
         from workspace_analyze import AnalyzePage, ReportsPage, ResultsPage
         from workspace_charts import ChartStudioPage
         from workspace_projects import ProjectHub, ProjectPage
         from workspace_questionnaires import ImportPage, QuestionnairesPage
+        from workspace_settings import SettingsPage
 
         self.hub = ProjectHub(self)
 
@@ -195,7 +219,8 @@ class WorkspaceApp:
     @property
     def ui(self) -> wc.Ui:
         return wc.Ui(tk.palette(self.session.theme, self.session.accent), self.session.language,
-                     self.session.corners)
+                     self.session.corners, text_scale=self.text_scale / 100,
+                     typeface=self.typeface)
 
     def t(self, key: str, **values) -> str:
         return self.ui.t(key, **values)
@@ -339,17 +364,16 @@ class WorkspaceApp:
 
     def _remember_file(self, path: str):
         try:
-            from app_preferences import load_preferences, remember_file, save_preferences
+            from app_preferences import AppPreferences, remember_file
 
-            save_preferences(remember_file(load_preferences(), path))
+            known = AppPreferences(recent_files=tuple(self.settings.get("recent_files")))
+            self.settings.update(recent_files=list(remember_file(known, path).recent_files))
         except Exception:
             pass  # recent files are a convenience; never block an import
 
     def recent_files(self) -> list[str]:
         try:
-            from app_preferences import load_preferences
-
-            return [p for p in load_preferences().recent_files if Path(p).is_file()]
+            return [p for p in self.settings.get("recent_files") if Path(p).is_file()]
         except Exception:
             return []
 
@@ -386,9 +410,14 @@ class WorkspaceApp:
         self.route = route
         self.section = section
         self.area = self.SUB_ROUTES.get(route, route)
+        self._remember_place()
         if refresh:
             self.render()
             key = self.SECTION_KEYS.get((self.route, section or ""))
+            if key is None and route == "settings" and section:
+                from workspace_settings import section_key
+
+                key = section_key(section)       # a section of the Settings hub
             if key and self.page is not None:
                 try:
                     self.page.run_task(self._scroll_to_section, key)
@@ -407,6 +436,94 @@ class WorkspaceApp:
     def page_control(self) -> ft.Control | None:
         """The page currently on screen (its scroll container)."""
         return self._page_stack.controls[0] if self._page_stack.controls else None
+
+    # Pages of a project that the next start offers to continue on (a page
+    # that needs a choice made on screen continues on the page it belongs to).
+    CONTINUE_ROUTES = {"project": "project", "data": "data", "analyze": "analyze",
+                       "results": "results", "reports": "reports",
+                       "questionnaires": "questionnaires", "import": "questionnaires",
+                       "charts": "results"}
+
+    def _remember_place(self) -> None:
+        """Keep the open project and its page for the next start (D2). Pages
+        seen without a project (Home, Settings, Help) leave the last place."""
+        route = self.CONTINUE_ROUTES.get(self.route)
+        if route is None or not self.projects.active:
+            return
+        try:
+            self.settings.update(last_route=route, last_project=self.projects.info().id)
+        except Exception:
+            pass        # a convenience: never disturb the navigation
+
+    def continue_place(self):
+        """(project info, route) to continue from Home, or None: the project
+        of the last session must still exist, not be open and not be archived."""
+        project_id, route = self.last_place
+        if not project_id or route not in self.CONTINUE_ROUTES or self.projects.active:
+            return None
+        try:
+            info = next((i for i in self.projects.projects() if i.id == project_id), None)
+        except Exception:
+            return None
+        if info is None or info.archived:
+            return None
+        return info, self.CONTINUE_ROUTES[route]
+
+    async def continue_where_left(self, e=None):
+        """Open the last project on the page the researcher was on (one click)."""
+        place = self.continue_place()
+        if place is None:
+            return
+        info, route = place
+        self.last_place = (None, None)
+        await self.hub.open(info.id, route=route)
+
+    # Keyboard focus (U11): a main action that opens new content moves the
+    # focus to what comes next, where Flet can move it.
+    def request_focus(self, data: str, *, first_inside: bool = False) -> None:
+        """Move the keyboard focus, after the next render, to the control
+        ``data`` (or to the first focusable control inside it)."""
+        self._focus_target = (data, first_inside)
+
+    @staticmethod
+    def _descendants(root):
+        stack = [root]
+        while stack:
+            item = stack.pop()
+            yield item
+            for name in ("controls", "content", "actions"):
+                child = getattr(item, name, None)
+                if isinstance(child, list):
+                    stack.extend(reversed(child))
+                elif isinstance(child, ft.Control):
+                    stack.append(child)
+
+    def _apply_focus(self) -> None:
+        request, self._focus_target = self._focus_target, None
+        if not request:
+            return
+        target, first_inside = request
+        holder = next((c for c in self._descendants(self._page_stack)
+                       if getattr(c, "data", None) == target), None)
+        if holder is None:
+            return
+        focusable = (ft.Button, ft.TextButton, ft.IconButton, ft.TextField, ft.Dropdown)
+        if first_inside:
+            control = next((c for c in self._descendants(holder) if c is not holder
+                            and isinstance(c, focusable) and not getattr(c, "disabled", False)),
+                           None)
+        else:
+            control = holder if isinstance(holder, focusable) else None
+        if control is None:
+            return
+        self.focused = getattr(control, "data", None) or target
+        control.autofocus = True              # a newly built control takes it itself
+        try:
+            self.page.run_task(control.focus)  # one rebuilt in place is told to
+        except Exception:                     # no client (tests): recorded only
+            pass
+
+    focused: str | None = None                # what the last focus request reached
 
     # Saved as they are typed; nothing in the chrome shows them (Stage 36.8).
     QUIET_EVENTS = ("notes", "report_settings")
@@ -512,6 +629,7 @@ class WorkspaceApp:
         self.root.bgcolor = self.ui.p.canvas
         self._rendered_width = int(getattr(self.page, "width", None) or 1280)
         self.page.update()
+        self._apply_focus()
 
     def scroll_page(self, delta: float) -> None:
         """Scroll the page on screen by ``delta`` pixels (negative: up)."""
@@ -553,15 +671,36 @@ class WorkspaceApp:
             pass
 
     # ------------------------------------------------------------- chrome
+    def _apply_theme(self) -> None:
+        """Themes, typeface, text size and density on the page (Stage 37)."""
+        tk.apply_density(self.density)
+        self.session.theme = self._resolved_theme()
+        options = dict(typeface=self.typeface, text_scale=self.text_scale / 100,
+                       density=self.density)
+        self.page.theme = tk.build_theme("light", self.session.accent, **options)
+        self.page.dark_theme = tk.build_theme("dark", self.session.accent, **options)
+        self.page.theme_mode = {"dark": ft.ThemeMode.DARK, "system": ft.ThemeMode.SYSTEM}.get(
+            self.theme_choice, ft.ThemeMode.LIGHT)
+        self.page.bgcolor = self.ui.p.canvas
+
+    def _resolved_theme(self) -> str:
+        """light or dark; "system" follows Windows' app mode."""
+        if self.theme_choice in ("light", "dark"):
+            return self.theme_choice
+        brightness = getattr(self.page, "platform_brightness", None)
+        return "dark" if getattr(brightness, "value", brightness) == "dark" else "light"
+
+    def _on_brightness(self, e=None):
+        if self.theme_choice == "system":
+            self.session.theme = self._resolved_theme()
+            self.page.bgcolor = self.ui.p.canvas
+            self.render()
+
     def build(self) -> ft.Control:
+        self._apply_theme()
         ui = self.ui
-        self.page.theme = tk.build_theme("light", self.session.accent)
-        self.page.dark_theme = tk.build_theme("dark", self.session.accent)
-        self.page.theme_mode = (ft.ThemeMode.DARK if self.session.theme == "dark"
-                                else ft.ThemeMode.LIGHT)
-        self.page.bgcolor = ui.p.canvas
         self.status_icon = ft.Icon(ft.Icons.INFO_OUTLINE, size=16, visible=False)
-        self.status_text = ft.Text("", size=13, color=ui.p.text, selectable=True,
+        self.status_text = ft.Text("", size=ui.size(13), color=ui.p.text, selectable=True,
                                    data="workspace-status")
         status_bar = ft.Container(
             content=ft.Semantics(
@@ -597,6 +736,8 @@ class WorkspaceApp:
         self.page.on_keyboard_event = self.on_keyboard
         if hasattr(self.page, "on_resize"):
             self.page.on_resize = self._on_resize
+        if hasattr(self.page, "on_platform_brightness_change"):
+            self.page.on_platform_brightness_change = self._on_brightness
         self.adopt_classic_dataset()
         self.render()
 
@@ -616,12 +757,12 @@ class WorkspaceApp:
         fg = ui.p.on_accent_subtle if selected else ui.p.text_secondary
         row = [ft.Icon(icon, size=20, color=ui.p.accent if selected else ui.p.text_secondary)]
         if expanded:
-            row.append(ft.Text(label, size=14, color=fg, expand=True,
+            row.append(ft.Text(label, size=ui.size(14), color=fg, expand=True,
                                weight=ft.FontWeight.W_600 if selected else ft.FontWeight.W_500,
                                max_lines=1, overflow=ft.TextOverflow.ELLIPSIS))
             if badge:
                 row.append(ft.Container(
-                    ft.Text(badge, size=12, color=ui.p.on_accent_subtle),
+                    ft.Text(badge, size=ui.size(12), color=ui.p.on_accent_subtle),
                     bgcolor=ui.p.accent_subtle if not selected else ui.p.surface,
                     border_radius=10, padding=ft.Padding.symmetric(horizontal=6, vertical=1)))
         indicator = ft.Container(width=3, height=20, border_radius=2,
@@ -686,10 +827,8 @@ class WorkspaceApp:
         ]
         if self.sidebar_expanded:
             brand_children.append(ft.Column(
-                [ft.Text(ui.t("app.name"), size=13, weight=ft.FontWeight.W_600,
-                         color=ui.p.text, max_lines=2),
-                 ft.Row([wc.chip(ui, ui.t("preview.badge"), "info", icon=ft.Icons.SCIENCE_OUTLINED,
-                                 tooltip=ui.t("preview.note"))], spacing=0)],
+                [ft.Text(ui.t("app.name"), size=ui.size(13), weight=ft.FontWeight.W_600,
+                         color=ui.p.text, max_lines=2)],
                 spacing=2, expand=True))
         brand = ft.Row(brand_children, spacing=tk.SPACE_3,
                        vertical_alignment=ft.CrossAxisAlignment.START)
@@ -731,12 +870,16 @@ class WorkspaceApp:
                                 icon=ft.Icons.TABLE_CHART_OUTLINED,
                                 on_click=lambda e: self.navigate("data"),
                                 data="context-dataset"))
+        # Stage 37 (#68): EN and LV as quick choices; every language, Russian
+        # included, in the globe menu beside them and in Settings.
         language = ft.Semantics(
             label=ui.t("context.language"), container=True,
             content=wc.segmented(
-                ui, [("en", "EN"), ("lv", "LV"), ("ru", "RU")], ui.language, self.set_language,
-                tooltips={"en": "English", "lv": "Latviešu", "ru": "Русский"}, compact=True,
-                data="context-language"))
+                ui, [(code, code.upper()) for code in us.QUICK_LANGUAGES], ui.language,
+                self.set_language,
+                tooltips={code: us.LANGUAGE_NAMES[code] for code in us.QUICK_LANGUAGES},
+                compact=True, data="context-language"))
+        languages = self._language_menu()
         theme = wc.icon_button(
             ui, ft.Icons.DARK_MODE_OUTLINED if s.theme == "light" else ft.Icons.LIGHT_MODE_OUTLINED,
             ui.t("context.theme_dark") if s.theme == "light" else ui.t("context.theme_light"),
@@ -744,7 +887,7 @@ class WorkspaceApp:
         right = [
             wc.chip(ui, ui.t("context.local"), "success", icon=ft.Icons.LOCK_OUTLINE,
                     tooltip=ui.t("context.local_tip"), data="context-local"),
-            theme, language,
+            theme, language, languages,
         ]
         return ft.Container(
             content=ft.Row(
@@ -757,6 +900,27 @@ class WorkspaceApp:
             border=ft.Border(bottom=ft.BorderSide(1, ui.p.border)),
             data="workspace-context",
         )
+
+    def _language_menu(self) -> ft.Control:
+        """The globe: every interface language (a tick on the current one) and
+        the language settings. Its name says the current language."""
+        ui = self.ui
+        items = [ft.PopupMenuItem(content=us.LANGUAGE_NAMES[code], checked=code == ui.language,
+                                  on_click=lambda e, c=code: self.set_language(c),
+                                  data=f"context-language-menu-{code}")
+                 for code in us.LANGUAGES]
+        items.append(ft.PopupMenuItem())       # a divider
+        items.append(ft.PopupMenuItem(content=ui.t("context.language_settings"),
+                                      icon=ft.Icons.SETTINGS_OUTLINED,
+                                      on_click=lambda e: self.navigate("settings",
+                                                                       section="language"),
+                                      data="context-language-menu-settings"))
+        name = us.LANGUAGE_NAMES.get(ui.language, us.LANGUAGE_NAMES["en"])
+        return ft.PopupMenuButton(
+            icon=ft.Icons.LANGUAGE, items=items, data="context-language-menu",
+            tooltip=ui.t("context.language_menu", name=name),
+            icon_color=ui.p.text_secondary, icon_size=20,
+            menu_position=ft.PopupMenuPosition.UNDER)
 
     def _project_chip(self) -> ft.Control:
         ui = self.ui
@@ -771,21 +935,36 @@ class WorkspaceApp:
                        on_click=lambda e: self.navigate("project"), data="context-project")
 
     # ------------------------------------------------------------ actions
+    def _save(self, **changes) -> None:
+        """Keep a choice for the next start; say so if the file cannot be written."""
+        if not self.settings.update(**changes):
+            self.status(self.t("settings.not_saved", error=self.settings.error or ""), "warning")
+
     def toggle_sidebar(self):
         self.sidebar_expanded = not self.sidebar_expanded
+        self._save(sidebar_expanded=self.sidebar_expanded)
         self.render()
 
     def toggle_theme(self):
-        self.session.theme = "dark" if self.session.theme == "light" else "light"
-        self.page.theme_mode = (ft.ThemeMode.DARK if self.session.theme == "dark"
-                                else ft.ThemeMode.LIGHT)
-        self.page.bgcolor = self.ui.p.canvas
+        """Ctrl+Shift+L and the moon/sun button: the other of light and dark."""
+        self.set_theme("dark" if self.session.theme == "light" else "light")
+
+    def set_theme(self, choice: str):
+        """light, dark or system (Windows' app mode); kept for the next start."""
+        if choice not in us.THEMES:
+            return
+        self.theme_choice = choice
+        self._save(theme=choice)
+        self._apply_theme()
         self.render()
 
-    def set_language(self, language: str):
-        if language not in ("en", "lv", "ru"):
+    def set_language(self, language: str, *, render: bool = True):
+        """The interface language, kept for the next start without a profile
+        (D1); Russian is offered in the globe menu and in Settings."""
+        if language not in us.LANGUAGES:
             return
         self.session.language = language
+        self._save(language=language)
         if self.bridge.store_language is not None:
             self.bridge.store_language(language)
         if self.profile.language and self.profile.language != language:
@@ -799,11 +978,13 @@ class WorkspaceApp:
                                             replace(self.profile, language=language))
             except (OSError, ValueError):
                 pass
-        self.render()
+        if render:
+            self.render()
 
     def set_corners(self, corners: str):
-        if corners in ("windows", "macos"):
+        if corners in us.CORNERS:
             self.session.corners = corners
+            self._save(corners=corners)
             self.render()
 
     def set_accent(self, accent: str):
@@ -811,10 +992,63 @@ class WorkspaceApp:
         if accent not in tk.ACCENTS:
             return
         self.session.accent = accent
-        self.page.theme = tk.build_theme("light", accent)
-        self.page.dark_theme = tk.build_theme("dark", accent)
-        save_workspace_settings({"accent": accent})
+        self._save(accent=accent)
+        self._apply_theme()
         self.render()
+
+    def set_text_scale(self, value) -> None:
+        """Text size 90/100/110/125 %: every token-sized text (wc.text and the
+        components) and the theme's text; the chrome is rebuilt."""
+        value = int(value)
+        if value not in us.TEXT_SCALES:
+            return
+        self.text_scale = value
+        self._save(text_scale=value)
+        self._rebuild()
+
+    def set_density(self, value: str) -> None:
+        """Comfortable or compact spacing and control heights."""
+        if value not in us.DENSITIES:
+            return
+        self.density = value
+        self._save(density=value)
+        self._rebuild()
+
+    def set_typeface(self, value: str) -> None:
+        if value not in us.TYPEFACES:
+            return
+        self.typeface = value
+        self._save(typeface=value)
+        self._rebuild()
+
+    def set_start_interface(self, value: str) -> None:
+        """Which interface opens at the next start (the workspace by default)."""
+        if value not in us.START_INTERFACES:
+            return
+        self._save(start_interface=value)
+        self.render()
+
+    def reset_settings(self) -> None:
+        """Every setting back to its default; research data is not touched."""
+        if not self.settings.reset():
+            self.status(self.t("settings.not_saved", error=self.settings.error or ""), "warning")
+            return
+        s = self.settings
+        self.session.language = s.get("language")
+        self.session.corners = s.get("corners")
+        self.session.accent = s.get("accent")
+        self.theme_choice = s.get("theme")
+        self.text_scale, self.density, self.typeface = (
+            s.get("text_scale"), s.get("density"), s.get("typeface"))
+        self.last_place = (None, None)
+        self._rebuild()
+        self.status(self.t("settings.reset_done"), "success")
+
+    def _rebuild(self) -> None:
+        """Build the chrome again (sizes changed) and show the same page."""
+        if self.root is None:
+            return
+        self.mount()
 
     async def return_to_classic(self, e=None):
         if self.bridge.return_to_classic is None:
@@ -929,10 +1163,8 @@ class HomePage:
                 wc.button(ui, ui.t("common.close"), self._hide, kind="quiet")],
                 data="home-how")]
         body = ft.Column([
-            wc.page_header(ui, ui.t("home.title"), ui.t("home.subtitle"),
-                           badge=wc.chip(ui, ui.t("common.prototype"), "info",
-                                         icon=ft.Icons.SCIENCE_OUTLINED,
-                                         tooltip=ui.t("preview.note"))),
+            wc.page_header(ui, ui.t("home.title"), ui.t("home.subtitle")),
+            *self._continue(),
             tiles,
             *how,
             ft.Column(app.hub.section(), spacing=tk.SPACE_3, data="home-projects",
@@ -942,6 +1174,23 @@ class HomePage:
             wc.notice(ui, ui.t("home.privacy"), "neutral", data="home-privacy"),
         ], spacing=tk.SPACE_5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
         return app.constrained(body)
+
+    def _continue(self) -> list[ft.Control]:
+        """Stage 37 (#68): back to the project and page of the last session,
+        in one click (the project is never reopened without asking)."""
+        app, ui = self.app, self.app.ui
+        place = app.continue_place()
+        if place is None:
+            return []
+        info, route = place
+        page = ui.t(f"nav.{route}") if f"nav.{route}" in _NAV_KEYS else ui.t("nav.project")
+        return [wc.notice(ui, ui.t("home.continue_body", title=info.title, page=page), "info",
+                          title=ui.t("home.continue_title"), actions=[
+                              wc.button(ui, ui.t("home.continue_button", page=page),
+                                        app.continue_where_left, kind="primary",
+                                        icon=ft.Icons.PLAY_ARROW_OUTLINED,
+                                        data="home-continue")],
+                          data="home-continue-card")]
 
     def _equalize(self, tiles: ft.ResponsiveRow) -> None:
         """Same height for every start tile, estimated from the longest text.
@@ -956,7 +1205,7 @@ class HomePage:
         if columns == 1:
             return
         width = (self.app.content_width - tk.SPACE_4 * (columns - 1)) / columns
-        per_line = max(18, (width - 2 * tk.SPACE_5) / 7.6)
+        per_line = max(18, (width - 2 * tk.SPACE_5) / (7.6 * self.app.text_scale / 100))
         longest = 0
         for tile in tiles.controls:
             texts = [c for c in tile.content.controls if isinstance(c, ft.Text)]
@@ -964,7 +1213,9 @@ class HomePage:
             title = len(texts[0].value) if texts else 0
             lines = math.ceil(body / per_line) + 24 * (math.ceil(title * 1.25 / per_line) - 1) / 20
             longest = max(longest, lines)
-        height = 2 * tk.SPACE_5 + 40 + 24 + 40 + 4 * tk.SPACE_3 + tk.SPACE_1 + 20 * longest + 4
+        line = 20 * self.app.text_scale / 100
+        height = (2 * tk.SPACE_5 + 40 + 24 * self.app.text_scale / 100 + tk.CONTROL_HEIGHT
+                  + 4 * tk.SPACE_3 + tk.SPACE_1 + line * longest + 4)
         for tile in tiles.controls:
             tile.height = int(height)
 
@@ -1270,8 +1521,9 @@ class DataPage:
                                 "success")
                 self.app.render()
 
+            # The theme's text colour: readable in the light and the dark theme (D6).
             self._preparation = build_preparation_workspace(self.app.page, load_dataframe=adopt,
-                                                            with_steps=True)
+                                                            with_steps=True, caption_color=None)
             self._preparation_df = None
         panel, reset = self._preparation
         if self._preparation_df is not self.app.session.df:
@@ -1316,131 +1568,6 @@ class DataPage:
                       vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
 
-class SettingsPage:
-    def __init__(self, app: WorkspaceApp):
-        from workspace_profile import ProfileSettings
-
-        self.app = app
-        self.ocr_summary = ""
-        self.data_note = ""
-        self.profile = ProfileSettings(app)
-        from workspace_ai import AiProvidersCard
-
-        self.ai_providers = AiProvidersCard(app)
-
-    def build(self) -> ft.Control:
-        app, ui, s = self.app, self.app.ui, self.app.session
-        rows = [
-            wc.dropdown(ui, ui.t("settings.language"),
-                        [("en", "English"), ("lv", "Latviešu"), ("ru", "Русский")],
-                        s.language, on_select=lambda e: app.set_language(e.control.value),
-                        width=260, data="settings-language"),
-            wc.segmented(ui, [("light", ui.t("settings.theme.light")),
-                              ("dark", ui.t("settings.theme.dark"))], s.theme,
-                         lambda v: v != s.theme and app.toggle_theme(), data="settings-theme"),
-            wc.segmented(ui, [("windows", ui.t("settings.corners.windows")),
-                              ("macos", ui.t("settings.corners.macos"))], s.corners,
-                         app.set_corners, data="settings-corners"),
-            wc.segmented(ui, [(key, ui.t(f"accent.{key}")) for key in tk.ACCENTS], s.accent,
-                         app.set_accent, data="settings-accent"),
-        ]
-        ocr = [wc.button(ui, ui.t("settings.ocr_check"), self._check_ocr,
-                         icon=ft.Icons.DOCUMENT_SCANNER_OUTLINED, data="settings-ocr")]
-        if self.ocr_summary:
-            ocr.append(wc.text(ui, self.ocr_summary, selectable=True, color=ui.p.text_secondary))
-        cards = [
-            wc.card(ui, [wc.section_label(ui, ui.t("settings.language")), rows[0],
-                         wc.section_label(ui, ui.t("settings.theme")), rows[1],
-                         wc.section_label(ui, ui.t("settings.corners")), rows[2],
-                         wc.section_label(ui, ui.t("settings.accent")), rows[3],
-                         wc.caption(ui, ui.t("settings.accent_note"))],
-                    title=ui.t("settings.title")),
-            self.profile.profile_card(),
-            self.profile.ai_card(),
-            self._updates_card(),
-            self.ai_providers.build(),
-            self._data_card(),
-            wc.card(ui, ocr, title=ui.t("settings.ocr")),
-        ]
-        if app.bridge.return_to_classic is not None:
-            cards.append(wc.card(ui, [wc.button(ui, ui.t("settings.classic"),
-                                                app.return_to_classic, icon=ft.Icons.SWAP_HORIZ)],
-                                 title=ui.t("nav.classic")))
-        return app.constrained(ft.Column([wc.page_header(ui, ui.t("settings.title")), *cards],
-                                         spacing=tk.SPACE_5,
-                                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
-                               tk.READING_MAX_WIDTH + 200)
-
-    def _updates_card(self) -> ft.Control:
-        """Version, channel and in-app updates (#45)."""
-        import app_identity
-        import update_client
-        import update_ui
-
-        app, ui = self.app, self.app.ui
-        language = app.session.language
-        build = app_identity.build_info()
-        root = app.project_root.parent
-        rows = [wc.text(ui, line, data="settings-version") for line in
-                update_ui.version_lines(language, build)]
-
-        def toggle(e=None):
-            state = update_client.state(root)
-            state["automatic"] = bool(e.control.value) if e is not None else True
-            update_client.save_state(root, state)
-
-        rows.append(ft.Checkbox(label=update_ui.t(language, "automatic"),
-                                value=update_client.state(root).get("automatic", True),
-                                on_change=toggle, data="settings-updates-automatic"))
-        rows.append(wc.caption(ui, update_ui.t(language, "privacy")))
-        rows.append(wc.button(ui, update_ui.t(language, "check"),
-                              lambda e=None: update_ui.open_dialog(app.page, ROOT, language),
-                              icon=ft.Icons.SYSTEM_UPDATE_ALT, data="settings-updates-check"))
-        return wc.card(ui, rows, title=update_ui.t(language, "title"), data="settings-updates")
-
-    def _data_card(self) -> ft.Control:
-        """Where research data is kept, and data of earlier versions (#44)."""
-        import data_ui
-
-        app, ui = self.app, self.app.ui
-        language = app.session.language
-        root = app.project_root.parent
-        rows = [wc.text(ui, data_ui.t(language, "folder_body"), color=ui.p.text_secondary),
-                wc.text(ui, str(root), selectable=True, data="settings-data-folder"),
-                wc.caption(ui, data_ui.t(language, "folder_note")),
-                ft.Row([wc.button(ui, data_ui.t(language, "open_folder"),
-                                  lambda e=None: data_ui.open_folder(root),
-                                  icon=ft.Icons.FOLDER_OPEN_OUTLINED, data="settings-data-open"),
-                        wc.button(ui, data_ui.t(language, "find"), self._find_legacy,
-                                  icon=ft.Icons.MANAGE_SEARCH, data="settings-data-find")],
-                       wrap=True, spacing=tk.SPACE_2)]
-        if self.data_note:
-            rows.append(wc.text(ui, self.data_note, selectable=True, data="settings-data-note"))
-        return wc.card(ui, rows, title=data_ui.t(language, "folder_title"), data="settings-data")
-
-    async def _find_legacy(self, e=None):
-        import data_ui
-
-        language = self.app.session.language
-        picker = data_ui.folder_picker(self.app.page)
-        try:
-            chosen = await picker.get_directory_path(dialog_title=data_ui.t(language, "pick"))
-        except Exception:
-            chosen = None
-        self.data_note = await data_ui.find_in_chosen_folder(
-            self.app.page, chosen, self.app.project_root.parent, language)
-        self.app.render()
-
-    async def _check_ocr(self, e=None):
-        from ocr_runtime import ocr_readiness
-
-        self.ocr_summary = self.app.t("run.running")
-        self.app.render()
-        ready = await asyncio.to_thread(ocr_readiness, full_hash=False)
-        self.ocr_summary = ready.summary()
-        self.app.render()
-
-
 class HelpPage:
     SHORTCUTS = (("Ctrl+1 … Ctrl+6", "sc.areas"), ("Ctrl+B", "sc.sidebar"),
                  ("Ctrl+O", "sc.open"), ("Ctrl+Enter", "sc.run"),
@@ -1452,13 +1579,23 @@ class HelpPage:
     def build(self) -> ft.Control:
         app, ui = self.app, self.app.ui
         shortcuts = [wc.labeled(ui, keys, ui.t(key)) for keys, key in self.SHORTCUTS]
-        return app.constrained(ft.Column([
+        cards = [
             wc.page_header(ui, ui.t("help.title")),
             wc.card(ui, shortcuts, title=ui.t("help.shortcuts"), data="help-shortcuts"),
             wc.card(ui, [wc.text(ui, ui.t("help.privacy.body"), tk.TYPE_BODY_L)],
                     title=ui.t("help.privacy")),
             wc.card(ui, [wc.text(ui, ui.t("help.ai.body"), tk.TYPE_BODY_L)],
                     title=ui.t("help.ai")),
-            wc.notice(ui, ui.t("preview.note"), "info"),
-        ], spacing=tk.SPACE_5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
-            tk.READING_MAX_WIDTH + 200)
+        ]
+        actions = [wc.button(ui, ui.t("help.settings_open"),
+                             lambda e: app.navigate("settings"), icon=ft.Icons.SETTINGS_OUTLINED,
+                             data="help-settings")]
+        if app.bridge.return_to_classic is not None:
+            actions.insert(0, wc.button(ui, ui.t("settings.classic"), app.return_to_classic,
+                                        icon=ft.Icons.SWAP_HORIZ, data="help-classic"))
+        cards.append(wc.card(ui, [wc.text(ui, ui.t("help.interfaces.body"), tk.TYPE_BODY_L)],
+                             title=ui.t("help.interfaces"), actions=actions,
+                             data="help-interfaces"))
+        return app.constrained(ft.Column(cards, spacing=tk.SPACE_5,
+                                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+                               tk.READING_MAX_WIDTH + 200)

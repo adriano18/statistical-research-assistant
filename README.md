@@ -13,11 +13,15 @@ A Python project for exploring research datasets and, later, selecting and inter
 4. **v0.4 Method advisor / AI** — after statistical validation, recommend candidate tests from study design; optionally explain results with AI, without inventing calculations.
 5. **v0.5 Reports and localization** — TXT/PNG export and copying are available across analysis screens; next are structured APA tables, DOCX/PDF, and EN/LV/RU translations.
 
-## Stage 33 preview — research workspace (prototype, not final)
+## Stage 37 — the research workspace is the normal start; one Settings hub
 
-A new **research workspace** runs next to the unchanged classic interface. Open it from the classic Home screen (**Open the preview**), or start in it with `SRA_UI=workspace`; `python workspace_app.py` runs it standalone. It uses the same validated engine, the same local survey storage and the same dataset.
+The program now starts in the **research workspace** (Issue #68). The classic interface stays available and unchanged: *Classic interface* in the sidebar, in Help and in Settings, and **Settings → Start → Interface at start** makes it the start interface. `SRA_UI=workspace|classic` forces one for a single run (tests, support) without changing the setting. Every choice — language, theme (light/dark/system), accent, typeface (Segoe UI or Segoe UI Variable, from Windows; no font file is shipped), text size 90/100/110/125 %, comfortable/compact density, start interface, window size and position, sidebar, the last project and page — is kept in **one settings file per user** (`<data folder>/settings.json`), made once from the files earlier versions used, which are never changed; a Russian preference carries over and is never reset. The top bar has **EN** and **LV** quick choices; **Русский** and every other language are in the globe menu and in Settings → Language. Details, the classic-only features and the LV/RU texts for native review: [docs/STAGE37_UX_SHELL.md](docs/STAGE37_UX_SHELL.md).
 
-* **Six areas** in a collapsible sidebar — Home, Data, Questionnaires, Analyze, Results, Reports — plus a context bar (dataset, levels to confirm, *Local only*, theme, EN/LV/RU). No duplicated top menu.
+## Stage 33 — research workspace
+
+The **research workspace** runs next to the unchanged classic interface (since Stage 37 it is the normal start; `python workspace_app.py` runs it standalone). It uses the same validated engine, the same local survey storage and the same dataset.
+
+* **Six areas** in a collapsible sidebar — Home, Data, Questionnaires, Analyze, Results, Reports — plus a context bar (dataset, levels to confirm, *Local only*, theme, EN/LV and the language menu). No duplicated top menu.
 * **Analyze** in two modes: *Guided* (goal → variables → design check → recommended method with reasons and alternatives; never chosen by a normality p value) and *All methods* (all 15 classic analysis areas with their options and confirmations).
 * **One variable dictionary** with researcher-confirmed measurement levels used by every analysis.
 * **Results log**: summary, verified estimates, APA-style tables without "Sig." columns, figure, assumption review, conservative interpretation, provenance and TXT/PNG/Word exports through save dialogs. **Reports** collects results (session only — project saving is not implemented).

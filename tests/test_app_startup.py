@@ -62,12 +62,21 @@ class LauncherTests(unittest.TestCase):
     def setUp(self):
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
+        # Projects and the settings file in a temporary data folder; the
+        # preferences file of earlier versions there too (none: a new user).
+        self.data = Path(self.temp.name) / "data"
         self.env = patch.dict(os.environ, {
             "SRA_LOG_DIR": self.temp.name, "MPLBACKEND": "Agg",
-            "SRA_STARTUP_SMOKE": "",
+            "SRA_STARTUP_SMOKE": "", "SRA_DATA_DIR": str(self.data), "SRA_UI": "",
         })
         self.env.start()
         self.addCleanup(self.env.stop)
+        import app_preferences
+
+        legacy = patch.object(app_preferences, "preferences_path",
+                              lambda: Path(self.temp.name) / "legacy" / "preferences.json")
+        legacy.start()
+        self.addCleanup(legacy.stop)
 
     def test_launcher_module_does_not_import_heavy_libraries(self):
         code = (
@@ -107,9 +116,13 @@ class LauncherTests(unittest.TestCase):
         self.assertLess(phases.index("splash_shown"), phases.index("workspace_imported"))
         import app
         summary = app._smoke_summary(page)
-        self.assertTrue(summary["has_home_banner"])
+        # Stage 37 (#68): the research workspace is the normal start.
+        self.assertTrue(summary["workspace_present"])
+        self.assertEqual(summary["interface"], "workspace")
+        self.assertFalse(summary["has_home_banner"])
         self.assertFalse(summary["splash_present"])
         self.assertFalse(summary["failure_present"])
+        self.assertIn("workspace_shown", phases)
         log = Path(self.temp.name) / "startup.log"
         record = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual(record["outcome"], "ok")
@@ -148,8 +161,33 @@ class LauncherTests(unittest.TestCase):
                       timeline=StartupTimeline())
         data = json.loads(result.read_text(encoding="utf-8"))
         self.assertEqual(data["outcome"], "ok")
-        self.assertTrue(data["has_home_banner"])
+        self.assertTrue(data["workspace_present"])
+        self.assertEqual(data["interface"], "workspace")
         self.assertEqual(data["pid"], os.getpid())
+
+    def test_the_classic_interface_starts_when_chosen_or_requested(self):
+        """The classic interface stays available: as the researcher's start
+        choice (Settings), or for one run with SRA_UI=classic."""
+        import importlib
+
+        import app
+        from startup_diagnostics import StartupTimeline
+        from user_settings import UserSettings, path_for
+
+        UserSettings.load(path_for(self.data)).update(start_interface="classic")
+        page = FakePage()
+        run_start(page, import_workspace=lambda: importlib.import_module("research_app"),
+                  timeline=StartupTimeline())
+        summary = app._smoke_summary(page)
+        self.assertEqual((summary["interface"], summary["has_home_banner"]), ("classic", True))
+        UserSettings.load(path_for(self.data)).update(start_interface="workspace")
+        with patch.dict(os.environ, {"SRA_UI": "classic"}):
+            page = FakePage()
+            run_start(page, import_workspace=lambda: importlib.import_module("research_app"),
+                      timeline=StartupTimeline())
+        self.assertEqual(app._smoke_summary(page)["interface"], "classic")
+        stored = json.loads((self.data / "settings.json").read_text(encoding="utf-8"))
+        self.assertEqual(stored["start_interface"], "workspace", "SRA_UI changes no setting")
 
 
 class DataLocationTests(unittest.TestCase):

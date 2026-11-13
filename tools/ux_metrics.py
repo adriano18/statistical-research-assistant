@@ -9,7 +9,8 @@ with the counting rule of ``tests/test_stage36_ux_baseline.py`` and
 
 * **interactions**: a click or a checkbox counts 1, a dropdown choice 2 (open
   the list, pick the entry). An expansion tile, one segment of a segmented
-  switch and the classic *Open the preview* button are clicks.
+  switch and the classic Home's button into the workspace (*Open the preview*,
+  *Open the research workspace* since Stage 37) are clicks.
 * **typed fields**: each text field the researcher types into, once (apart).
 * **page changes**: every change of page, also one a handler makes (loading
   a file opens Data, a run opens Results), and the switch from the classic
@@ -691,7 +692,7 @@ class Meter(CountingWorkspace):
             if self.segment is not None:
                 self.counts["click"] += 1
                 self.segment.clicks += 1
-                self.segment.steps.append("classic: Open the preview")
+                self.segment.steps.append("classic: Open the research workspace")
             self.dispatch(entry.on_click, SimpleNamespace(control=entry, data=None))
         self.app = active_app()
         ensure(self.app is not None and self.page.controls[0] is self.app.root,
@@ -1061,7 +1062,7 @@ def novice(rec: Recorder, root: Path, files: dict, *, width: int, height: int) -
             ensure(session.has_data and session.df.shape == (180, 98), "the data did not open")
             facts["project_id"] = ws.app.projects.info().id
             seg.facts["start"] = ("classic interface first"
-                                  if seg.steps[:1] == ["classic: Open the preview"]
+                                  if seg.steps[:1] == ["classic: Open the research workspace"]
                                   else "workspace first")
 
         with rec.task(ws, "T2") as seg:
@@ -1247,12 +1248,18 @@ def supervisor(rec: Recorder, root: Path, facts: dict, *, width: int, height: in
 
 
 def open_project(ws: Meter, project_id: str) -> None:
-    """Open the project from Home, unless the program reopened it at start."""
+    """Open the project from Home, unless the program reopened it at start.
+    Where Home offers "Continue where you left off" for this project (Stage
+    37), that one click opens it on the page of the last session."""
     if ws.app.projects.active and ws.app.projects.info().id == project_id:
         return
     if ws.app.route != "home":
         ws.click("nav-home")
-    ws.click(f"project-open-{project_id}")
+    place = ws.app.continue_place() if hasattr(ws.app, "continue_place") else None
+    if place is not None and place[0].id == project_id and ws.find_all("home-continue"):
+        ws.click("home-continue")
+    else:
+        ws.click(f"project-open-{project_id}")
     ensure(ws.app.projects.active and ws.app.projects.info().id == project_id,
            "the project did not open")
 

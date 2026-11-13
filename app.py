@@ -80,11 +80,20 @@ SPLASH_TEXT = {
 }
 
 
-def _language() -> str:
+def _settings():
+    """The user's settings file (``user_settings``): language and window."""
     try:
-        from app_preferences import load_preferences
+        import user_settings
 
-        code = load_preferences().language
+        return user_settings.load_quietly()
+    except Exception:
+        return None
+
+
+def _language(settings=None) -> str:
+    settings = settings if settings is not None else _settings()
+    try:
+        code = settings.get("language") if settings is not None else "en"
     except Exception:
         return "en"
     return code if code in SPLASH_TEXT else "en"
@@ -151,13 +160,16 @@ def _smoke_summary(page) -> dict:
             walk(getattr(control, name, None), depth + 1)
 
     walk(list(page.controls))
+    workspace = any(getattr(c, "data", None) == "workspace-root" for c in page.controls)
+    classic = any("YOUR RESEARCH WORKSPACE" in t for t in texts)
     return {
         "top_level_controls": len(page.controls),
         "splash_present": any(getattr(c, "data", None) == "startup-splash" for c in page.controls),
         "failure_present": any(getattr(c, "data", None) == "startup-failure" for c in page.controls),
-        "has_home_banner": any("YOUR RESEARCH WORKSPACE" in t for t in texts),
-        "workspace_present": any(getattr(c, "data", None) == "workspace-root"
-                                 for c in page.controls),
+        "has_home_banner": classic,
+        "workspace_present": workspace,
+        # Stage 37 (#68): the research workspace is the normal start.
+        "interface": "workspace" if workspace else "classic" if classic else None,
         "text_controls": len(texts),
     }
 
@@ -165,14 +177,22 @@ def _smoke_summary(page) -> dict:
 async def start(page, *, import_workspace=None, timeline: StartupTimeline = TIMELINE):
     """Splash → background import → full interface (or a visible failure)."""
     timeline.mark("page_connected")
-    language = _language()
+    settings = _settings()
+    language = _language(settings)
     page.title = "Statistical Research Assistant"
     page.bgcolor = BACKGROUND
     page.theme_mode = ft.ThemeMode.LIGHT
     page.padding = 0
+    # Stage 37 (#68, D2): the window opens where and as large as it was.
+    place = _placement(settings)
     try:
-        page.window.width = 1200
-        page.window.height = 720
+        page.window.width = place.width
+        page.window.height = place.height
+        if place.left is not None:
+            page.window.left = place.left
+            page.window.top = place.top
+        if place.maximized:
+            page.window.maximized = True
         page.window.visible = True
     except AttributeError:
         pass
@@ -181,10 +201,11 @@ async def start(page, *, import_workspace=None, timeline: StartupTimeline = TIME
     page.update()
     timeline.mark("splash_shown")
     _guard_window()
-    try:
-        await page.window.center()
-    except Exception:
-        pass
+    if place.left is None and not place.maximized:
+        try:
+            await page.window.center()
+        except Exception:
+            pass
     importer = import_workspace or (lambda: importlib.import_module("research_app"))
     try:
         workspace = await asyncio.to_thread(importer)
@@ -194,6 +215,7 @@ async def start(page, *, import_workspace=None, timeline: StartupTimeline = TIME
         await workspace.main(page, startup=timeline)
         timeline.mark("interface_ready")
         timeline.succeed()
+        _keep_window(page, settings)
         _after_start(page, language)
     except Exception as error:  # never leave a blank/black window
         timeline.fail(error)
@@ -212,6 +234,67 @@ async def start(page, *, import_workspace=None, timeline: StartupTimeline = TIME
 
 
 _BACKGROUND_TASKS: set = set()
+
+
+def _placement(settings):
+    """Where the window opens: the saved size and position when they still
+    fit a screen (``window_state``), else 1200 x 720, centred."""
+    import window_state
+
+    try:
+        saved = settings.get("window") if settings is not None else None
+        return window_state.placement(saved, window_state.work_areas())
+    except Exception:
+        return window_state.Placement(*window_state.DEFAULT_SIZE)
+
+
+WINDOW_SAVE_DELAY = 0.8     # seconds after the last move or resize
+
+
+def _keep_window(page, settings) -> None:
+    """Save the window's bounds and maximized state as the user changes them
+    (debounced: one write after a move or resize has ended)."""
+    if settings is None or os.environ.get("SRA_STARTUP_SMOKE", "").strip():
+        return
+    import window_state
+
+    try:
+        window = page.window
+    except AttributeError:
+        return
+    state = {"maximized": bool(getattr(window, "maximized", False)), "generation": 0}
+    # "restore" (from minimized) is not "unmaximize": a maximized window that
+    # was minimized comes back maximized.
+    tracked = {"maximize": True, "unmaximize": False}
+
+    async def save_later(generation):
+        await asyncio.sleep(WINDOW_SAVE_DELAY)
+        if generation != state["generation"]:
+            return          # a newer change follows
+        try:
+            value = window_state.capture(window, maximized=state["maximized"],
+                                         previous=settings.get("window"))
+            if value is not None:
+                settings.update(window=value)
+        except Exception:
+            pass        # the window is a convenience; never disturb the program
+
+    def changed(e):
+        kind = getattr(getattr(e, "type", None), "value", getattr(e, "type", None))
+        if kind in tracked:
+            state["maximized"] = tracked[kind]
+        elif kind not in ("resized", "moved"):
+            return
+        state["generation"] += 1
+        try:
+            page.run_task(save_later, state["generation"])
+        except Exception:
+            pass
+
+    try:
+        window.on_event = changed
+    except Exception:
+        pass
 
 
 def _guard_window() -> None:

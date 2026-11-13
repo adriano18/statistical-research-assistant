@@ -11,11 +11,20 @@ from data_preparation import (
 )
 
 
-def build_preparation_workspace(page, load_dataframe, *, with_steps=False):
+# The classic screens' secondary text colour: 5.8:1 on white and 5.4:1 on
+# their #F5F7FC background (WCAG AA). Stage 37 (review D6): the caption was
+# #A8B6C9, 2.06:1 on white.
+CAPTION_COLOR = "#536781"
+
+
+def build_preparation_workspace(page, load_dataframe, *, with_steps=False,
+                                caption_color: str | None = CAPTION_COLOR):
     """Return (view, reset_for_new_dataset). Loading into analysis is explicit.
 
     ``with_steps``: ``load_dataframe(frame, steps)`` also receives the steps
-    applied since the last reset, so the caller can keep them as history."""
+    applied since the last reset, so the caller can keep them as history.
+    ``caption_color``: the caption's colour; None takes the theme's text
+    colour (the research workspace, whose theme may be light or dark)."""
     state = {"working": None, "steps": [], "source_path": None}
 
     method = ft.Dropdown(
@@ -213,7 +222,7 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False):
             ft.Text(
                 "Work on a COPY. Every action creates a NEW column. "
                 "Original variables and the original CSV/XLSX are left intact.",
-                color="#A8B6C9",
+                color=caption_color, data="preparation-caption",
             ),
             method,
             ft.Row([source, target], wrap=True, spacing=12),
