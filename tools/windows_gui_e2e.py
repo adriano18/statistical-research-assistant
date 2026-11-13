@@ -214,6 +214,8 @@ class Gui:
             "PATH": f"{system}\\System32;{system};{system}\\System32\\Wbem",
             "SRA_UI": "workspace",
             "SRA_LOG_DIR": str(self.out / "app-logs"),
+            # Every document reading writes its stage timings here (ocr_profile).
+            "SRA_OCR_PROFILE": str(self.out / "ocr-profiles"),
         })
         if not self.real_data:
             env["SRA_DATA_DIR"] = str(self.data_dir)
@@ -1563,6 +1565,28 @@ def direct_rows(pdf: Path, language: str) -> dict:
         return {"error": f"{type(error).__name__}: {error}"}
 
 
+def latest_profile(gui: Gui, after: set | None = None) -> dict | None:
+    """The newest reading profile the program wrote (ocr_profile), as a
+    compact fact: total, per-stage seconds, engine runs, the event-loop
+    stall; ``after`` = file names already seen."""
+    folder = gui.out / "ocr-profiles"
+    files = sorted(p for p in folder.glob("ocr-profile-*.json") if p.name not in (after or set()))
+    if not files:
+        return None
+    data = json.loads(files[-1].read_text(encoding="utf-8"))
+    return {
+        "file": files[-1].name, "total_seconds": data["total_seconds"],
+        "stages": {k: v["seconds"] for k, v in data["stages"].items()},
+        "unaccounted_seconds": data["unaccounted_seconds"],
+        "engine_runs": [{k: r.get(k) for k in ("seconds", "cpu_seconds", "peak_memory_bytes")}
+                        for r in data["engine_runs"]],
+        "event_loop_max_stall_seconds": data["event_loop_max_stall_seconds"],
+        "renders": data["renders"], "peak_memory_bytes": data["peak_memory_bytes"],
+        "process_cpu_seconds": data["process_cpu_seconds"], "max_threads": data["max_threads"],
+        "items": data["facts"].get("items"),
+    }
+
+
 def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
     """Spec §14 journey 6 on the packaged EXE: a scanned Latvian 52-item
     table without a text layer is detected, read with the bundled local OCR
@@ -1590,12 +1614,18 @@ def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
     with journey.step("read it with local OCR in Latvian (lav)"):
         options = [label for _, label in ocr_language_options("en")]
         gui.choose(T("imp.ocr_language"), T("imp.ocr_lang.lav"), options=options)
+        seen = {p.name for p in (gui.out / "ocr-profiles").glob("*.json")}
         gui.click(T("imp.ocr_run"), control_type="Button")
         started = time.monotonic()
         # Whatever the reading gives is recorded before it is checked.
         gui.wait_text(T("imp.state.ocr_used", pages="pages 1 and 2",
                         ocr=T("imp.ocr_lang.lav")), timeout=600)
+        # Until UI Automation shows the result (this driver's polling and
+        # scrolling included); the program's own timings are the profile.
         journey.facts["ocr_in_program_seconds"] = round(time.monotonic() - started, 1)
+        journey.facts["ocr_profile_first"] = latest_profile(gui, seen)
+        print(f"  [ocr] in the program (first reading): {journey.facts['ocr_profile_first']}",
+              flush=True)
         journey.facts["candidates_in_program"] = [
             text for text in gui.texts() if "candidate items" in text][:3]
         gui.wait_text(T("imp.read_ok", instruments=1, items=52, name=pdf.name), timeout=30)
@@ -1603,6 +1633,19 @@ def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text("52 candidate items")
         gui.wait_text(T("imp.state.ocr_used", pages="pages 1 and 2",
                         ocr=T("imp.ocr_lang.lav")))
+    with journey.step("read it again in the same program (warm): the same 52 candidates"):
+        seen = {p.name for p in (gui.out / "ocr-profiles").glob("*.json")}
+        gui.click(T("imp.ocr_again"), control_type="Button")
+        deadline = time.monotonic() + 300
+        while time.monotonic() < deadline and latest_profile(gui, seen) is None:
+            time.sleep(0.5)
+        journey.facts["ocr_profile_again"] = latest_profile(gui, seen)
+        print(f"  [ocr] in the program (read again): {journey.facts['ocr_profile_again']}",
+              flush=True)
+        expect(journey.facts["ocr_profile_again"] is not None, "the second reading wrote no profile")
+        expect(journey.facts["ocr_profile_again"]["items"] == 52,
+               f"{journey.facts['ocr_profile_again']['items']} candidates on the second reading")
+        gui.wait_text("52 candidate items", timeout=60)
     with journey.step("the legend is offered as one documented scale for all 52 items"):
         wizard_step(gui, 2)
         gui.wait_text(T("imp.scale_items", count=52))

@@ -160,9 +160,7 @@ def _render_pdf_page(
                 raise ValueError("Cannot render this oversized page.")
             image = page.render(scale=safe_scale, rotation=rotation).to_pil()
             try:
-                out = BytesIO()
-                image.convert("RGB").save(out, "PNG", optimize=True)
-                data = out.getvalue()
+                data = encode_png(image.convert("RGB"))
                 if len(data) > MAX_PNG_BYTES:
                     raise ValueError("Rendered page exceeds the image size limit.")
                 return data, 72.0 * safe_scale
@@ -172,6 +170,25 @@ def _render_pdf_page(
             page.close()
     finally:
         pdf.close()
+
+
+def encode_png(image, *, limit: int | None = None) -> bytes:
+    """A page image as PNG, quickly: zlib level 3 (Stage 36.8, issue #62).
+
+    PNG is lossless, so the engine and the viewer get the same pixels with
+    any setting. ``optimize=True`` took ~8× longer on a scanned page (0.84 s
+    against 0.11 s for 1191×1684 px) and wrote a larger file (1.08 MB
+    against 0.91 MB); it is tried only if level 3 exceeds the size limit.
+    """
+    out = BytesIO()
+    image.save(out, "PNG", compress_level=3)
+    data = out.getvalue()
+    limit = MAX_PNG_BYTES if limit is None else limit
+    if len(data) > limit:
+        out = BytesIO()
+        image.save(out, "PNG", optimize=True)
+        data = min(data, out.getvalue(), key=len)
+    return data
 
 
 def _word_text(source: bytes, suffix: str) -> list[str]:
@@ -285,9 +302,7 @@ def render_word_structure(
             (54, height-45), "Use the segment selector for more source text.",
             fill="#915E2C", font=hint,
         )
-    out = BytesIO()
-    image.save(out, format="PNG", optimize=True)
-    return out.getvalue()
+    return encode_png(image)
 
 
 def render_document_page(
@@ -362,18 +377,22 @@ def recognize_page_layout(
     and the row touching it can make Tesseract drop that row's text. Word
     boxes keep the coordinates of ``png``, which stays the page shown.
     """
+    from ocr_profile import stage
     from ocr_rules import without_ruling_lines
 
     _check_ocr_input(png, language)
+    with stage("image_preprocessing"):
+        cleaned = without_ruling_lines(png, dpi=dpi)
     tsv = _run_ocr(
-        without_ruling_lines(png, dpi=dpi), language,
+        cleaned, language,
         ["-c", "tessedit_create_tsv=1", "-c", "tessedit_create_txt=0"],
         timeout=timeout, cancel=cancel, dpi=dpi,
     )
-    page = parse_tesseract_tsv(
-        tsv, page_number, language=language, rotation=rotation,
-        engine="tesseract",
-    )
+    with stage("tsv_parsing"):
+        page = parse_tesseract_tsv(
+            tsv, page_number, language=language, rotation=rotation,
+            engine="tesseract",
+        )
     if not page.words:
         raise ValueError(
             "OCR found no characters on this page. Try a clearer scan, "
@@ -583,7 +602,10 @@ def ocr_scientific_pdf(
     """
     from pypdf import PdfReader
 
-    count = pdf_page_count(source)
+    from ocr_profile import mark, stage
+
+    with stage("pdf_loading"):
+        count = pdf_page_count(source)
     pages = sorted(set(selected_pages))
     if not pages or len(pages) > MAX_BATCH_PAGES or any(
         not isinstance(page, int) or not 1 <= page <= count for page in pages
@@ -593,7 +615,8 @@ def ocr_scientific_pdf(
         raise ValueError("Choose an installed OCR language.")
     if rotation not in ROTATIONS:
         raise ValueError("Rotation must be 0, 90, 180 or 270 degrees.")
-    reader = PdfReader(BytesIO(source))
+    with stage("pdf_loading"):
+        reader = PdfReader(BytesIO(source))
     if reader.is_encrypted:
         raise ValueError("Cannot OCR an encrypted PDF.")
     page_lines: list[tuple[int, list[str]]] = []
@@ -606,9 +629,11 @@ def ocr_scientific_pdf(
         if n in pages:
             if cancel is not None and cancel.is_set():
                 raise OCRCancelled("OCR was cancelled. No results were applied.")
-            png, dpi = _render_pdf_page(
-                source, n, scale=2.0, max_width=1800, rotation=rotation,
-            )
+            mark(f"page {n}: rendering")
+            with stage("page_rendering"):
+                png, dpi = _render_pdf_page(
+                    source, n, scale=2.0, max_width=1800, rotation=rotation,
+                )
             if recognizer is None:
                 result = recognize_page_layout(
                     png, language, page_number=n, dpi=dpi, rotation=rotation,
@@ -623,50 +648,55 @@ def ocr_scientific_pdf(
             else:
                 page_layout = page_from_plain_text(n, str(result))
             geometry.append(page_layout)
-            # OCR reads a row of labelled answer cells together with the item
-            # text; restore "item, then its printed choices" from the boxes.
-            grid = choice_cell_grid(page_layout)
-            if grid is not None:
-                columns = page_geometry(page_layout)
-                if columns is not None and 2 * len(grid.rows) < columns.rows:
-                    # A few rows whose "labels" are table-rule noise: the
-                    # number column describes this table better.
-                    grid = None
-                    grid_overridden.add(n)
-            page_lines.append((n, choice_grid_lines(page_layout, grid) if grid is not None
-                               else [line.text for line in page_layout.lines]))
+            with stage("table_reconstruction"):
+                # OCR reads a row of labelled answer cells together with the item
+                # text; restore "item, then its printed choices" from the boxes.
+                grid = choice_cell_grid(page_layout)
+                if grid is not None:
+                    columns = page_geometry(page_layout)
+                    if columns is not None and 2 * len(grid.rows) < columns.rows:
+                        # A few rows whose "labels" are table-rule noise: the
+                        # number column describes this table better.
+                        grid = None
+                        grid_overridden.add(n)
+                page_lines.append((n, choice_grid_lines(page_layout, grid) if grid is not None
+                                   else [line.text for line in page_layout.lines]))
             if grid is None:
                 table_pages.append(page_layout)
             done += 1
+            mark(f"page {n}: read ({done} of {len(pages)})")
             if progress is not None:
                 progress(done, len(pages))
         else:
-            extracted = reader.pages[n-1].extract_text() or ""
-            page_lines.append((n, extracted.splitlines()))
-            if extracted.strip():
-                text_pages.append((n, extracted.splitlines()))
-                try:
-                    geometry.append(pdf_text_layer_page(source, n))
-                except (ValueError, RuntimeError):
-                    pass
+            with stage("pdf_loading"):
+                extracted = reader.pages[n-1].extract_text() or ""
+                page_lines.append((n, extracted.splitlines()))
+                if extracted.strip():
+                    text_pages.append((n, extracted.splitlines()))
+                    try:
+                        geometry.append(pdf_text_layer_page(source, n))
+                    except (ValueError, RuntimeError):
+                        pass
     repairs = ()
-    if text_pages:
-        fixed, repairs = repair_pdf_text(source, text_pages)
-        repaired = dict(fixed)
-        page_lines = [(n, repaired.get(n, text)) for n, text in page_lines]
-    # A scanned table (number column, statement column, answer digits) is
-    # rebuilt row by row from the word boxes instead of the text order.
-    tables = reconstruct_tables(table_pages)
-    if tables is not None:
-        page_lines = [(n, tables.lines.get(n, text)) for n, text in page_lines]
-    lines = [(n, line) for n, text in page_lines for line in text]
-    matrices = geometric_matrices([g for g in geometry if g.page_number not in grid_overridden])
+    with stage("table_reconstruction"):
+        if text_pages:
+            fixed, repairs = repair_pdf_text(source, text_pages)
+            repaired = dict(fixed)
+            page_lines = [(n, repaired.get(n, text)) for n, text in page_lines]
+        # A scanned table (number column, statement column, answer digits) is
+        # rebuilt row by row from the word boxes instead of the text order.
+        tables = reconstruct_tables(table_pages)
+        if tables is not None:
+            page_lines = [(n, tables.lines.get(n, text)) for n, text in page_lines]
+        lines = [(n, line) for n, text in page_lines for line in text]
+        matrices = geometric_matrices([g for g in geometry if g.page_number not in grid_overridden])
     try:
-        review = parse_scientific_lines(
-            lines, filename, page_count=count, ocr_pages=tuple(pages),
-            text_source="pdf_text_layer",
-        )
-        review = with_spacing_repairs(review, repairs)
+        with stage("question_reconstruction"):
+            review = parse_scientific_lines(
+                lines, filename, page_count=count, ocr_pages=tuple(pages),
+                text_source="pdf_text_layer",
+            )
+            review = with_spacing_repairs(review, repairs)
     except ValueError as error:
         if not matrices:
             raise
@@ -680,11 +710,13 @@ def ocr_scientific_pdf(
         )
     from shared_scales import link_matrices
 
-    spatial = link_candidates(review, geometry)
-    if tables is not None:
-        spatial = attach_row_regions(spatial, review, tables.rows)
-    review = link_matrices(replace(review, spatial=spatial, matrices=matrices))
-    confidence_note = ocr_confidence_warning(review)
+    with stage("review_model"):
+        spatial = link_candidates(review, geometry)
+        if tables is not None:
+            spatial = attach_row_regions(spatial, review, tables.rows)
+        review = link_matrices(replace(review, spatial=spatial, matrices=matrices))
+    with stage("confidence_assessment"):
+        confidence_note = ocr_confidence_warning(review)
     return replace(
         review,
         warnings=(

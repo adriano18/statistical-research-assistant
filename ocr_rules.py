@@ -156,7 +156,8 @@ def without_ruling_lines(png: bytes, *, dpi: float | None = None) -> bytes:
         cleaned = gray.copy()
         cleaned[rules] = 255
         buffer = BytesIO()
-        Image.fromarray(cleaned).save(buffer, "PNG")
+        # Lossless at any level; level 3 is the fast one (Stage 36.8).
+        Image.fromarray(cleaned).save(buffer, "PNG", compress_level=3)
         return buffer.getvalue()
     except Exception:   # never lose a page to the clean-up: OCR reads the original
         return png

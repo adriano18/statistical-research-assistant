@@ -12,6 +12,7 @@ keeps each document's review on this computer (``import_review``).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -881,6 +882,8 @@ class ImportPage:
         self.restore_partial = False
         self._typed: dict[int, str] = {}          # wording typed, not applied yet
         self._ocr_runtime: tuple[bool, tuple[str, ...]] | None = None
+        self._profile = None                # ocr_profile.Profile while reading
+        self.last_profile: dict | None = None
         self.store = ReviewStore(sessions_folder(app.survey_root))
 
     # ----------------------------------------------------------- reading
@@ -919,6 +922,8 @@ class ImportPage:
         local OCR in that language."""
         import threading
 
+        import ocr_profile
+
         problem = self.unreadable(name)
         if problem:
             # Nothing is opened, and a document already under review stays.
@@ -928,8 +933,11 @@ class ImportPage:
             self._fail(self.app.t("imp.read_failed", name=name,
                                   error=self.app.t("common.not_available")))
             return
-        sha = source_sha256(binary)
-        record = self.store.load(sha)
+        # Where this reading's time goes (Stage 36.8): ocr_profile.
+        profile = ocr_profile.Profile(f"{name} · {language or 'text'}")
+        with profile.stage("source_open"):
+            sha = source_sha256(binary)
+            record = self.store.load(sha)
         chosen_language = language
         if language is None and record is not None:
             language = record.ocr_language
@@ -943,7 +951,10 @@ class ImportPage:
         self.busy, self.error, self.progress = True, None, None
         self.reading = "ocr" if language else "text"
         self.reading_name, self.reading_language = name, language
-        self.app.render()
+        self._profile = profile
+        with profile.stage("ui_update"):
+            self.app.render()
+        profile.renders += 1
 
         def progress(message: str):
             loop.call_soon_threadsafe(self._show_progress, message)
@@ -951,28 +962,55 @@ class ImportPage:
         fresh = ImportSession()
         manual = record.ocr_pages if record is not None and language else ()
         restored = remember = False
+        first_page = None
+        stop = asyncio.Event()
+        watcher = asyncio.create_task(ocr_profile.watch_event_loop(profile, stop))
         try:
-            await asyncio.to_thread(fresh.open, binary, name, progress=progress,
-                                    cancel=self._cancel, language=language)
-            if manual:
-                await asyncio.to_thread(fresh.ocr_pages, list(manual), language,
-                                        cancel=self._cancel)
+            with ocr_profile.activate(profile):
+                await asyncio.to_thread(fresh.open, binary, name, progress=progress,
+                                        cancel=self._cancel, language=language)
+                if manual:
+                    await asyncio.to_thread(fresh.ocr_pages, list(manual), language,
+                                            cancel=self._cancel)
+                # The page shown first is drawn here, in the worker: drawn
+                # while rendering, it held the window (the event loop) still.
+                number = (fresh.instrument.first_page if fresh.instrument is not None else 1) or 1
+                with contextlib.suppress(Exception):
+                    with profile.stage("page_rendering"):
+                        first_page = (number, await asyncio.to_thread(fresh.render_page, number))
         except Exception as error:
             self.error = self.app.t("imp.read_failed", name=name, error=error)
         else:
-            self._adopt(fresh, sha=sha, path=path, language=language, manual=manual)
-            if record is not None:
-                restored = self._restore(record)
+            with profile.stage("review_model"):
+                self._adopt(fresh, sha=sha, path=path, language=language, manual=manual)
+                if first_page is not None and first_page[0] == self.page_number:
+                    self._page_cache[(self.page_number, 0)] = first_page[1]
+                if record is not None:
+                    restored = self._restore(record)
             # The OCR language the researcher chose is part of the review.
             remember = bool(chosen_language) and not restored
         finally:
             self.busy, self.progress, self._cancel = False, None, None
+            stop.set()
+            with contextlib.suppress(Exception):
+                await watcher
         if remember:
-            self._autosave()
+            with profile.stage("review_model"):
+                self._autosave()
         self._announce()
-        self.app.render()
+        with profile.stage("ui_update"):
+            self.app.render()
+        profile.renders += 1
         if restored and self.step == "items" and self.selected is not None:
             self._reveal(self.selected)
+        profile.facts.update({
+            "language": language, "pages": self.session.page_count,
+            "ocr_pages": list(self.session.ocr_pages_used),
+            "items": sum(len(x.questions) for x in self.session.instruments),
+            "forms": len(self.session.instruments), "error": bool(self.error)})
+        self.last_profile = profile.result()
+        self._profile = None
+        profile.write()
 
     async def _offer_scan(self, binary: bytes, name: str, sha: str, path, pages):
         """A PDF without any text layer: show it and offer local OCR in the
@@ -1057,7 +1095,13 @@ class ImportPage:
         self.progress = (self.app.t("imp.ocr_progress", page=match[1], done=match[2],
                                     total=match[3]) if match else message)
         if self.busy:
-            self.app.render()
+            profile = getattr(self, "_profile", None)
+            if profile is None:
+                self.app.render()
+                return
+            with profile.stage("ui_update"):
+                self.app.render()
+            profile.renders += 1
 
     def cancel_reading(self, e=None):
         if self._cancel is not None:
