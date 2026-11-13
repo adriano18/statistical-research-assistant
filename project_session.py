@@ -261,6 +261,13 @@ class ProjectBinding:
         """A ``.sra`` backup; uses its own database connections (worker-thread safe)."""
         return self._store().export_package(project_id, destination, survey_root=survey_root)
 
+    def export_for_format(self, project_id: str, destination: Path,
+                          survey_root: Path | None) -> tuple[Path, int]:
+        """A ``.sra`` copy for an older version (format 5), without the
+        protocol records (Stage 37.0b); the project itself is not changed."""
+        return self._store().export_for_format(project_id, destination, 5,
+                                               survey_root=survey_root)
+
     def restore(self, source: Path, survey_root: Path | None) -> tuple[ProjectInfo, list[str]]:
         """Restore a ``.sra`` backup as a project (worker-thread safe)."""
         return self._store().import_package(source, survey_root=survey_root)

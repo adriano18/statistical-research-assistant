@@ -245,6 +245,124 @@ def scale_quality(folder: Path) -> None:
     ws.close()
 
 
+# --------------------------------------------- Stage 37.0b: the 37.0 flows
+QUESTION = "Is loneliness related to how students cope with stress?"
+H1 = "Loneliness (UCLA) is associated with each of the eight SACS scales."
+
+
+def beginner_37(folder: Path, *, show: bool = True) -> Measured:
+    """The hybrid beginner flow of docs/STAGE37_DESIGN.md (Appendix B) on the
+    37.0b workspace: Q1 by itself, H1 from the bar, the data from the bar,
+    the analysis created for H1 from the Data page's footer, the review in
+    the task, the report from the footer."""
+    ws = Measured(root=folder)
+    ws.type("project-new-title", "Fictional loneliness and coping study")
+    ws.click("project-create")
+    ws.done("1 project: title, Create project")
+    ws.type("plan-q0-text", QUESTION)               # Q1 is shown by itself
+    ws.choose("plan-q0-type", "relate")
+    ws.done("2 Q1: its text and its kind (a dropdown)")
+    ws.click("next-add-hypothesis")
+    ws.type("plan-h0-text", H1)
+    ws.click("plan-save")
+    assert ws.app.projects.project.plan()["plan"]["hypotheses"]
+    ws.done("3 H1: Add a hypothesis to Q1 (bar), its text, Save plan version")
+    ws.button_with_system_dialog()                  # the bar's Open CSV / Excel…
+    assert ws.run(ws.app.load_path(str(fx.fixture(fx.CSV))))
+    ws._seen()
+    ws.done("4 data: Open CSV / Excel… on the bar (+ the system Open dialog)")
+    ws.check("data-accept-confirm")
+    ws.click("data-accept")
+    fixes = [name for name, level in LEVELS.items() if ws.app.session.level(name) != level]
+    for name in fixes:
+        ws.choose(f"level-{name}", LEVELS[name])
+    ws.done(f"5 measurement levels: accept the suggestions, {len(fixes)} corrections")
+    ws.click("next-create-analysis")                # the Data page's footer
+    ws.done("6 Create the analysis for H1 (the footer): Analyze, linked, at the variables")
+    ws.choose("role-x", "UCLA")
+    ws.click("role-y-all-scale")
+    ws.check("role-y-Age", False)
+    ws.click("alt-batch_correlation-spearman")
+    ws.click("guided-run")
+    ws.done("7 analysis: UCLA, all quantitative, untick Age, Spearman, Run")
+    reviews = [c.data for c in ws.find_all("task-review-")]
+    for data in reviews:
+        ws.check(data)
+    ws.type("task-notes", "No pair reaches p (Holm) < .05; the intervals are wide.")
+    ws.click("task-add-report")
+    ws.done(f"8 in the task: {len(reviews)} review ticks, the note, Add to report")
+    ws.click("next-report")                         # the footer: Open the report
+    ws.done("9 Open the report (the footer)")
+    ws.type("reports-study-title", "Loneliness and coping (fictional)")
+    ws.counts["click"] += 1                         # Export Word report…
+    ws.dialogs += 1                                 # the system Save dialog
+    ws.run(ws.app.pages["reports"]._export_docx())
+    assert ws.saved and ws.saved[-1].exists()
+    ws.done("10 report: study title, Export Word (+ the Save dialog)")
+    if show:
+        ws.table(f"Beginner flow, Stage 37.0 ({COMMIT})")
+    ws.facts = {"project_id": ws.app.projects.info().id, "reviews": len(reviews),
+                "hypothesis_ids": [t.hypothesis_id for t in ws.app.session.tasks]}
+    return ws
+
+
+def professor_setup(ws: Measured) -> None:
+    """Not counted: what the professor will read. A second analysis linked
+    to H2, whose priority is changed after results with a reason, and a
+    deviation recorded for H1."""
+    project = ws.app.projects.project
+    task = ws.app.session.tasks[0]
+    ws.click("nav-analyze")
+    ws.click("task-new")
+    ws.click("goal-compare")
+    ws.choose("role-group", "UCLA_Level")
+    ws.click(f"role-outcome-from-{task.id}")
+    ws.check("design-confirm-independent")
+    ws.check("design-confirm-assumptions")
+    ws.click("guided-run")
+    plan = project.plan()["plan"]
+    h1 = plan["hypotheses"][0]
+    plan["hypotheses"].append({"text": "Coping differs between the UCLA_Level groups.",
+                               "h0": "The groups do not differ.", "direction": "two-sided",
+                               "priority": "primary", "alpha": 0.05})
+    project.save_plan(plan)
+    plan = project.plan()["plan"]
+    h2 = plan["hypotheses"][1]
+    ws.app.pages["analyze"]._link(h2["id"])        # Tests hypothesis: H2 (recorded)
+    plan["hypotheses"][1] = {**h2, "priority": "secondary"}
+    project.save_plan(plan, reasons={h2["id"]: "Fictional: groups of very unequal size."})
+    project.add_protocol_record("deviation", hypothesis_id=h1["id"], task_id=task.id,
+                                detail={"what": "method"},
+                                reason="Fictional: skewed totals, so Spearman's ρ.")
+
+
+def professor_37(folder: Path, facts: dict, *, show: bool = True) -> Measured:
+    """After a restart: H1's checks, records and history, then H2's, then
+    the report (the 37.0b hypothesis rows are in the Word report)."""
+    ws = Measured(root=folder)
+    ws.click(f"project-open-{facts['project_id']}")
+    ws.done("1 open the project after a restart")
+    ws.click("hyp-1-toggle")
+    ws.done("2 H1: analyses, steps, checks, recorded decisions, history, standing")
+    ws.click("hyp-2-toggle")
+    ws.done("3 H2: its analysis, the priority changed after results with its reason")
+    ws.click("nav-reports")
+    ws.done("4 the report")
+    ws.expand("reports-preview")
+    ws.done("5 the report's preview and structure (Hypotheses section counted)")
+    if show:
+        ws.table(f"Professor flow, Stage 37.0 ({COMMIT})")
+    return ws
+
+
+def measure_37(folder: Path, *, show: bool = True) -> tuple[Measured, Measured]:
+    first = beginner_37(folder, show=show)
+    professor_setup(first)
+    facts = first.facts
+    first.close()
+    return first, professor_37(folder, facts, show=show)
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as folder:
         facts = beginner(Path(folder))
@@ -253,3 +371,7 @@ if __name__ == "__main__":
         professor(Path(folder), facts)
     with tempfile.TemporaryDirectory() as folder:
         scale_quality(Path(folder))
+    with tempfile.TemporaryDirectory() as folder:
+        beginner37, professor37 = measure_37(Path(folder))
+        print("hypothesis_id of the tasks:", beginner37.facts["hypothesis_ids"])
+        professor37.close()

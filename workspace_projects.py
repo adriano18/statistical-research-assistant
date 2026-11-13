@@ -368,6 +368,41 @@ class ProjectHub:
             announce=lambda path: app.t("project.backup_saved", path=path))
         self._done(outcome.message, outcome.tone)
 
+    def confirm_copy_older(self, project_id: str, title: str):
+        """Stage 37.0b (design §8.6, AC-11): a copy that version 36.x opens.
+        The warning comes first: the protocol records are not carried into
+        the copy; this project is not changed."""
+        ui, binding = self.app.ui, self.binding
+        count = (len(binding.project.protocol_records())
+                 if binding.active and binding.project.id == project_id else 0)
+
+        async def save(e=None):
+            self.app.page.pop_dialog()
+            await self.copy_older(project_id, title)
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=wc.heading(ui, ui.t("project.copy_older_title"), tk.TYPE_TITLE_S),
+            content=ft.Container(wc.text(ui, ui.t("project.copy_older_body", count=count),
+                                         tk.TYPE_BODY, data="project-copy-older-body"),
+                                 width=520),
+            actions=[
+                wc.button(ui, ui.t("common.cancel"), lambda e: self.app.page.pop_dialog(),
+                          kind="quiet", data="project-copy-older-cancel"),
+                wc.button(ui, ui.t("project.copy_older_confirm"), save, kind="primary",
+                          icon=ft.Icons.SAVE_ALT, data="project-copy-older-confirm"),
+            ],
+        )
+        self.app.page.show_dialog(dialog)
+
+    async def copy_older(self, project_id: str, title: str):
+        app = self.app
+        outcome = await app.save_file(
+            app.t("project.copy_older_dialog"), _file_name(title)[:-4] + "_36x.sra", "sra",
+            lambda path: self.binding.export_for_format(project_id, path, app.survey_root)[0],
+            announce=lambda path: app.t("project.copy_older_saved", path=path))
+        self._done(outcome.message, outcome.tone)
+
     async def _on_backup_picked(self, e):
         await self.restore_files(getattr(e, "files", None))
 
@@ -451,6 +486,9 @@ class ProjectPage:
             wc.button(ui, ui.t("project.backup"),
                       wc.handler(hub.backup, info.id, info.title),
                       icon=ft.Icons.SAVE_ALT, data="project-backup-current"),
+            wc.button(ui, ui.t("project.copy_older"),
+                      lambda e, i=info.id, t=info.title: hub.confirm_copy_older(i, t),
+                      kind="quiet", icon=ft.Icons.HISTORY, data="project-copy-older"),
             wc.button(ui, ui.t("project.all_projects"), lambda e: app.navigate("home"),
                       kind="quiet", icon=ft.Icons.FOLDER_COPY_OUTLINED, data="project-all"),
             wc.button(ui, ui.t("project.close"), hub.close, kind="quiet", icon=ft.Icons.CLOSE,

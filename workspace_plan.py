@@ -399,6 +399,8 @@ class ResearchPlanCard:
         reused rather than a second one added. Q1 shown by itself (from the
         project's research question) is taken into the plan instead of a
         second question being added."""
+        if self.current_draft() is None:      # also from a page footer
+            return
         questions = self.draft.setdefault("questions", [])
         if self._auto_row() is not None:
             self._use_question(self.auto_question)
@@ -413,6 +415,8 @@ class ResearchPlanCard:
     def add_hypothesis_for(self, number: int) -> None:
         """A hypothesis of research question Q``number``: H0 is drafted from
         the kind of question; H1 stays empty, with a hint."""
+        if self.current_draft() is None:
+            return
         questions = self.draft.setdefault("questions", [])
         question = questions[number - 1] if 0 < number <= len(questions) else None
         hypothesis = {"text": "", "direction": "two-sided", "priority": "primary", "alpha": 0.05}
@@ -581,7 +585,7 @@ class ResearchPlanCard:
         from project_store import DesignationReasonNeeded, ProjectError
 
         project = self._project()
-        if project is None:
+        if project is None or self.current_draft() is None:
             return
         ui = self.app.ui
         before = project.plan()

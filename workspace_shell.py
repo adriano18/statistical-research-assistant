@@ -439,15 +439,55 @@ class WorkspaceApp:
     section: str | None = None
 
     def journey_status(self) -> dict[str, bool]:
+        """What the journey strip ticks. Stage 37.0b (design §7.6, AC-5,
+        review U10): Design, Method, Result and Report come from the steps of
+        one research task: the task open in Analyze, else the task of the
+        first hypothesis in designation order. A result of another task (or
+        any result) no longer ticks them. Without such a task, Design and
+        Method are not ticked; Result says whether any result exists."""
         s = self.session
-        analyzed = bool(s.results)
-        return {
+        status = {
             "question": bool(self.research_question()),
             "data": s.has_data,
             "variables": s.has_data and not s.pending_levels(),
-            "design": analyzed, "method": analyzed, "result": analyzed,
+            "design": False, "method": False, "result": bool(s.results),
             "report": bool(s.report_order),
         }
+        steps = self.focus_steps()
+        if steps:
+            state = {step.key: step.state for step in steps}
+
+            def done(key: str) -> bool:
+                return state.get(key) in ("done", "skipped")
+
+            status.update(variables=status["variables"] and done("variables"),
+                          design=done("design"), method=done("method"), result=done("result"),
+                          report=done("report"))
+        return status
+
+    def focus_steps(self):
+        """The steps of the task the journey strip follows (or None): the one
+        on screen in Analyze, as it is set up there, else the task of the
+        first hypothesis of the plan (primary, secondary, exploratory)."""
+        import research_workflow as rw
+
+        analyze = self.pages.get("analyze") if hasattr(self, "pages") else None
+        if analyze is not None and analyze.goal:
+            return analyze.current_steps()
+        session = self.session
+        project = self.projects.project if self.projects.active else None
+        current = project.plan() if project is not None else None
+        hypotheses = ((current or {}).get("plan") or {}).get("hypotheses", [])
+        if not hypotheses or not session.tasks:
+            return None
+        rank = {"primary": 0, "secondary": 1, "exploratory": 2}
+        plan_ids = frozenset(h["id"] for h in hypotheses)
+        for number, hypothesis in sorted(enumerate(hypotheses), key=lambda pair: (
+                rank.get(pair[1].get("priority"), 3), pair[0])):
+            task = next((t for t in session.tasks if t.hypothesis_id == hypothesis["id"]), None)
+            if task is not None:
+                return rw.task_steps(rw.task_facts(task, session, plan_ids=plan_ids))
+        return None
 
     def research_question(self) -> str:
         if self.projects.active:
@@ -1042,6 +1082,10 @@ class DataPage:
             ft.Container(self.groups.build(), key=ft.ScrollKey("data-groups")), self._preview(),
             self._import_options(), self._preparation_card(), self._sample_picker(),
         ], spacing=tk.SPACE_5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
+
+    def footer(self) -> ft.Control | None:
+        """Stage 37.0b: the next action, below the page (design §7.9)."""
+        return self.app.pages["project"].hypotheses.footer_for("data")
 
     async def _on_source(self, e):
         await self._use_source(e.control.value)

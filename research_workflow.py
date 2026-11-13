@@ -692,28 +692,36 @@ def _add_data(f: ProjectFacts, why) -> NextAction:
                       tuple(why))
 
 
+# Stage 37.0b (design §7.9): once a project has results but no plan, the
+# plan's first rules become this secondary link; the results stay exploratory.
+PLAN_LINK = Action("write_question", "next.plan_link", "next-plan-link", primary=False)
+
+
 def _tail(f: ProjectFacts, why) -> NextAction:
     """After the plan's hypotheses (and for work without a plan): results
-    that need attention, the report, its export."""
+    that need attention, the report, its export. Without a plan, the link
+    *Add the research question these analyses answer* is offered beside."""
+    link = () if f.plan_started else (PLAN_LINK,)
     if f.stale_results:
         why.append((False, "next.why.results_current", {"count": f.stale_results}))
         return NextAction("stale", "next.stale", "next.stale_body", {"count": f.stale_results},
-                          (Action("review_results", "next.review_results", "next-results"),),
-                          tuple(why))
+                          (Action("review_results", "next.review_results", "next-results"),
+                           *link), tuple(why))
     if not f.report_count:
         why.append((False, "next.why.report_started", {}))
         return NextAction("report", "next.report", "next.report_body", {},
-                          (Action("review_results", "next.review_results", "next-results"),),
-                          tuple(why))
+                          (Action("review_results", "next.review_results", "next-results"),
+                           *link), tuple(why))
     if not f.exported:
         why.append((False, "next.why.report_exported", {}))
         return NextAction("export", "next.export", "next.export_body",
                           {"count": f.report_count},
-                          (Action("open_report", "next.open_report", "next-report"),), tuple(why))
+                          (Action("open_report", "next.open_report", "next-report"), *link),
+                          tuple(why))
     why.append((True, "next.why.report_exported", {}))
     return NextAction("done", "next.done", "next.done_body", {},
-                      (Action("open_report", "next.open_report", "next-report", primary=False),),
-                      tuple(why))
+                      (Action("open_report", "next.open_report", "next-report", primary=False),
+                       *link), tuple(why))
 
 
 def next_action(f: ProjectFacts) -> NextAction:
@@ -982,24 +990,10 @@ class HypothesisView:
     progress: tuple[TaskProgress, ...] = ()
 
 
-def hypothesis_views(session, project) -> tuple[HypothesisView, ...]:
-    """The hypotheses of the project's current plan with their analyses,
-    steps, checks, history and records (empty without a plan)."""
-    current = project.plan() if project is not None else None
-    if current is None:
-        return ()
-    plan = current["plan"]
-    status = project.hypothesis_status()
-    history = project.plan_history()
-    records = project.protocol_records()
-    plan_ids = frozenset(h["id"] for h in plan.get("hypotheses", []))
+def plan_facts(plan: dict, status: dict) -> list[HypothesisFacts]:
+    """The facts of every hypothesis of a saved plan (its order is H1, H2…),
+    with its standing from ``Project.hypothesis_status``."""
     questions = {q["id"]: q for q in plan.get("questions", [])}
-    analyses_of: dict[str, list] = {}
-    tasks_of: dict[str, list] = {}
-    for task in session.tasks:
-        if task.hypothesis_id in plan_ids:
-            tasks_of.setdefault(task.hypothesis_id, []).append(task)
-            analyses_of.setdefault(task.hypothesis_id, []).append(analysis_facts(task, session))
     facts = []
     for number, h in enumerate(plan.get("hypotheses", []), start=1):
         info = status.get(h["id"], {})
@@ -1012,6 +1006,62 @@ def hypothesis_views(session, project) -> tuple[HypothesisView, ...]:
             runs_before=int(info.get("inferential_before", info.get("runs_before", 0))),
             question_type=(questions.get(h.get("question_id", "")) or {}).get("type", ""),
             planned_version=info.get("version"), results_then=int(info.get("runs_before", 0))))
+    return facts
+
+
+# The checks that can be judged before Run (design §7.10, step 4): direction,
+# method, variables, family and α of the analysis on screen against the plan.
+PRE_RUN = ("H-DIR-TWOSIDED", "H-DIR-OMNIBUS", "H-FAMILY-UNCORRECTED", "H-ALPHA",
+           "H-METHOD-DIFFERS", "H-VARIABLES-DIFFER")
+
+
+def checks_before_run(session, project, hypothesis_id: str, *, task_id: str | None, goal: str,
+                      method: str, options: dict, selection: dict) -> tuple[int, tuple[Check, ...]]:
+    """(hypothesis number, the checks of PRE_RUN that are not passed) for an
+    analysis as it is set up on screen, before it runs. Pure reading: no
+    engine runs and nothing is written."""
+    from workspace_methods import GOAL_ROLES, METHODS, default_options
+
+    current = project.plan() if project is not None else None
+    if current is None:
+        return 0, ()
+    facts = {f.id: f for f in plan_facts(current["plan"], project.hypothesis_status())}
+    h = facts.get(hypothesis_id)
+    if h is None or not method:
+        return 0, ()
+    options = {**(default_options(METHODS[method]) if method in METHODS else {}),
+               **(options or {})}
+    groups = 0
+    if session.has_data:
+        for role in GOAL_ROLES.get(goal, ()):
+            if role.key in ("group", "a", "b") and selection.get(role.key):
+                groups = max(groups, len(session.group_labels(str(selection.get(role.key)))))
+    family = _family_size(goal, selection) if method in FAMILY_METHODS else 1
+    analysis = AnalysisFacts(task_id or "", "", goal, method, options, dict(selection), family,
+                             groups, ())
+    records = [r for r in project.protocol_records() if r.get("hypothesis_id") == h.id]
+    checks = hypothesis_checks(h, (analysis,), records)
+    return h.number, tuple(c for c in checks if c.key in PRE_RUN and c.state != "passed")
+
+
+def hypothesis_views(session, project) -> tuple[HypothesisView, ...]:
+    """The hypotheses of the project's current plan with their analyses,
+    steps, checks, history and records (empty without a plan)."""
+    current = project.plan() if project is not None else None
+    if current is None:
+        return ()
+    plan = current["plan"]
+    status = project.hypothesis_status()
+    history = project.plan_history()
+    records = project.protocol_records()
+    plan_ids = frozenset(h["id"] for h in plan.get("hypotheses", []))
+    analyses_of: dict[str, list] = {}
+    tasks_of: dict[str, list] = {}
+    for task in session.tasks:
+        if task.hypothesis_id in plan_ids:
+            tasks_of.setdefault(task.hypothesis_id, []).append(task)
+            analyses_of.setdefault(task.hypothesis_id, []).append(analysis_facts(task, session))
+    facts = plan_facts(plan, status)
     views = []
     for fact, h in zip(facts, plan.get("hypotheses", [])):
         label = fact.family.strip().casefold()

@@ -49,7 +49,11 @@ class JourneyTests(unittest.TestCase):
         ws.run(ws.app.pages["analyze"]._execute(
             "groups", {"outcome": "stress_q1", "group": "group"}, {}, {"independent": True}))
         self.assertEqual(tone_of(ws, "result"), "info")
-        self.assertEqual(tone_of(ws, "method"), "success")
+        # Changed deliberately in Stage 37.0b (design §7.6, AC-5, review U10):
+        # a result no longer ticks Design and Method by itself. They come
+        # from the steps of a research task, and this result has none.
+        self.assertEqual(tone_of(ws, "method"), "neutral")
+        self.assertEqual(tone_of(ws, "design"), "neutral")
         self.assertEqual(tone_of(ws, "report"), "neutral")
         ws.click("journey-report")
         self.assertEqual(ws.app.route, "reports")
@@ -62,6 +66,58 @@ class JourneyTests(unittest.TestCase):
         for route in ("home", "settings", "help"):
             ws.app.navigate(route)
             self.assertFalse(ws.find_all("journey-"), route)
+
+
+class TaskStatusTests(unittest.TestCase):
+    """Stage 37.0b (AC-5): the strip shows the steps of the open task, or of
+    the task of the first hypothesis; another task's result ticks nothing."""
+
+    def test_the_strip_follows_the_open_task(self):
+        from test_stage36_ux_baseline import prepared_workspace
+
+        ws = prepared_workspace()
+        self.addCleanup(ws.close)
+        ws.click("nav-analyze")
+        ws.click("goal-relate")
+        self.assertEqual([tone_of(ws, k) for k in ("design", "method", "result")],
+                         ["info", "neutral", "neutral"], "nothing chosen yet")
+        ws.choose("role-x", "UCLA")
+        ws.click("role-y-all-scale")
+        ws.click("alt-batch_correlation-spearman")
+        self.assertEqual(tone_of(ws, "method"), "success", "a method is chosen")
+        self.assertEqual(tone_of(ws, "result"), "neutral", "not run yet")
+        ws.click("guided-run")
+        self.assertEqual(tone_of(ws, "result"), "success")
+        self.assertEqual(tone_of(ws, "report"), "neutral")
+        ws.click("task-add-report")
+        self.assertEqual(tone_of(ws, "report"), "success")
+        # A new analysis on screen: its own steps, not the first task's result.
+        ws.click("task-new")
+        ws.click("goal-compare")
+        self.assertEqual([tone_of(ws, k) for k in ("method", "result", "report")],
+                         ["neutral", "neutral", "neutral"])
+
+    def test_without_an_open_task_the_first_hypothesis_task_counts(self):
+        from test_stage37_ui import run_correlations, write_plan
+        from test_stage36_ux_baseline import prepared_workspace
+
+        ws = prepared_workspace()
+        self.addCleanup(ws.close)
+        write_plan(ws, direction="two-sided")
+        ws.app.navigate("project")
+        ws.click("next-create-analysis")             # H1's task, not run
+        h1_task = ws.app.session.tasks[-1]
+        ws.click("task-new")
+        ws.click("goal-relate")
+        run_correlations(ws)                         # another task, with a result
+        ws.app.pages["analyze"].reset()              # no task on screen now
+        ws.app.navigate("data")
+        self.assertEqual(ws.app.focus_steps()[0].key, "hypothesis")
+        self.assertEqual(tone_of(ws, "result"), "neutral",
+                         "the other task's result does not tick H1's analysis")
+        ws.click("nav-analyze")
+        ws.click(f"task-{h1_task.id}")
+        self.assertEqual(tone_of(ws, "result"), "neutral")
 
 
 class ValueSummaryTests(unittest.TestCase):

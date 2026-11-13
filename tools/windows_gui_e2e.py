@@ -668,7 +668,9 @@ class Gui:
     _footer_cache = (0.0, None)
 
     def footer_top(self):
-        """Where the import review's sticky footer starts (None: no footer)."""
+        """Where a sticky footer starts (None: no footer): the import review's,
+        or (Stage 37.0b) the next-action bar below Data, Analyze, Results and
+        Reports, found by its fixed label "Next step" on its first line."""
         stamp, top = self._footer_cache
         if time.monotonic() - stamp < 2.0:
             return top
@@ -679,6 +681,9 @@ class Gui:
                     for name in (T("imp.back"), T("imp.next"), T("imp.create_draft"))
                     for e in self.query(name, control_type="Button")
                     if e.element_info.rectangle.top > bottom - 260]
+            # The bar's own padding and border lie above its label.
+            tops += [e.element_info.rectangle.top - 6 for e in self.query(T("footer.next_step"))
+                     if e.element_info.rectangle.top > bottom - 480]
             top = min(tops) - 12 if tops else None
         self._footer_cache = (time.monotonic(), top)
         return top

@@ -1002,6 +1002,84 @@ class ProjectStore:
             _log(db, "exported", {"file": destination.name, "questionnaires": included})
         return destination
 
+    # Formats an older version reads, and what its copy leaves out (design §8.6).
+    OLDER_FORMATS = (5,)
+
+    def export_for_format(self, project_id: str, destination: Path, version: int = 5, *,
+                          survey_root: Path | None = None) -> tuple[Path, int]:
+        """A ``.sra`` copy of the project for an older version of the program
+        (Stage 37.0b, design §8.6, AC-11): project format ``version`` (5, the
+        Stage 36.8 release candidate), which that version restores and opens.
+
+        Format 6 only adds the protocol records, so the copy's database is
+        the project's without them: the table, its index and its triggers are
+        dropped and the format is set to 5. Returns the file and how many
+        protocol records were left out; the caller says so. The original
+        project is not written to (it is read through a read-only
+        connection) and keeps its records. A copy that comes back to this
+        version is migrated to format 6 again, after a backup, with no
+        records."""
+        if version not in self.OLDER_FORMATS:
+            raise ProjectError(f"No copy for project format {version} can be made.")
+        folder = self._folder(project_id)
+        destination = Path(destination)
+        if destination.suffix.lower() != ".sra":
+            destination = destination.with_suffix(".sra")
+        files: list[tuple[str, bytes]] = []
+        with tempfile.TemporaryDirectory(prefix="sra-older-") as temp:
+            snapshot = Path(temp) / DB_NAME
+            with closing(_connect(folder / DB_NAME, read_only=True)) as db, \
+                    closing(sqlite3.connect(snapshot)) as out:
+                found = db.execute("PRAGMA user_version").fetchone()[0]
+                if found != SCHEMA_VERSION:
+                    raise ProjectFormatError(f"The project has format {found}; open it first.")
+                db.backup(out)
+                info = _info(db, folder)
+                surveys = [row["survey_id"] for row in db.execute(
+                    "SELECT survey_id FROM questionnaires")]
+            with closing(sqlite3.connect(snapshot)) as db:
+                left_out = int(db.execute("SELECT COUNT(*) FROM protocol_records").fetchone()[0])
+                for statement in ("DROP TRIGGER IF EXISTS protocol_records_no_update",
+                                  "DROP TRIGGER IF EXISTS protocol_records_no_delete",
+                                  "DROP INDEX IF EXISTS protocol_records_hypothesis",
+                                  "DROP TABLE IF EXISTS protocol_records"):
+                    db.execute(statement)
+                db.execute("INSERT INTO events (at, kind, detail) VALUES (?, ?, ?)",
+                           (now(), "copied_for_format", json.dumps(
+                               {"format": version, "from_project": info.id,
+                                "protocol_records_left_out": left_out})))
+                db.execute(f"PRAGMA user_version = {int(version)}")
+                db.commit()
+                db.execute("VACUUM")          # no page of the dropped records stays behind
+            files.append((f"project/{DB_NAME}", snapshot.read_bytes()))
+        for sub in ("datasets", "figures"):
+            for path in sorted((folder / sub).glob("*")) if (folder / sub).is_dir() else []:
+                if path.is_file():
+                    files.append((f"project/{sub}/{path.name}", path.read_bytes()))
+        included = []
+        if survey_root is not None:
+            for survey_id in surveys:
+                survey_file = _survey_file(Path(survey_root), survey_id)
+                if survey_file is not None:
+                    files.append((f"surveys/{survey_file.name}", _read_consistent(survey_file)))
+                    included.append(survey_id)
+        manifest = {
+            "format": PACKAGE_FORMAT, "format_version": PACKAGE_VERSION,
+            "schema_version": int(version), "exported_at": now(),
+            "project": {"id": info.id, "title": info.title},
+            "questionnaires": included, "app": library_versions(),
+            "for_older_version": {"format": int(version), "protocol_records_left_out": left_out},
+            "files": [{"path": name, "size": len(data), "sha256": sha256_bytes(data)}
+                      for name, data in files],
+        }
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+            archive.writestr("manifest.json", json.dumps(manifest, indent=1, ensure_ascii=False))
+            for name, data in files:
+                archive.writestr(name, data)
+        _atomic_write(destination, buffer.getvalue())
+        return destination, left_out
+
     def import_package(self, source: Path, *, survey_root: Path | None = None) -> tuple[ProjectInfo, list[str]]:
         """Restore a ``.sra`` backup as a project; never overwrites anything."""
         warnings: list[str] = []
