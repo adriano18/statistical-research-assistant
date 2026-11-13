@@ -553,6 +553,16 @@ T: dict[str, tuple[str, str, str]] = {
         "{provider} neatgrieza tekstu. Daži modeļi visu atbildes limitu izlieto iekšējai spriešanai. Mēģiniet vēlreiz vai izvēlieties citu modeli iestatījumos.",
         "{provider} не вернул текст. Некоторые модели тратят весь лимит ответа на внутренние рассуждения. Повторите попытку или выберите другую модель в настройках.",
     ),
+    "assistant.error.timeout": (
+        "{provider} did not answer in time, so no draft is shown. The request was not sent again, because {provider} may still process it (and bill it). Try again later, or choose a faster model than “{model}” in Settings → AI providers.",
+        "{provider} neatbildēja laikā, tāpēc melnraksts netiek rādīts. Pieprasījums netika nosūtīts atkārtoti, jo {provider} to joprojām var apstrādāt (un par to iekasēt maksu). Mēģiniet vēlāk vai izvēlieties ātrāku modeli nekā “{model}” sadaļā Iestatījumi → AI pakalpojumu sniedzēji.",
+        "{provider} не ответил вовремя, поэтому черновик не показан. Запрос не отправлен повторно: {provider} может всё ещё обработать его (и выставить за него счёт). Повторите попытку позже или выберите более быструю модель, чем «{model}», в «Настройки» → «Провайдеры ИИ».",
+    ),
+    "assistant.error.unsupported": (
+        "{provider} refused this request for the model “{model}”: the model may not answer a plain text request like this one (for example a model for images, audio or tools), or the request is too long for it. Choose another model in Settings → AI providers.",
+        "{provider} noraidīja šo pieprasījumu modelim “{model}”: šis modelis, iespējams, neatbild uz šādu vienkāršu teksta pieprasījumu (piemēram, tas ir attēlu, audio vai rīku modelis), vai pieprasījums tam ir pārāk garš. Izvēlieties citu modeli sadaļā Iestatījumi → AI pakalpojumu sniedzēji.",
+        "{provider} отклонил этот запрос для модели «{model}»: возможно, модель не отвечает на такие простые текстовые запросы (например, это модель для изображений, аудио или инструментов) или запрос для неё слишком длинный. Выберите другую модель в «Настройки» → «Провайдеры ИИ».",
+    ),
     "assistant.error.malformed": (
         "The reply from {provider} could not be read. Try again.",
         "{provider} atbildi neizdevās nolasīt. Mēģiniet vēlreiz.",

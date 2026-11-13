@@ -55,8 +55,10 @@ ERRORS = {
     "rows_not_anonymous": "rows_not_anonymous", "no_project": "no_project",
     "too_long": "too_long", "cancelled": "cancelled", "not_found": "not_found",
     "empty": "empty", "malformed": "malformed", "too_large": "malformed",
+    "timeout": "timeout", "unsupported": "unsupported",
 }
-NEEDS_SETTINGS = {"not_ready", "no_store", "bad_key", "budget", "not_found", "empty", "unknown"}
+NEEDS_SETTINGS = {"not_ready", "no_store", "bad_key", "budget", "not_found", "empty", "unknown",
+                  "timeout", "unsupported"}
 NEEDS_PERMISSIONS = {"not_allowed", "rows_not_anonymous"}
 REFUSED = {"not_ready", "no_store", "budget", "not_allowed", "rows_not_anonymous",
            "no_project", "too_long"}
@@ -87,6 +89,8 @@ class AssistantPanel:
         self.app = results_page.app
         self.states: dict[int, PanelState] = {}
         self.previewed: dict[int, ai_assist.Request] = {}
+        # The provider and model each preview names: Send goes to no other.
+        self.destinations: dict[int, tuple[str, str]] = {}
         # Extra arguments for the provider calls; tests point them at a local
         # mock server (``base=``). Empty in the application.
         self.http: dict = {}
@@ -203,6 +207,7 @@ class AssistantPanel:
             state.error = (refused.codes[0] if refused.codes else "unknown", {})
             return controls
         self.previewed[entry.id] = request
+        self.destinations[entry.id] = (setup.provider, setup.model)
         controls.append(self._preview(entry, request, setup))
         too_long = request.characters > ai_assist.MAX_PROMPT_CHARS
         if too_long:
@@ -406,8 +411,10 @@ class AssistantPanel:
             app.render()
             return
         shown = self.previewed.get(entry_id)
-        if shown is None or shown.prompt != request.prompt:
-            # Something changed after the preview was drawn: show it first.
+        if (shown is None or shown.prompt != request.prompt
+                or self.destinations.get(entry_id) != (setup.provider, setup.model)):
+            # Something changed after the preview was drawn (the text, or the
+            # provider or model in Settings, e.g. in another window): show it first.
             state.notice = (app.t("assistant.preview_changed"), "warning")
             app.render()
             return

@@ -20,7 +20,9 @@ was sent is listed as unverified, and the researcher accepts, edits or
 discards it. No task returns or changes a number of a result. The
 project's activity log (or, without a project, ``<data root>/ai/
 requests.jsonl``) records provider, exact model, source types, task,
-outcome and tokens — never the prompt or the reply.
+outcome and tokens — never the prompt or the reply. A request whose project
+was closed while it was out (another project was opened) is recorded in
+``requests.jsonl`` with the project's id.
 """
 
 from __future__ import annotations
@@ -405,19 +407,35 @@ def audit(project, data_root, *, provider: str, model: str, sources, tokens: int
           task: str, outcome: str) -> bool:
     """Record a request that went (or may have gone) to the provider: in the
     project's activity log, or without a project in the local log. Never the
-    prompt or the reply. False when it could not be recorded."""
+    prompt or the reply. False when it could not be recorded in the project's
+    log (or, without a project, in the local log).
+
+    When the project's log cannot take it — another project was opened while
+    the request was out, so this one is closed — the request goes to the
+    local log with the project's id, so the transfer stays on record."""
     try:
-        if project is not None:
+        fields = {"provider": str(provider)[:40], "model": str(model)[:200],
+                  "sources": sorted(map(str, sources)), "tokens": int(tokens),
+                  "task": str(task)[:40], "outcome": str(outcome)[:40]}
+    except Exception:
+        return False
+    if project is not None:
+        try:
             project.log_ai_request(provider, model, sources, tokens, task=task, outcome=outcome)
             return True
-        if data_root is None:
+        except Exception:
+            _log_locally(data_root, {**fields, "project": str(getattr(project, "id", ""))[:80]})
             return False
+    return _log_locally(data_root, fields)
+
+
+def _log_locally(data_root, fields: dict) -> bool:
+    if data_root is None:
+        return False
+    try:
         path = local_log_path(data_root)
         path.parent.mkdir(parents=True, exist_ok=True)
-        entry = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                 "provider": str(provider)[:40], "model": str(model)[:200],
-                 "sources": sorted(map(str, sources)), "tokens": int(tokens),
-                 "task": str(task)[:40], "outcome": str(outcome)[:40]}
+        entry = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **fields}
         with path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(entry) + "\n")
         return True
