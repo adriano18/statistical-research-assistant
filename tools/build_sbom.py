@@ -41,6 +41,15 @@ FROM_LICENCE_FILE = {
     "cycler": "BSD-3-Clause", "kiwisolver": "BSD-3-Clause", "scipy": "BSD-3-Clause",
     "seaborn": "BSD-3-Clause", "matplotlib": "LicenseRef-Matplotlib (PSF-based)",
 }
+# Libraries compiled into a package's wheel under their own licence, as the
+# licence file of that wheel states (checked for requirements.txt,
+# 2026-11-13): listed as components of the package (CycloneDX assembly).
+BUNDLED_IN_WHEEL = {
+    "pyreadstat": ({"name": "ReadStat", "licence": "MIT",
+                    "url": "https://github.com/WizardMac/ReadStat",
+                    "note": "C library compiled into pyreadstat's extension modules; "
+                            "licence text in pyreadstat's dist-info/licenses/LICENSE"},),
+}
 
 
 def installed_license(name: str) -> tuple[str, str]:
@@ -90,6 +99,14 @@ def python_components(lock: dict) -> list[dict]:
             "properties": [{"name": "sra:licence-source", "value": origin},
                            {"name": "sra:lock", "value": "requirements.txt"}],
         })
+        bundled = [{"type": "library",
+                    "bom-ref": f"pkg:pypi/{name}@{pin.version}#{inner['name']}",
+                    "name": inner["name"], "licenses": [{"expression": inner["licence"]}],
+                    "description": inner["note"],
+                    "externalReferences": [{"type": "website", "url": inner["url"]}]}
+                   for inner in BUNDLED_IN_WHEEL.get(name, ())]
+        if bundled:
+            components[-1]["components"] = bundled
     return components
 
 
@@ -178,13 +195,27 @@ def licence_of(component: dict) -> str:
     return entry.get("expression") or entry.get("license", {}).get("name", "")
 
 
+def all_components(document: dict) -> list[dict]:
+    """Every component, those compiled into another one included."""
+    found = []
+    for component in document["components"]:
+        found.append(component)
+        found.extend(component.get("components", ()))
+    return found
+
+
 def licences_markdown(document: dict) -> str:
     lines = ["| Component | Version | Licence | Copyleft | Kind |", "|---|---|---|---|---|"]
     for component in document["components"]:
-        licence = licence_of(component)
-        flag = "yes" if COPYLEFT.search(licence) else ""
-        kind = component["bom-ref"].split("/")[0].replace("pkg:", "")
-        lines.append(f"| {component['name']} | {component['version']} | {licence} | {flag} | {kind} |")
+        for item in (component, *component.get("components", ())):
+            licence = licence_of(item)
+            flag = "yes" if COPYLEFT.search(licence) else ""
+            kind = component["bom-ref"].split("/")[0].replace("pkg:", "")
+            if item is not component:
+                kind += f" (inside {component['name']})"
+            version = item.get("version") or (
+                "" if item is component else f"in {component['name']} {component['version']}")
+            lines.append(f"| {item['name']} | {version} | {licence} | {flag} | {kind} |")
     return "\n".join(lines) + "\n"
 
 
@@ -197,8 +228,9 @@ def main(argv=None) -> int:
     document = sbom(args.pubspec_lock)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
-    copyleft = [c for c in document["components"] if COPYLEFT.search(licence_of(c))]
-    print(f"{len(document['components'])} components, {len(copyleft)} with copyleft terms: "
+    everything = all_components(document)
+    copyleft = [c for c in everything if COPYLEFT.search(licence_of(c))]
+    print(f"{len(everything)} components, {len(copyleft)} with copyleft terms: "
           + ", ".join(f"{c['name']} ({licence_of(c)})" for c in copyleft))
     if args.licenses_md:
         args.licenses_md.write_text(licences_markdown(document), encoding="utf-8")
