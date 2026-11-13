@@ -510,6 +510,46 @@ class IsolationTests(unittest.TestCase):
                             "a deleted project takes its library to the trash")
 
 
+# ============================================================ self-test
+class SelfTestTests(unittest.TestCase):
+    """The packaged self-test (``SRA_ANALYSIS_SELFTEST``) checks FTS5 in the
+    runtime's SQLite and an offline search; ``--compare`` with the source
+    checkout flags a runtime whose search backend or ranking differs."""
+
+    def test_the_library_step_reports_fts5_and_finds_every_language(self):
+        import analysis_selftest
+
+        errors: list[str] = []
+        details, step = analysis_selftest._library(errors)
+        self.assertEqual(errors, [])
+        self.assertTrue(step["ok"])
+        self.assertEqual((details["fts5"], details["backend"]), (True, "fts5"))
+        self.assertEqual(details["sqlite"], rl.capabilities().sqlite)
+        self.assertEqual((details["documents"], details["integrity"]), (4, []))
+        self.assertEqual(sorted(details["ranked"]), ["en", "lv", "ru"])
+        self.assertTrue(all(details["ranked"].values()))
+        self.assertGreater(details["page_png_bytes"], 1000)
+        again, second = analysis_selftest._library([])
+        self.assertEqual(second["report_sha256"], step["report_sha256"],
+                         "the hash does not depend on file timestamps")
+
+    def test_a_runtime_without_fts5_does_not_compare_equal(self):
+        import analysis_selftest
+
+        _, source = analysis_selftest._library([])
+        missing = rl.Capabilities("3.31.1", False, False, False)
+        with mock.patch.object(rl, "capabilities", return_value=missing), \
+                mock.patch.object(rl.Capabilities, "tokenizer_works", return_value=False):
+            details, packaged = analysis_selftest._library([])
+        self.assertEqual(details["backend"], "python")
+        self.assertIn("fallback", details["note"])
+        self.assertTrue(packaged["ok"], "the fallback still finds the passages")
+        self.assertEqual(details["ranked"], analysis_selftest._library([])[0]["ranked"])
+        problems = analysis_selftest.compare({"steps": {"research_library": source}},
+                                             {"steps": {"research_library": packaged}})
+        self.assertEqual(problems, ["research_library: report differs from the source checkout"])
+
+
 # =============================================================== offline
 class OfflineTests(LibraryCase):
     def test_nothing_opens_a_network_connection(self):
