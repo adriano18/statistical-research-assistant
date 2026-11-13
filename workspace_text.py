@@ -3300,6 +3300,125 @@ T.update({
 })
 
 
+# Stage 37 (Issue #68, review UX-3): the variable panel of the role pickers
+# and reuse (duplicate a task, repeat a result with changes, recent methods,
+# the items of a scale score). LV/RU drafts — needs native review
+# (docs/STAGE37_UX_VARIABLES.md lists the keys).
+T.update({
+    "vars.search": ("Find variables", "Meklēt mainīgos", "Найти переменные"),
+    "vars.search_hint": (
+        "A name, a pattern such as {pattern} or a range such as {range}. Enter selects what is shown.",
+        "Nosaukums, šablons, piemēram, {pattern}, vai diapazons, piemēram, {range}. Enter atlasa redzamos.",
+        "Имя, шаблон, например {pattern}, или диапазон, например {range}. Enter выбирает показанные."),
+    "vars.group": ("All {pattern} ({count})", "Visi {pattern} ({count})", "Все {pattern} ({count})"),
+    "vars.group_tip": (
+        "Select the {count} variables whose names are {stem} followed by a number",
+        "Atlasīt {count} mainīgos, kuru nosaukums ir {stem} un numurs",
+        "Выбрать {count} переменных с именем {stem} и номером"),
+    "vars.ungroup": ("Unselect {pattern} ({count})", "Noņemt {pattern} ({count})",
+                     "Снять {pattern} ({count})"),
+    "vars.ungroup_tip": ("All {count} are selected: unselect them",
+                         "Visi {count} ir atlasīti: noņemt atlasi",
+                         "Выбраны все {count}: снять выбор"),
+    "vars.more_groups": (
+        "{count} more name groups: type a pattern to find them.",
+        "Vēl {count} nosaukumu grupas: ierakstiet šablonu, lai tās atrastu.",
+        "Ещё групп имён: {count}. Введите шаблон, чтобы найти их."),
+    "vars.select_shown": ("Select all shown ({count})", "Atlasīt visus redzamos ({count})",
+                          "Выбрать все показанные ({count})"),
+    "vars.unselect_shown": ("Unselect shown ({count})", "Noņemt redzamos ({count})",
+                            "Снять показанные ({count})"),
+    "vars.count": ("Selected: {selected} of {total}", "Atlasīti: {selected} no {total}",
+                   "Выбрано: {selected} из {total}"),
+    "vars.count_shown": ("Selected: {selected} of {total} · shown: {shown}",
+                         "Atlasīti: {selected} no {total} · redzami: {shown}",
+                         "Выбрано: {selected} из {total} · показано: {shown}"),
+    "vars.none_match": ("No offered variable matches “{query}”.",
+                        "Neviens piedāvātais mainīgais neatbilst “{query}”.",
+                        "Ни одна предложенная переменная не подходит под «{query}»."),
+    "vars.show_all": ("Show all {count}", "Rādīt visus {count}", "Показать все ({count})"),
+    "vars.show_chosen": ("Show only the selected", "Rādīt tikai atlasītos",
+                         "Показать только выбранные"),
+    "vars.collapsed": (
+        "{count} more variables are listed after a search, a name group or Show all.",
+        "Vēl {count} mainīgie tiek parādīti pēc meklēšanas, nosaukumu grupas vai “Rādīt visus”.",
+        "Ещё переменных: {count}. Они показываются после поиска, выбора группы имён или «Показать все»."),
+    "vars.none_offered": ("No variable of this dataset can take this role.",
+                          "Neviens šīs datu kopas mainīgais nevar būt šajā lomā.",
+                          "Ни одна переменная этого набора не подходит для этой роли."),
+    "vars.not_offered": ("Not offered here:", "Šeit netiek piedāvāti:", "Здесь не предлагаются:"),
+    "vars.more": ("{names} and {count} more", "{names} un vēl {count}", "{names} и ещё {count}"),
+    "vars.why.identifier": ("{names} — identifier", "{names} — identifikators",
+                            "{names} — идентификатор"),
+    "vars.why.role": ("{names} — already {role}", "{names} — jau izvēlēts: {role}",
+                      "{names} — уже выбрано: {role}"),
+    "vars.why.level": ("{names} — {level}; this role takes {allowed}",
+                       "{names} — {level}; šai lomai der: {allowed}",
+                       "{names} — {level}; для этой роли подходят: {allowed}"),
+    "vars.why.binary": ("{names} — not coded 0/1", "{names} — nav kodēts 0/1",
+                        "{names} — не закодировано как 0/1"),
+    "vars.why.not_numeric": ("{names} — not numeric", "{names} — nav skaitlisks",
+                             "{names} — не числовая"),
+    # The role a variable already has, in "already …".
+    "vars.role.outcome": ("the outcome", "rezultāts", "зависимая переменная"),
+    "vars.role.outcomes": ("an outcome", "rezultāts", "зависимая переменная"),
+    "vars.role.group": ("the grouping variable", "grupu mainīgais", "группирующая переменная"),
+    "vars.role.covariates": ("a covariate", "kovariāts", "ковариата"),
+    "vars.role.measures": ("a measurement", "mērījums", "измерение"),
+    "vars.role.before": ("the first measurement", "pirmais mērījums", "первое измерение"),
+    "vars.role.after": ("the second measurement", "otrais mērījums", "второе измерение"),
+    "vars.role.x": ("the first variable", "pirmais mainīgais", "первая переменная"),
+    "vars.role.y": ("a related variable", "saistāmais mainīgais", "связываемая переменная"),
+    "vars.role.ys": ("a related variable", "saistāmais mainīgais", "связываемая переменная"),
+    "vars.role.a": ("the first categorical variable", "pirmais kategoriālais mainīgais",
+                    "первая категориальная переменная"),
+    "vars.role.b": ("the second categorical variable", "otrais kategoriālais mainīgais",
+                    "вторая категориальная переменная"),
+    "vars.role.predictors": ("a predictor", "prognozētājs", "предиктор"),
+    "vars.role.items": ("an item", "jautājums", "пункт"),
+    "vars.role.variable": ("the variable", "mainīgais", "переменная"),
+    # The items of a scale score (Data → Prepare), for its reliability.
+    "pick.score_items": ("Items of {score} ({count})", "{score} jautājumi ({count})",
+                         "Пункты {score} ({count})"),
+    "pick.score_items_tip": (
+        "The items {score} was scored from in Data → Prepare",
+        "Jautājumi, no kuriem {score} aprēķināts sadaļā “Dati” → “Sagatavot”",
+        "Пункты, из которых {score} рассчитан в разделе «Данные» → «Подготовка»"),
+    # Reuse: a task duplicated, a result repeated with changes.
+    "task.duplicate_tip": (
+        "Duplicate “{title}”: a new task with the same question, variables and method",
+        "Dublēt “{title}”: jauns uzdevums ar to pašu jautājumu, mainīgajiem un metodi",
+        "Дублировать «{title}»: новая задача с тем же вопросом, переменными и методом"),
+    "task.copy_notice": (
+        "A copy of “{title}”: the same question, variables and method. It becomes a new task when it runs; the original stays as it is. Every confirmation is asked again, and the link to a hypothesis is chosen again in step 1.",
+        "“{title}” kopija: tas pats jautājums, mainīgie un metode. Pēc aprēķina tā kļūst par jaunu uzdevumu; oriģināls paliek nemainīgs. Katrs apstiprinājums tiek prasīts vēlreiz, un saiti ar hipotēzi izvēlas vēlreiz 1. solī.",
+        "Копия «{title}»: тот же вопрос, переменные и метод. После расчёта она становится новой задачей; оригинал не меняется. Каждое подтверждение запрашивается снова, а связь с гипотезой выбирается заново на шаге 1."),
+    "results.repeat": ("Repeat with changes", "Atkārtot ar izmaiņām", "Повторить с изменениями"),
+    "results.repeat_tip": (
+        "Open this analysis as a new task with the same variables; the confirmations are asked again",
+        "Atvērt šo analīzi kā jaunu uzdevumu ar tiem pašiem mainīgajiem; apstiprinājumi tiek prasīti vēlreiz",
+        "Открыть этот анализ как новую задачу с теми же переменными; подтверждения запрашиваются снова"),
+    "results.repeat_named": ("Repeat “{title}” with changes", "Atkārtot “{title}” ar izmaiņām",
+                             "Повторить «{title}» с изменениями"),
+    "results.others": ("Other results", "Citi rezultāti", "Другие результаты"),
+    "results.other_open_tip": ("Show this result from its beginning",
+                               "Rādīt šo rezultātu no sākuma",
+                               "Показать этот результат с начала"),
+    # Recent methods (All methods).
+    "catalog.recent": ("Recently used", "Nesen izmantotās", "Недавно использованные"),
+    "catalog.recent_last": ("Last: {title} · {time}", "Pēdējā: {title} · {time}",
+                            "Последний: {title} · {time}"),
+    "catalog.recent_tip": (
+        "Opens with the variables and options of its last run; every confirmation is asked again",
+        "Atveras ar pēdējā aprēķina mainīgajiem un iestatījumiem; katrs apstiprinājums tiek prasīts vēlreiz",
+        "Открывается с переменными и параметрами последнего расчёта; каждое подтверждение запрашивается снова"),
+    "analyze.recent_notice": (
+        "Filled in from your last {method} ({time}): the same variables and options. Every confirmation is asked again.",
+        "Aizpildīts no jūsu pēdējās metodes {method} ({time}): tie paši mainīgie un iestatījumi. Katrs apstiprinājums tiek prasīts vēlreiz.",
+        "Заполнено по вашему последнему расчёту «{method}» ({time}): те же переменные и параметры. Каждое подтверждение запрашивается снова."),
+})
+
+
 # Engine-facing confirmation and option labels: canonical English (kept in
 # provenance) → displayed LV/RU. Method names stay international.
 LABELS: dict[str, tuple[str, str]] = {

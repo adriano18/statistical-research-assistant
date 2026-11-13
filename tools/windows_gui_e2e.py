@@ -62,6 +62,13 @@ Journeys (synthetic data only; see JOURNEYS):
                  (review K2, spec G) report order, a note, a reviewed check,
                  title, a section left out and Latvian, kept over a restart
                  and in the Word report; none of it in a second project
+* variable-picker
+                 (Stage 37, Issue #68, review UX-3) the 98-column master
+                 fixture: variables not offered as items are named with the
+                 reason; 20 items chosen by their name group in one action;
+                 α as numpy computes it; Repeat with changes: a new task,
+                 nothing confirmed; one item found by typing and left out
+                 with Tab and Space; α of 19 items; the first task unchanged
 
 Every step is recorded in OUT_DIR: a screenshot, the UI Automation tree
 when something is missing, an animated recording per journey
@@ -3854,6 +3861,190 @@ def journey_report_composition(gui: Gui, work: Path, journey: Journey) -> None:
         shot_at(gui, box, "second project report settings")
 
 
+# ---------------------- Stage 37 (Issue #68, review UX-3): the variable panel
+VARIABLE_PANEL_PROJECT = "Fictional variable picker study"
+PANEL_STEM = "SYN_LON_"
+PANEL_ITEMS = tuple(f"{PANEL_STEM}{n:02d}" for n in range(1, 21))
+PANEL_DROPPED = "SYN_LON_20"           # the one item the repeated analysis leaves out
+# Item diagnostics of more than 12 items report α without ω:
+# "Cronbach’s α = 0.91; McDonald’s ω = Not calculated; k = 20, n = 180."
+ALPHA_SUMMARY = re.compile(r"Cronbach’s α = (?P<alpha>[−-]?\d*\.\d+);[^;]*; "
+                           r"k = (?P<k>\d+), n = (?P<n>\d+)")
+# What each part of the journey costs a researcher, counted by the rule of
+# tools/ux_metrics.py (a click or a box 1; typed fields apart).
+PANEL_ACTIONS = {
+    "items_by_name_group": {"clicks": 1, "boxes": 0, "typed": 0},
+    "repeat_with_one_item_fewer": {"clicks": 2, "boxes": 2, "typed": 1},
+}
+
+
+def master_fixture(folder: Path) -> Path:
+    """The Stage 37 master fixture (180 fictional cases, 98 columns; its
+    SYN_ items are invented), written by its standard-library generator."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "stage37_master_fixture", ROOT / "tests" / "fixtures" / "stage37" /
+        "generate_master_fixture.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    csv_path, _ = module.generate(Path(folder) / "stage37-master")
+    return Path(csv_path)
+
+
+def panel_offered(csv_path: Path) -> int:
+    """How many variables the item panel offers once the suggested levels
+    are accepted: every column but the identifier and the two-valued code
+    (suggested as nominal), as the program suggests them."""
+    import pandas as pd
+
+    from workspace_state import build_dictionary
+
+    variables = build_dictionary(pd.read_csv(csv_path))
+    return sum(1 for info in variables.values() if info.suggested in ("ordinal", "scale"))
+
+
+def panel_texts(offered: int) -> dict[str, str]:
+    """The names and texts the journey presses and waits for."""
+    pattern, k = f"{PANEL_STEM}*", len(PANEL_ITEMS)
+    return {
+        "group": T("vars.group", pattern=pattern, count=k),
+        "search": T("vars.search"),
+        "selected": T("vars.count", selected=k, total=offered),
+        "found": T("vars.count_shown", selected=k, total=offered, shown=1),
+        "left_out": T("vars.count_shown", selected=k - 1, total=offered, shown=1),
+        "identifier": T("vars.why.identifier", names="participant_code"),
+        "repeat": T("results.repeat"),
+        "dropped": option_label(PANEL_DROPPED, "ordinal"),
+    }
+
+
+def focus_on(gui: Gui, name: str, tabs: int = 25) -> list[str]:
+    """Press Tab until the keyboard focus is on the control named ``name``;
+    the names the focus passed, for the record."""
+    passed = []
+    for _ in range(tabs):
+        gui.keys("{TAB}")
+        focused = gui.focused()
+        passed.append(f"{focused.control_type}: {focused.name or ''}"[:80])
+        if (focused.name or "") == name:
+            return passed
+    raise StepFailure(f"Tab never reached {name!r}; the focus passed {passed}")
+
+
+def journey_variable_picker(gui: Gui, work: Path, journey: Journey) -> None:
+    """Issue #68 (review UX-3, U2 and D7) on the packaged program, on the
+    98-column master fixture: the item list offers only what a scale's items
+    can be and says why not the rest; the 20 SYN_LON items are chosen by
+    their name group in one action; their reliability agrees with the
+    driver's own numpy α. Then *Repeat with changes* opens the analysis as
+    a new task with the same 20 items and NOTHING confirmed (K1); one item
+    is found by typing and left out with the keyboard (Tab, Space); the
+    construct is confirmed again; α of the 19 items agrees with numpy; the
+    project holds two tasks, the first unchanged. The researcher's actions
+    are counted (PANEL_ACTIONS). tests/test_stage37_variable_panel.py walks
+    the same flow."""
+    csv_path = master_fixture(work)
+    offered = panel_offered(csv_path)
+    texts = panel_texts(offered)
+    alpha, n = independent_alpha(csv_path, PANEL_ITEMS)
+    fewer, same_n = independent_alpha(csv_path, PANEL_ITEMS[:-1])
+    journey.facts["driver"] = {"alpha_20_numpy": round(alpha, 6), "alpha_19_numpy":
+                               round(fewer, 6), "n_complete": n, "offered": offered}
+    create_project(gui, journey, VARIABLE_PANEL_PROJECT)
+    open_data(gui, journey, csv_path)
+    with journey.step("confirm the measurement levels of the 98 variables"):
+        nav(gui, "nav.data")
+        # The bulk acceptance sits below the 98-row dictionary (≈ 5,500 px):
+        # further than Gui.find scrolls.
+        find_text(gui, T("data.accept_confirm"), exact=True, control_type="CheckBox",
+                  timeout=180, moves=80)
+        gui.check(T("data.accept_confirm"))
+        gui.click(T("data.accept_suggestions"), control_type="Button")
+        gui.wait_text(T("next.analyze"))
+    actions = {}
+    with journey.step("the item list says which variables it does not offer, and why"):
+        nav(gui, "nav.analyze")
+        gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
+        click_chip(gui, T("goal.scale"))
+        element, text = find_text(gui, texts["identifier"])
+        journey.facts["not_offered"] = text
+        expect("employed_code" in text, f"the nominal code is not explained: {text!r}")
+        expect(not gui.query(regex=r"^participant_code · ", control_type="CheckBox"),
+               "the identifier is offered as an item")
+        shot_at(gui, element, "variables not offered, with the reason")
+    with journey.step(f"the 20 {PANEL_STEM} items in one action: their name group"):
+        # A button with a tooltip may carry it in its name ("…\n<tooltip>").
+        gui.click(regex="^" + re.escape(texts["group"]) + CHIP_END, control_type="Button")
+        actions["items_by_name_group"] = {"clicks": 1, "boxes": 0, "typed": 0}
+        element, _ = find_text(gui, texts["selected"], exact=True)
+        shot_at(gui, element, "twenty items selected by their name group")
+    with journey.step("one construct confirmed, Run: α as the driver computes it"):
+        for confirmation in scale_check_confirmations():
+            gui.check(confirmation)
+        gui.click(regex=run_button(), control_type="Button")
+        element, text = find_text(gui, regex=ALPHA_SUMMARY.pattern, timeout=300, first="up")
+        shown = ALPHA_SUMMARY.search(text).groupdict()
+        journey.facts["first_summary"] = text
+        expect((int(shown["k"]), int(shown["n"])) == (len(PANEL_ITEMS), n),
+               f"k = {shown['k']}, n = {shown['n']}; expected 20 items and {n} respondents")
+        expect(same_as_shown(alpha, shown["alpha"]),
+               f"α shown {shown['alpha']}, the driver's numpy α {alpha:.4f}")
+        shot_at(gui, element, "alpha of the twenty items")
+    repeat = {"clicks": 0, "boxes": 0, "typed": 0}
+    with journey.step("Repeat with changes: a new task, the same 20 items, nothing confirmed"):
+        gui.click(regex="^" + re.escape(texts["repeat"]) + CHIP_END, control_type="Button")
+        repeat["clicks"] += 1
+        find_text(gui, regex=template_pattern("task.copy_notice").pattern, first="up")
+        find_text(gui, texts["selected"], exact=True)
+        states = confirmation_states(gui, scale_check_confirmations())
+        journey.facts["confirmations_in_the_copy"] = states
+        expect(all(state == 0 for state in states.values()),
+               f"a confirmation was copied into the new task: {states}")
+    with journey.step(f"keyboard: {PANEL_DROPPED} found by typing, left out with Tab and Space"):
+        gui.type_into(texts["search"], PANEL_DROPPED)
+        repeat["typed"] += 1
+        find_text(gui, texts["found"], exact=True)
+        journey.facts["tab_order"] = focus_on(gui, texts["dropped"])
+        gui.keys("{SPACE}")
+        repeat["boxes"] += 1
+        element, _ = find_text(gui, texts["left_out"], exact=True)
+        shot_at(gui, element, "one item left out with the keyboard")
+    with journey.step("the construct confirmed again, Run: α of 19 items as numpy computes it"):
+        for confirmation in scale_check_confirmations():
+            gui.check(confirmation)
+            repeat["boxes"] += 1
+        gui.click(regex=run_button(), control_type="Button")
+        repeat["clicks"] += 1
+        element, text = find_text(gui, regex=r"k = 19, n = \d+", timeout=300, first="up")
+        shown = ALPHA_SUMMARY.search(text).groupdict()
+        journey.facts["second_summary"] = text
+        expect(int(shown["n"]) == same_n and same_as_shown(fewer, shown["alpha"]),
+               f"α shown {shown['alpha']} (n = {shown['n']}), the driver's numpy α of the "
+               f"19 items {fewer:.4f} (n = {same_n})")
+        shot_at(gui, element, "alpha of nineteen items")
+    actions["repeat_with_one_item_fewer"] = repeat
+    journey.facts["actions"] = actions
+    expect(actions == PANEL_ACTIONS, f"the journey took {actions}, not {PANEL_ACTIONS}")
+    with journey.step("two tasks in the project: the first unchanged, the copy re-confirmed"):
+        rows = project_query(gui, VARIABLE_PANEL_PROJECT,
+                             "SELECT id, selection, confirms, state FROM research_tasks "
+                             "ORDER BY position")
+        tasks = [{"id": task_id, "items": json.loads(selection).get("items") or [],
+                  "confirms": json.loads(confirms), "state": json.loads(state)}
+                 for task_id, selection, confirms, state in rows]
+        journey.facts["tasks"] = [{"items": len(t["items"]), "confirms": t["confirms"],
+                                   "copied_from_first": t["state"].get("copied_from")
+                                   == tasks[0]["id"]} for t in tasks]
+        expect(len(tasks) == 2, f"{len(tasks)} tasks in the project")
+        expect(tasks[0]["items"] == list(PANEL_ITEMS), "the first task was changed")
+        expect(tasks[1]["items"] == list(PANEL_ITEMS[:-1]), "the copy holds other items")
+        expect(tasks[1]["state"].get("copied_from") == tasks[0]["id"],
+               "the copy does not name the task it was copied from")
+        expect(tasks[1]["confirms"] == {"one_construct": True},
+               f"the copy's confirmations: {tasks[1]['confirms']}")
+
+
 # Journeys that prepare the machine and start the program themselves.
 STARTS_ITSELF = {"legacy-migration", "installed-reopen", "update-a-to-b"}
 
@@ -3893,6 +4084,9 @@ JOURNEYS = {
     # Stage 36.8 review findings K1 and K2 (#62), after the journeys above.
     "confirmations": journey_confirmations,
     "report-composition": journey_report_composition,
+    # Stage 37 (Issue #68, review UX-3): the variable panel and repeating an
+    # analysis as a new task, after the 18 journeys above.
+    "variable-picker": journey_variable_picker,
 }
 
 

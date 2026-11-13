@@ -103,7 +103,8 @@ import workspace_tokens as tk  # noqa: E402
 
 MASTER_GENERATOR = ROOT / "tests" / "fixtures" / "stage37" / "generate_master_fixture.py"
 PROJECT_TITLE = "Fictional master study"
-LON_ITEMS = tuple(f"SYN_LON_{n:02d}" for n in range(1, 21))
+LON_STEM = "SYN_LON_"
+LON_ITEMS = tuple(f"{LON_STEM}{n:02d}" for n in range(1, 21))
 LON_SCORE = "SYN_LON_MEAN"
 STATUS_BAR = 30.0          # the status line under the page (13-px text, 6-px padding)
 PERSONAS = {"T1": "novice", "T2": "novice", "T3": "novice", "T4": "novice",
@@ -811,6 +812,32 @@ class Meter(CountingWorkspace):
         visible, content = layout.inner.get(scroller, (h, h))
         self._move(y, h, content, read=read, key=f"{self.app.route}#{scroller}", view=visible)
 
+    def reach(self, data: str) -> float:
+        """How far (estimated) the page must scroll to show the control
+        ``data``, without scrolling: 0 when it is on screen."""
+        control = self.find_where(lambda c: getattr(c, "data", None) == data)
+        layout = self.layout()
+        box = layout.boxes.get(id(control)) if layout is not None and control else None
+        if box is None or box[0] is not None:
+            return 0.0
+        _, y, h = box
+        offset = min(self.scroll.get(self.app.route, 0.0), max(0.0, layout.height - self.viewport))
+        if y < offset:
+            return offset - y
+        return max(0.0, y + min(h, self.viewport) - self.viewport - offset)
+
+    def nearest(self, *candidates: str) -> tuple[str | None, float]:
+        """Of the controls ``candidates`` (data keys) that do the same, the one
+        on the page that needs the least scrolling, and that distance."""
+        best, distance = None, math.inf
+        for data in candidates:
+            if self.find_where(lambda c, d=data: getattr(c, "data", None) == d) is None:
+                continue
+            away = self.reach(data)
+            if away < distance:
+                best, distance = data, away
+        return best, distance
+
     def read(self, data: str) -> None:
         """The researcher reads ``data`` to its end (scroll only, no interaction)."""
         control = self.find(data)
@@ -828,7 +855,12 @@ class Meter(CountingWorkspace):
         return set(map(str, session.df.columns)) if session.has_data else set()
 
     def _selection_of(self, data: str, value) -> str | None:
-        """The variable an explicit tick or dropdown choice puts into a role."""
+        """The variable an explicit tick or dropdown choice puts into a role.
+        The variable panel's own controls (``role-items:search``, …) are not
+        a variable's box: a ``:`` never follows a role key in a box's key."""
+        head = data.split("-", 2)
+        if len(head) > 1 and ":" in head[1]:
+            return None
         for prefix in ("role-", "form-"):
             if not data.startswith(prefix) or data.startswith(("form-option-", "form-confirm-",
                                                                "form-level-", "form-run")):
@@ -852,6 +884,10 @@ class Meter(CountingWorkspace):
         for roles in (page.selection, page.form_roles):
             for value in roles.values():
                 chosen.update(value if isinstance(value, list) else [value] if value else [])
+        # Stage 37: the items of a scale score, chosen in Data → Prepare.
+        picker = getattr(self.app.pages.get("data"), "items_picker", None)
+        if picker is not None and picker.names:
+            chosen.update(picker.selected())
         return chosen
 
     def _observe(self, kind: str, control, label: str, run, *, value=None, field=False):
@@ -1089,8 +1125,12 @@ def novice(rec: Recorder, root: Path, files: dict, *, width: int, height: int) -
             ws.choose_control(prep["method"], "Transformation", "scale")
             prep = _preparation(ws)
             seg.facts["prepare_list_choices"] = len(prep["items"])
-            for item in LON_ITEMS:
-                ws.check_control(prep["items"][item], item)
+            group = f"prep-items:group:{LON_STEM}"
+            if present(ws, group):
+                ws.click(group)                # the 20 items by their name group (Stage 37)
+            else:
+                for item in LON_ITEMS:
+                    ws.check_control(prep["items"][item], item)
             ws.type_control(prep["target"], "New variable name", LON_SCORE)
             ws.click_control(prep["apply"], "Apply transformation")
             ws.click_control(_preparation(ws)["use"], "Use working copy in analysis")
@@ -1105,10 +1145,17 @@ def novice(rec: Recorder, root: Path, files: dict, *, width: int, height: int) -
             if not ws.find_all("goal-scale"):
                 ws.click("goal-change")
             ws.click("goal-scale")
-            seg.facts["item_picker_choices"] = sum(
-                isinstance(c, ft.Checkbox) for c in ws.find_all("role-items-"))
-            for item in LON_ITEMS:
-                ws.check(f"role-items-{item}")
+            seg.facts["item_picker_choices"] = item_choices(ws)
+            # Stage 37: the items the score was made from, in one action (or
+            # their name group); before, one box per item.
+            for quick in (f"role-items:score:{LON_SCORE}", f"role-items:group:{LON_STEM}"):
+                if present(ws, quick):
+                    ws.click(quick)
+                    seg.facts["items_by"] = quick.split(":")[1]
+                    break
+            else:
+                for item in LON_ITEMS:
+                    ws.check(f"role-items-{item}")
             for control in ws.find_all("design-confirm-"):
                 ws.check(control.data)
             ws.click("guided-run")
@@ -1166,10 +1213,13 @@ def supervisor(rec: Recorder, root: Path, facts: dict, *, width: int, height: in
             reviewed = []
             for entry in reversed(results):
                 if not ws.find_all(f"result-detail-{entry.id}"):
-                    if ws.find_all("results-picker"):      # compact window: a dropdown
+                    # The results list, or (Stage 37) "Other results" at the
+                    # end of the result just read: whichever is nearer.
+                    route, _ = ws.nearest(f"result-other-{entry.id}", f"result-{entry.id}")
+                    if route is not None:
+                        ws.click(route)
+                    else:                                   # compact window: a dropdown
                         ws.choose("results-picker", str(entry.id))
-                    else:
-                        ws.click(f"result-{entry.id}")
                 ws.read(f"result-detail-{entry.id}")
                 reviewed.append(entry.id)
             ensure(sorted(reviewed) == sorted(e.id for e in results), "a result was not seen")
@@ -1180,10 +1230,28 @@ def supervisor(rec: Recorder, root: Path, facts: dict, *, width: int, height: in
             from workspace_methods import advise
 
             seg.facts["fixture"] = "Stage 36 UCLA/SACS: UCLA → UCLA_Level"
-            ws.click("nav-analyze")
             page = ws.app.pages["analyze"]
-            if page.task_id != facts["batch_task"]:
-                ws.click(f"task-{facts['batch_task']}")
+            # Stage 37: repeated as a new task (before, the task was opened and
+            # changed in place, review D5), with the repeat action nearest to
+            # where the supervisor is: "Other results" at the end of the result
+            # read last, or the results list. A repeat action more than one
+            # screen away is not scrolled to (the list is ≈ 13,000 px above the
+            # end of the reliability result): then the sidebar and the task's
+            # Duplicate, one click more, as a researcher would.
+            batch, duplicate = facts["batch_result"], f"task-duplicate-{facts['batch_task']}"
+            repeat, away = ws.nearest(f"result-other-repeat-{batch}", f"result-repeat-{batch}")
+            seg.facts["repeat_px_away"] = None if repeat is None else int(round(away))
+            if repeat is not None and away <= ws.viewport:
+                seg.facts["route"] = "results page" if "other" not in repeat else \
+                    "other results, at the end of the result read"
+                ws.click(repeat)
+            else:
+                seg.facts["route"] = "sidebar, task bar"
+                ws.click("nav-analyze")
+                if present(ws, duplicate):
+                    ws.click(duplicate)
+                elif page.task_id != facts["batch_task"]:
+                    ws.click(f"task-{facts['batch_task']}")
             ws.choose("role-x", "UCLA_Level")
             chosen = page._chosen(advise(page.goal, page.selection, ws.app.session))
             if chosen and chosen[1].get("method") != "spearman":
@@ -1198,8 +1266,11 @@ def supervisor(rec: Recorder, root: Path, facts: dict, *, width: int, height: in
                    and entry.method == "batch_correlation" and entry.roles["x"] == "UCLA_Level"
                    and [row.y for row in entry.run.result.rows] == list(fx.SCALES),
                    "not the same analysis with UCLA_Level")
+            original = ws.app.session.task(facts["batch_task"])
             seg.facts.update(method=entry.run.result.method,
-                             same_task=entry.task_id == facts["batch_task"])
+                             same_task=entry.task_id == facts["batch_task"],
+                             original_kept=original is not None
+                             and original.selection.get("x") == "UCLA")
 
         with rec.task(ws, "T6") as seg:
             from docx import Document
@@ -1244,6 +1315,24 @@ def supervisor(rec: Recorder, root: Path, facts: dict, *, width: int, height: in
                    "not back where the supervisor was")
     finally:
         ws.close()
+
+
+def present(ws: Meter, data: str) -> bool:
+    """Whether a control with exactly this data key is on screen."""
+    return ws.find_where(lambda c: getattr(c, "data", None) == data) is not None
+
+
+def item_choices(ws: Meter) -> int:
+    """How many variables the item list offers. Since Stage 37 a list of
+    more than 40 shows them after a search, a name group or Show all, so
+    they are counted from the panel's own rule, not from the boxes."""
+    try:
+        import workspace_variables as wv
+    except ImportError:              # before Stage 37: one box per variable
+        return sum(isinstance(c, ft.Checkbox) for c in ws.find_all("role-items-"))
+    from workspace_methods import GOAL_ROLES
+
+    return len(wv.offered_variables(ws.app.session, GOAL_ROLES["scale"][0], {})[0])
 
 
 def open_project(ws: Meter, project_id: str) -> None:
