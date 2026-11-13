@@ -26,6 +26,13 @@ Rules (spec §11):
 * Hypotheses added after results were seen are labelled exploratory
   (post hoc); low reliability, small or unequal groups, missing values,
   stale results and multiple data versions are named as limitations.
+* Stage 37.0b: each hypothesis of the plan gets one block in the Hypotheses
+  section (:func:`hypothesis_rows`: direction, α and plan version; the
+  analyses and results that test it with the engine's n and estimates as
+  saved; the researcher's recorded decisions with their reasons; the open
+  checks), and the editable table *Hypotheses and evidence*
+  (:func:`evidence_table`). Every line names its hypothesis, so no paragraph
+  is written twice; nothing says whether a hypothesis is supported.
 """
 
 from __future__ import annotations

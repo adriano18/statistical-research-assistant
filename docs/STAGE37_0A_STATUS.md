@@ -187,6 +187,8 @@ All 173 new keys have LV and RU texts written as drafts. They are marked in `wor
 
 ## 7. 37.0b
 
+**Built on `claude/stage37-0b`:** `docs/STAGE37_0B_STATUS.md` gives the status of each item below, the review findings added to it, and the test that proves each. The measured counts are in `docs/STAGE37_UX_RESULTS.md`.
+
 - The plan card's editor for the planned variables by role.
 - The Word report's hypothesis lines (§7.10, AC-3, AC-8, AC-15).
 - The journey-strip statuses (AC-5).
