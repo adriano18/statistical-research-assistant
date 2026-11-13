@@ -339,7 +339,8 @@ def apa_table(ui: Ui, columns: tuple[str, ...], rows: tuple[tuple[str, ...], ...
     )
     controls: list[ft.Control] = []
     if number is not None:
-        controls.append(text(ui, f"Table {number}", tk.TYPE_LABEL, weight=ft.FontWeight.W_700))
+        controls.append(text(ui, ui.t("results.table_number", number=number), tk.TYPE_LABEL,
+                             weight=ft.FontWeight.W_700))
     if title:
         controls.append(text(ui, title, tk.TYPE_BODY, italic=True))
     controls.append(ft.Row([table], scroll=ft.ScrollMode.AUTO))
@@ -355,7 +356,7 @@ def figure(ui: Ui, png: bytes, *, caption_text: str = "", on_enlarge=None,
     ``semantics`` is what a screen reader says for the image (its text
     alternative); by default the caption."""
     image = ft.Image(src=png, fit=ft.BoxFit.CONTAIN, height=max_height,
-                     semantics_label=semantics or caption_text or "Figure",
+                     semantics_label=semantics or caption_text or ui.t("results.figure"),
                      gapless_playback=True)
     controls: list[ft.Control] = [
         ft.Container(image, bgcolor="#FFFFFF", border_radius=ui.radius("card"),
@@ -366,7 +367,7 @@ def figure(ui: Ui, png: bytes, *, caption_text: str = "", on_enlarge=None,
     if caption_text:
         row.append(ft.Container(caption(ui, caption_text), expand=True))
     if on_enlarge is not None:
-        row.append(button(ui, enlarge_label or "Enlarge", on_enlarge, kind="quiet",
+        row.append(button(ui, enlarge_label or ui.t("results.enlarge"), on_enlarge, kind="quiet",
                           icon=ft.Icons.OPEN_IN_FULL))
     if row:
         controls.append(ft.Row(row, vertical_alignment=ft.CrossAxisAlignment.CENTER))

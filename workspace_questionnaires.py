@@ -53,25 +53,27 @@ KINDS = ("single_choice", "multiple_choice", "likert5", "likert7", "rating_scale
 CHOICE_KINDS = {"single_choice", "multiple_choice"}
 SCALE_KINDS = {"likert5", "likert7", "rating_scale"}
 CONDITION_PARENTS = {"single_choice", "yes_no", "likert5", "likert7", "rating_scale", "number"}
-OPERATORS = (("equals", "Equals"), ("not_equals", "Not equal"),
-             ("greater", "Greater than"), ("less", "Less than"))
+OPERATORS = ("equals", "not_equals", "greater", "less")     # labels: q.operator.*
+TEMPLATES = ("psychology", "demographics", "hr", "marketing")  # labels: q.template.*
 
 
 def scale_library(language: str, draft: list[dict]) -> list[tuple[str, str, dict]]:
     """(id, label, {"kind", "value_labels"}) — presets plus scales in the draft."""
     from survey_ui import preset_value_labels, semantic_differential_labels
+    from workspace_text import t
 
     library = []
-    for name, label in (("agreement", "Agreement"), ("frequency", "Frequency"),
-                        ("quality", "Quality: poor → good")):
+    for name in ("agreement", "frequency", "quality"):
         for kind in ("likert5", "likert7"):
             try:
                 labels = preset_value_labels(name, kind, language)
             except (KeyError, ValueError):
                 continue
-            library.append((f"{name}-{kind}", f"{label} · {kind[-1]} points",
+            library.append((f"{name}-{kind}", t(language, "q.scale.points",
+                                                scale=t(language, f"q.scale.{name}"),
+                                                count=kind[-1]),
                             {"kind": kind, "value_labels": labels}))
-    library.append(("semantic", "Semantic differential −3…3",
+    library.append(("semantic", t(language, "q.scale.semantic"),
                     {"kind": "rating_scale", "value_labels": semantic_differential_labels(language)}))
     seen = set()
     for q in draft:
@@ -80,9 +82,9 @@ def scale_library(language: str, draft: list[dict]) -> list[tuple[str, str, dict
             signature = tuple(labels.items())
             if signature not in seen and len(library) < 40:
                 seen.add(signature)
-                library.append((f"draft-{len(seen)}", "From this draft: "
-                                + " / ".join(list(labels.values())[:3])
-                                + ("…" if len(labels) > 3 else ""),
+                shown = " / ".join(list(labels.values())[:3]) + ("…" if len(labels) > 3 else "")
+                library.append((f"draft-{len(seen)}", t(language, "q.scale.from_draft",
+                                                        labels=shown),
                                 {"kind": q["kind"], "value_labels": dict(labels)}))
     return library
 
@@ -264,11 +266,11 @@ class QuestionnairesPage:
                 show_default_drag_handles=True)
         else:
             listing = wc.caption(ui, ui.t("q.empty"))
-        templates = wc.dropdown(ui, ui.t("q.template"), [
-            ("psychology", "Psychology / Likert"), ("demographics", "Demographics"),
-            ("hr", "HR / Workplace"), ("marketing", "Marketing / Feedback")],
-            self.template, on_select=lambda e: setattr(self, "template", e.control.value),
-            width=None, data="q-template")
+        templates = wc.dropdown(ui, ui.t("q.template"),
+                                [(k, ui.t(f"q.template.{k}")) for k in TEMPLATES],
+                                self.template,
+                                on_select=lambda e: setattr(self, "template", e.control.value),
+                                width=None, data="q-template")
         return wc.card(ui, [
             ft.Row([wc.button(ui, ui.t("q.add"), self._add, kind="primary", icon=ft.Icons.ADD,
                               data="q-add")], wrap=True),
@@ -463,7 +465,8 @@ class QuestionnairesPage:
                                 width=340, data="editor-condition")]
         if condition.get("question"):
             controls += [
-                wc.dropdown(ui, "Condition operator", list(OPERATORS),
+                wc.dropdown(ui, ui.t("q.condition_operator"),
+                            [(k, ui.t(f"q.operator.{k}")) for k in OPERATORS],
                             condition.get("operator", "equals"),
                             on_select=lambda e: self._set_condition("operator", e.control.value),
                             width=200),
@@ -2277,7 +2280,7 @@ class ImportPage:
                         ui.language, scheme.evidence), page=scheme.page))], wrap=True,
                    spacing=tk.SPACE_2),
             *fields, *issues,
-            wc.text_field(ui, "Reverse-keyed items (as documented)", edits["reverse"], width=320,
+            wc.text_field(ui, ui.t("imp.reverse_items"), edits["reverse"], width=320,
                           on_change=lambda e: edits.__setitem__("reverse", e.control.value or "")),
             wc.checkbox(ui, ui.t("imp.confirm_structure"), edits["structure"],
                         on_change=lambda e: edits.__setitem__("structure", bool(e.control.value)),
