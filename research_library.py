@@ -1306,6 +1306,7 @@ class Library:
                 for key, value in wanted.items():
                     db.execute("INSERT INTO meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE"
                                " SET value = excluded.value", (key, value))
+        self._remove_unreferenced()      # a copy a removal could not delete before
 
     def _view_sql(self) -> str:
         text = "replace(replace(text, 'ё', 'е'), 'Ё', 'Е')" if self.fold else "text"
@@ -1456,12 +1457,26 @@ class Library:
         _check(cancel)
         stored_name = digest + Path(file_name).suffix.lower()
         target = self.folder / SOURCES / stored_name
-        written = False
-        if not target.exists():
-            _atomic_write(target, data)
-            written = True
         detected = language or detect_language(" ".join(s.text for s in extracted.segments))
         notes = list(extracted.notes)
+        with self._lock:          # the copy and its row together (see _remove_unreferenced)
+            with self._reading() as db:
+                row = db.execute(self._DOCUMENTS + " WHERE d.sha256 = ?", (digest,)).fetchone()
+            if row is not None:   # added meanwhile, e.g. from another window of the page
+                existing = _document(row)
+                return AddOutcome(existing, True, existing.passages)
+            written = False
+            if not target.exists():
+                _atomic_write(target, data)
+                written = True
+            document_id = self._insert(target, written, digest, data, kind, file_name, title,
+                                       version_label, detected, source_path, stored_name,
+                                       extracted, drafts, notes, progress, ocr_language)
+        return AddOutcome(self.document(document_id), False, len(drafts), tuple(notes))
+
+    def _insert(self, target, written, digest, data, kind, file_name, title, version_label,
+                detected, source_path, stored_name, extracted, drafts, notes, progress,
+                ocr_language) -> int:
         try:
             with self._transaction() as db:
                 label = version_label.strip()[:40]
@@ -1491,7 +1506,7 @@ class Library:
             if written:
                 target.unlink(missing_ok=True)
             raise
-        return AddOutcome(self.document(document_id), False, len(drafts), tuple(notes))
+        return document_id
 
     def _key(self, db: sqlite3.Connection, digest: str) -> str:
         for length in (8, 10, 12, 16, 64):
@@ -1526,8 +1541,27 @@ class Library:
         with self._transaction() as db:
             self._unindex_document(db, document.id)
             db.execute("DELETE FROM documents WHERE id = ?", (document.id,))
-        self.source_file(document).unlink(missing_ok=True)
+        self._remove_unreferenced()
         return document
+
+    def _remove_unreferenced(self) -> list[str]:
+        """Delete stored copies no document refers to. A copy another program
+        holds open (Windows refuses to delete it) stays until the next time
+        the library is opened; it is never searchable, since its passages
+        are gone."""
+        removed = []
+        with self._lock:                  # never while a document is being stored
+            with self._reading() as db:
+                wanted = {row[0] for row in db.execute("SELECT stored_name FROM documents")}
+            folder = self.folder / SOURCES
+            for path in folder.iterdir() if folder.is_dir() else []:
+                if path.is_file() and not path.name.startswith(".") and path.name not in wanted:
+                    try:
+                        path.unlink()
+                        removed.append(path.name)
+                    except OSError:
+                        continue
+        return removed
 
     def reindex(self, document_id: int, *, progress=None, cancel=None,
                 ocr: bool | None = None, ocr_language: str | None = None) -> Document:

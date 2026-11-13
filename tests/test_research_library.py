@@ -349,6 +349,28 @@ class StoreTests(LibraryCase):
             self.assertEqual(db.execute("SELECT COUNT(*) FROM chunks WHERE document_id = ?",
                                         (gone.id,)).fetchone()[0], 0)
 
+    def test_a_copy_held_open_elsewhere_is_deleted_the_next_time(self):
+        """Windows refuses to delete a file another program has open (the PDF
+        in the system viewer): the document is removed all the same, and the
+        unreferenced copy goes the next time the library is opened."""
+        library = self.library()
+        document = self.add(library, fx.EN_NOTES, "txt").document
+        copy = library.source_file(document)
+        real_unlink = Path.unlink
+
+        def held_open(path, *args, **kwargs):
+            if path == copy:
+                raise PermissionError(13, "The process cannot access the file", str(path))
+            return real_unlink(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "unlink", held_open):
+            library.remove_document(document.id)
+        self.assertEqual(library.counts(), (0, 0))
+        self.assertTrue(copy.exists(), "still held open")
+        self.assertEqual(library.search("double-sided printing").hits, ())
+        rl.Library(library.folder)
+        self.assertFalse(copy.exists(), "removed when the library is opened again")
+
     def test_reindexing_keeps_cite_ids_and_finds_outdated_documents(self):
         library = self.library()
         documents = [self.add(library, d, k).document for d, k in
