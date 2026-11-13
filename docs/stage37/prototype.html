@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stage 37 prototype: research workflow (A, B, hybrid)</title>
+<style>
+:root{--canvas:#F6F7F9;--surface:#FFFFFF;--alt:#F0F2F5;--hover:#E9EDF2;--border:#E1E5EB;--strong:#767F8F;--text:#1A202C;--text2:#404A5A;--muted:#5B6676;--accent:#1F5BC4;--accent-h:#1A4EA8;--on-accent:#FFFFFF;--accent-s:#E7EEFB;--on-accent-s:#173F86;--ok:#1C7240;--ok-s:#E5F3EA;--warn:#8A5300;--warn-s:#FDF1DC;--bad:#B42318;--bad-s:#FCE9E7;--focus:#1F5BC4;--proto:#4A3A86;--proto-s:#F1EDFB}
+@media (prefers-color-scheme:dark){:root{--canvas:#14171C;--surface:#1C2027;--alt:#232831;--hover:#2B313B;--border:#323944;--strong:#78849A;--text:#E7EAF0;--text2:#C0C7D2;--muted:#9DA7B6;--accent:#8AB0F7;--accent-h:#A3C1F9;--on-accent:#0E1830;--accent-s:#22314D;--on-accent-s:#CFDDFB;--ok:#74C996;--ok-s:#1D3327;--warn:#E9B95C;--warn-s:#3A2E17;--bad:#F2958B;--bad-s:#3D2220;--focus:#8AB0F7;--proto:#D3C7FF;--proto-s:#29233F}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--text);font:0.875rem/1.45 "Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.skip{position:absolute;left:-999px;top:0}.skip:focus{left:.5rem;top:.5rem;z-index:40;background:var(--surface);padding:.4rem .7rem;border-radius:6px}
+.pb{background:var(--proto-s);padding:.5rem 1rem;display:flex;flex-wrap:wrap;gap:.45rem 1.25rem;align-items:center}
+.gbar{position:sticky;top:0;z-index:20;background:var(--proto-s);border-bottom:2px solid var(--proto);padding:.35rem 1rem;display:flex;flex-wrap:wrap;gap:.35rem .9rem;align-items:center;font-size:.8125rem}
+.gbar button{border:1px solid var(--proto);background:var(--surface);color:var(--text);border-radius:6px;padding:.2rem .6rem;cursor:pointer;min-height:2rem}
+.gbar b{color:var(--proto)}
+.pbt{font-size:.9375rem;margin:0;color:var(--proto)}
+.pb .grp{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}
+.pb .grp>span{font-weight:600;color:var(--proto)}
+.pb button{border:1px solid var(--proto);background:var(--surface);color:var(--text);border-radius:6px;padding:.25rem .65rem;cursor:pointer;min-height:2.1rem}
+.pb button[aria-pressed=true]{background:var(--proto);color:var(--proto-s);font-weight:600}
+.pbcb{display:inline-flex;gap:.35rem;align-items:center;cursor:pointer}.pbcb input{width:1.05rem;height:1.05rem}
+.legend{flex:1 1 100%;margin:0;font-size:.8125rem;color:var(--text2)}
+.legend strong{color:var(--text)}
+.counter{font-variant-numeric:tabular-nums}
+details.flow{flex:1 1 100%;font-size:.8125rem}
+details.flow summary{cursor:pointer;color:var(--proto);font-weight:600}
+details.flow ol{margin:.25rem 0 .25rem 1.4rem;padding:0;columns:2;column-gap:2.5rem}
+details.flow li.done{color:var(--muted);text-decoration:line-through}details.flow li.cur{font-weight:700}
+.vdesc{flex:1 1 100%;margin:0;font-size:.8125rem}
+.win{display:grid;grid-template-columns:14rem minmax(0,1fr);min-height:80vh;border-top:1px solid var(--border)}
+.sb{background:var(--alt);border-right:1px solid var(--border);padding:.75rem .5rem;display:flex;flex-direction:column;gap:.15rem}
+.brand{display:flex;gap:.55rem;align-items:flex-start;padding:.25rem .5rem .75rem;font-weight:600}
+.logo{flex:none;width:2rem;height:2rem;border-radius:8px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-weight:700}
+.nav{display:flex;align-items:center;gap:.6rem;width:100%;text-align:left;border:0;background:transparent;border-radius:6px;padding:.5rem .6rem;min-height:2.5rem;cursor:pointer;color:var(--text2);font-weight:500}
+.nav:hover{background:var(--hover)}.nav[aria-current=page]{background:var(--accent-s);color:var(--on-accent-s);font-weight:600;box-shadow:inset 3px 0 0 var(--accent)}
+.nav .ic{width:1.1rem;text-align:center}.nav .bd{margin-left:auto;font-size:.75rem;background:var(--accent-s);color:var(--on-accent-s);border-radius:10px;padding:0 .45rem}
+.sb .sp{flex:1}
+.main{display:flex;flex-direction:column;min-width:0}
+.ctx{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;background:var(--surface);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;min-height:3.5rem}
+.ctx .sp{flex:1}
+.page{padding:1.25rem 1.5rem 2rem;max-width:86rem;width:100%;margin:0 auto;flex:1}
+.page:focus{outline:none}
+.status{border-top:1px solid var(--border);background:var(--surface);padding:.35rem 1.25rem;font-size:.8125rem;min-height:2rem}
+.chip{display:inline-flex;align-items:center;gap:.3rem;border-radius:6px;padding:.1rem .5rem;font-size:.8125rem;font-weight:500;background:var(--alt);color:var(--text2);border:1px solid transparent}
+.chip.ok{background:var(--ok-s);color:var(--ok)}.chip.warn{background:var(--warn-s);color:var(--warn)}.chip.info{background:var(--accent-s);color:var(--on-accent-s)}.chip.bad{background:var(--bad-s);color:var(--bad)}
+button.chip{cursor:pointer;border-color:var(--border);min-height:2rem}
+.scope{display:inline-block;margin-left:.35rem;font-size:.75rem;font-weight:600;color:var(--proto);border:1px dashed var(--proto);border-radius:4px;padding:0 .3rem;vertical-align:middle;line-height:1.35}
+h1.pt{font-size:1.5rem;margin:.25rem 0 .1rem;font-weight:600}.sub{margin:0 0 1rem;color:var(--text2)}
+.ph{display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-start;justify-content:space-between}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin:0 0 1rem}
+.card h2{font-size:1rem;margin:0 0 .5rem;font-weight:600}.card h3,.pane h3{font-size:.9375rem;margin:.9rem 0 .35rem;font-weight:600}
+.cap{color:var(--text2);font-size:.8125rem;margin:.15rem 0}
+.row{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.btn{border-radius:6px;padding:.4rem .9rem;min-height:2.5rem;cursor:pointer;border:1px solid var(--strong);background:var(--surface);font-weight:500}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}.btn.primary:hover{background:var(--accent-h)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--accent);padding:.4rem .5rem}.btn.quiet:hover{background:var(--accent-s)}
+.btn:disabled{opacity:.6;cursor:not-allowed}
+.fld{display:flex;flex-direction:column;gap:.2rem;margin:.4rem 0;max-width:44rem}.fld>span{font-size:.8125rem;color:var(--text2);font-weight:500}
+input[type=text],textarea,select{border:1px solid var(--strong);border-radius:6px;padding:.4rem .6rem;background:var(--surface);min-height:2.5rem;max-width:100%}
+textarea{min-height:3.6rem;resize:vertical;width:100%}
+.cb{display:flex;gap:.5rem;align-items:flex-start;padding:.2rem 0;cursor:pointer}.cb input{width:1.1rem;height:1.1rem;margin-top:.15rem;flex:none}
+.cbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:0 1rem}
+.seg{display:inline-flex;flex-wrap:wrap;gap:.25rem;background:var(--alt);border-radius:8px;padding:3px}
+.seg button{border:1px solid transparent;background:transparent;border-radius:6px;padding:.25rem .7rem;min-height:2.2rem;cursor:pointer;color:var(--text2)}
+.seg button[aria-pressed=true]{background:var(--surface);border-color:var(--strong);color:var(--text);font-weight:600}
+table.t{border-collapse:collapse;width:100%;font-size:.8125rem}.t th{background:var(--alt);text-align:left;padding:.4rem .55rem;font-weight:600;white-space:nowrap}.t td{border-top:1px solid var(--border);padding:.35rem .55rem;font-variant-numeric:tabular-nums;white-space:nowrap}.tw{overflow-x:auto;margin:.25rem 0 .5rem}
+.steps{display:flex;flex-wrap:wrap;gap:.3rem;margin:.25rem 0 .9rem;padding:0;list-style:none}
+.st{font-size:.75rem;border-radius:999px;padding:.1rem .55rem;background:var(--alt);color:var(--text2);border:1px solid var(--border)}
+.st.done{background:var(--ok-s);color:var(--ok);border-color:transparent}.st.cur{background:var(--accent-s);color:var(--on-accent-s);border-color:var(--accent);font-weight:600}.st.att{background:var(--warn-s);color:var(--warn);border-color:transparent;font-weight:600}
+.stepc{border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin:0 0 .75rem;background:var(--surface)}.stepc.act{border-color:var(--accent)}
+.stepc h3{display:flex;gap:.5rem;align-items:center;margin:0 0 .4rem;font-size:.9375rem}
+.num{flex:none;display:inline-grid;place-items:center;width:1.5rem;height:1.5rem;border-radius:50%;background:var(--accent);color:var(--on-accent);font-size:.75rem;font-weight:700}.num.done{background:var(--ok)}.num.todo{background:var(--strong)}.num.att{background:var(--warn)}
+.split{display:grid;grid-template-columns:minmax(17rem,2fr) minmax(20rem,3fr);gap:1.25rem}
+.two{display:grid;grid-template-columns:minmax(19rem,1fr) minmax(21rem,1fr);gap:1rem;align-items:start}
+.desk{display:grid;grid-template-columns:14rem minmax(19rem,1fr) 19rem;gap:.75rem;align-items:start}
+.pane{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.75rem .9rem;min-width:0}.pane h2{font-size:.9375rem;margin:0 0 .5rem}
+.hrow{display:block;width:100%;text-align:left;border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:.55rem .75rem;margin:.4rem 0;cursor:pointer}
+.hrow:hover{background:var(--hover)}.hrow.sel{border-color:var(--accent);background:var(--accent-s)}
+.hrow .ttl{font-weight:600;display:block;margin-bottom:.25rem}
+.q{border-left:3px solid var(--accent);padding-left:.75rem;margin:.5rem 0 1rem}.q h3{margin-top:.2rem}
+.next{border:2px solid var(--accent);border-radius:8px;background:var(--surface);padding:.65rem 1rem;margin:0 0 1rem;display:flex;flex-wrap:wrap;gap:.4rem 1rem;align-items:center;justify-content:space-between}
+.next .nt{flex:1 1 22rem}.next .nt strong{display:block}
+.foot{position:sticky;bottom:0;z-index:5;margin:0;border-radius:0;border-width:2px 0 0 0;box-shadow:0 -2px 8px rgba(0,0,0,.08)}
+.why{flex:1 1 100%;margin:.2rem 0 0 1.2rem;padding:0;font-size:.8125rem;color:var(--text2)}
+.ck{border:1px solid var(--border);border-left-width:4px;border-radius:6px;padding:.45rem .75rem;margin:.4rem 0;background:var(--surface)}
+.ck.warning{border-left-color:var(--warn)}.ck.info{border-left-color:var(--accent)}.ck.pass{border-left-color:var(--ok)}
+.ck .h{font-weight:600}.ck .id{font-family:ui-monospace,Consolas,monospace;font-size:.75rem;color:var(--muted)}
+.kv{display:grid;grid-template-columns:minmax(8rem,max-content) minmax(0,1fr);gap:.2rem .75rem;font-size:.8125rem;margin:.25rem 0}.kv dt{color:var(--text2);font-weight:600}.kv dd{margin:0}
+.coach{outline:3px dashed var(--proto)!important;outline-offset:3px;position:relative}
+.coach::after{content:"Next";position:absolute;top:-.95rem;right:-.4rem;background:var(--proto);color:var(--proto-s);font-size:.75rem;font-weight:700;border-radius:4px;padding:0 .3rem;pointer-events:none;line-height:1.3}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:grid;place-items:center;z-index:30}
+.modal{background:var(--surface);border-radius:12px;padding:1.25rem 1.5rem;max-width:30rem;width:calc(100% - 2rem);box-shadow:0 10px 30px rgba(0,0,0,.3)}.modal h2{margin:0 0 .25rem;font-size:1.1rem}
+.file{border:1px solid var(--border);border-radius:6px;padding:.5rem .75rem;margin:.75rem 0;background:var(--alt);font-family:ui-monospace,Consolas,monospace}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(12.5rem,1fr));gap:.75rem;margin-bottom:1rem}.tile{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem}.tile h2{font-size:.9375rem;margin:0 0 .3rem}
+.tabs{display:flex;flex-wrap:wrap;gap:.1rem;border-bottom:1px solid var(--border);margin-bottom:.6rem}
+.tabs button{border:0;background:transparent;padding:.35rem .55rem;min-height:2.3rem;cursor:pointer;border-bottom:3px solid transparent;color:var(--text2)}.tabs button[aria-selected=true]{border-bottom-color:var(--accent);color:var(--text);font-weight:600}
+.empty{color:var(--text2);padding:1rem;text-align:center;border:1px dashed var(--strong);border-radius:8px}
+.journey{display:flex;flex-wrap:wrap;gap:.3rem;margin:0 0 .75rem}
+.vlist{list-style:none;margin:0;padding:0}.vlist li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.25rem .5rem;padding:.3rem .2rem;border-bottom:1px solid var(--border);font-size:.8125rem}
+.prev{white-space:pre-wrap;font-size:.8125rem;background:var(--alt);border-radius:6px;padding:.75rem;margin:.5rem 0}
+.ahead{display:flex;gap:.6rem;align-items:center;width:100%;text-align:left;border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:.5rem .7rem;cursor:pointer;margin:.35rem 0 0;min-height:2.6rem}
+.ahead:hover{background:var(--hover)}.ahead[aria-expanded=true]{border-color:var(--accent);background:var(--accent-s)}
+.abody{border:1px solid var(--accent);border-top:0;border-radius:0 0 8px 8px;padding:.6rem .9rem .8rem;margin:0 0 .35rem}
+.asteps{list-style:none;margin:.5rem 0;padding:0}
+#selftest-out{white-space:pre-wrap;font:0.8125rem ui-monospace,Consolas,monospace;padding:1rem}
+@media (max-width:1180px){.split,.two{grid-template-columns:minmax(0,1fr)}.desk{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.desk>.pane:first-child{grid-column:1/-1}}
+@media (max-width:840px){.win{grid-template-columns:minmax(0,1fr)}.sb{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--border)}.sb .sp,.brand{display:none}.nav{width:auto}.desk{grid-template-columns:minmax(0,1fr)}details.flow ol{columns:1}.page{padding:1rem}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the prototype window</a>
+<header class="pb" aria-label="Prototype controls">
+  <p class="pbt"><strong>Stage 37 prototype · Phase D</strong></p>
+  <div class="grp" role="group" aria-label="Interface variant"><span>Variant</span>
+    <button type="button" data-v="A">A · Research protocol</button>
+    <button type="button" data-v="B">B · Analysis desk</button>
+    <button type="button" data-v="H">Hybrid (proposed)</button>
+  </div>
+  <div class="grp" role="group" aria-label="Persona flow"><span>Flow</span>
+    <button type="button" data-p="beginner">Beginner</button>
+    <button type="button" data-p="professor">Professor</button>
+    <button type="button" id="restart">Restart flow</button>
+    <label class="pbcb"><input type="checkbox" id="coach" checked> Show the guide</label>
+  </div>
+  <p class="vdesc" id="vdesc"></p>
+  <p class="legend"><strong>This is a prototype, not the application.</strong> Nothing is calculated, saved or sent, and there is <strong>no real data</strong>: names and numbers are the analysis engine’s output on the invented fixture <code>synthetic_ucla_sacs_55.csv</code> (commit 55f94b1), copied as text. Labels follow the English interface; dashed tags such as <span class="scope">37.0</span> show the increment a part is planned for. Interactions are counted as in <code>CountingWorkspace</code>: a click or a checkbox 1, a dropdown 2, a text field once; system dialogs apart.</p>
+</header>
+<div class="gbar" role="region" aria-label="Flow guide">
+  <span><b id="g-flow">Flow</b> · <span id="g-step" aria-live="polite"></span></span>
+  <button type="button" id="g-show">Show me</button><button type="button" id="g-skip">Skip step</button>
+  <span class="counter" id="g-count"></span>
+  <details class="flow"><summary>All steps of this flow</summary><ol id="g-list"></ol></details>
+</div>
+<div id="app"></div>
+<pre id="selftest-out" hidden></pre>
+<script>
+(function () {
+'use strict';
+const app = document.getElementById('app');
+const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
+/* ---- The synthetic fixture: engine output at 55f94b1, copied as text. Nothing is computed. */
+const SC = ['AssertiveAction', 'SocialJoining', 'SeekingSocialSupport', 'CautiousAction', 'InstinctiveAction', 'Avoidancen', 'IndirectAction', 'AntisocialAction'];
+const VARS = [['Code', 'Text', '55 unique', 'id', 55], ['Age', 'Number', '18 – 38', 'scale', 16], ['Sex', 'Number', '0 (30), 1 (25)', 'nominal', 2], ['UCLA', 'Number', '37 – 68', 'scale', 24],
+  ['AssertiveAction', 'Number', '8 – 34', 'scale', 21], ['SocialJoining', 'Number', '8 – 34', 'scale', 19], ['SeekingSocialSupport', 'Number', '8 – 35', 'scale', 20], ['CautiousAction', 'Number', '8 – 37', 'scale', 19],
+  ['InstinctiveAction', 'Number', '11 – 31', 'scale', 19], ['Avoidancen', 'Number', '8 – 34', 'scale', 20], ['IndirectAction', 'Number', '8 – 33', 'scale', 18], ['AntisocialAction', 'Number', '10 – 33', 'scale', 20], ['UCLA_Level', 'Number', '1 (3), 2 (47), 3 (5)', 'ordinal', 3]];
+const LV = {id: 'Identifier', nominal: 'Nominal (categories)', ordinal: 'Ordinal (ordered)', scale: 'Quantitative', unknown: 'Not confirmed'};
+const QUANT = VARS.filter(v => v[3] === 'scale').map(v => v[0]);
+const PICKABLE = VARS.filter(v => v[3] !== 'id').map(v => v[0]);
+const RHO = [['AssertiveAction', '-.24', '[-0.50, 0.07]', '.094', '.564', 'small'], ['SocialJoining', '-.10', '[-0.34, 0.17]', '.516', '1.000', 'negligible'], ['SeekingSocialSupport', '-.00', '[-0.28, 0.28]', '.987', '1.000', 'negligible'], ['CautiousAction', '-.33', '[-0.57, -0.07]', '.011', '.088', 'moderate'],
+  ['InstinctiveAction', '-.10', '[-0.38, 0.19]', '.407', '1.000', 'small'], ['Avoidancen', '-.08', '[-0.35, 0.19]', '.591', '1.000', 'negligible'], ['IndirectAction', '-.34', '[-0.56, -0.07]', '.011', '.088', 'moderate'], ['AntisocialAction', '.08', '[-0.22, 0.35]', '.571', '1.000', 'negligible']];
+const KW = [['AssertiveAction', '1.04', '.617', '1.000', '0.000', '0.019'], ['SocialJoining', '1.42', '.512', '1.000', '0.000', '0.026'], ['SeekingSocialSupport', '7.92', '.012', '.094', '0.114', '0.147'], ['CautiousAction', '5.26', '.066', '.398', '0.063', '0.097'],
+  ['InstinctiveAction', '0.64', '.745', '1.000', '0.000', '0.012'], ['Avoidancen', '3.32', '.192', '.958', '0.025', '0.062'], ['IndirectAction', '6.75', '.024', '.167', '0.091', '0.125'], ['AntisocialAction', '3.00', '.232', '.958', '0.019', '0.055']];
+const AS = {rho: ['Confirm measurement levels and independence of observations', 'Inspect each pair’s scatterplot for outliers and non-monotonic patterns', 'Report raw and adjusted p-values together with the family size'],
+  kw: ['Confirm independent groups and the outcome measurement levels', 'Review group sizes: small or unequal groups limit the comparison', 'Report raw and adjusted p-values and the effect-size definitions']};
+const WARN = {rho: ['Each coefficient is the effect size for its pair; the family shares one multiple-comparison adjustment (Holm (1979) step-down; familywise error rate; 8 tests).', 'Raw p-values are reported unchanged next to the adjusted ones.', 'Correlation does not establish causation.', 'A p-value at or above α is not evidence that there is no association.'],
+  kw: ['Kruskal–Wallis compares rank distributions; reading it as a comparison of medians needs similarly shaped distributions.', 'The outcomes form one family (Holm (1979) step-down; familywise error rate; 8 tests); raw p-values are kept.', 'Small groups: the permutation p-value is primary and pairwise results involving them are exploratory.']};
+const GOALS = [['compare', 'Compare groups'], ['change', 'Compare repeated measurements'], ['relate', 'Relationship between two variables'], ['associate', 'Association between categories'], ['predict', 'Predict an outcome'], ['scale', 'Check a questionnaire scale'], ['structure', 'Explore questionnaire structure'], ['describe', 'Describe a variable']];
+const GOAL_BODY = {relate: 'Do two measures tend to rise and fall together?', compare: 'Test whether independent groups differ on an outcome.'};
+const METH = {pearson: 'Pearson’s r', spearman: 'Spearman’s ρ', kendall: 'Kendall’s τ-b', kruskal: 'Kruskal–Wallis H'};
+const ADJ = {holm: 'Holm (familywise error)', bh: 'Benjamini–Hochberg (false discovery rate)', bonferroni: 'Bonferroni (familywise error)', none: 'None (raw p only)'};
+const SHA = '3a0a6682e8bb';
+const FILE = 'synthetic_ucla_sacs_55.csv';
+const DRAFT = {relate: ['‹First variable› is associated with ‹each of the other variables›.', 'There is no association (ρ = 0 for each pair).'], compare: ['The groups differ on ‹outcome›.', 'The groups do not differ on ‹outcome›.'], none: ['‹Hypothesis›', '‹Null hypothesis›']};
+const SECTIONS = ['Title', 'Research question', 'Hypotheses', 'Data and sample', 'Instruments and scales', 'Reliability and measurement quality', 'Data preparation', 'Descriptive statistics', 'Assumption checks', 'Hypothesis tests', 'Effects and confidence intervals', 'Figures', 'Interpretation', 'Limitations', 'Appendix: parameters for reproducibility'];
+
+/* ---- Variants, flows and the counts the design document reports for each flow */
+const VDESC = {A: 'A · Research protocol (question-first): the Study page is the table of contents; every analysis lives inside its hypothesis, step by step.',
+  B: 'B · Analysis desk (data-first): variables, task and inspector on one screen; hypotheses stay on the Project page and are linked from the inspector.',
+  H: 'Hybrid (proposed): navigation, hypotheses and statuses from A; the task surface from B (setup left, result and checks right); one next action on every page.'};
+const NAV = {H: [['home', 'Home', '⌂'], ['project', 'Project', '▤'], ['data', 'Data', '▦'], ['questionnaires', 'Questionnaires', '☰'], ['analyze', 'Analyze', '∿'], ['results', 'Results', '↗'], ['reports', 'Reports', '▧']],
+  A: [['home', 'Home', '⌂'], ['study', 'Study', '▤'], ['data', 'Data & instruments', '▦'], ['results', 'Results log', '↗'], ['reports', 'Report', '▧']],
+  B: [['home', 'Home', '⌂'], ['project', 'Project', '▤'], ['data', 'Data', '▦'], ['questionnaires', 'Questionnaires', '☰'], ['desk', 'Analysis desk', '∿'], ['results', 'Results', '↗'], ['reports', 'Reports', '▧']]};
+const PT = 'Fictional loneliness and coping study', QT = 'Is loneliness related to how students cope with stress?', HT = 'Loneliness (UCLA) is associated with each of the eight SACS coping scales.', NT = 'No pair reaches p (Holm) < .05; the two largest coefficients are about −.33 and the intervals are wide.', RT = 'Loneliness and coping (fictional)';
+const START = [{k: 'project-new-title', do: 'type', val: PT, hint: 'Home: type a title for the study’s project.'}, {k: 'project-create', hint: 'Create the project.'},
+  {k: 'q1-type-relate', hint: 'Choose the kind of question: Relationship between two variables.'}, {k: 'q1-text', do: 'type', val: QT, hint: 'Write the research question.'},
+  {k: 'plan-add-q1', hint: 'Add a hypothesis to Q1: H1 and H0 are drafted from the kind of question.'}, {k: 'h1-text', do: 'type', val: HT, hint: 'Edit the drafted H1 (direction stays two-sided, designation primary).'},
+  {k: 'plan-save', hint: 'Save the plan version before any result.'}];
+const REV = p => [0, 1, 2].map(i => ({k: p + 'review-' + i, do: 'check', hint: `Tick assumption check ${i + 1} of 3 once you reviewed it.`}));
+const END = [{k: 'reports-study-title', do: 'type', val: RT, hint: 'Study title of the Word report.'}, {k: 'reports-export-docx', hint: 'Export Word report…'}, {k: 'dialog-ok', hint: 'The system Save dialog: save (counted apart).'}];
+const FLOWS = {
+  H: {beginner: [...START, {k: 'next-action', hint: 'Next action bar: Open CSV / Excel…'}, {k: 'dialog-ok', hint: 'The system Open dialog: open the synthetic CSV (counted apart).'},
+    {k: 'data-accept-confirm', do: 'check', hint: 'Confirm you checked the suggested measurement levels.'}, {k: 'data-accept', hint: 'Use the suggestions for the unconfirmed variables.'},
+    {k: 'next-action', hint: 'Next action bar: Create the analysis for H1 (opens Analyze, linked to H1).'}, {k: 'role-x', do: 'choose', val: 'UCLA', hint: 'First variable: UCLA.'},
+    {k: 'role-y-all-scale', hint: 'All quantitative (9).'}, {k: 'role-y-Age', do: 'check', val: false, hint: 'Age is not a coping scale: untick it.'},
+    {k: 'alt-spearman', hint: 'Use Spearman’s ρ instead of the recommended Pearson’s r.'}, {k: 'guided-run', hint: 'Run Spearman’s ρ. The result opens on the right, in the task.'}, ...REV(''),
+    {k: 'result-notes', do: 'type', val: NT, hint: 'Your interpretation (optional, unverified).'}, {k: 'task-add-report', hint: 'Add H1’s result to the report.'},
+    {k: 'next-action', hint: 'Next action bar: Open the report.'}, ...END],
+  professor: [{k: 'project-open', hint: 'Home: open the student’s project. Its hypotheses list standing, analysis and checks.'}, {k: 'hyp-h1', hint: 'H1: checks against the plan, the recorded deviation, the acknowledgement.'},
+    {k: 'ev-h1', hint: 'Show the evidence: result, provenance, reviewed assumptions, measurement.'}, {k: 'hyp-h2', hint: 'H2: designation changed after results; one assumption not reviewed.'},
+    {k: 'nav-reports', hint: 'Reports.'}, {k: 'reports-preview', hint: 'Preview the Hypotheses section of the Word report.'}]},
+  A: {beginner: [...START, {k: 'next-action', hint: 'Next step: Open the data for H1.'}, {k: 'dialog-ok', hint: 'The system Open dialog (counted apart).'},
+    {k: 'h1-role-x', do: 'choose', val: 'UCLA', hint: 'H1 › Data and scales: first variable UCLA.'}, {k: 'h1-role-y-all-scale', hint: 'All quantitative (9).'},
+    {k: 'h1-role-y-Age', do: 'check', val: false, hint: 'Untick Age.'}, {k: 'h1-accept-confirm', do: 'check', hint: 'Confirm you checked the suggested levels of these variables.'},
+    {k: 'h1-accept', hint: 'Use the suggestions.'}, {k: 'h1-alt-spearman', hint: 'H1 › Analysis: Spearman’s ρ instead of Pearson’s r.'}, {k: 'h1-run', hint: 'Run Spearman’s ρ.'}, ...REV('h1-'),
+    {k: 'h1-notes', do: 'type', val: NT, hint: 'H1 › Interpretation and report: your interpretation.'}, {k: 'h1-add-report', hint: 'Add to report.'},
+    {k: 'next-action', hint: 'Next step: Open the report.'}, ...END],
+  professor: [{k: 'project-open', hint: 'Home: open the project. The Study page is the protocol.'}, {k: 'h1-step-analysis', hint: 'H1 › Analysis: method, options, result, provenance.'},
+    {k: 'h1-step-checks', hint: 'H1 › Checks: assumptions and checks against the plan.'}, {k: 'h1-history', hint: 'H1 › History: plan versions, deviation, acknowledgement.'},
+    {k: 'h2-step-checks', hint: 'H2 › Checks.'}, {k: 'h2-history', hint: 'H2 › History: the designation change.'}, {k: 'nav-reports', hint: 'Report.'}, {k: 'reports-preview', hint: 'Preview the Hypotheses section.'}]},
+  B: {beginner: [...START, {k: 'next-open-data', hint: 'Next step card (today’s): Open CSV / Excel…'}, {k: 'dialog-ok', hint: 'The system Open dialog (counted apart).'},
+    {k: 'data-accept-confirm', do: 'check', hint: 'Confirm you checked the suggested levels.'}, {k: 'data-accept', hint: 'Use the suggestions.'}, {k: 'nav-desk', hint: 'Open the Analysis desk.'},
+    {k: 'family-relate', hint: 'Task › Correlations.'}, {k: 'role-x', do: 'choose', val: 'UCLA', hint: 'First variable: UCLA.'}, {k: 'role-y-all-scale', hint: 'All quantitative (9).'},
+    {k: 'role-y-Age', do: 'check', val: false, hint: 'Untick Age.'}, {k: 'method-spearman', hint: 'Spearman’s ρ.'}, {k: 'desk-run', hint: 'Run: always visible.'},
+    {k: 'insp-tab-hypothesis', hint: 'Inspector › Hypothesis.'}, {k: 'task-hypothesis', do: 'choose', val: 'h1', hint: 'Link the task to H1. It is linked after its result: shown as such.'},
+    {k: 'insp-tab-assumptions', hint: 'Inspector › Assumptions.'}, ...REV(''), {k: 'insp-tab-report', hint: 'Inspector › Report.'},
+    {k: 'result-notes', do: 'type', val: NT, hint: 'Your interpretation.'}, {k: 'task-add-report', hint: 'Add to report.'}, {k: 'nav-reports', hint: 'Reports.'}, ...END],
+  professor: [{k: 'project-open', hint: 'Home: open the project.'}, {k: 'nav-desk', hint: 'Analysis desk.'}, {k: 'plan-row-t1', hint: 'Analysis plan strip: H1’s task.'},
+    {k: 'insp-tab-hypothesis', hint: 'Inspector › Hypothesis: link and checks.'}, {k: 'insp-tab-assumptions', hint: 'Inspector › Assumptions.'}, {k: 'insp-tab-provenance', hint: 'Inspector › Provenance.'},
+    {k: 'plan-row-t2', hint: 'H2’s task.'}, {k: 'insp-tab-hypothesis', hint: 'Inspector › Hypothesis.'}, {k: 'nav-project', hint: 'Project: the plan and its history.'},
+    {k: 'plan-history', hint: 'Plan history: the designation change is only a version note here.'}, {k: 'nav-reports', hint: 'Reports.'}, {k: 'reports-preview', hint: 'Preview the Hypotheses section.'}]}};
+/* interactions, typed fields, page changes, system dialogs: the counts in docs/STAGE37_DESIGN.md §5 */
+const EXPECT = {A: {beginner: [19, 5, 2, 2], professor: [8, 0, 2, 0]}, B: {beginner: [26, 5, 4, 2], professor: [12, 0, 4, 0]}, H: {beginner: [20, 5, 4, 2], professor: [6, 0, 2, 0]}};
+
+/* ---- State */
+const S = {v: 'H', per: 'beginner'};
+let clock = 0;
+function now(sec) { clock += 1; const m = 5 + clock; return `2026-11-13 14:${String(m % 60).padStart(2, '0')}` + (sec ? ':0' + (clock % 10) : ''); }
+function newProject() { return {title: PT, data: false, levels: false, bulk: false, qs: [{id: 'q1', type: '', text: ''}], hs: [], tasks: [], results: [], records: [], versions: [], reportTitle: '', exported: false}; }
+function profProject() {
+  const p = newProject();
+  Object.assign(p, {data: true, levels: true, bulk: true, reportTitle: RT});
+  p.qs = [{id: 'q1', type: 'relate', text: QT}, {id: 'q2', type: 'compare', text: 'Do students with low, medium and high loneliness cope differently?'}];
+  p.hs = [{id: 'h1', q: 'q1', text: 'Higher loneliness (UCLA) goes with less use of each of the eight SACS coping strategies.', h0: 'UCLA is not associated with any of the eight coping scales (ρ = 0).', dir: 'less', des: 'primary', alpha: '.05', method: 'pearson', saved: true, standing: 'planned', after: 0, v: 1},
+    {id: 'h2', q: 'q2', text: 'The eight coping scales differ between the three UCLA_Level groups.', h0: 'The groups do not differ on any scale.', dir: 'two-sided', des: 'secondary', alpha: '.05', method: 'kruskal', saved: true, standing: 'planned', after: 0, v: 1},
+    {id: 'h3', q: 'q2', text: 'SeekingSocialSupport differs between the UCLA_Level groups.', h0: 'No difference in SeekingSocialSupport.', dir: 'two-sided', des: 'exploratory', alpha: '.05', method: '', saved: true, standing: 'after', after: 2, v: 3}];
+  p.tasks = [{id: 't1', h: 'h1', goal: 'relate', x: 'UCLA', ys: SC.slice(), method: 'spearman', adjust: 'holm', pearson: false, ran: true, title: 'UCLA with 8 variables'},
+    {id: 't2', h: 'h2', goal: 'compare', group: 'UCLA_Level', ys: SC.slice(), method: 'kruskal', adjust: 'holm', ran: true, title: '8 outcomes by UCLA_Level'}];
+  p.results = [{id: 'r1', task: 't1', kind: 'rho', reviewed: [1, 1, 1], note: 'No pair reaches p (Holm) < .05; CautiousAction and IndirectAction are the largest (ρ ≈ −.33); the intervals are wide.', inReport: true, stale: false, when: '2026-11-04 11:20:07', snap: {h: 'h1', des: 'primary', dir: 'less', alpha: '.05', v: 2}},
+    {id: 'r2', task: 't2', kind: 'kw', reviewed: [1, 0, 1], note: '', inReport: true, stale: false, when: '2026-11-04 11:31:44', snap: {h: 'h2', des: 'primary', dir: 'two-sided', alpha: '.05', v: 2}}];
+  p.records = [{kind: 'deviation', h: 'h1', what: 'Method', planned: 'Pearson’s r (plan version 1)', actual: 'Spearman’s ρ', reason: 'Several scale totals are skewed (Data page histograms); decided before H1 had any result.', before: 0, when: '2026-11-03 09:40'},
+    {kind: 'ack', h: 'h1', check: 'H-DIR-TWOSIDED', reason: 'The two-sided p is reported (conservative for a one-sided H1); the sign of every ρ is compared with the prediction.', before: 0, when: '2026-11-03 09:42'},
+    {kind: 'designation', h: 'h2', from: 'primary', to: 'secondary', after: 2, reason: 'Groups of 3, 47 and 5 people: the comparison can only be indicative.', when: '2026-11-05 16:02'}];
+  p.versions = [{v: 1, when: '2026-11-02 10:14', n: 2, runs: 0, note: ''}, {v: 2, when: '2026-11-03 09:40', n: 2, runs: 0, note: 'H1 wording edited'}, {v: 3, when: '2026-11-05 16:02', n: 3, runs: 2, note: 'H3 added; H2 primary → secondary'}];
+  return p;
+}
+function reset() {
+  clock = 0;
+  Object.assign(S, {route: 'home', proj: null, dlg: null, c: {i: 0, t: 0, p: 0, d: 0}, typed: new Set(), step: 0, open: {}, forms: {}, status: '', draftTitle: '', accept: false,
+    selH: null, selTask: null, selRes: null, insp: 'hypothesis', edit: null});
+  render();
+}
+
+/* ---- Derived facts (pure): the same rules the 37.0 specification gives */
+const P = () => S.proj;
+const hn = h => 'H' + (P().hs.indexOf(h) + 1);
+const hypOf = id => P().hs.find(h => h.id === id) || null;
+const qOf = h => P().qs.find(q => q.id === h.q) || P().qs[0];
+const goalName = k => (GOALS.find(g => g[0] === k) || [0, 'Not chosen'])[1];
+const res = t => P().results.slice().reverse().find(r => r.task === t.id) || null;
+const taskOf = r => P().tasks.find(t => t.id === r.task);
+const dirName = d => ({'two-sided': 'Two-sided', greater: 'Greater (one-sided)', less: 'Less (one-sided)'}[d]);
+const dirOf = (h, d = h.dir) => (qOf(h).type === 'relate' && d !== 'two-sided' ? (d === 'greater' ? 'Positive (one-sided)' : 'Negative (one-sided)') : dirName(d));
+const desName = d => ({primary: 'Primary', secondary: 'Secondary', exploratory: 'Exploratory'}[d]);
+const mOf = t => t.method || (t.goal === 'compare' ? 'kruskal' : 'pearson');
+const ready = t => !!t && (t.goal === 'compare' ? !!t.group : !!t.x) && (t.ys || []).length > 1;
+const order = hs => hs.slice().sort((a, b) => ({primary: 0, secondary: 1, exploratory: 2}[a.des] - {primary: 0, secondary: 1, exploratory: 2}[b.des]));
+const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+const curTask = id => P().tasks.find(t => t.id === (id || S.selTask)) || null;
+function rTitle(r) { const t = taskOf(r); return r.kind === 'rho' ? 'Spearman ρ: UCLA with 8 variables' : r.kind === 'kw' ? 'Kruskal–Wallis: 8 outcomes by UCLA_Level' : `${METH[mOf(t)]}: ${t.x} with ${t.ys.length} variables`; }
+function newTask(h) { return {id: 't' + (P().tasks.length + 1), h: h ? h.id : null, goal: h ? qOf(h).type : (S.v === 'B' ? '' : 'relate'), x: null, ys: [], method: null, adjust: 'holm', pearson: false, ran: false, title: ''}; }
+function steps(t) {
+  const r = t ? res(t) : null, ok = ready(t);
+  const a = [['Hypothesis', t && t.h ? 'done' : 'skip'], ['Variables', ok ? 'done' : 'todo'], ['Design', ok && P().levels && (mOf(t) !== 'pearson' || t.pearson || t.ran) ? 'done' : 'todo'],
+    ['Method', ok ? 'done' : 'todo'], ['Result', r ? (r.stale ? 'att' : 'done') : 'todo'], ['Checks', r ? (r.reviewed.every(Boolean) ? 'done' : 'att') : 'todo'],
+    ['Interpretation', r ? (r.note.trim() ? 'done' : r.skipNote ? 'skip' : 'todo') : 'todo'], ['Report', r && r.inReport ? 'done' : 'todo']];
+  const i = a.findIndex(x => x[1] === 'todo' || x[1] === 'att');
+  if (i >= 0 && a[i][1] === 'todo') a[i][1] = 'cur';
+  return a;
+}
+function checks(h) {
+  const p = P(), o = [], t = p.tasks.find(x => x.h === h.id), r = t ? res(t) : null, H = hn(h);
+  const rec = (kind, c) => p.records.find(x => x.h === h.id && x.kind === kind && (!c || x.check === c));
+  if (h.standing === 'after') o.push(h.des === 'exploratory' ? {id: 'H-ADDED-AFTER', sev: 'info', t: `Added after ${h.after} results were calculated`, f: 'Designated exploratory, as its standing requires.'}
+    : {id: 'H-ADDED-AFTER', sev: 'warning', t: `Added after ${h.after} results were calculated`, f: 'Exploratory unless you justify otherwise.', act: 'na'});
+  const d = rec('designation');
+  if (d) o.push({id: 'H-DESIGNATION-CHANGED', sev: 'warning', state: 'Recorded', t: `Designation changed after ${d.after} results: ${d.from} → ${d.to}`, f: `Reason, recorded ${d.when}: ${d.reason}`});
+  if (!t) { if (h.saved) o.push({id: 'H-NO-TASK', sev: h.des === 'exploratory' ? 'info' : 'warning', t: `No analysis tests ${H} yet`, f: h.des === 'exploratory' ? 'Optional for an exploratory hypothesis.' : 'Create the analysis from this hypothesis.', act: h.des === 'exploratory' ? '' : 'task'}); return o; }
+  const m = mOf(t);
+  if (h.dir !== 'two-sided') {
+    if (t.goal === 'compare') o.push({id: 'H-DIR-OMNIBUS', sev: 'warning', t: `${H} predicts a direction; a test of three groups has none`, f: 'State the expected order and read the pairwise comparisons, or make the hypothesis two-sided.', act: 'ack'});
+    else { const a = rec('ack', 'H-DIR-TWOSIDED'); o.push({id: 'H-DIR-TWOSIDED', sev: 'warning', state: a ? 'Acknowledged' : '', t: `${H} predicts a ${h.dir === 'less' ? 'negative' : 'positive'} direction (one-sided); ${METH[m]} reports a two-sided p`, f: a ? `Acknowledged ${a.when}: ${a.reason}` : 'This version calculates two-sided p-values only. Make the hypothesis two-sided, or acknowledge it and compare the sign of each estimate with the prediction.', act: a ? '' : 'ack'}); }
+    if (r && r.kind === 'rho') { const opp = RHO.filter(x => (h.dir === 'less' ? parseFloat(x[1]) > 0 : parseFloat(x[1]) < 0)); if (opp.length) o.push({id: 'H-DIR-SIGN', sev: 'info', t: `${opp.length} of ${RHO.length} coefficients point the other way`, f: opp.map(x => `${x[0]}: ρ = ${x[1]}`).join('; ') + ` (${H} predicts ${h.dir === 'less' ? 'negative' : 'positive'} coefficients).`}); }
+  }
+  if (h.method && h.method !== m) { const dv = rec('deviation'); o.push({id: 'H-METHOD-DIFFERS', sev: 'warning', state: dv ? 'Recorded' : '', t: `The analysis differs from the plan: ${METH[h.method]} planned, ${METH[m]} used`, f: dv ? `Recorded as a deviation ${dv.when} (${dv.before} results of ${H} existed): ${dv.reason}` : 'Record it as a deviation with its reason, or change the analysis.', act: dv ? '' : 'dev'}); }
+  const k = (t.ys || []).length;
+  if (k > 1) o.push(t.adjust === 'none' ? {id: 'H-FAMILY-UNCORRECTED', sev: 'warning', t: `A family of ${k} tests without a multiple-comparison adjustment`, f: 'Choose Holm or Benjamini–Hochberg, or acknowledge why each test answers its own hypothesis.', act: 'ack'} : {id: 'H-FAMILY-UNCORRECTED', sev: 'pass', t: `Family of ${k} tests adjusted together (${ADJ[t.adjust].split(' (')[0]})`});
+  if (r) {
+    const n = r.reviewed.filter(x => !x).length, as = AS[r.kind === 'kw' ? 'kw' : 'rho'];
+    o.push(n ? {id: 'H-ASSUMPTIONS-OPEN', sev: 'warning', t: `${n} assumption check${n > 1 ? 's' : ''} of the result not reviewed`, f: as.filter((x, i) => !r.reviewed[i]).join('; '), act: 'review'} : {id: 'H-ASSUMPTIONS-OPEN', sev: 'pass', t: 'Every assumption check of the result reviewed'});
+    o.push(r.stale ? {id: 'H-RESULT-STALE', sev: 'warning', t: 'Calculated before the data changed', act: 'na'} : {id: 'H-RESULT-STALE', sev: 'pass', t: `Result current: data version ${SHA}…, levels unchanged`});
+    if (parseFloat(h.alpha) !== 0.05) o.push({id: 'H-ALPHA', sev: 'warning', t: `Plan α = ${h.alpha}; the result is interpreted at α = .05`, act: 'ack'});
+    if (r.snap && r.snap.late) o.push({id: 'H-LINKED-LATE', sev: 'info', t: `Linked to ${H} after the result was calculated`, f: 'The link is kept, and the result says it did not know the hypothesis when it was calculated.'});
+  }
+  return o;
+}
+const openChecks = h => checks(h).filter(c => c.sev === 'warning' && !c.state && c.act && c.id !== 'H-ASSUMPTIONS-OPEN');
+function nextAction() {
+  const p = P(); if (!p) return null;
+  const why = [], q = p.qs[0], A = S.v === 'A';
+  const ok = (good, text) => why.push([good, text]);
+  if (!q.type || !q.text.trim()) { ok(false, 'Q1 has a kind and a sentence'); return {t: 'Next: write your research question', b: 'Choose the kind of question, then write it in one sentence. The kind decides which analyses fit.', why}; }
+  ok(true, 'Q1: ' + goalName(q.type));
+  if (!p.hs.length) { ok(false, 'Q1 has a hypothesis'); return {t: 'Next: add a hypothesis to Q1', b: 'H1 and H0 are drafted; direction starts two-sided and the designation primary.', btn: ['planAdd', 'Add hypothesis to Q1', 'q1'], why}; }
+  const draft = p.hs.find(h => !h.saved || h.dirty);
+  if (draft) { ok(false, `${hn(draft)} saved in a plan version`); return {t: 'Next: save the plan before any result', b: 'A hypothesis saved now is shown as planned before any result.', btn: ['planSave', 'Save plan version'], why}; }
+  ok(true, `Plan version ${p.versions.length} saved (${p.versions[p.versions.length - 1].runs} results existed)`);
+  if (!p.data) { ok(false, 'Data open'); return {t: A ? 'Next: open the data for H1' : 'Next: open the data', b: 'The file is copied into the project and never changed.', btn: ['openData', 'Open CSV / Excel…'], why}; }
+  ok(true, 'Data: ' + FILE);
+  if (!p.levels) { ok(false, 'Measurement levels confirmed'); return {t: A ? 'Next: choose H1’s variables and confirm their levels' : 'Next: confirm the measurement levels', b: '13 variables have no confirmed level. Methods are offered only for confirmed levels.', btn: S.route === 'data' || A ? null : ['go', 'Review the variables', 'data'], why}; }
+  ok(true, 'Measurement levels confirmed');
+  for (const h of order(p.hs)) {
+    const t = p.tasks.find(x => x.h === h.id);
+    if (!t) { if (h.des === 'exploratory') continue; ok(false, `An analysis tests ${hn(h)}`); return {t: `Next: create the analysis for ${hn(h)}`, b: `It opens with the question chosen (${goalName(qOf(h).type)}) and linked to ${hn(h)}.`, btn: ['taskFromH', `Create the analysis for ${hn(h)}`, h.id], why}; }
+    ok(true, `${hn(h)} is tested by its own analysis`);
+    const r = res(t);
+    if (!r) { ok(false, `${hn(h)} has a result`); return {t: `Next: choose the variables and run the analysis for ${hn(h)}`, b: A ? 'In H1 › Data and scales, then Analysis.' : 'Steps 2 to 4 of the task.', btn: S.route === 'analyze' || A ? null : ['openTask', 'Open the task', t.id], why}; }
+    const open = openChecks(h);
+    if (open.length) { ok(false, 'Checks against the plan decided'); return {t: `Next: decide on “${open[0].t}”`, b: 'Resolve it, or record your reason. Nothing is decided for you.', btn: ['showChecks', 'Show the check', h.id], why}; }
+    const un = r.reviewed.filter(x => !x).length;
+    if (un) { ok(false, 'Assumption checks reviewed'); return {t: `Next: review ${un} assumption check${un > 1 ? 's' : ''} of ${hn(h)}’s result`, b: 'Tick each one you checked; the Word report says which were reviewed.', btn: S.route === 'analyze' || A ? null : ['reviewGo', 'Review the assumptions', r.id], why}; }
+    if (!r.note.trim() && !r.skipNote) { ok(false, 'Interpretation written or skipped'); return {t: `Next: write your interpretation of ${hn(h)}’s result (optional)`, b: 'It goes into the report as your note, marked as not verified by the engine.', alt: ['skipNote', 'Skip', r.id], why}; }
+    if (!r.inReport) { ok(false, `${hn(h)}’s result in the report`); return {t: `Next: add ${hn(h)}’s result to the report`, btn: ['addReport', 'Add to report', r.id], why}; }
+    ok(true, `${hn(h)}: result reviewed and in the report`);
+  }
+  if (!p.exported) { ok(false, 'Word report exported'); return {t: 'Next: export the Word report', b: `${p.results.filter(r => r.inReport).length} result(s) in the report, in reading order.`, btn: S.route === 'reports' ? null : ['go', 'Open the report', 'reports'], why}; }
+  return {t: 'Every planned step is done', b: 'Add another hypothesis or review the report.', why};
+}
+
+/* ---- Small renderers */
+const chip = (text, tone = '', extra = '') => `<span class="chip ${tone}"${extra}>${text}</span>`;
+const scope = tag => `<span class="scope" title="Planned increment">${tag}</span>`;
+const btn = (k, label, kind = 'secondary', a = '', arg = '', extra = '') => `<button type="button" class="btn ${kind}" data-k="${k}" data-a="${a || 'na'}"${arg !== '' ? ` data-arg="${E(arg)}"` : ''} ${extra}>${label}</button>`;
+const field = (k, f, label, val, multi, hint = '') => `<label class="fld"><span>${label}</span>${multi ? `<textarea data-k="${k}" data-f="${f}" rows="2"${hint ? ` placeholder="${E(hint)}"` : ''}>${E(val)}</textarea>` : `<input type="text" data-k="${k}" data-f="${f}" value="${E(val)}"${hint ? ` placeholder="${E(hint)}"` : ''}>`}</label>`;
+const cb = (k, a, arg, label, on) => `<label class="cb"><input type="checkbox" data-k="${k}" data-a="${a}" data-arg="${E(arg)}"${on ? ' checked' : ''}><span>${label}</span></label>`;
+const sel = (k, a, arg, label, opts, val, width = '') => `<label class="fld"${width ? ` style="max-width:${width}"` : ''}><span>${label}</span><select data-k="${k}" data-a="${a}" data-arg="${E(arg)}">${opts.map(o => `<option value="${E(o[0])}"${o[0] === val ? ' selected' : ''}>${E(o[1])}</option>`).join('')}</select></label>`;
+const seg = (k, a, arg, opts, val, label) => `<div class="seg" role="group" aria-label="${E(label)}">${opts.map(o => `<button type="button" data-k="${k}-${o[0]}" data-a="${a}" data-arg="${E(arg)}" data-val="${o[0]}" aria-pressed="${o[0] === val}">${o[1]}</button>`).join('')}</div>`;
+const head = (title, sub, actions = '') => `<div class="ph"><div><h1 class="pt">${title}</h1><p class="sub">${sub}</p></div><div class="row">${actions}</div></div>`;
+const kv = rows => `<dl class="kv">${rows.map(r => `<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join('')}</dl>`;
+const card = (title, body, extra = '') => `<section class="card"${extra}><h2>${title}</h2>${body}</section>`;
+function stepList(t, label) { return `<ol class="steps" aria-label="${E(label)}">${steps(t).map(s => `<li class="st ${s[1]}">${{done: '✓ ', att: '! ', cur: '→ ', todo: '', skip: '– '}[s[1]]}${s[0] === 'Hypothesis' && s[1] === 'skip' ? 'No hypothesis' : s[0]}<span class="sr">${{done: ' done', att: ' needs attention', cur: ' current', todo: ' not started', skip: ' skipped'}[s[1]]}</span></li>`).join('')}</ol>`; }
+function standing(h) {
+  if (!h.saved) return chip('Not saved yet');
+  if (h.standing === 'after') return h.des === 'exploratory' ? chip(`Exploratory · added after ${h.after} results`, 'info') : chip(`Added after ${h.after} results: exploratory unless justified`, 'warn');
+  return chip('Planned before any result', 'ok');
+}
+function nextBar(foot) {
+  const n = nextAction(); if (!n) return '';
+  const label = S.v === 'A' ? 'Next step' : 'Next action';
+  return `<section class="next${foot ? ' foot' : ''}" aria-label="${label}"><div class="nt"><strong>${E(n.t)}</strong>${n.b ? `<span class="cap">${E(n.b)}</span>` : ''}</div>
+  <div class="row">${n.btn ? btn('next-action', E(n.btn[1]), 'primary', 'next') : ''}${n.alt ? btn('next-alt', E(n.alt[1]), 'quiet', 'nextAlt') : ''}${btn('next-why', S.open.why ? 'Hide why' : 'Why this?', 'quiet', 'toggle', 'why', `aria-expanded="${!!S.open.why}"`)}${scope('37.0')}</div>
+  ${S.open.why ? `<ul class="why">${n.why.map(w => `<li>${w[0] ? '✓' : '○'} ${E(w[1])}</li>`).join('')}</ul>` : ''}</section>`;
+}
+
+/* ---- Shared parts: variables, method, result */
+function picker(t, kp) {
+  if (!t) return '';
+  const opts = [['', 'Choose…'], ...PICKABLE.map(n => [n, `${n} · ${LV[VARS.find(v => v[0] === n)[3]]}`])];
+  const others = PICKABLE.filter(n => n !== t.x);
+  const all = QUANT.filter(n => n !== t.x);
+  return `${sel(kp + 'role-x', 'roleX', t.id, 'First variable', opts, t.x || '', '22rem')}
+  <div class="cap" style="font-weight:600;margin-top:.4rem">Variables to relate to it (one or more)</div>
+  <div class="row">${t.x ? btn(kp + 'role-y-all-scale', `All quantitative (${all.length})`, 'quiet', 'roleAll', t.id) : ''}${t.ys.length ? btn(kp + 'role-y-clear', 'Clear', 'quiet', 'roleClear', t.id) : ''}</div>
+  <div class="cbs">${others.map(n => cb(kp + 'role-y-' + n, 'roleY', t.id + '|' + n, `${n} · ${LV[VARS.find(v => v[0] === n)[3]]}`, t.ys.includes(n))).join('')}</div>`;
+}
+function method(t, kp, runKey) {
+  if (!ready(t)) return `<p class="cap">Choose the first variable and at least two variables to relate to it.</p>`;
+  const m = mOf(t), chosen = !!t.method && t.method !== 'pearson';
+  const alts = ['pearson', 'spearman', 'kendall'].filter(x => x !== m);
+  const h = t.h ? hypOf(t.h) : null;
+  const pre = h ? checks(h).filter(c => ['H-DIR-TWOSIDED', 'H-METHOD-DIFFERS', 'H-FAMILY-UNCORRECTED', 'H-ALPHA'].includes(c.id) && c.sev === 'warning') : [];
+  const needPearson = m === 'pearson' && !t.pearson;
+  return `<div class="row"><strong style="font-size:1.05rem">${METH[m]}</strong>${chip(chosen ? 'Your choice' : 'Recommended', chosen ? 'warn' : 'ok')}</div>
+  <div class="cap" style="font-weight:600;margin-top:.3rem">Why this method</div>
+  <p class="cap">• ${t.ys.length} analyses answer one question: they run together, share one table and one multiple-comparison adjustment (Holm by default), and keep their raw p-values.<br>• Both variables are quantitative: Pearson’s r describes a linear relationship. Check the scatterplot for curvature and outliers.</p>
+  <div class="cap" style="font-weight:600">Alternatives</div>
+  ${alts.map(x => `<div class="row" style="justify-content:space-between"><span>${METH[x]}</span>${btn(kp + 'alt-' + x, 'Use instead', 'quiet', 'useMethod', t.id + '|' + x)}</div>`).join('')}
+  ${m === 'pearson' ? cb(kp + 'confirm-pearson', 'pearsonOk', t.id, 'For Pearson only: I reviewed linearity, outliers, independence and suitability of the variables', t.pearson) : ''}
+  ${pre.length ? `<div class="cap" style="font-weight:600;margin-top:.5rem">Checks against ${hn(h)} before Run ${scope('37.0')}</div>${pre.map(c => ckItem(h, c)).join('')}` : ''}
+  <p class="cap">Assumptions are not tested automatically and no single normality test decides the method. These checks are your judgement.</p>
+  <div class="row">${btn(runKey, `Run ${METH[m]}`, 'primary', 'run', t.id, needPearson ? 'disabled aria-describedby="why-run"' : '')}${needPearson ? '<span class="cap" id="why-run">Tick the Pearson check first.</span>' : ''}</div>`;
+}
+function table(r, short) {
+  if (r.kind === 'rho') { const rows = short ? RHO.slice(0, 4) : RHO; return `<div class="tw"><table class="t"><caption class="cap" style="text-align:left">${rTitle(r)}</caption><thead><tr><th>Variable 1</th><th>Variable 2</th><th>N</th><th>ρ</th><th>95% CI</th><th>p (raw)</th><th>p (Holm)</th><th>Magnitude</th></tr></thead><tbody>${rows.map(x => `<tr><td>UCLA</td><td>${x[0]}</td><td>55</td><td>${x[1]}</td><td>${x[2]}</td><td>${x[3]}</td><td>${x[4]}</td><td>${x[5]}</td></tr>`).join('')}</tbody></table>${short ? '<p class="cap">… and 4 more pairs.</p>' : ''}</div>`; }
+  if (r.kind === 'kw') { const rows = short ? KW.slice(0, 4) : KW; return `<div class="tw"><table class="t"><caption class="cap" style="text-align:left">${rTitle(r)}</caption><thead><tr><th>Outcome</th><th>n per group</th><th>H</th><th>df</th><th>p</th><th>p (Holm)</th><th>η²_H</th><th>ε²_R</th></tr></thead><tbody>${rows.map(x => `<tr><td>${x[0]}</td><td>1.0: 3, 2.0: 47, 3.0: 5</td><td>${x[1]}</td><td>2</td><td>${x[2]}</td><td>${x[3]}</td><td>${x[4]}</td><td>${x[5]}</td></tr>`).join('')}</tbody></table>${short ? '<p class="cap">… and 4 more outcomes; two more tables (groups; Dunn pairs) in Results.</p>' : ''}</div>`; }
+  return `<p class="empty">This prototype only holds the engine’s Spearman output for UCLA × the 8 scales. Nothing is invented for other choices.</p>`;
+}
+function interp(r) {
+  if (r.kind === 'rho') return `<details><summary class="cap">Interpretation (engine, 8 lines)</summary><ul class="cap">${RHO.map(x => `<li>UCLA and ${x[0]}: ρ = ${x[1]}, 95% CI ${x[2].replace(/0\./g, '.')}, p (Holm) = ${x[4]}. These data do not provide evidence of an association at α = .05; this does not show that there is no association.</li>`).join('')}</ul></details>`;
+  if (r.kind === 'kw') return `<details><summary class="cap">Interpretation (engine, 8 lines)</summary><ul class="cap">${KW.map(x => `<li>${x[0]}: H(2) = ${x[1]}, η²_H = ${x[4]}, p (Holm) = ${x[3]}. No evidence of a difference between the groups of UCLA_Level at α = .05; this does not show that the groups are equal.</li>`).join('')}</ul></details>`;
+  return '';
+}
+function assumptions(r, kp) {
+  const as = AS[r.kind === 'kw' ? 'kw' : 'rho'], n = r.reviewed.filter(x => !x).length;
+  return `<h3>Assumptions and cautions</h3>${as.map((a, i) => cb(kp + 'review-' + i, 'review', r.id + ':' + i, E(a), r.reviewed[i])).join('')}
+  ${n ? chip(`${n} check(s) not confirmed`, 'warn') : chip('All checks confirmed', 'ok')}
+  <ul class="cap">${(WARN[r.kind] || WARN.rho).map(w => `<li>${E(w)}</li>`).join('')}</ul>`;
+}
+function prov(r) {
+  const t = taskOf(r), rho = t.goal !== 'compare';
+  const vars = rho ? ['UCLA', ...t.ys] : ['UCLA_Level', ...t.ys];
+  const lvl = vars.map(n => `${n}: ${n === 'UCLA_Level' ? 'Ordinal (ordered) (1.0, 2.0, 3.0)' : 'Quantitative'}`).slice(0, 3).join('; ') + `; … (${vars.length} variables)` + (P().bulk ? ' · level accepted from the suggestions' : '');
+  const snap = r.snap && hypOf(r.snap.h);
+  return kv([['Dataset', `${FILE} · 55 rows · version ${SHA}…`], ['Complete cases', '55 of 55 rows (0 missing)'], ['Variables as coded', lvl],
+    ['Measurement', `Scale totals only: α and ω need item responses (not calculated) ${scope('37.1')}`],
+    ['Method and options', rho ? `Correlations: one variable with several · Correlation method = ${METH[mOf(t)]}; Multiple-comparison adjustment = ${ADJ[t.adjust]}; Spearman p-value = Permutation (as the single analysis)` : 'Groups compared on several outcomes · Multiple-comparison adjustment = Holm (familywise error); Test for two groups = Mann–Whitney U'],
+    ['Confirmed by the researcher', rho ? (mOf(t) === 'pearson' ? 'For Pearson only: I reviewed linearity, outliers, independence and suitability of the variables' : '—') : 'I confirm the groups contain independent participants; I reviewed the outcome distributions, outliers and group sizes'],
+    ['Calculated', r.when + (S.per === 'professor' ? ' · restored from the project' : '')], ['Engine', `analysis_runs · ${rho ? 'batch_correlation' : 'batch_groups'}`],
+    ['Tests', snap ? `${hn(snap)} · plan version ${r.snap.v} · ${desName(r.snap.des)} · ${dirOf(snap, r.snap.dir)} · α ${r.snap.alpha}${r.snap.late ? ' · linked after calculation' : ''} ${scope('37.0')}` : 'Not linked to a hypothesis']]);
+}
+function testsCard(r) {
+  const h = r.snap && hypOf(r.snap.h);
+  if (!h) return `<p class="cap">Not linked to a hypothesis (exploratory or descriptive). ${scope('37.0')}</p>`;
+  const w = openChecks(h).length;
+  return `<div class="ck info"><div class="h">${r.snap.late ? `Linked to ${hn(h)} after it was calculated` : `Calculated as a test of ${hn(h)}`} ${scope('37.0')}</div>
+  <div class="cap">${desName(r.snap.des)} when calculated (plan version ${r.snap.v})${h.des !== r.snap.des ? ` · now ${desName(h.des)}` : ''} · ${dirOf(h, r.snap.dir)} · α ${r.snap.alpha}. ${w ? `${w} check(s) against the plan to decide.` : 'No open check against the plan.'}</div>
+  ${S.v !== 'B' ? btn('res-open-' + h.id, `Open ${hn(h)}`, 'quiet', 'openH', h.id) : ''}</div>`;
+}
+function resultBlock(r, kp, where) {
+  const actions = [btn(kp + (S.v === 'A' ? 'add-report' : 'task-add-report'), r.inReport ? '✓ In report' : 'Add to report', r.inReport ? 'secondary' : 'primary', 'addReport', r.id), btn(kp + 'edit-chart', 'Edit chart', 'secondary', 'na')];
+  if (where === 'task') actions.push(btn('task-open-result', 'Open in Results', 'quiet', 'openRes', r.id));
+  return `${testsCard(r)}${table(r)}${interp(r)}${assumptions(r, kp)}${field(kp + (S.v === 'A' ? 'notes' : 'result-notes'), `r:${r.id}.note`, 'Researcher interpretation (optional, unverified)', r.note, true)}<div class="row">${actions.join('')}</div>`;
+}
+function ckItem(h, c) {
+  const id = h.id, sev = {warning: '!', info: 'i', pass: '✓'}[c.sev];
+  let act = '';
+  if (!c.state && c.act === 'ack') act = btn(`ack-${id}-${c.id}`, 'Acknowledge…', 'quiet', 'ackOpen', `${id}|${c.id}`) + (c.id === 'H-DIR-TWOSIDED' && !P().results.some(r => taskOf(r).h === id) ? btn(`two-sided-${id}`, `Make ${hn(h)} two-sided`, 'quiet', 'twoSided', id) : '');
+  if (!c.state && c.act === 'dev') act = btn(`dev-${id}`, 'Record as deviation…', 'quiet', 'devOpen', `${id}|${c.id}`);
+  if (c.act === 'review') act = btn(`review-go-${id}`, 'Review the assumptions', 'quiet', 'reviewGoH', id);
+  if (c.act === 'task') act = S.v === 'B' ? '' : btn(`check-create-${id}`, `Create the analysis for ${hn(h)}`, 'quiet', 'taskFromH', id);
+  const form = S.open[`form-${id}-${c.id}`] ? `<div>${field(`form-${id}-${c.id}-text`, `form:${id}|${c.id}`, c.act === 'dev' ? 'Why the analysis differs from the plan (recorded with the time and the number of results so far)' : 'Your reason (kept with the check; reopened if the hypothesis or the analysis changes)', S.forms[`${id}|${c.id}`] || '', true)}
+    ${btn(`form-${id}-${c.id}-save`, c.act === 'dev' ? 'Record deviation' : 'Save acknowledgement', 'primary', 'formSave', `${id}|${c.id}`)}</div>` : '';
+  return `<div class="ck ${c.sev}"><div class="h"><span aria-hidden="true">${sev}</span> ${E(c.t)} ${c.state ? chip(c.state) : ''}</div>${c.f ? `<div class="cap">${E(c.f)}</div>` : ''}<div class="id">${c.id}</div>${act ? `<div class="row">${act}</div>` : ''}${form}</div>`;
+}
+function checkList(h) { const cs = checks(h); return cs.length ? cs.map(c => ckItem(h, c)).join('') : '<p class="cap">Nothing to check yet: the checks start when an analysis tests this hypothesis.</p>'; }
+function devList(h) {
+  const ds = P().records.filter(x => x.h === h.id && x.kind === 'deviation');
+  return (ds.length ? ds.map(d => `<div class="ck warning"><div class="h">${E(d.what)}: ${E(d.planned)} planned; ${E(d.actual)} used ${chip('Recorded')}</div><div class="cap">Reason: ${E(d.reason)} · recorded ${d.when} · ${d.before} results of ${hn(h)} existed then</div></div>`).join('') : '<p class="cap">None recorded.</p>')
+    + btn(`dev-new-${h.id}`, 'Record a deviation…', 'quiet', 'na');
+}
+function history(h) {
+  const p = P(), recs = p.records.filter(x => x.h === h.id);
+  return `<ul class="cap">${p.versions.filter(v => v.v >= (h.v || 1)).map(v => `<li>Plan version ${v.v} · ${v.when} · ${v.n} hypotheses · ${v.runs} results existed${v.note ? ' · ' + E(v.note) : ''}</li>`).join('')}
+  ${recs.map(x => `<li>${x.when} · ${x.kind === 'deviation' ? 'Deviation recorded' : x.kind === 'ack' ? 'Check acknowledged (' + x.check + ')' : `Designation ${x.from} → ${x.to}, after ${x.after} results`}: ${E(x.reason)}</li>`).join('')}</ul>`;
+}
+function evidence(r) {
+  const t = taskOf(r);
+  return `<div class="card" style="background:var(--alt)"><h2 style="font-size:.9375rem">Evidence: “${E(t.title)}”</h2>${table(r, true)}
+  ${kv([['Assumption checks', `${r.reviewed.filter(Boolean).length} of 3 reviewed`], ['Researcher note', r.note ? E(r.note) : '—']])}${prov(r)}</div>`;
+}
+
+/* ---- Pages */
+function pageHome() {
+  const rows = S.per === 'professor' && !P() ? `<div class="hrow" style="cursor:default"><span class="ttl">${PT}</span><span class="row"><span class="cap">1 dataset · 2 results · last opened 2026-11-12</span>${btn('project-open', 'Open', 'secondary', 'openProject')}</span></div>` : (P() ? `<div class="hrow" style="cursor:default"><span class="ttl">${E(P().title)}</span>${chip('Open', 'ok')}</div>` : '<p class="cap">No projects yet. Create one to keep your work between sessions.</p>');
+  return head('What would you like to do?', 'Start with your research question. The app does the calculations and explains every decision.')
+    + `<div class="tiles">${[['Analyze a dataset', 'Open a CSV or Excel file, check the variables, then answer a research question.', 'Open CSV / Excel…'], ['Build a questionnaire', 'Write questions, reuse answer scales and see exactly what respondents will see.', 'New questionnaire'], ['Import a questionnaire', 'Turn a PDF or Word questionnaire into an editable draft; every item is checked against the source.', 'Choose PDF / Word…'], ['Try a sample study', 'Walk through the workflow with fictional data — no real participants.', 'Load sample data']].map((x, i) => `<div class="tile"><h2>${x[0]}</h2><p class="cap">${x[1]}</p>${btn('home-tile-' + i, x[2], i ? 'secondary' : 'primary', 'na')}</div>`).join('')}</div>`
+    + card('Research projects', `<p class="cap">A project keeps its datasets, confirmed measurement levels, questionnaires, results and report together on this computer. Every change is saved automatically.</p>
+      <div class="row">${field('project-new-title', 'draftTitle', 'New project title', S.draftTitle, false)}${btn('project-create', 'Create project', 'primary', 'createProject')}</div>${rows}`);
+}
+function pageData() {
+  const p = P();
+  const h = head(S.v === 'A' ? 'Data & instruments' : 'Data', 'Import a file, confirm what each variable measures and prepare scores without changing the original.', btn('data-open', 'Open CSV / Excel…', 'primary', 'openData'));
+  if (!p || !p.data) return h + `<div class="empty">No dataset open. ${btn('data-open-2', 'Open CSV / Excel…', 'secondary', 'openData')}</div>`;
+  const rows = VARS.map(v => `<tr><td><strong>${v[0]}</strong></td><td>${v[1]}</td><td>${v[2]}</td><td>${LV[v[3]]}</td><td>${p.levels ? LV[v[3]] : 'Not confirmed'}</td><td>0</td><td>${v[4]}</td></tr>`).join('');
+  return h + `<div class="row" style="margin-bottom:1rem">${chip('Source: ' + FILE)}${chip('Rows: 55')}${chip('Variables: 13')}${chip('Missing: 0')}</div>`
+    + (p.levels ? '' : `<div class="ck info"><div class="h">Next: confirm the measurement levels</div><div class="cap">13 of 13 variables have no confirmed level yet.</div></div>`)
+    + card('Variable dictionary', `<p class="cap">What each column holds; you confirm its level.</p><div class="tw"><table class="t"><thead><tr><th>Variable</th><th>Stored as</th><th>Values (count)</th><th>Suggested</th><th>Measurement level (you confirm)</th><th>Missing</th><th>Distinct</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${p.levels ? chip('Levels confirmed from suggestions: 13', 'ok') : `<p class="cap">Choose each variable’s level in the “Measurement level (you confirm)” column. Or, after checking the suggestions against the questionnaire or codebook, confirm all remaining ones at once.</p>
+      <div class="row">${cb('data-accept-confirm', 'acceptCheck', '', 'I checked these levels against the questionnaire or codebook', S.accept)}${btn('data-accept', 'Use suggestions for unconfirmed variables', 'secondary', 'accept', '', S.accept ? '' : 'disabled aria-describedby="why-accept"')}</div>${S.accept ? '' : '<p class="cap" id="why-accept">Tick the confirmation first.</p>'}`}`)
+    + (S.v === 'A' ? card('Instruments', '<p class="cap">Questionnaires linked to the project: none. The measurement layer (scoring keys, reverse items, α/ω per subscale) is planned for 37.1.</p>') : '');
+}
+function hEditor(h) {
+  const k = h.id, n = hn(h), runs = P().results.length;
+  const desChanged = h.saved && h.desWas && h.desWas !== h.des && runs > 0;
+  return `${field(k + '-text', `h:${k}.text`, `Hypothesis (${n})`, h.text, true)}${field(k + '-h0', `h:${k}.h0`, 'Null hypothesis (H0)', h.h0, true)}
+  <div class="fld"><span>Direction</span>${seg(k + '-dir', 'setH', k + ':dir', [['two-sided', 'Two-sided'], ['greater', qOf(h).type === 'relate' ? 'Positive (one-sided)' : 'Greater (one-sided)'], ['less', qOf(h).type === 'relate' ? 'Negative (one-sided)' : 'Less (one-sided)']], h.dir, 'Direction')}<span class="cap">The tests in this version report two-sided p-values; a one-sided hypothesis is checked against the sign of each estimate.</span></div>
+  <div class="fld"><span>Designation ${scope('37.0')}</span>${seg(k + '-des', 'setH', k + ':des', [['primary', 'Primary'], ['secondary', 'Secondary'], ['exploratory', 'Exploratory']], h.des, 'Designation')}<span class="cap">Set before results. A later change is kept in the history with its reason.</span></div>
+  ${desChanged ? field(k + '-des-reason', `h:${k}.desReason`, `Why the designation changes after ${runs} results (required)`, h.desReason || '', true) : ''}
+  ${field(k + '-alpha', `h:${k}.alpha`, 'Significance level', h.alpha, false)}
+  <p class="cap">Variables and method: chosen in the analysis created from ${n}; its first run records them for ${n} (planned before its result). ${scope('37.0')}</p>`;
+}
+function hRow(h) {
+  const t = P().tasks.find(x => x.h === h.id), st = t ? steps(t) : null, w = openChecks(h).length + (t && res(t) && res(t).reviewed.some(x => !x) ? 1 : 0);
+  const rec = checks(h).filter(c => c.state).length, done = st ? st.filter(x => x[1] === 'done').length : 0, cur = st ? (st.find(x => x[1] === 'cur' || x[1] === 'att') || [])[0] : '';
+  return `<button type="button" class="hrow${S.selH === h.id ? ' sel' : ''}" data-k="hyp-${h.id}" data-a="selH" data-arg="${h.id}" aria-pressed="${S.selH === h.id}">
+  <span class="ttl">${hn(h)}. ${E(h.text)}</span><span class="row">${chip(desName(h.des), h.des === 'primary' ? 'info' : '')}${chip(dirOf(h))}${chip('α ' + E(h.alpha))}${standing(h)}</span>
+  <span class="cap">${t ? `Tested by “${E(t.title || 'new task')}” · ${METH[mOf(t)]}` : 'No analysis yet'}${st ? ` · ${done} of 8 steps done${cur ? ' · next: ' + cur : ''}` : ''}</span>
+  <span class="row">${w ? chip(`${w} to decide`, 'warn') : ''}${rec ? chip(`${rec} recorded`) : ''}${!w && t && res(t) ? chip('No open check', 'ok') : ''}</span></button>`;
+}
+function hDetail(h) {
+  if (!h) return '<p class="cap">Select a hypothesis to see its analysis, its checks against the plan, its deviations and its history.</p>';
+  if (!h.saved || S.edit === h.id) return `<h3>${hn(h)} · ${h.saved ? 'editing' : 'draft'}</h3>${hEditor(h)}`;
+  const t = P().tasks.find(x => x.h === h.id), r = t ? res(t) : null, ev = S.open['ev-' + h.id];
+  return `<div class="row" style="justify-content:space-between"><h3 style="margin:0">${hn(h)}</h3>${btn(h.id + '-edit', 'Edit', 'quiet', 'editH', h.id)}</div>
+  ${kv([[hn(h), E(h.text)], ['H0', E(h.h0)], ['Direction', dirOf(h)], ['Designation', desName(h.des)], ['α', E(h.alpha)], ['Planned method', h.method ? METH[h.method] : 'Decided in the analysis'], ['Question', `${E(qOf(h).text)} · ${goalName(qOf(h).type)}`]])}
+  <h3>Analysis that tests ${hn(h)} ${scope('37.0')}</h3>
+  ${t ? `<div class="ck info"><div class="h">“${E(t.title || 'New task')}” · ${METH[mOf(t)]}${(t.ys || []).length > 1 ? ` · ${t.ys.length} tests · ${ADJ[t.adjust].split(' (')[0]}` : ''}</div>${stepList(t, 'Step status of the analysis')}<div class="row">${btn('open-task-' + t.id, 'Open the task', 'quiet', 'openTask', t.id)}${r ? btn('ev-' + h.id, ev ? 'Hide the evidence' : 'Show the evidence', 'quiet', 'toggle', 'ev-' + h.id, `aria-expanded="${!!ev}"`) : ''}</div></div>${ev && r ? evidence(r) : ''}`
+    : `<p class="cap">No analysis yet.</p>${btn(h.id + '-create', `Create the analysis for ${hn(h)}`, 'secondary', 'taskFromH', h.id)}`}
+  <h3>Checks against the plan ${scope('37.0')}</h3>${checkList(h)}
+  <h3>Deviations from the plan ${scope('37.0')}</h3>${devList(h)}
+  <h3>History</h3>${history(h)}`;
+}
+function qBlock(q, i, kinds) {
+  const n = i + 1, hs = P().hs.filter(h => h.q === q.id);
+  const kind = q.type ? `<div class="row">${chip(goalName(q.type), 'info')}${btn(`q${n}-kind-change`, 'Change', 'quiet', 'qType', q.id + ':')}</div>`
+    : `<div class="fld" style="max-width:none"><span>Kind of question ${scope('37.0')}</span><div class="row">${GOALS.map(g => btn(`q${n}-type-${g[0]}`, g[1], 'secondary', 'qType', q.id + ':' + g[0])).join('')}</div></div>`;
+  return `<div class="q"><h3>Q${n}. ${E(q.text || 'Research question')}</h3>${kind}${field(`q${n}-text`, `q:${q.id}.text`, 'Research question', q.text, true, 'For example: Is loneliness related to how students cope with stress?')}
+  ${kinds ? hs.map(hRow).join('') : ''}${btn('plan-add-' + q.id, `Add hypothesis to Q${n}`, 'secondary', 'planAdd', q.id)}</div>`;
+}
+function planFooter() {
+  const p = P();
+  return `<div class="row">${btn('plan-save', 'Save plan version', 'primary', 'planSave')}${p.versions.length ? btn('plan-history', `Plan history (${p.versions.length} versions)`, 'quiet', 'toggle', 'planhist', `aria-expanded="${!!S.open.planhist}"`) : ''}</div>
+  ${S.open.planhist ? `<ul class="cap">${p.versions.map(v => `<li>Version ${v.v} · ${v.when} · ${v.n} hypotheses · ${v.runs} results existed${v.note ? ' · ' + E(v.note) : ''}</li>`).join('')}</ul>` : ''}`;
+}
+function projectHead() {
+  const p = P();
+  return head(E(p.title), 'Everything in this project, saved automatically: data sources, questionnaires, results and the report.', btn('project-backup', 'Back up…', 'secondary', 'na') + btn('project-all', 'All projects', 'quiet', 'go', 'home') + btn('project-close', 'Close project', 'quiet', 'na'))
+    + `<div class="row" style="margin-bottom:1rem">${chip('✓ Saved automatically · last change ' + (p.versions.length ? p.versions[p.versions.length - 1].when.slice(11) : '14:05'), 'ok')}<span class="cap">${p.data ? 1 : 0} dataset · ${p.results.length} result${p.results.length === 1 ? '' : 's'}</span></div>`;
+}
+function pageProjectH() {
+  const p = P(), h = hypOf(S.selH);
+  return projectHead() + nextBar(false)
+    + `<section class="card" aria-labelledby="hw"><h2 id="hw">Research questions and hypotheses ${scope('37.0')}</h2><p class="cap">Write the plan before you look at results. Every saved version is kept; a hypothesis added after results were calculated is shown as such.</p>
+    <div class="split"><div>${p.qs.map((q, i) => qBlock(q, i, true)).join('')}${planFooter()}</div><div aria-live="polite">${hDetail(h)}</div></div></section>`
+    + card('Data sources', p.data ? `<div class="hrow" style="cursor:default"><span class="ttl">${FILE}</span><span class="cap">File · 55 rows · 13 variables</span>${chip('In use', 'ok')}</div>` : '<p class="cap">No data yet.</p>')
+    + card('Results', p.results.length ? p.results.map(r => `<div class="row" style="justify-content:space-between"><span>${rTitle(r)}</span>${r.inReport ? chip('In report', 'info') : ''}</div>`).join('') : '<p class="cap">No results yet.</p>');
+}
+function todayNext() {
+  const p = P();
+  if (!p.data) return card('Next: add the data', `<p class="cap">Open a data file, collect responses with a questionnaire, or try a sample.</p><div class="row">${btn('next-open-data', 'Open CSV / Excel…', 'primary', 'openData')}${btn('next-sample', 'Use a sample dataset', 'secondary', 'na')}</div>`, ' style="border-color:var(--accent)"');
+  if (!p.levels) return card('Next: confirm the measurement levels', `<p class="cap">13 variable(s) have no confirmed level.</p>${btn('next-levels', 'Review the variables', 'primary', 'go', 'data')}`, ' style="border-color:var(--accent)"');
+  if (!p.results.length) return card('Next: choose an analysis', `<p class="cap">Say what you want to find out; the desk suggests a method and checks its conditions.</p>${btn('next-analyze', 'Choose an analysis', 'primary', 'go', 'desk')}`, ' style="border-color:var(--accent)"');
+  return card(p.results.some(r => r.inReport) ? 'Next: export the report' : 'Next: build the report', `<p class="cap">Results: ${p.results.length}.</p>${btn('next-report', 'Open the report', 'primary', 'go', 'reports')}`, ' style="border-color:var(--accent)"');
+}
+function pageProjectB() {
+  const p = P();
+  const hs = p.hs.map(h => `<section class="card" style="background:var(--alt)"><h2>${hn(h)}. ${E(h.text)}</h2><div class="row">${standing(h)}</div>
+    ${!h.saved || S.edit === h.id ? `${field(h.id + '-text', `h:${h.id}.text`, `Hypothesis (${hn(h)})`, h.text, true)}${field(h.id + '-h0', `h:${h.id}.h0`, 'Null hypothesis (H0)', h.h0, true)}
+    <div class="row">${sel(h.id + '-dir', 'setHSel', h.id + ':dir', 'Direction', [['two-sided', 'Two-sided'], ['greater', 'Greater (one-sided)'], ['less', 'Less (one-sided)']], h.dir, '14rem')}${sel(h.id + '-des', 'setHSel', h.id + ':des', 'Priority', [['primary', 'Primary'], ['secondary', 'Secondary'], ['exploratory', 'Exploratory']], h.des, '14rem')}${field(h.id + '-alpha', `h:${h.id}.alpha`, 'Significance level', h.alpha, false)}</div>`
+      : kv([['H0', E(h.h0)], ['Direction', dirName(h.dir)], ['Priority', desName(h.des)], ['Significance level', E(h.alpha)], ['Intended method', h.method ? METH[h.method] : '—']])}</section>`).join('');
+  return projectHead() + todayNext()
+    + card('Question', `${p.qs.map((q, i) => `${q.type ? `<div class="row">${chip(goalName(q.type), 'info')}</div>` : `<div class="row">${GOALS.map(g => btn(`q${i + 1}-type-${g[0]}`, g[1], 'secondary', 'qType', q.id + ':' + g[0])).join('')}</div>`}${field(`q${i + 1}-text`, `q:${q.id}.text`, 'Research question or hypothesis', q.text, true)}`).join('')}`)
+    + card('Research plan', `<p class="cap">Write the plan before you look at results. Every saved version is kept; a hypothesis added after results were calculated is shown as such.</p><h3>Hypotheses</h3>${hs || '<p class="cap">No hypothesis yet.</p>'}
+      <div class="row">${btn('plan-add-q1', 'Add hypothesis', 'secondary', 'planAdd', 'q1')}</div>${planFooter()}`)
+    + card('Data sources', p.data ? `<p>${FILE} · 55 rows · 13 variables ${chip('In use', 'ok')}</p>` : `<p class="cap">No data yet.</p>`);
+}
+function pageAnalyzeH() {
+  const p = P(), t = curTask();
+  const bar = `<div class="row" style="margin-bottom:.75rem"><span class="cap" style="font-weight:600">Research tasks</span>${p.tasks.map(x => `<button type="button" class="chip ${x.id === S.selTask ? 'info' : ''}" data-k="task-${x.id}" data-a="openTask" data-arg="${x.id}">${x.h ? hn(hypOf(x.h)) + ' · ' : ''}${E(x.title || 'New task')}</button>`).join('')}${btn('task-new', '+ New task', 'quiet', 'na')}</div>`;
+  const h0 = head('Analyze', 'Describe your question in plain words, or open any method directly.', seg('analyze-mode', 'na', '', [['guided', 'Guided'], ['all', 'All methods']], 'guided', 'Mode'));
+  if (!t) return h0 + bar + '<div class="empty">Create an analysis from a hypothesis on the Project page, or start a new task.</div>';
+  const h = t.h ? hypOf(t.h) : null, r = res(t);
+  const link = sel('task-link', 'linkH', t.id, 'Tests hypothesis ' + scope('37.0'), [['', 'No hypothesis (exploratory or descriptive)'], ...p.hs.filter(x => x.saved).map(x => [x.id, `${hn(x)} · ${desName(x.des)} · ${dirOf(x)}`])], t.h || '', '26rem');
+  const left = `<div class="stepc"><h3><span class="num done">1</span>What do you want to find out?</h3><div class="row"><strong>${goalName(t.goal)}</strong><span class="cap">${GOAL_BODY[t.goal] || ''}</span>${btn('goal-change', 'Change question', 'quiet', 'na')}</div>${link}</div>
+  <div class="stepc ${ready(t) ? '' : 'act'}"><h3><span class="num ${ready(t) ? 'done' : ''}">2</span>Which variables?</h3>${picker(t, '')}</div>
+  <div class="stepc"><h3><span class="num ${ready(t) ? 'done' : 'todo'}">3</span>Check the design</h3><p class="cap">${ready(t) ? `Measurement levels confirmed for ${t.ys.length + 1} variables: Quantitative.` : 'Opens when the variables are chosen.'}</p></div>
+  <div class="stepc ${ready(t) && !r ? 'act' : ''}"><h3><span class="num ${r ? 'done' : ready(t) ? '' : 'todo'}">4</span>Recommended method</h3>${method(t, '', 'guided-run')}</div>`;
+  const right = r ? `<div class="stepc act"><h3><span class="num">5</span>${rTitle(r)}</h3>${resultBlock(r, '', 'task')}</div>` : `<div class="empty">The result appears here, next to its set-up, after Run. Nothing is calculated before you run it.</div>`;
+  return h0 + bar + `<div class="row"><span class="cap" style="font-weight:600">Step status ${scope('37.0')}</span></div>${stepList(t, 'Step status of the task')}`
+    + `<div class="two"><div>${left}</div><div><div class="cap" style="margin-bottom:.3rem">Result and checks, beside the set-up ${scope('layout 37.4')}</div>${right}</div></div>`;
+}
+function aStepBody(h, s) {
+  const p = P(), t = p.tasks.find(x => x.h === h.id), r = t ? res(t) : null, kp = h.id + '-';
+  if (s === 'data') {
+    if (!p.data) return `<p class="cap">No data yet.</p>${btn(kp + 'open-data', 'Open CSV / Excel…', 'primary', 'openData')}`;
+    return `${picker(t, kp)}<h3>Measurement levels of these variables</h3>${p.levels ? chip(`Levels confirmed: ${t.ys.length + (t.x ? 1 : 0)} variables`, 'ok') : `<div class="row">${cb(kp + 'accept-confirm', 'acceptCheck', '', 'I checked these levels against the questionnaire or codebook', S.accept)}${btn(kp + 'accept', 'Use the suggested levels for these variables', 'secondary', 'accept', '', S.accept ? '' : 'disabled')}</div>`}
+    <p class="cap">Scale totals only: α and ω need item responses. ${scope('37.1')}</p>`;
+  }
+  if (s === 'analysis') return method(t, kp, kp + 'run') + (r ? `<h3>${rTitle(r)}</h3>${testsCard(r)}${table(r)}${interp(r)}<h3>Method and provenance</h3>${prov(r)}` : '');
+  if (s === 'checks') return (r ? assumptions(r, kp) : '<p class="cap">After the result.</p>') + `<h3>Checks against the plan ${scope('37.0')}</h3>${checkList(h)}<h3>Deviations from the plan</h3>${devList(h)}`;
+  return r ? `${field(kp + 'notes', `r:${r.id}.note`, 'Researcher interpretation (optional, unverified)', r.note, true)}<div class="row">${btn(kp + 'add-report', r.inReport ? '✓ In report' : 'Add to report', r.inReport ? 'secondary' : 'primary', 'addReport', r.id)}</div>` : '<p class="cap">After the result.</p>';
+}
+function aCard(h) {
+  const p = P(), t = p.tasks.find(x => x.h === h.id), r = t ? res(t) : null;
+  if (!h.saved || S.edit === h.id) return `<article class="card"><h2>${hn(h)} · ${h.saved ? 'editing' : 'draft'}</h2>${hEditor(h)}</article>`;
+  const st = {data: p.data && p.levels && ready(t) ? 'done' : 'todo', analysis: r ? 'done' : 'todo', checks: r ? (r.reviewed.every(Boolean) && !openChecks(h).length ? 'done' : 'att') : 'todo', interp: r && r.inReport ? 'done' : 'todo'};
+  const names = {data: 'Data and scales', analysis: 'Analysis', checks: 'Checks', interp: 'Interpretation and report'};
+  const open = S.open['A-' + h.id];
+  return `<article class="card"><h2>${hn(h)}. ${E(h.text)}</h2><div class="row">${chip(desName(h.des), h.des === 'primary' ? 'info' : '')}${chip(dirOf(h))}${chip('α ' + E(h.alpha))}${standing(h)}${openChecks(h).length ? chip(openChecks(h).length + ' to decide', 'warn') : ''}</div>
+  ${t ? `<ol class="asteps">${Object.keys(names).map((s, i) => `<li><button type="button" class="ahead" data-k="${h.id}-step-${s}" data-a="aStep" data-arg="${h.id}:${s}" aria-expanded="${open === s}"><span class="num ${st[s]}">${i + 1}</span>${names[s]} <span class="cap">${{done: 'done', todo: 'to do', att: 'needs attention'}[st[s]]}</span></button>${open === s ? `<div class="abody">${aStepBody(h, s)}</div>` : ''}</li>`).join('')}</ol>`
+    : `<p class="cap">No analysis yet (exploratory).</p>`}
+  <div class="row">${btn(h.id + '-history', S.open['hist-' + h.id] ? 'Hide history' : 'History', 'quiet', 'toggle', 'hist-' + h.id, `aria-expanded="${!!S.open['hist-' + h.id]}"`)}</div>${S.open['hist-' + h.id] ? history(h) : ''}</article>`;
+}
+function pageStudyA() {
+  const p = P();
+  return projectHead().replace('Everything in this project, saved automatically: data sources, questionnaires, results and the report.', 'Your research protocol: questions, hypotheses and what is done for each.') + nextBar(false)
+    + p.qs.map((q, i) => `<section class="card" style="border-left:3px solid var(--accent)">${qBlock(q, i, false).replace('<div class="q">', '<div>')}${p.hs.filter(h => h.q === q.id).map(aCard).join('')}</section>`).join('')
+    + `<div class="row" style="margin-bottom:1rem">${planFooter()}</div>`
+    + card('Other analyses (not linked to a hypothesis)', '<p class="cap">Descriptive tables and exploratory analyses live here, outside the protocol.</p>');
+}
+function pageDeskB() {
+  const p = P(); let t = curTask();
+  if (!t) { t = p.tasks[0] || null; if (t) S.selTask = t.id; }
+  const r = t ? res(t) : null, h = t && t.h ? hypOf(t.h) : null;
+  const left = `<section class="pane" aria-label="Variables and scales"><h2>Variables and scales</h2><input type="text" aria-label="Search variables" placeholder="Search" style="width:100%;margin-bottom:.4rem"><ul class="vlist">${VARS.map(v => `<li><span>${v[0]}</span>${chip(p.levels ? LV[v[3]].split(' ')[0] : 'Not confirmed', p.levels ? '' : 'warn')}</li>`).join('')}</ul></section>`;
+  let center = '<p class="cap">Start a new task.</p>';
+  if (t) {
+    center = `<div class="row" role="group" aria-label="Analysis">${[['relate', 'Correlations'], ['compare', 'Group comparisons'], ['scale', 'Scale quality'], ['describe', 'Describe']].map(f => `<button type="button" class="chip ${t.goal === f[0] ? 'info' : ''}" data-k="family-${f[0]}" data-a="family" data-arg="${t.id}|${f[0]}" aria-pressed="${t.goal === f[0]}">${f[1]}</button>`).join('')}</div>`;
+    if (t.goal === 'relate') center += `${picker(t, '')}<div class="row" role="group" aria-label="Method" style="margin:.5rem 0">${['pearson', 'spearman', 'kendall'].map(m => `<button type="button" class="chip ${mOf(t) === m ? 'info' : ''}" data-k="method-${m}" data-a="useMethod" data-arg="${t.id}|${m}" aria-pressed="${mOf(t) === m}">${METH[m]}</button>`).join('')}</div>
+      ${sel('opt-adjust', 'adjust', t.id, 'Multiple-comparison adjustment', Object.entries(ADJ), t.adjust, '22rem')}${mOf(t) === 'pearson' ? cb('confirm-pearson', 'pearsonOk', t.id, 'For Pearson only: I reviewed linearity, outliers, independence and suitability of the variables', t.pearson) : ''}
+      <div class="row" style="position:sticky;bottom:3.5rem;background:var(--surface);padding:.4rem 0">${btn('desk-run', `Run ${METH[mOf(t)]}`, 'primary', 'run', t.id, ready(t) && (mOf(t) !== 'pearson' || t.pearson) ? '' : 'disabled')}</div>${r ? table(r) + interp(r) : ''}`;
+    else if (t.goal === 'compare') center += r ? table(r) + interp(r) : '';
+  }
+  const tabs = [['hypothesis', 'Hypothesis'], ['assumptions', 'Assumptions'], ['provenance', 'Provenance'], ['chart', 'Chart'], ['report', 'Report']];
+  let body = '';
+  if (!t) body = '';
+  else if (S.insp === 'hypothesis') body = sel('task-hypothesis', 'linkH', t.id, 'Tests hypothesis', [['', '— none —'], ...p.hs.filter(x => x.saved).map(x => [x.id, `${hn(x)} · ${desName(x.des)}`])], t.h || '') + (h ? `${r ? testsCard(r) : ''}<h3>Checks against the plan</h3>${checkList(h)}` : '<p class="cap">Not linked: no check against a plan.</p>');
+  else if (S.insp === 'assumptions') body = r ? assumptions(r, '') : '<p class="cap">After the result.</p>';
+  else if (S.insp === 'provenance') body = r ? prov(r) : '<p class="cap">After the result.</p>';
+  else if (S.insp === 'chart') body = btn('insp-edit-chart', 'Edit chart', 'secondary', 'na');
+  else body = r ? `${field('result-notes', `r:${r.id}.note`, 'Researcher interpretation (optional, unverified)', r.note, true)}${btn('task-add-report', r.inReport ? '✓ In report' : 'Add to report', r.inReport ? 'secondary' : 'primary', 'addReport', r.id)}` : '<p class="cap">After the result.</p>';
+  const insp = `<section class="pane" aria-label="Inspector"><h2>Inspector</h2><div class="tabs" role="tablist">${tabs.map(x => `<button type="button" role="tab" data-k="insp-tab-${x[0]}" data-a="insp" data-arg="${x[0]}" aria-selected="${S.insp === x[0]}">${x[1]}</button>`).join('')}</div><div role="tabpanel">${body}</div></section>`;
+  const strip = `<section class="card" style="margin-top:.75rem"><h2>Analysis plan</h2><div class="tw"><table class="t"><thead><tr><th>Task</th><th>Tests</th><th>Method</th><th>Steps</th><th>Result</th><th></th></tr></thead><tbody>${p.tasks.map(x => { const rr = res(x), s = steps(x); return `<tr><td>${E(x.title || 'New task')}</td><td>${x.h ? hn(hypOf(x.h)) : '—'}</td><td>${METH[mOf(x)]}</td><td>${s.filter(y => y[1] === 'done').length} of 8</td><td>${rr ? (rr.stale ? 'needs review' : 'current') : '—'}</td><td>${btn('plan-row-' + x.id, x.id === S.selTask ? 'Shown' : 'Open', 'quiet', 'selRow', x.id)}</td></tr>`; }).join('') || '<tr><td colspan="6">No task yet.</td></tr>'}</tbody></table></div><div class="row">${btn('desk-rerun-version', 'Re-run on a new data version…', 'secondary', 'na')}</div></section>`;
+  return head('Analysis desk', 'Variables, the task and its inspector on one screen.') + `<div class="desk">${left}<section class="pane" aria-label="Task"><h2>${t ? E(t.title || 'New task') : 'Task'}</h2>${center}</section>${insp}</div>` + strip;
+}
+function pageResults() {
+  const p = P();
+  const h0 = head(S.v === 'A' ? 'Results log' : 'Results', 'Every analysis of this session, with estimates, figure, interpretation and exports.');
+  if (!p || !p.results.length) return h0 + '<div class="empty">No results yet.</div>';
+  const r = p.results.find(x => x.id === S.selRes) || p.results[p.results.length - 1];
+  const t = taskOf(r);
+  if (S.route === 'results' && t && S.v === 'H') S.selTask = t.id;
+  return h0 + `<div class="two" style="grid-template-columns:minmax(14rem,1fr) minmax(0,3fr)"><div>${p.results.slice().reverse().map(x => `<button type="button" class="hrow${x === r ? ' sel' : ''}" data-k="result-${x.id}" data-a="selRes" data-arg="${x.id}"><span class="ttl">${rTitle(x)}</span><span class="cap">${FILE} · ${x.when.slice(11, 16)}</span> ${x.inReport ? chip('In report', 'info') : ''}</button>`).join('')}</div>
+  <div>${S.v === 'H' ? stepList(t, 'Step status of the task') : ''}<section class="card"><h2>${rTitle(r)}</h2>${resultBlock(r, S.v === 'A' ? 'res-' : '', 'results')}<h3>Method and provenance</h3>${prov(r)}<div class="row">${btn('export-docx-one', 'Save Word report…', 'secondary', 'na')}${btn('export-txt-one', 'Save TXT…', 'secondary', 'na')}</div></section></div></div>`;
+}
+function hypPreview() {
+  const p = P(), out = ['3. Hypotheses', ''];
+  p.hs.filter(h => h.saved).forEach((h, i) => {
+    out.push(`H${i + 1} (${h.des}): ${h.text}`, `Null hypothesis: ${h.h0}`);
+    out.push(h.standing === 'after' ? 'Added after results were calculated: exploratory (post hoc), not a confirmatory test.' : 'Planned before the results.');
+    if (S.v === 'B') { out.push(''); return; }
+    out.push(`Direction: ${dirOf(h).toLowerCase()}.`);
+    const t = p.tasks.find(x => x.h === h.id), r = t ? res(t) : null;
+    out.push(t ? `Tested by: “${t.title || 'new task'}” (${METH[mOf(t)]}${(t.ys || []).length > 1 ? `, ${t.ys.length} tests, ${ADJ[t.adjust].split(' (')[0]}` : ''})${r ? (r.stale ? ' — needs review.' : ' — result current.') : ' — no result yet.'}` : 'Tested by: no analysis.');
+    p.records.filter(x => x.h === h.id).forEach(x => out.push(x.kind === 'deviation' ? `Deviation from the plan (${x.what.toLowerCase()}): ${x.planned} planned; ${x.actual} used. Reason: ${x.reason} Recorded before ${hn(h)} had any result.` : x.kind === 'ack' ? `Note: ${hn(h)} is one-sided; the test is two-sided. ${x.reason}` : `Designation changed after ${x.after} results: ${x.from} → ${x.to}. Reason: ${x.reason}`));
+    out.push('');
+  });
+  if (!p.hs.some(h => h.saved)) out.push('No hypothesis in the plan.');
+  return out.join('\n');
+}
+function pageReports() {
+  const p = P(), items = p ? p.results.filter(r => r.inReport) : [];
+  const h0 = head(S.v === 'A' ? 'Report' : 'Reports', 'Collect results in reading order and export them together.', btn('reports-export-docx', 'Export Word report…', 'primary', 'exportDocx', '', items.length ? '' : 'disabled') + btn('reports-export', 'Export combined TXT…', 'secondary', 'na', '', items.length ? '' : 'disabled'));
+  if (!items.length) return h0 + '<div class="empty">No result in the report yet. Add a result from its task or from Results.</div>';
+  const counts = {2: p.hs.some(h => h.saved) ? p.hs.filter(h => h.saved).length : 0, 1: 1, 3: 1, 8: items.length, 9: items.length, 10: items.length, 12: items.filter(r => r.note).length, 13: 2, 14: items.length};
+  return h0 + `<div class="row">${field('reports-study-title', 'reportTitle', 'Study title (optional)', p.reportTitle, false)}${sel('reports-language', 'na', '', 'Report language', [['en', 'English'], ['lv', 'Latviešu'], ['ru', 'Русский']], 'en', '12rem')}</div>`
+    + items.map((r, i) => `<div class="hrow" style="cursor:default"><span class="ttl">${i + 1}. ${rTitle(r)}</span><span class="cap">${FILE} · ${r.when.slice(11, 16)}</span></div>`).join('')
+    + card('Report structure', `<p class="cap">The report follows the order of a study write-up. Sections without content are left out; untick a section to leave it out yourself.</p><ul class="cap">${SECTIONS.map((s, i) => `<li>${i + 1}. ${s} · ${i === 0 ? 'the title page' : counts[i] ? counts[i] + (counts[i] === 1 ? ' part' : ' parts') : 'nothing to report yet'}</li>`).join('')}</ul>`)
+    + card('Preview: the Hypotheses section ' + (S.v === 'B' ? '(as today)' : scope('37.0')), `${btn('reports-preview', S.open.preview ? 'Hide the preview' : 'Show the preview', 'quiet', 'toggle', 'preview', `aria-expanded="${!!S.open.preview}"`)}${S.open.preview ? `<div class="prev">${E(hypPreview())}</div>` : ''}`)
+    + '<p class="cap">One editable Word document with every result in report order.</p>';
+}
+function page() {
+  const r = S.route, v = S.v;
+  if (r === 'home') return pageHome();
+  if (!P()) return '<div class="empty">Open or create a project on Home first.</div>';
+  if (r === 'project') return v === 'B' ? pageProjectB() : pageProjectH();
+  if (r === 'study') return pageStudyA();
+  if (r === 'data') return pageData();
+  if (r === 'analyze') return pageAnalyzeH();
+  if (r === 'desk') return pageDeskB();
+  if (r === 'results') return pageResults();
+  if (r === 'reports') return pageReports();
+  return head(r === 'questionnaires' ? 'Questionnaires' : 'Not in this prototype', 'Not part of this prototype.');
+}
+function sidebar() {
+  const items = NAV[S.v].filter(n => (n[0] !== 'project' && n[0] !== 'study') || P());
+  const p = P(), badge = {results: p && p.results.length, reports: p && p.results.filter(r => r.inReport).length};
+  return `<nav class="sb" aria-label="Main"><div class="brand"><span class="logo" aria-hidden="true">∿</span><span>Statistical Research Assistant<br>${chip('Preview', 'info')}</span></div>
+  ${items.map(n => `<button type="button" class="nav" data-k="nav-${n[0]}" data-a="go" data-arg="${n[0]}"${S.route === n[0] ? ' aria-current="page"' : ''}><span class="ic" aria-hidden="true">${n[2]}</span>${n[1]}${badge[n[0]] ? `<span class="bd">${badge[n[0]]}</span>` : ''}</button>`).join('')}
+  <span class="sp"></span>${btn('nav-settings', 'Settings', 'quiet', 'na')}${btn('nav-help', 'Help & privacy', 'quiet', 'na')}</nav>`;
+}
+function ctxBar() {
+  const p = P();
+  return `<div class="ctx">${p ? `<button type="button" class="chip info" data-k="ctx-project" data-a="go" data-arg="${S.v === 'A' ? 'study' : 'project'}">▤ Project: ${E(p.title)}</button>` : chip('No project')}${p && p.data ? chip(`▦ ${FILE} · 55 rows · 13 variables`) : chip('No dataset open')}${p && p.data && !p.levels ? chip('13 to confirm', 'warn') : ''}<span class="sp"></span>${chip('Local only', 'ok')}${seg('ctx-lang', 'na', '', [['en', 'EN'], ['lv', 'LV'], ['ru', 'RU']], 'en', 'Language')}</div>`;
+}
+function journey() {
+  const p = P();
+  if (S.v !== 'B' || !p || !['project', 'data', 'desk', 'results', 'reports'].includes(S.route)) return '';
+  const any = p.results.length > 0, cur = {project: 'Question', data: 'Data', desk: 'Design', results: 'Result', reports: 'Report'}[S.route];
+  const st = [['Question', !!p.qs[0].text], ['Data', p.data], ['Variables', p.levels], ['Design', any], ['Method', any], ['Result', any], ['Report', p.results.some(r => r.inReport)]];
+  return `<div class="journey" aria-label="Research journey (as today)">${st.map((s, i) => chip(`${s[1] ? '✓' : s[0] === cur ? '→' : '○'} ${i + 1}. ${s[0]}`, s[0] === cur ? 'info' : s[1] ? 'ok' : '')).join('')}<span class="cap">as today: Design, Method and Result are ticked by any result</span></div>`;
+}
+function modal() {
+  const d = S.dlg; if (!d) return '';
+  return `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><h2 id="dlg-t">${d.title}</h2><p class="cap">The Windows system dialog. Counted apart, as in the Stage 36 audit.</p><div class="file">${d.file}</div>
+  <div class="row">${btn('dialog-ok', d.ok, 'primary', 'dlgOk', '', 'data-sys="1"')}${btn('dialog-cancel', 'Cancel', 'quiet', 'dlgCancel', '', 'data-sys="1"')}</div></div></div>`;
+}
+
+/* ---- Rendering, the guide and the counter */
+function render() {
+  const foot = S.v !== 'B' && P() && !['home', 'project', 'study'].includes(S.route) ? nextBar(true) : '';
+  app.innerHTML = `<div class="win">${sidebar()}<div class="main">${ctxBar()}<main id="main" class="page" tabindex="-1">${journey()}${page()}</main>${foot}<div class="status" role="status" aria-live="polite">${E(S.status)}</div></div></div>${modal()}`;
+  document.querySelectorAll('[data-v]').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.v));
+  document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === S.per));
+  document.getElementById('vdesc').textContent = VDESC[S.v];
+  guide();
+}
+function guide() {
+  const flow = FLOWS[S.v][S.per], st = flow[S.step], ex = EXPECT[S.v][S.per];
+  app.querySelectorAll('.coach').forEach(x => x.classList.remove('coach'));
+  const coach = document.getElementById('coach').checked;
+  const el = coach && st && app.querySelector(`[data-k="${st.k}"]`);
+  if (el) (el.type === 'checkbox' ? el.closest('label') : el).classList.add('coach');
+  document.getElementById('g-flow').textContent = (S.per === 'beginner' ? 'Beginner' : 'Professor') + ' flow';
+  const text = !coach ? 'guide hidden (the counter keeps counting).' : st ? `step ${S.step + 1} of ${flow.length}: ${st.hint}` : 'flow complete.', live = document.getElementById('g-step');
+  if (live.textContent !== text) live.textContent = text;
+  document.getElementById('g-show').hidden = document.getElementById('g-skip').hidden = !st || !coach;
+  document.getElementById('g-count').innerHTML = `Interactions <b>${S.c.i}</b> · typed fields <b>${S.c.t}</b> · page changes <b>${S.c.p}</b> · system dialogs <b>${S.c.d}</b> &nbsp;|&nbsp; design-document path: ${ex[0]} · ${ex[1]} · ${ex[2]} · ${ex[3]}`;
+  document.getElementById('g-list').innerHTML = flow.map((f, i) => `<li class="${i < S.step ? 'done' : i === S.step ? 'cur' : ''}">${E(f.hint)}</li>`).join('');
+}
+function go(r) { if (r === 'desk' && P() && !P().tasks.length) { const t = newTask(null); P().tasks.push(t); S.selTask = t.id; } if (S.route !== r) { S.route = r; S.c.p += 1; if (!selftesting) window.scrollTo(0, 0); } }
+function say(m) { S.status = m; }
+function setField(f, v) {
+  const p = P(), [kind, rest] = f.includes(':') ? f.split(/:(.*)/s) : [f, ''];
+  if (kind === 'draftTitle') S.draftTitle = v;
+  else if (kind === 'reportTitle') p.reportTitle = v;
+  else if (kind === 'q') { const [id, key] = rest.split('.'); p.qs.find(q => q.id === id)[key] = v; }
+  else if (kind === 'h') { const [id, key] = rest.split('.'); const h = hypOf(id); h[key] = v; if (h.saved && key !== 'desReason') h.dirty = true; }
+  else if (kind === 'r') { const [id, key] = rest.split('.'); p.results.find(r => r.id === id)[key] = v; }
+  else if (kind === 'form') S.forms[rest] = v;
+}
+const ACT = {
+  na() { say('Not part of this prototype.'); },
+  go(r) { go(r); },
+  createProject() { const t = S.draftTitle.trim(); if (!t) { say('Write a title for the project first.'); return; } S.proj = newProject(); S.proj.title = t; go(S.v === 'A' ? 'study' : 'project'); say(`Created “${t}”.`); },
+  openProject() { S.proj = profProject(); go(S.v === 'A' ? 'study' : 'project'); say('Opened “' + PT + '”. Saved results confirmed by recalculation: 2.'); },
+  qType(arg) { const [id, ty] = arg.split(':'); P().qs.find(q => q.id === id).type = ty; },
+  planAdd(qid) { const p = P(), q = p.qs.find(x => x.id === qid) || p.qs[0], id = 'h' + (p.hs.length + 1), d = DRAFT[q.type] || DRAFT.none; p.hs.push({id, q: q.id, text: d[0], h0: d[1], dir: 'two-sided', des: 'primary', alpha: '.05', method: '', saved: false, standing: 'new', after: 0, v: 0}); S.selH = id; },
+  planSave() {
+    const p = P(), runs = p.results.length, changed = p.hs.filter(h => !h.saved || h.dirty);
+    if (!changed.length) { say('No changes since the last version.'); return; }
+    const need = changed.find(h => h.saved && h.desWas && h.desWas !== h.des && runs > 0 && !(h.desReason || '').trim());
+    if (need) { say(`Write why the designation of ${hn(need)} changes after ${runs} results.`); return; }
+    const v = p.versions.length + 1;
+    for (const h of changed) {
+      if (!h.saved) Object.assign(h, {saved: true, standing: runs ? 'after' : 'planned', after: runs, v});
+      if (h.desWas && h.desWas !== h.des && runs > 0) p.records.push({kind: 'designation', h: h.id, from: h.desWas, to: h.des, after: runs, reason: h.desReason, when: now()});
+      Object.assign(h, {dirty: false, desWas: null, desReason: ''});
+    }
+    p.versions.push({v, when: now(), n: p.hs.length, runs, note: ''});
+    if (S.v === 'A') for (const h of p.hs) if (!p.tasks.find(t => t.h === h.id)) p.tasks.push(newTask(h));
+    S.edit = null; say(`Saved as version ${v}. Earlier versions are kept.`);
+  },
+  setH(arg, el) { const [id, key] = arg.split(':'), h = hypOf(id); if (key === 'des' && h.saved && !h.desWas) h.desWas = h.des; h[key] = el.dataset.val; if (h.saved) h.dirty = true; },
+  setHSel(arg, el) { const [id, key] = arg.split(':'), h = hypOf(id); h[key] = el.value; if (h.saved) h.dirty = true; },
+  editH(id) { S.edit = S.edit === id ? null : id; },
+  selH(id) { S.selH = id; },
+  openH(id) { S.selH = id; go(S.v === 'A' ? 'study' : 'project'); },
+  openData() { S.dlg = {title: 'Open', file: FILE, ok: 'Open', then: 'data'}; },
+  dlgOk() {
+    const d = S.dlg; S.dlg = null;
+    if (d.then === 'data') { P().data = true; say('Loaded ' + FILE + '.'); if (S.v === 'A') { const h = P().hs[0]; if (h) S.open['A-' + h.id] = 'data'; } else go('data'); }
+    else { P().exported = true; say('Saved Loneliness_and_coping.docx · Word document (prototype: nothing was written).'); }
+  },
+  dlgCancel() { S.dlg = null; say('Cancelled.'); },
+  acceptCheck(a, el) { S.accept = el.checked; },
+  accept() { if (!S.accept) { say('Tick the confirmation first.'); return; } Object.assign(P(), {levels: true, bulk: true}); S.accept = false; say('Levels confirmed from suggestions: 13.'); if (S.v === 'A') { const h = P().hs[0], t = h && P().tasks.find(x => x.h === h.id); if (ready(t)) S.open['A-' + h.id] = 'analysis'; } },
+  taskFromH(id) { const p = P(); let t = p.tasks.find(x => x.h === id); if (!t) { t = newTask(hypOf(id)); p.tasks.push(t); } S.selTask = t.id; if (S.v === 'A') S.open['A-' + id] = 'data'; else go('analyze'); },
+  openTask(id) { S.selTask = id; go(S.v === 'B' ? 'desk' : S.v === 'A' ? 'study' : 'analyze'); },
+  roleX(id, el) { const t = curTask(id); t.x = el.value || null; t.ys = t.ys.filter(y => y !== t.x); },
+  roleAll(id) { const t = curTask(id); t.ys = QUANT.filter(v => v !== t.x); },
+  roleClear(id) { curTask(id).ys = []; },
+  roleY(arg, el) { const [id, n] = arg.split('|'), t = curTask(id); if (el.checked) { if (!t.ys.includes(n)) t.ys.push(n); } else t.ys = t.ys.filter(y => y !== n); },
+  useMethod(arg) { const [id, m] = arg.split('|'); curTask(id).method = m; },
+  pearsonOk(id, el) { curTask(id).pearson = el.checked; },
+  family(arg) { const [id, g] = arg.split('|'); if (g !== 'relate') { say('Only correlations are drawn in this prototype.'); return; } curTask(id).goal = g; },
+  adjust(id, el) { curTask(id).adjust = el.value; },
+  run(id) {
+    const p = P(), t = curTask(id), h = t.h ? hypOf(t.h) : null;
+    if (!ready(t)) { say('Choose the variables first.'); return; }
+    t.ran = true; t.title = `${t.x} with ${t.ys.length} variables`;
+    const r = {id: 'r' + (p.results.length + 1), task: t.id, kind: mOf(t) === 'spearman' && t.x === 'UCLA' && sameSet(t.ys, SC) ? 'rho' : 'other', reviewed: [0, 0, 0], note: '', inReport: false, stale: false, when: now(true),
+      snap: h ? {h: h.id, des: h.des, dir: h.dir, alpha: h.alpha, v: p.versions.length} : null};
+    p.results.push(r); S.selRes = r.id; say('Result ready.');
+    if (S.v === 'A' && t.h) S.open['A-' + t.h] = 'checks';
+  },
+  review(arg, el) { const [id, i] = arg.split(':'), r = P().results.find(x => x.id === id); r.reviewed[+i] = el.checked ? 1 : 0; if (S.v === 'A' && r.reviewed.every(Boolean) && taskOf(r).h) S.open['A-' + taskOf(r).h] = 'interp'; },
+  addReport(id) { const r = P().results.find(x => x.id === id); r.inReport = !r.inReport; say(r.inReport ? 'Added to the report.' : 'Removed from the report.'); },
+  skipNote(id) { P().results.find(x => x.id === id).skipNote = true; },
+  toggle(key) { S.open[key] = !S.open[key]; },
+  aStep(arg) { const [id, s] = arg.split(':'); S.open['A-' + id] = S.open['A-' + id] === s ? null : s; },
+  selRes(id) { S.selRes = id; },
+  openRes(id) { S.selRes = id; go('results'); },
+  selRow(id) { S.selTask = id; const r = res(curTask(id)); if (r) S.selRes = r.id; },
+  insp(tab) { S.insp = tab; },
+  linkH(id, el) {
+    const t = curTask(id); t.h = el.value || null;
+    const h = t.h ? hypOf(t.h) : null;
+    P().results.filter(r => r.task === t.id).forEach(r => { r.snap = h ? {h: h.id, des: h.des, dir: h.dir, alpha: h.alpha, v: P().versions.length, late: true} : null; });
+    say(h ? `Linked to ${hn(h)}. Results calculated before the link say so.` : 'Not linked to a hypothesis.');
+  },
+  exportDocx() { S.dlg = {title: 'Save as', file: 'Loneliness_and_coping.docx', ok: 'Save', then: 'save'}; },
+  ackOpen(arg) { S.open['form-' + arg.replace('|', '-')] = !S.open['form-' + arg.replace('|', '-')]; },
+  devOpen(arg) { S.open['form-' + arg.replace('|', '-')] = !S.open['form-' + arg.replace('|', '-')]; },
+  formSave(arg) {
+    const [id, check] = arg.split('|'), text = (S.forms[arg] || '').trim(), p = P();
+    if (!text) { say('Write the reason first.'); return; }
+    const before = p.results.filter(r => taskOf(r).h === id).length;
+    if (check === 'H-METHOD-DIFFERS') { const h = hypOf(id), t = p.tasks.find(x => x.h === id); p.records.push({kind: 'deviation', h: id, what: 'Method', planned: METH[h.method], actual: METH[mOf(t)], reason: text, before, when: now()}); }
+    else p.records.push({kind: 'ack', h: id, check, reason: text, before, when: now()});
+    S.open['form-' + arg.replace('|', '-')] = false; say('Recorded with the time and the number of results so far. It is reopened if the hypothesis or the analysis changes.');
+  },
+  twoSided(id) { const h = hypOf(id); h.dir = 'two-sided'; h.dirty = true; say(`${hn(h)} is two-sided in the draft; save the plan version to keep it.`); },
+  next() { const n = nextAction(); if (n && n.btn) ACT[n.btn[0]](n.btn[2]); },
+  nextAlt() { const n = nextAction(); if (n && n.alt) ACT[n.alt[0]](n.alt[2]); },
+  showChecks(id) { S.selH = id; go(S.v === 'A' ? 'study' : 'project'); if (S.v === 'A') S.open['A-' + id] = 'checks'; },
+  reviewGo(id) { const t = taskOf(P().results.find(x => x.id === id)); ACT.reviewGoT(t); },
+  reviewGoH(id) { ACT.reviewGoT(P().tasks.find(x => x.h === id)); },
+  reviewGoT(t) { if (S.v === 'A') S.open['A-' + t.h] = 'checks'; else if (S.v === 'B') { S.selTask = t.id; S.insp = 'assumptions'; go('desk'); } else { S.selTask = t.id; go('analyze'); } }
+};
+let selftesting = false;
+function handle(el, kind) {
+  const k = el.dataset.k, a = el.dataset.a;
+  if (el.dataset.sys) S.c.d += 1; else if (kind === 'click') S.c.i += 1; else if (kind === 'choose') S.c.i += 2; else if (kind === 'check') S.c.i += 1;
+  const focusKey = kind === 'text' && document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.k : k;
+  if (a && ACT[a]) ACT[a](el.dataset.arg || '', el);
+  const flow = FLOWS[S.v][S.per];
+  while (flow[S.step] && flow[S.step].do === 'type' && flow[S.step].k !== k && S.typed.has(flow[S.step].k)) S.step += 1;
+  if (flow[S.step] && flow[S.step].k === k) S.step += 1;
+  render();
+  const target = S.dlg ? app.querySelector('[data-k="dialog-ok"]') : focusKey && app.querySelector(`[data-k="${focusKey}"]`);
+  if (target && !selftesting) target.focus({preventScroll: true});
+}
+app.addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (b && !b.disabled) { e.preventDefault(); handle(b, 'click'); } });
+app.addEventListener('change', e => { const el = e.target; if (!el.dataset || !el.dataset.k) return; if (el.type === 'checkbox') handle(el, 'check'); else if (el.tagName === 'SELECT') handle(el, 'choose'); else if (el.dataset.f) { if (selftesting) handle(el, 'text'); else setTimeout(() => handle(el, 'text'), 0); } });
+app.addEventListener('input', e => { const el = e.target; if (!el.dataset || !el.dataset.f) return; setField(el.dataset.f, el.value); if (!S.typed.has(el.dataset.k)) { S.typed.add(el.dataset.k); S.c.t += 1; } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.dlg) { S.dlg = null; render(); } });
+app.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.dataset && e.target.dataset.k === 'project-new-title') { e.preventDefault(); const b = app.querySelector('[data-k="project-create"]'); if (b) handle(b, 'click'); } });
+document.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => { S.v = b.dataset.v; reset(); }));
+document.querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', () => { S.per = b.dataset.p; reset(); }));
+document.getElementById('restart').addEventListener('click', reset);
+document.getElementById('coach').addEventListener('change', () => guide());
+document.getElementById('g-skip').addEventListener('click', () => { if (FLOWS[S.v][S.per][S.step]) { S.step += 1; render(); } });
+document.getElementById('g-show').addEventListener('click', () => {
+  const st = FLOWS[S.v][S.per][S.step], el = st && app.querySelector(`[data-k="${st.k}"]`);
+  if (el) { el.scrollIntoView({block: 'center'}); el.focus(); } else if (st) { say('That control is not on this page: follow the hint.'); render(); }
+});
+
+/* ---- #selftest: replays every flow through the same handlers and reports the counts */
+function perform(el, st) {
+  if (st.do === 'type') { el.value = st.val; el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); }
+  else if (st.do === 'choose') { el.value = st.val; el.dispatchEvent(new Event('change', {bubbles: true})); }
+  else if (st.do === 'check') { el.checked = st.val !== false; el.dispatchEvent(new Event('change', {bubbles: true})); }
+  else el.click();
+}
+function selftest() {
+  selftesting = true;
+  const out = {};
+  for (const v of ['A', 'B', 'H']) for (const per of ['beginner', 'professor']) {
+    S.v = v; S.per = per; reset();
+    const flow = FLOWS[v][per]; let fail = '';
+    for (let i = 0; i < flow.length && !fail; i += 1) {
+      const el = app.querySelector(`[data-k="${flow[i].k}"]`);
+      if (!el) fail = `step ${i + 1} (${flow[i].k}) not on route ${S.route}`;
+      else if (el.disabled) fail = `step ${i + 1} (${flow[i].k}) is disabled`;
+      else perform(el, flow[i]);
+    }
+    const got = [S.c.i, S.c.t, S.c.p, S.c.d], ex = EXPECT[v][per];
+    out[`${v}-${per}`] = {ok: !fail && S.step === flow.length && got.join() === ex.join(), fail, got, expected: ex, steps: flow.length};
+  }
+  selftesting = false;
+  S.v = 'H'; S.per = 'beginner'; reset();
+  return out;
+}
+if (location.hash === '#selftest') {
+  const result = selftest(), pre = document.getElementById('selftest-out');
+  pre.hidden = false; pre.textContent = 'SELFTEST ' + JSON.stringify(result, null, 1);
+  document.title += Object.values(result).every(r => r.ok) ? ' [selftest: all flows ok]' : ' [selftest: FAILED]';
+} else reset();
+})();
+</script>
+</body>
+</html>
