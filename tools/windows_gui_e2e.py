@@ -1565,6 +1565,38 @@ def direct_rows(pdf: Path, language: str) -> dict:
         return {"error": f"{type(error).__name__}: {error}"}
 
 
+def process_cpu_seconds(pid: int | None) -> float | None:
+    """User plus kernel processor seconds a process has used so far (Windows)."""
+    if not pid or os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        times = [wintypes.FILETIME() for _ in range(4)]
+        if not kernel32.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+            return None
+        return sum(((t.dwHighDateTime << 32) | t.dwLowDateTime) / 1e7 for t in times[2:])
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def program_cpu_cores(gui: Gui, seconds: float = 6.0) -> float | None:
+    """Processor cores the program uses while this driver only waits: no UI
+    Automation queries, no input. The baseline for a reading's profile."""
+    pid = gui.window_pid or (gui.process.pid if gui.process is not None else None)
+    before, started = process_cpu_seconds(pid), time.monotonic()
+    time.sleep(seconds)
+    after = process_cpu_seconds(pid)
+    if before is None or after is None:
+        return None
+    return round((after - before) / (time.monotonic() - started), 2)
+
+
 def latest_profile(gui: Gui, after: set | None = None) -> dict | None:
     """The newest reading profile the program wrote (ocr_profile), as a
     compact fact: total, per-stage seconds, engine runs, the event-loop
@@ -1583,6 +1615,8 @@ def latest_profile(gui: Gui, after: set | None = None) -> dict | None:
         "event_loop_max_stall_seconds": data["event_loop_max_stall_seconds"],
         "renders": data["renders"], "peak_memory_bytes": data["peak_memory_bytes"],
         "process_cpu_seconds": data["process_cpu_seconds"], "max_threads": data["max_threads"],
+        "program_cpu_cores": round(data["process_cpu_seconds"] / data["total_seconds"], 2)
+        if data["total_seconds"] else None,
         "items": data["facts"].get("items"),
     }
 
@@ -1614,6 +1648,10 @@ def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
     with journey.step("read it with local OCR in Latvian (lav)"):
         options = [label for _, label in ocr_language_options("en")]
         gui.choose(T("imp.ocr_language"), T("imp.ocr_lang.lav"), options=options)
+        # The program's processor use while it only shows the page, as the
+        # baseline for the reading's own (program_cpu_cores of the profile).
+        journey.facts["program_cpu_cores_idle"] = program_cpu_cores(gui)
+        journey.facts["logical_processors"] = os.cpu_count()
         seen = {p.name for p in (gui.out / "ocr-profiles").glob("*.json")}
         gui.click(T("imp.ocr_run"), control_type="Button")
         started = time.monotonic()

@@ -867,6 +867,7 @@ class ImportPage:
         self.step = "source"
         self.filter = "all"         # items step: "all" or "attention"
         self.progress: str | None = None   # what the reading is doing now
+        self.progress_done: tuple[int, int] | None = None  # OCR pages read, of how many
         self._cancel = None         # threading.Event while reading
         self.opened: set[str] = set()
         self._editor_height = 0.0   # the open item editor, as laid out
@@ -952,6 +953,7 @@ class ImportPage:
         loop = asyncio.get_running_loop()
         self._cancel = threading.Event()
         self.busy, self.error, self.progress = True, None, None
+        self.progress_done = None
         self.reading = "ocr" if language else "text"
         self.reading_name, self.reading_language = name, language
         self._profile = profile
@@ -1095,6 +1097,7 @@ class ImportPage:
         match = re.search(r"page (\d+) with local OCR \((\d+) of (\d+)\)", message)
         if match:
             self.reading = "ocr"
+            self.progress_done = (int(match[2]) - 1, int(match[3]))
         self.progress = (self.app.t("imp.ocr_progress", page=match[1], done=match[2],
                                     total=match[3]) if match else message)
         if self.busy:
@@ -1492,7 +1495,7 @@ class ImportPage:
             return None
         state, title, lines, tone, actions = found
         bg, fg, icon = wc.TONES[tone]
-        leading = (ft.ProgressRing(width=20, height=20, stroke_width=3) if self.busy
+        leading = (self._reading_indicator() if self.busy
                    else ft.Icon(icon, color=getattr(ui.p, fg), size=20))
         texts: list[ft.Control] = [wc.text(ui, title, tk.TYPE_LABEL, weight=ft.FontWeight.W_600,
                                            data="imp-status-title")]
@@ -1509,6 +1512,23 @@ class ImportPage:
             ft.Column(column, spacing=tk.SPACE_2), bgcolor=getattr(ui.p, bg),
             border_radius=ui.radius("card"), padding=ft.Padding.symmetric(
                 horizontal=tk.SPACE_4, vertical=tk.SPACE_3), data="imp-status", key="imp-status"))
+
+    def _reading_indicator(self) -> ft.Control:
+        """How far a reading is, without an endless animation.
+
+        An indeterminate ring is redrawn on every frame. In the Windows GUI
+        journey (run 43421786722, no graphics card) the program used about 3.4
+        of the runner's 4 processor cores during a 50 s OCR reading, while
+        Tesseract got about 4.5 s of processor time per page. A determinate
+        ring changes only when a page is done; the text beside it names the
+        page."""
+        ui = self.app.ui
+        if self.progress_done is None:
+            return ft.Icon(ft.Icons.HOURGLASS_TOP, color=ui.p.text_secondary, size=20,
+                           data="imp-reading-icon")
+        done, total = self.progress_done
+        return ft.ProgressRing(value=done / max(total, 1), width=20, height=20, stroke_width=3,
+                               bgcolor=ui.p.border_strong, data="imp-reading-progress")
 
     # ------------------------------------------------------------------ OCR
     def _ocr_code(self) -> str:
@@ -1569,6 +1589,7 @@ class ImportPage:
         self.busy, self.error = True, None
         self.reading, self.reading_language = "ocr", language
         self.progress = self.app.t("imp.ocr_progress", page=page, done=1, total=1)
+        self.progress_done = (0, 1)
         self.app.render()
         try:
             await asyncio.to_thread(s.ocr_pages, [page], language)
