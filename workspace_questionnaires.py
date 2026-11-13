@@ -106,7 +106,8 @@ def respondent_question(ui: wc.Ui, question: dict, value, on_change, *, number: 
             value=None if value is None else str(value),
             on_change=lambda e: on_change(key, e.control.value),
             content=ft.Column([ft.Radio(value=v, label=label,
-                                        label_style=ft.TextStyle(size=14, color=ui.p.text))
+                                        label_style=ft.TextStyle(size=ui.size(14),
+                                                                 color=ui.p.text))
                                for v, label in options], spacing=0),
             data=f"answer-{key}")
 
@@ -685,7 +686,7 @@ class QuestionnairesPage:
         ui = self.app.ui
         answers: dict = {}
         holder = ft.Column(scroll=ft.ScrollMode.AUTO, height=460, width=560, spacing=tk.SPACE_2)
-        message = ft.Text("", size=13, color=ui.p.danger)
+        message = ft.Text("", size=ui.size(13), color=ui.p.danger)
 
         def redraw():
             from survey_storage import question_is_visible

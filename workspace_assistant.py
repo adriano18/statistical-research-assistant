@@ -329,7 +329,7 @@ class AssistantPanel:
                      bgcolor=ui.p.warning_subtle, color=ui.p.warning, weight=ft.FontWeight.W_700,
                      decoration=ft.TextDecoration.UNDERLINE)) if flagged else ft.TextSpan(piece)
                  for piece, flagged in ai_assist.highlight(draft.text, draft.unverified)]
-        body = ft.Text(spans=spans, size=style[0], color=ui.p.text, selectable=True,
+        body = ft.Text(spans=spans, size=ui.size(style[0]), color=ui.p.text, selectable=True,
                        style=ft.TextStyle(height=style[1] / style[0]),
                        semantics_label=draft.text, data="ai-draft-text")
         when = _local(draft.at)

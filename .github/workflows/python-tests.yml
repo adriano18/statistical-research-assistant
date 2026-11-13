@@ -153,6 +153,12 @@ jobs:
         env:
           MPLBACKEND: Agg
         run: python -m unittest discover -s tests -p "test_project_*.py" -v
+      - name: Test the settings file, start interface and typography on Windows (Segoe UI glyphs, chart font)
+        env:
+          MPLBACKEND: Agg
+        run: |
+          python -m unittest discover -s tests -p "test_stage37_settings.py" -v
+          python -m unittest discover -s tests -p "test_stage37_shell_journeys.py" -v
 
   workspace-screenshots:
     # Stage 33: render every workspace screen in a real browser (Flet web +
