@@ -1,0 +1,46 @@
+name: Pinned Windows build toolchain
+description: >-
+  The exact host Python, the hashed Python package locks, and the Flutter SDK
+  and flet build template of packaging/build_toolchain.lock.json, each checked
+  by SHA-256 (Stage 36.8, docs/STAGE368_BUILD_LOCK.md). Run after checkout.
+  Then build with: flet build windows . --template "$env:SRA_FLET_TEMPLATE" ...
+inputs:
+  python-version:
+    description: Host Python; must equal python.windows_host of the lock (tests/test_build_lock.py)
+    default: "3.12.10"
+outputs:
+  template:
+    description: Folder to pass to `flet build --template` (also in $env:SRA_FLET_TEMPLATE)
+    value: ${{ steps.template.outputs.path }}
+runs:
+  using: composite
+  steps:
+    - name: Set up Python (exact version of the lock)
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+        cache-dependency-path: |
+          requirements.txt
+          requirements-dev.txt
+    - name: Python packages from the hashed locks (no resolution, no upgrades)
+      shell: pwsh
+      run: |
+        python -m pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+        if ($LASTEXITCODE -ne 0) { throw "pip refused the locked packages" }
+    - name: Flutter SDK of the lock (archive checked by SHA-256)
+      shell: pwsh
+      run: |
+        python tools/build_toolchain.py flutter
+        if ($LASTEXITCODE -ne 0) { throw "the Flutter SDK of the lock could not be prepared" }
+    - name: flet build template of the lock (checked by SHA-256, locked Dart packages)
+      id: template
+      shell: pwsh
+      run: |
+        python tools/build_toolchain.py template --out "$env:RUNNER_TEMP\flet-build-template" --github-output
+        if ($LASTEXITCODE -ne 0) { throw "the flet build template of the lock could not be prepared" }
+    - name: Python versions of the lock for flet build (no download)
+      shell: pwsh
+      run: |
+        $manifest = (Resolve-Path packaging/python-build-manifest.json).Path
+        "FLET_PYTHON_BUILD_MANIFEST=$manifest" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8

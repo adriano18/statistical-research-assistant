@@ -1,0 +1,138 @@
+name: Reproducible Windows build (two clean runners, one commit)
+
+# Stage 36.8 (issue #62): build the same commit with the pinned toolchain on
+# two fresh runners, then compare every file of the bundle and of the
+# installed program. Identical files are listed by count; each deviation is
+# named with its kind (build metadata, PE link timestamp, .pyc header, zip
+# metadata, content). The installers themselves are compared by SHA-256.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "requirements.txt"
+      - "requirements-dev.txt"
+      - "pyproject.toml"
+      - "packaging/**"
+      - ".github/actions/pinned-windows-toolchain/**"
+      - "tools/build_toolchain.py"
+      - "tools/build_installer.py"
+      - ".github/workflows/windows-reproducibility.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [a, b]
+    runs-on: windows-latest
+    timeout-minutes: 100
+    env:
+      PYTHONUTF8: "1"
+      MPLBACKEND: Agg
+      RUNTIME_DIR: bundled_ocr\windows-x64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Pinned build toolchain (exact Python, hashed locks, verified Flutter and template)
+        uses: ./.github/actions/pinned-windows-toolchain
+      - name: Prepare pinned Tesseract runtime (SHA-256 verified, no cache)
+        run: python tools/prepare_windows_ocr_runtime.py fetch --out "${{ env.RUNTIME_DIR }}" --cache "${{ runner.temp }}\ocr-download"
+      - name: Version identity (the same for both runners)
+        run: python tools/write_build_info.py --channel preview --version "1.0.0-repro.${{ github.run_number }}" --build "${{ github.run_number }}" --commit "${{ github.sha }}"
+      - name: Build the Windows application
+        run: >-
+          flet build windows .
+          --template "$env:SRA_FLET_TEMPLATE"
+          --module-name app
+          --python-version 3.12
+          --product "Statistical Research Assistant"
+          --artifact "StatisticalResearchAssistant"
+          --build-version 1.0.0
+          --build-number ${{ github.run_number }}
+          --no-rich-output --yes
+      - name: Inno Setup compiler of the lock
+        shell: pwsh
+        run: |
+          python tools/build_toolchain.py iscc
+          if ($LASTEXITCODE -ne 0) { throw "the Inno Setup version of the lock is not available" }
+      - name: Identity and file manifest of the bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force repro | Out-Null
+          python tools/build_toolchain.py identity --bundle build/windows --iscc --out repro/build-identity.json
+          if ($LASTEXITCODE -ne 0) { throw "build identity failed" }
+          python tools/build_toolchain.py manifest build/windows --out repro/bundle-manifest.json
+          if ($LASTEXITCODE -ne 0) { throw "bundle manifest failed" }
+      - name: Build the installer and install it (per user, silent)
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python tools/build_installer.py build/windows --out dist
+          Copy-Item dist/installer.json repro/installer.json
+          $setup = Get-ChildItem dist -Filter *-Setup.exe | Select-Object -First 1
+          python tools/check_installed_app.py install $setup.FullName --log repro/install.log
+          $program = python -c "import sys; sys.path.insert(0, 'tools'); import check_installed_app as c; print(c.program_folder())"
+          python tools/build_toolchain.py manifest $program --out repro/installed-manifest.json
+      - name: Upload manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repro-${{ matrix.leg }}
+          path: repro/
+          if-no-files-found: error
+          retention-days: 14
+
+  compare:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12.16"
+      - name: Download both manifests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: repro-*
+      - name: Compare the two builds
+        run: |
+          set -e
+          python tools/build_toolchain.py compare repro-a/bundle-manifest.json repro-b/bundle-manifest.json \
+            --title "Bundle (build/windows): runner A vs runner B" --markdown bundle.md
+          python tools/build_toolchain.py compare repro-a/installed-manifest.json repro-b/installed-manifest.json \
+            --title "Installed program folder: runner A vs runner B" --markdown installed.md
+          python - <<'PY' > installers.md
+          import json
+          a = json.load(open("repro-a/installer.json")); b = json.load(open("repro-b/installer.json"))
+          same = a["sha256"] == b["sha256"]
+          print("## Installers")
+          print(f"- A: `{a['file']}` {a['size']} bytes, SHA-256 `{a['sha256']}`")
+          print(f"- B: `{b['file']}` {b['size']} bytes, SHA-256 `{b['sha256']}`")
+          print("- Byte-identical" if same else "- Not byte-identical (Inno Setup stores build times; compare the installed folders above)")
+          PY
+          python - <<'PY' > toolchain.md
+          import json
+          a = json.load(open("repro-a/build-identity.json")); b = json.load(open("repro-b/build-identity.json"))
+          keys = ["host_python", "flet", "flutter", "locks", "inno_setup"]
+          print("## Toolchain of the two runners")
+          for key in keys:
+              print(f"- {key}: {'same' if a.get(key) == b.get(key) else 'DIFFERENT'}")
+          print(f"- Dart packages: {'same' if a.get('dart_packages', {}).get('pubspec_lock_sha256') == b.get('dart_packages', {}).get('pubspec_lock_sha256') else 'DIFFERENT'}")
+          print(f"- Runner images: {a['runner']['image_version']} and {b['runner']['image_version']}")
+          print(f"- Deviations from the locks: A {len(a['problems'])}, B {len(b['problems'])}")
+          PY
+          cat toolchain.md bundle.md installed.md installers.md | tee comparison.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: reproducibility-comparison
+          path: |
+            comparison.md
+            repro-a/
+            repro-b/
+          retention-days: 30
