@@ -71,8 +71,10 @@ def notes_value(ws) -> str:
 
 class JourneyOrderTests(unittest.TestCase):
     def test_the_review_journeys_follow_the_others(self):
-        self.assertEqual(list(e2e.JOURNEYS)[16:], ["confirmations", "report-composition"])
-        self.assertEqual(len(e2e.JOURNEYS), 18)
+        # Stage 37.0b appends one journey (stage37-hypothesis) after these 18;
+        # their order is unchanged (tests/test_stage37_journey.py).
+        self.assertEqual(list(e2e.JOURNEYS)[16:18], ["confirmations", "report-composition"])
+        self.assertEqual(len(e2e.JOURNEYS), 19)
 
 
 class ConfirmationsJourneyTests(unittest.TestCase):
