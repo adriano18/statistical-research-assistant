@@ -21,3 +21,6 @@ dist/
 # Private research acceptance documents; never commit participant data or licensed instruments.
 private-test-data/
 .stage36-fixtures/
+
+# Generated fictional Stage 37 datasets; avoid committing large fixture outputs.
+.stage37-fixtures/
