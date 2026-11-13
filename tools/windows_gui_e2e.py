@@ -650,7 +650,7 @@ class Gui:
         with contextlib.suppress(Exception):
             _, _, _, bottom = self.window_box()
             tops = [e.element_info.rectangle.top
-                    for name in (T("imp.back"), T("imp.next"))
+                    for name in (T("imp.back"), T("imp.next"), T("imp.create_draft"))
                     for e in self.query(name, control_type="Button")
                     if e.element_info.rectangle.top > bottom - 260]
             top = min(tops) - 12 if tops else None
@@ -1488,10 +1488,15 @@ def journey_import_cope_docx(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text(COPE_SITUATIONAL)
         gui.wait_text(T("imp.form.options", labels=GENERAL_OPTIONS))
         gui.wait_text(T("imp.form.options", labels=SITUATIONAL_OPTIONS))
-        with contextlib.suppress(StepFailure):
-            step2 = gui.find(regex=r"^2\. [^\n]* · ", control_type="Button", timeout=5,
-                             scroll=False, visible=False)
-            journey.facts["step_2_enabled_before_choice"] = bool(step2.element_info.enabled)
+        # Stage 36.8: a step that cannot open is text, not a button (UI
+        # Automation on Windows reports every button as enabled). Before the
+        # choice no step-2 button exists to announce or invoke; the reason is
+        # shown as text.
+        journey.facts["step_2_button_before_choice"] = bool(
+            gui.query(regex=r"^2\. [^\n]* · ", control_type="Button"))
+        expect(not journey.facts["step_2_button_before_choice"],
+               "step 2 is offered as a button before a form is chosen")
+        gui.wait_text(T("imp.choose_form_first"))
     with journey.step("review the second (situational) form: its own options"):
         # Only the choice shows "form 2 of 2" (step 1's label); the options
         # are on the form's card before it, so they cannot tell a click.

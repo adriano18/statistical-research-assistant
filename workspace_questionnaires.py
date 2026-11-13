@@ -1598,16 +1598,25 @@ class ImportPage:
     def _stepper(self) -> ft.Control:
         ui = self.app.ui
         status = self._status()
-        buttons = []
+        steps, locked_any = [], False
         for key in self.STEPS:
-            locked = self._locked(key)
-            buttons.append(wc.button(
+            if self._locked(key):
+                # Not a disabled button: UI Automation on Windows would report
+                # it as enabled (wc.locked_step, Stage 36.8).
+                locked_any = True
+                steps.append(wc.locked_step(ui, self._step_label(key, status),
+                                            data=f"imp-step-{key}"))
+                continue
+            steps.append(wc.button(
                 ui, self._step_label(key, status), lambda e, k=key: self._go(k),
                 kind="primary" if key == self.step else "secondary",
                 icon=ft.Icons.CHECK_CIRCLE if status[key] else ft.Icons.RADIO_BUTTON_UNCHECKED,
-                disabled=locked, tooltip=ui.t("imp.choose_form_first") if locked else None,
                 data=f"imp-step-{key}"))
-        return ft.Row(buttons, wrap=True, spacing=tk.SPACE_2, data="imp-steps")
+        row = ft.Row(steps, wrap=True, spacing=tk.SPACE_2, data="imp-steps")
+        if not locked_any:
+            return row
+        return ft.Column([row, wc.caption(ui, ui.t("imp.choose_form_first"),
+                                          data="imp-steps-locked")], spacing=tk.SPACE_1)
 
     def _go(self, step: str):
         if step in self.STEPS and not self._locked(step):
@@ -1632,18 +1641,17 @@ class ImportPage:
         else:
             counts = ui.t("imp.counts", total=status["total"], attention=status["attention"],
                           checked=status["checked"])
-        actions = [
-            wc.button(ui, ui.t("imp.back"), lambda e: self._go(self.STEPS[index - 1]),
-                      kind="quiet", icon=ft.Icons.ARROW_BACK, disabled=index == 0,
-                      data="imp-back"),
-        ]
-        if index < len(self.STEPS) - 1:
-            locked = self._locked(self.STEPS[index + 1])
+        # Back and Next appear only when they lead somewhere: a disabled button
+        # is reported as enabled by UI Automation on Windows (wc.locked_step).
+        # The footer caption already says what to do first.
+        actions = []
+        if index > 0:
+            actions.append(wc.button(ui, ui.t("imp.back"), lambda e: self._go(self.STEPS[index - 1]),
+                                     kind="quiet", icon=ft.Icons.ARROW_BACK, data="imp-back"))
+        if index < len(self.STEPS) - 1 and not self._locked(self.STEPS[index + 1]):
             actions.append(wc.button(ui, ui.t("imp.next"),
                                      lambda e: self._go(self.STEPS[index + 1]),
                                      kind="secondary", icon=ft.Icons.ARROW_FORWARD,
-                                     disabled=locked,
-                                     tooltip=ui.t("imp.choose_form_first") if locked else None,
                                      data="imp-next"))
         actions.append(wc.button(ui, ui.t("imp.create_draft"), self._create_draft,
                                  kind="primary", icon=ft.Icons.CHECK,

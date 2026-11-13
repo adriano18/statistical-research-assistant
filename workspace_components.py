@@ -150,6 +150,30 @@ def button(ui: Ui, label: str, on_click=None, *, kind: str = "secondary",
     return ft.Button(**kwargs)
 
 
+def locked_step(ui: Ui, label: str, *, data=None) -> ft.Container:
+    """A step that cannot be opened yet: text with a lock, not a button.
+
+    Stage 36.8 (issue #62): Flutter's Windows accessibility bridge reports
+    every button as enabled to UI Automation. Not one of ~4,800 elements in
+    the UI Automation trees of the Stage 36 Windows runs was reported as
+    disabled, so Narrator would announce a disabled step button as
+    available. Plain text is announced as what it is, takes no keyboard
+    focus and has nothing to invoke; the caller shows the reason as text.
+    """
+    return ft.Container(
+        content=ft.Row(
+            [ft.Icon(ft.Icons.LOCK_OUTLINE, size=16, color=ui.p.text_muted),
+             text(ui, label, tk.TYPE_LABEL, color=ui.p.text_muted)],
+            spacing=tk.SPACE_1, tight=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        height=tk.CONTROL_HEIGHT, border_radius=ui.radius("control"),
+        border=ft.Border.all(1, ui.p.border),
+        padding=ft.Padding.symmetric(horizontal=tk.SPACE_4, vertical=tk.SPACE_2),
+        data=data,
+    )
+
+
 def icon_button(ui: Ui, icon, tooltip: str, on_click=None, *, selected: bool = False,
                 data=None, disabled: bool = False) -> ft.IconButton:
     if not tooltip:

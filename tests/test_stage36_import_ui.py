@@ -141,10 +141,17 @@ class FormCardTests(Base):
             button = ws.find(f"imp-instrument-use-{index}")
             self.assertEqual(button.content, "Review this form")
         self.assertFalse(ws.find_all("imp-instrument-chosen-"))
-        # Nothing later than step 1 opens before the choice.
+        # Nothing later than step 1 opens before the choice. Those steps are
+        # text with a lock, not disabled buttons (UI Automation on Windows
+        # reports every button as enabled, Stage 36.8), and there is no Next.
         for step in ("scale", "items", "confirm"):
-            self.assertTrue(ws.find(f"imp-step-{step}").disabled, step)
-        self.assertTrue(ws.find("imp-next").disabled)
+            control = ws.find(f"imp-step-{step}")
+            self.assertNotIsInstance(control, (ft.Button, ft.TextButton), step)
+            with self.assertRaises(AssertionError):
+                ws.click(f"imp-step-{step}")
+        self.assertFalse(ws.find_all("imp-next"))
+        self.assertFalse(ws.find_all("imp-back"), "no Back on the first step")
+        self.assertEqual(ws.find("imp-steps-locked").value, "Choose the form to review first (step 1).")
         self.assertIn("Choose which form", ws.find("imp-create-draft").tooltip)
         with self.assertRaises(ValueError):
             page.create_draft()
