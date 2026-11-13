@@ -9,6 +9,7 @@ engine tables, report text); no number is formatted or derived here.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping, MutableMapping
 from datetime import datetime
 import uuid
 
@@ -18,7 +19,8 @@ import workspace_components as wc
 import workspace_tokens as tk
 from workspace_methods import (
     FAMILIES, GOAL_ROLES, GOALS, ITEMS_NOT_TOTALS, METHODS, RoleProblems, advise,
-    default_options, required_confirmations, run_method, total_score_problem,
+    confirmation_scope, default_options, method_confirmations, required_confirmations,
+    run_method, settle_confirmations, total_score_problem,
 )
 from workspace_state import LEVELS, ResearchTask
 from workspace_text import count_text, label as engine_label
@@ -83,13 +85,19 @@ class AnalyzePage:
         self.mode = "guided"
         self.goal: str | None = None
         self.selection: dict = {}
+        # Stage 36.8 (K1): {key: True} of the given confirmations and, for
+        # each, what it was given for (workspace_methods.confirmation_scope).
         self.confirms: dict = {}
+        self.confirm_scopes: dict = {}
+        self.reconfirm: set[str] = set()       # cleared since ticked: to give again
         self.override: tuple[str, dict] | None = None
         self.search = ""
         self.method: str | None = None         # all-methods form
         self.form_roles: dict = {}
         self.form_options: dict = {}
         self.form_confirms: dict = {}
+        self.form_scopes: dict = {}
+        self.form_reconfirm: set[str] = set()
         self.running = False
         self.message: tuple[str, str] | None = None
         self.choosing_goal = False          # step 1 re-opened with "Change"
@@ -102,17 +110,46 @@ class AnalyzePage:
         self.mode, self.method = "all", key
         self.form_roles = dict(entry.roles or {})
         self.form_options = {**default_options(METHODS[key]), **(entry.options or {})}
-        self.form_confirms = {}
+        self.form_confirms, self.form_scopes, self.form_reconfirm = {}, {}, set()
         self.message = (self.app.t("analyze.rerun", title=entry.title), "info")
         self.app.navigate("analyze")
 
     def reset(self) -> None:
         """Forget choices made for another project's data."""
-        self.goal, self.selection, self.confirms, self.override = None, {}, {}, None
+        self.goal, self.selection, self.override = None, {}, None
+        self.confirms, self.confirm_scopes, self.reconfirm = {}, {}, set()
         self.choosing_goal = False
         self.task_id = None              # a task belongs to the project it was made in
-        self.method, self.form_roles, self.form_options, self.form_confirms = None, {}, {}, {}
+        self.method, self.form_roles, self.form_options = None, {}, {}
+        self.form_confirms, self.form_scopes, self.form_reconfirm = {}, {}, set()
         self.message = None
+
+    # ------------------------------------------------- confirmations (K1)
+    def _holding(self, chosen) -> dict:
+        """``{key: scope}`` of the guided confirmations that hold for the
+        analysis on screen. Those given for other variables, another table
+        or another method are cleared here (Stage 36.8, K1); the ones this
+        analysis asks for are remembered to say why their box is empty."""
+        if not chosen:
+            return {}          # nothing to judge them by until a method is chosen
+        key, options, roles = chosen
+        holding, kept = settle_confirmations(key, roles, options, self.confirms,
+                                             self.confirm_scopes, self.app.session)
+        asked = {c.key for c in method_confirmations(METHODS[key])}
+        self.reconfirm |= (set(self.confirms) & asked) - set(holding)
+        self.confirms, self.confirm_scopes = {k: True for k in kept}, kept
+        return holding
+
+    @staticmethod
+    def _reconfirm_notice(ui, needed, holding: dict, cleared: set, data: str) -> list:
+        """Why a box ticked earlier is empty now (only while it is)."""
+        if any(c.key in cleared and c.key not in holding for c in needed):
+            return [wc.notice(ui, ui.t("design.reconfirm"), "info", data=data)]
+        return []
+
+    @staticmethod
+    def _missing(key: str, options: dict, holding: dict) -> list:
+        return [c for c in required_confirmations(METHODS[key], options) if c.key not in holding]
 
     # ----------------------------------------------------------- layout
     def build(self) -> ft.Control:
@@ -203,18 +240,22 @@ class AnalyzePage:
                                   scroll_key="step-variables"))
         advice = advise(self.goal, self.selection, s)
         chosen = self._chosen(advice)
-        steps.append(wc.step_card(ui, 3, ui.t("step.design"), self._design(advice, chosen),
+        holding = self._holding(chosen)
+        steps.append(wc.step_card(ui, 3, ui.t("step.design"),
+                                  self._design(advice, chosen, holding),
                                   state="active" if self._roles_filled() else "locked",
                                   data="step-design", scroll_key="step-design"))
-        steps.append(wc.step_card(ui, 4, ui.t("step.method"), self._recommendation(advice, chosen),
+        steps.append(wc.step_card(ui, 4, ui.t("step.method"),
+                                  self._recommendation(advice, chosen, holding),
                                   state="active" if advice.ready else "locked",
                                   data="step-method", scroll_key="step-method"))
-        steps += self._task_result()
+        steps += self._task_result(chosen, holding)
         return steps
 
     def _set_goal(self, goal: str):
         if goal != self.goal:
-            self.goal, self.selection, self.confirms, self.override = goal, {}, {}, None
+            self.goal, self.selection, self.override = goal, {}, None
+            self.confirms, self.confirm_scopes, self.reconfirm = {}, {}, set()
             self.message = None
             self.task_id = None          # another question: another research task
         self.choosing_goal = False
@@ -347,14 +388,19 @@ class AnalyzePage:
         self.mode, self.task_id, self.goal = "guided", task.id, task.goal
         self.selection = {k: (list(v) if isinstance(v, list) else v)
                           for k, v in task.selection.items()}
+        # Each confirmation comes back with what it was given for; on screen
+        # it holds only for the same variables (design) or the same table,
+        # variables and method (data) — see _holding.
         self.confirms = dict(task.confirms)
+        self.confirm_scopes = dict((task.state or {}).get("confirm_scopes") or {})
+        self.reconfirm = set()
         self.override = (task.method, dict(task.options)) if task.method else None
         self.choosing_goal, self.message = False, None
         self.app.render()
 
     def _new_task(self, e=None):
-        self.task_id, self.goal, self.selection, self.confirms, self.override = (
-            None, None, {}, {}, None)
+        self.task_id, self.goal, self.selection, self.override = None, None, {}, None
+        self.confirms, self.confirm_scopes, self.reconfirm = {}, {}, set()
         self.choosing_goal, self.message = False, None
         self.app.render()
 
@@ -368,8 +414,11 @@ class AnalyzePage:
                  for v in (value if isinstance(value, list) else [value]) if v]
         return f"{method_label(key, {})}: {', '.join(names[:3])}"
 
-    def _remember_task(self, key: str, roles: dict, options: dict) -> ResearchTask | None:
-        """The guided run belongs to the task on screen (a new one if none)."""
+    def _remember_task(self, key: str, roles: dict, options: dict, confirms: dict,
+                       scopes: dict) -> ResearchTask | None:
+        """The guided run belongs to the task on screen (a new one if none).
+        The task keeps the confirmations the run was given and what each was
+        given for (``state["confirm_scopes"]``, Stage 36.8)."""
         if self.mode != "guided" or not self.goal:
             return None
         task = self.app.session.task(self.task_id)
@@ -378,12 +427,17 @@ class AnalyzePage:
                                 state={"created": datetime.now().isoformat(timespec="seconds")})
         task.selection = {k: (list(v) if isinstance(v, list) else v)
                           for k, v in self.selection.items()}
-        task.method, task.options, task.confirms = key, dict(options), dict(self.confirms)
+        task.method, task.options = key, dict(options)
+        task.confirms = {k: True for k in confirms if confirms[k] and k in scopes}
+        task.state = {**(task.state or {}),
+                      "confirm_scopes": {k: scopes[k] for k in task.confirms}}
         self.task_id = task.id
         return self.app.session.save_task(task)
 
-    def _task_result(self) -> list[ft.Control]:
-        """The latest batch result of the task, with what can be done next."""
+    def _task_result(self, chosen=None, holding=None) -> list[ft.Control]:
+        """The latest batch result of the task, with what can be done next.
+        Running it again needs what a first run needs: an analysis that is
+        ready and every confirmation it asks for (Stage 36.8, K1)."""
         ui, s = self.app.ui, self.app.session
         if not self.task_id:
             return []
@@ -406,9 +460,13 @@ class AnalyzePage:
             rows.append(wc.text(ui, "• " + line, tk.TYPE_BODY, selectable=True))
         if len(entries) > 1:
             rows.append(wc.caption(ui, ui.t("task.versions", count=len(entries))))
+        missing = bool(chosen) and bool(self._missing(chosen[0], chosen[1], holding or {}))
+        why = (ui.t("disabled.confirm_first") if missing else
+               ui.t("disabled.resolve_first") if not chosen else None)
         actions = [
             wc.button(ui, ui.t("task.rerun"), self._run_guided, kind="secondary",
-                      icon=ft.Icons.REPLAY, data="task-rerun"),
+                      icon=ft.Icons.REPLAY, disabled=bool(why) or self.running, tooltip=why,
+                      data="task-rerun"),
             wc.button(ui, ui.t("results.in_report") if entry.in_report else ui.t("results.add_report"),
                       lambda e, i=entry.id: self._toggle_report(i), kind="secondary",
                       icon=ft.Icons.CHECK if entry.in_report else ft.Icons.PLAYLIST_ADD,
@@ -441,8 +499,9 @@ class AnalyzePage:
             return key, {**advice.options, **options}, advice.roles
         return advice.method, advice.options, advice.roles
 
-    def _design(self, advice, chosen) -> list[ft.Control]:
+    def _design(self, advice, chosen, holding=None) -> list[ft.Control]:
         ui, s = self.app.ui, self.app.session
+        holding = holding or {}
         controls: list[ft.Control] = []
         names = []
         for role in GOAL_ROLES[self.goal]:
@@ -479,13 +538,15 @@ class AnalyzePage:
             if key == "design.groups_found":
                 controls.append(wc.chip(ui, ui.t(key, **params), "info", icon=ft.Icons.GROUPS))
         if chosen:
-            spec = METHODS[chosen[0]]
-            for confirmation in required_confirmations(spec, chosen[1]):
+            needed = required_confirmations(METHODS[chosen[0]], chosen[1])
+            for confirmation in needed:
                 controls.append(wc.checkbox(
                     ui, engine_label(ui.language, confirmation.label),
-                    bool(self.confirms.get(confirmation.key)),
+                    confirmation.key in holding,
                     on_change=lambda e, k=confirmation.key: self._confirm(k, e.control.value),
                     data=f"design-confirm-{confirmation.key}"))
+            controls += self._reconfirm_notice(ui, needed, holding, self.reconfirm,
+                                               "design-reconfirm")
         return controls
 
     def _confirm_level(self, name: str, level: str):
@@ -495,13 +556,27 @@ class AnalyzePage:
         self.app.render()
 
     def _confirm(self, key: str, value: bool):
-        self.confirms[key] = bool(value)
+        """Tick or untick a confirmation; a tick records what it is given for:
+        these variables (design) or this table, these variables and this
+        method (data)."""
+        chosen = self._chosen(advise(self.goal, self.selection, self.app.session))
+        confirmation = None if not chosen else next(
+            (c for c in method_confirmations(METHODS[chosen[0]]) if c.key == key), None)
+        if value and confirmation is not None:
+            self.confirms[key] = True
+            self.confirm_scopes[key] = confirmation_scope(confirmation, chosen[0], chosen[2],
+                                                          chosen[1], self.app.session)
+            self.reconfirm.discard(key)
+        else:
+            self.confirms.pop(key, None)
+            self.confirm_scopes.pop(key, None)
         self.app.render()
 
-    def _recommendation(self, advice, chosen) -> list[ft.Control]:
+    def _recommendation(self, advice, chosen, holding=None) -> list[ft.Control]:
         ui = self.app.ui
         if not chosen:
             return []
+        holding = holding or {}
         key, options, roles = chosen
         label = method_label(key, options)
         reasons = [wc.text(ui, "• " + ui.t(k, **p), tk.TYPE_BODY)
@@ -522,9 +597,7 @@ class AnalyzePage:
                           lambda e, a=alternative: self._use(a.method, a.options), kind="quiet",
                           data=f"alt-{alternative.method}-{alternative.options.get('method', '')}"),
             ], vertical_alignment=ft.CrossAxisAlignment.CENTER))
-        spec = METHODS[key]
-        missing = [c for c in required_confirmations(spec, options)
-                   if not self.confirms.get(c.key)]
+        missing = self._missing(key, options, holding)
         run = wc.button(ui, ui.t("rec.run", method=label), self._run_guided, kind="primary",
                         icon=ft.Icons.PLAY_ARROW, disabled=bool(missing) or self.running,
                         tooltip=ui.t("disabled.confirm_first") if missing else None,
@@ -559,27 +632,35 @@ class AnalyzePage:
         self.mode, self.method = "all", key
         self.form_roles = dict(roles)
         self.form_options = {**default_options(METHODS[key]), **options}
-        self.form_confirms = {k: v for k, v in self.confirms.items()}
+        # The same analysis: what holds here holds in the form (same scopes).
+        self.form_confirms, self.form_scopes = dict(self.confirms), dict(self.confirm_scopes)
+        self.form_reconfirm = set()
         self.app.render()
 
     async def _run_guided(self, e=None):
+        """Run the analysis on screen (Run, Run again, Ctrl+Enter) — only with
+        every confirmation it asks for given for exactly this analysis."""
         advice = advise(self.goal, self.selection, self.app.session)
         chosen = self._chosen(advice)
-        if chosen:
-            await self._execute(chosen[0], chosen[2], chosen[1], self.confirms)
+        if not chosen:
+            return
+        holding = self._holding(chosen)
+        if self._missing(chosen[0], chosen[1], holding):
+            self.app.status(self.app.t("disabled.confirm_first"), "warning")
+            self.app.render()
+            return
+        await self._execute(chosen[0], chosen[2], chosen[1], {k: True for k in holding},
+                            scopes=holding)
 
     async def run_current(self):
         """Ctrl+Enter: run whatever analysis is ready on screen."""
         if self.mode == "guided" and self.goal:
-            advice = advise(self.goal, self.selection, self.app.session)
-            chosen = self._chosen(advice)
-            if chosen and not [c for c in required_confirmations(METHODS[chosen[0]], chosen[1])
-                               if not self.confirms.get(c.key)]:
-                await self._execute(chosen[0], chosen[2], chosen[1], self.confirms)
+            await self._run_guided()
         elif self.mode == "all" and self.method:
             await self._run_form()
 
-    async def _execute(self, key: str, roles: dict, options: dict, confirms: dict):
+    async def _execute(self, key: str, roles: dict, options: dict, confirms: dict, *,
+                       scopes: dict | None = None):
         app = self.app
         self.running, self.message = True, None
         app.render()
@@ -610,7 +691,7 @@ class AnalyzePage:
         if confirms.get(ITEMS_NOT_TOTALS.key):
             confirmed.append(ITEMS_NOT_TOTALS.label)
         effective = {**default_options(METHODS[key]), **options}
-        task = self._remember_task(key, roles, effective)
+        task = self._remember_task(key, roles, effective, confirms, scopes or {})
         entry = app.session.add_result(
             run, confirmed, method=key, roles=dict(roles), options=effective,
             confirms=dict(confirms), task_id=task.id if task else None)
@@ -664,10 +745,22 @@ class AnalyzePage:
 
     def _open_method(self, key: str):
         self.method = key
-        self.form_roles, self.form_confirms = {}, {}
+        self.form_roles, self.form_confirms, self.form_scopes = {}, {}, {}
+        self.form_reconfirm = set()
         self.form_options = default_options(METHODS[key])
         self.message = None
         self.app.render()
+
+    def _form_holding(self) -> dict:
+        """The form's confirmations that hold for its analysis (Stage 36.8,
+        K1: the same rule as the guided steps); the others are cleared."""
+        holding, kept = settle_confirmations(self.method, self.form_roles, self.form_options,
+                                             self.form_confirms, self.form_scopes,
+                                             self.app.session)
+        asked = {c.key for c in method_confirmations(METHODS[self.method])}
+        self.form_reconfirm |= (set(self.form_confirms) & asked) - set(holding)
+        self.form_confirms, self.form_scopes = {k: True for k in kept}, kept
+        return holding
 
     def _method_form(self) -> list[ft.Control]:
         ui, s = self.app.ui, self.app.session
@@ -702,8 +795,9 @@ class AnalyzePage:
         needed = list(required_confirmations(spec, self.form_options))
         if totals:
             needed.append(ITEMS_NOT_TOTALS)
+        holding = self._form_holding()
         confirmations = [wc.checkbox(
-            ui, engine_label(ui.language, c.label), bool(self.form_confirms.get(c.key)),
+            ui, engine_label(ui.language, c.label), c.key in holding,
             on_change=lambda e, k=c.key: self._form_confirm(k, e.control.value),
             data=f"form-confirm-{c.key}")
             for c in needed]
@@ -715,7 +809,7 @@ class AnalyzePage:
             [(lvl, ui.t(f"level.{lvl}")) for lvl in LEVELS if lvl != "id"], "unknown",
             on_select=lambda e, n=name: self._confirm_level(n, e.control.value), width=300,
             data=f"form-level-{name}") for name in unknown]
-        missing = [c for c in needed if not self.form_confirms.get(c.key)]
+        missing = [c for c in needed if c.key not in holding]
         content: list[ft.Control] = [
             ft.Row(roles, wrap=True, spacing=tk.SPACE_4) if not any(r.multiple for r in spec.roles)
             else ft.Column(roles, spacing=tk.SPACE_2)]
@@ -728,7 +822,9 @@ class AnalyzePage:
             content.append(wc.notice(ui, problems_text(ui, [totals]), "warning",
                                      data="form-totals"))
         if confirmations:
-            content += [wc.section_label(ui, ui.t("form.confirmations")), *confirmations]
+            content += [wc.section_label(ui, ui.t("form.confirmations")), *confirmations,
+                        *self._reconfirm_notice(ui, needed, holding, self.form_reconfirm,
+                                                "form-reconfirm")]
         other = [p for p in problems if p[0] != "design.confirm_level"]
         if other:
             content.append(wc.notice(ui, problems_text(ui, other), "warning",
@@ -764,7 +860,16 @@ class AnalyzePage:
         self.app.render()
 
     def _form_confirm(self, key, value):
-        self.form_confirms[key] = bool(value)
+        confirmation = next((c for c in method_confirmations(METHODS[self.method])
+                             if c.key == key), None)
+        if value and confirmation is not None:
+            self.form_confirms[key] = True
+            self.form_scopes[key] = confirmation_scope(confirmation, self.method, self.form_roles,
+                                                       self.form_options, self.app.session)
+            self.form_reconfirm.discard(key)
+        else:
+            self.form_confirms.pop(key, None)
+            self.form_scopes.pop(key, None)
         self.app.render()
 
     def _back(self, e=None):
@@ -773,27 +878,98 @@ class AnalyzePage:
         self.app.render()
 
     async def _run_form(self, e=None):
-        if self.method:
-            confirms = dict(self.form_confirms)
-            if not total_score_problem(METHODS[self.method], self.form_roles, self.app.session):
-                confirms.pop(ITEMS_NOT_TOTALS.key, None)
-            await self._execute(self.method, self.form_roles, self.form_options, confirms)
+        if not self.method:
+            return
+        spec, session = METHODS[self.method], self.app.session
+        holding = self._form_holding()
+        totals = total_score_problem(spec, self.form_roles, session)
+        needed = list(required_confirmations(spec, self.form_options))
+        if totals:
+            needed.append(ITEMS_NOT_TOTALS)
+        if [c for c in needed if c.key not in holding]:
+            self.app.status(self.app.t("disabled.confirm_first"), "warning")
+            self.app.render()
+            return
+        confirms = {k: True for k in holding}
+        if not totals:
+            confirms.pop(ITEMS_NOT_TOTALS.key, None)
+        await self._execute(self.method, self.form_roles, self.form_options, confirms)
 
 
 # ================================================================= results
+class _EntryNotes(MutableMapping):
+    """``{entry id: note}`` read from and written to the session's results:
+    the note belongs to the result (and the project), not to the page."""
+
+    def __init__(self, session):
+        self.session = session
+
+    def __getitem__(self, entry_id):
+        entry = self.session.result(entry_id)
+        if entry is None or not entry.note:
+            raise KeyError(entry_id)
+        return entry.note
+
+    def __setitem__(self, entry_id, note):
+        if self.session.result(entry_id) is None:
+            raise KeyError(entry_id)
+        self.session.set_note(entry_id, note)
+
+    def __delitem__(self, entry_id):
+        self[entry_id] = ""
+
+    def __iter__(self):
+        return iter([entry.id for entry in self.session.results if entry.note])
+
+    def __len__(self):
+        return sum(1 for entry in self.session.results if entry.note)
+
+
+class _EntryReviews(Mapping):
+    """``{entry id: frozenset of reviewed checks}`` read from the results;
+    a check is marked with ``ResearchSession.set_reviewed``."""
+
+    def __init__(self, session):
+        self.session = session
+
+    def __getitem__(self, entry_id):
+        entry = self.session.result(entry_id)
+        if entry is None:
+            raise KeyError(entry_id)
+        return entry.reviewed
+
+    def __iter__(self):
+        return iter([entry.id for entry in self.session.results])
+
+    def __len__(self):
+        return len(self.session.results)
+
+
 class ResultsPage:
     def __init__(self, app):
         self.app = app
         self.opened: set[str] = set()      # expanded sections (kept across renders)
         self._seen: set[int] = set()
         self.depth: str | None = None   # interpretation: "student" or "professor"
-        self.reviewed: dict[int, set[str]] = {}
-        self.notes: dict[int, str] = {}
         self.feedback: dict[int, tuple[str, str]] = {}
         self.figure_number = "1"
         from workspace_assistant import AssistantPanel
 
         self.assistant = AssistantPanel(self)    # Stage 36 §12: AI drafts, per result
+
+    # Stage 36.8 (K2): the researcher's note and reviewed checks are kept on
+    # each result (ResultEntry.note / .reviewed) and saved with the project.
+    @property
+    def notes(self) -> _EntryNotes:
+        return _EntryNotes(self.app.session)
+
+    @property
+    def reviewed(self) -> _EntryReviews:
+        return _EntryReviews(self.app.session)
+
+    def reset(self) -> None:
+        """Another project: nothing said about its results' exports."""
+        self.feedback = {}
 
     def build(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session
@@ -854,7 +1030,7 @@ class ResultsPage:
         ui = self.app.ui
         run = entry.run
         evidence = run.evidence()
-        reviewed = self.reviewed.setdefault(entry.id, set())
+        reviewed = entry.reviewed
         rows = list(evidence.rows)
         estimates = [wc.stat(ui, row.parameter, row.estimate,
                              " · ".join(x for x in (
@@ -943,9 +1119,9 @@ class ResultsPage:
         ], title=ui.t("results.checks"), data="result-checks"))
         from interpretation_wizard import interpretation_summary
 
-        notes = wc.text_field(ui, ui.t("results.notes"),
-                              self.notes.get(entry.id, ""), multiline=True,
-                              on_change=lambda e, i=entry.id: self.notes.__setitem__(
+        # Saved with the result as it is typed (one row of the project).
+        notes = wc.text_field(ui, ui.t("results.notes"), entry.note, multiline=True,
+                              on_change=lambda e, i=entry.id: self.app.session.set_note(
                                   i, e.control.value or ""), data="result-notes")
         if entry.id not in self._seen:
             # "Detailed" explanations (optional profile) open the interpretation
@@ -956,8 +1132,7 @@ class ResultsPage:
         unverified = [a for a in evidence.assumptions if a not in reviewed]
         depth = self.depth or self._default_depth()
         if depth == "professor":
-            explained = [wc.text(ui, interpretation_summary(evidence, reviewed,
-                                                            self.notes.get(entry.id, "")),
+            explained = [wc.text(ui, interpretation_summary(evidence, reviewed, entry.note),
                                  tk.TYPE_BODY, selectable=True, data="result-interpretation")]
             from statistical_guide import method_guide_text
 
@@ -1090,8 +1265,7 @@ class ResultsPage:
         self.app.render()
 
     def _review(self, entry_id: int, assumption: str, value: bool):
-        reviewed = self.reviewed.setdefault(entry_id, set())
-        (reviewed.add if value else reviewed.discard)(assumption)
+        self.app.session.set_reviewed(entry_id, assumption, bool(value))
         self.app.render()
 
     def _edit_chart(self, entry) -> ft.Control:
@@ -1174,8 +1348,8 @@ class ResultsPage:
         settings = wc.caption(ui, ui.t(
             "prov.export_settings", reviewed=len([a for a in evidence.assumptions if a in reviewed]),
             total=len(evidence.assumptions), figure=self.figure_number or "1",
-            title=self.app.pages["reports"].study_title or "—",
-            notes=ui.t("common.yes") if self.notes.get(entry.id, "").strip() else ui.t("common.no")),
+            title=self.app.session.report.title or "—",
+            notes=ui.t("common.yes") if entry.note.strip() else ui.t("common.no")),
             data="result-export-settings")
         return wc.card(ui, [ft.Row([
             wc.button(ui, ui.t("results.copy"), lambda e, i=entry.id: self._copied(i),
@@ -1221,13 +1395,12 @@ class ResultsPage:
                 return save_selected_output(path, output, "image")
             return f"{section}_figure.png", write_png
         evidence = run.evidence()
-        reviewed = self.reviewed.get(entry.id, set())
-        notes = self.notes.get(entry.id, "")
+        reviewed, notes = set(entry.reviewed), entry.note
         figure_note = default_section_figure_note(
             "omega" if section == "reliability" and "omega" in run.title.lower() else section)
         return f"{section}_apa7_draft.docx", lambda path: save_apa_docx(
             path, evidence, reviewed=reviewed, researcher_notes=notes,
-            study_title=self.app.pages["reports"].study_title, figure_title=run.title,
+            study_title=self.app.session.report.title, figure_title=run.title,
             figure_note=figure_note)
 
     async def _save(self, entry, kind: str):
@@ -1249,15 +1422,34 @@ class ResultsPage:
 class ReportsPage:
     def __init__(self, app):
         self.app = app
-        self.study_title = ""
         self.include_stale = False
-        from research_report import SECTIONS
-
-        self.sections: set[str] = set(SECTIONS)      # Stage 36.6: chosen sections
-        self.language: str | None = None             # report language (default: interface)
         self.opened: set[str] = set()
         self.feedback: tuple[str, str] | None = None
         self._preview: ft.Text | None = None   # updated in place while typing
+
+    # Stage 36.8 (K2): the study title, the chosen sections (36.6) and the
+    # report language (default: the interface's) belong to the project: they
+    # are kept in the session's ReportSettings and saved with the project.
+    @property
+    def study_title(self) -> str:
+        return self.app.session.report.title
+
+    @property
+    def sections(self) -> set[str]:
+        from research_report import SECTIONS
+
+        return set(SECTIONS) - set(self.app.session.report.sections_off)
+
+    @property
+    def language(self) -> str | None:
+        return self.app.session.report.language
+
+    def reset(self) -> None:
+        """Another project: its report starts from its own settings; an
+        override for this project's outdated results is not carried over."""
+        self.include_stale = False
+        self.feedback = None
+        self._preview = None
 
     def _blocked(self) -> bool:
         stale = [e for e in self.app.session.report_entries() if e.stale_reasons]
@@ -1324,10 +1516,12 @@ class ReportsPage:
                 [ft.Container(self._preview, padding=tk.SPACE_4)],
                 key="reports-preview", opened=self.opened,
                 subtitle=wc.caption(ui, ui.t("reports.preview_hint")), data="reports-preview")
+            title = wc.text_field(ui, ui.t("reports.study_title"), self.study_title, width=520,
+                                  on_change=self._set_title, data="reports-study-title")
+            title.on_blur = title.on_submit = self._save_title
             body = [
                 ft.Row([
-                    wc.text_field(ui, ui.t("reports.study_title"), self.study_title, width=520,
-                                  on_change=self._set_title, data="reports-study-title"),
+                    title,
                     wc.dropdown(ui, ui.t("reports.language"),
                                 [("en", "English"), ("lv", "Latviešu"), ("ru", "Русский")],
                                 self.report_language(),
@@ -1351,7 +1545,7 @@ class ReportsPage:
         return self.language or self.app.session.language
 
     def _set_language(self, value: str):
-        self.language = value if value in ("en", "lv", "ru") else None
+        self.app.session.update_report(language=value if value in ("en", "lv", "ru") else None)
         self.app.render()
 
     def report_inputs(self):
@@ -1361,10 +1555,8 @@ class ReportsPage:
         from project_store import library_versions
 
         app, s = self.app, self.app.session
-        results_page = app.pages["results"]
         tasks = {task.id: task.title for task in s.tasks}
-        infos = [rr.result_info(entry, reviewed=results_page.reviewed.get(entry.id, ()),
-                                note=results_page.notes.get(entry.id, ""),
+        infos = [rr.result_info(entry, reviewed=entry.reviewed, note=entry.note,
                                 task_title=tasks.get(entry.task_id, ""))
                  for entry in s.report_entries()]
         inputs = rr.ReportInputs(title=self.study_title, language=self.report_language(),
@@ -1415,19 +1607,27 @@ class ReportsPage:
                        title=ui.t("reports.structure"), data="reports-structure")
 
     def _toggle_section(self, key: str, value: bool):
-        (self.sections.add if value else self.sections.discard)(key)
+        left_out = set(self.app.session.report.sections_off)
+        (left_out.discard if value else left_out.add)(key)
+        self.app.session.update_report(sections_off=frozenset(left_out))
         self.app.render()
 
     def _set_title(self, e):
         """The preview shows the title as it will be exported. It is updated
-        in place: re-rendering the page on every keystroke is not needed."""
-        self.study_title = e.control.value or ""
+        in place: re-rendering the page on every keystroke is not needed.
+        The title is kept in the session at once and saved in the project
+        when the field is left (and before an export or the project closes),
+        so typing does not log every keystroke."""
+        self.app.session.update_report(title=e.control.value or "", save=False)
         if self._preview is not None:
             wc.set_text(self._preview, self.app.session.combined_report(self.study_title))
             try:
                 self.app.page.update()
             except Exception:  # pragma: no cover - page not shown
                 pass
+
+    def _save_title(self, e=None):
+        self.app.session.notify("report_settings")
 
     def _include(self, value: bool):
         self.include_stale = value
@@ -1455,6 +1655,7 @@ class ReportsPage:
             return
         import research_report as rr
 
+        self._save_title()          # the report is written with the settings saved
         inputs = self.report_inputs()
         plan = rr.plan_report(inputs)
         version = app_identity.build_info().version
@@ -1473,6 +1674,7 @@ class ReportsPage:
         app = self.app
         if self._blocked():
             return
+        self._save_title()
         text = app.session.combined_report(self.study_title)
 
         def write(path):

@@ -105,10 +105,14 @@ def main(argv=None) -> int:
     before = sds.get_scale()
     results, problems = [], []
     try:
-        for scale in (100, 125, 150):
+        # 175 % (Stage 36.8, issue #62: "and at 175 % in a feasible environment")
+        # is checked like the others when the display offers it (the 1920×1080
+        # runner allows up to 175 %); where it does not, that is recorded.
+        for scale in (100, 125, 150, 175):
             if scale > before["maximum"]:
                 results.append({"scale": scale, "skipped": f"this display allows up to {before['maximum']} %"})
-                problems.append(f"{scale} %: not offered by this display")
+                if scale <= 150:
+                    problems.append(f"{scale} %: not offered by this display")
                 continue
             facts = run_at(exe, scale, out)
             results.append(facts)

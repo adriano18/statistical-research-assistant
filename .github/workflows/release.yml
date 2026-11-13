@@ -42,13 +42,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-      - name: Install dependencies
-        run: python -m pip install -r requirements.txt "zstandard>=0.23,<1" "pywinauto==0.6.9"
+      - name: Pinned build toolchain (exact Python, hashed locks, verified Flutter and template)
+        uses: ./.github/actions/pinned-windows-toolchain
       - name: The update-signing key is configured
         shell: pwsh
         env:
@@ -108,6 +103,7 @@ jobs:
       - name: Build the Windows application
         run: >-
           flet build windows .
+          --template "$env:SRA_FLET_TEMPLATE"
           --module-name app
           --python-version 3.12
           --product "Statistical Research Assistant"
@@ -124,6 +120,14 @@ jobs:
           "EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           python tools/check_packaged_ocr.py build/windows
           if ($LASTEXITCODE -ne 0) { throw "packaged OCR check failed" }
+      - name: Build identity and SBOM (a release must match the locks exactly)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist, release-evidence | Out-Null
+          python tools/build_toolchain.py identity --bundle build/windows --strict --out release-evidence/build-identity.json
+          if ($LASTEXITCODE -ne 0) { throw "this build deviates from the locks (release-evidence/build-identity.json)" }
+          python tools/build_sbom.py --out dist/sbom.cdx.json --pubspec-lock build/flutter/pubspec.lock --licenses-md release-evidence/licenses.md
+          if ($LASTEXITCODE -ne 0) { throw "SBOM failed" }
       - name: Sign the program
         if: env.SIGNED == '1'
         shell: pwsh
@@ -135,15 +139,11 @@ jobs:
           & $signtool.FullName sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f $env:PFX_PATH /p $env:PFX_PASSWORD $env:EXE
           if ($LASTEXITCODE -ne 0) { throw "signing the program failed" }
           "SIGNTOOL=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Install Inno Setup when the runner has none
+      - name: Inno Setup compiler of the lock (installed if the runner has another version)
         shell: pwsh
         run: |
-          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
-          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ }
-          if (-not $iscc -and -not (Get-Command ISCC -ErrorAction SilentlyContinue)) {
-            choco install innosetup --no-progress -y
-            if ($LASTEXITCODE -ne 0) { throw "Inno Setup could not be installed" }
-          }
+          python tools/build_toolchain.py iscc
+          if ($LASTEXITCODE -ne 0) { throw "the Inno Setup version of the lock is not available" }
       - name: Build the installer
         shell: pwsh
         env:
@@ -209,7 +209,7 @@ jobs:
           $body | Out-File -FilePath release-notes.md -Encoding utf8
           $flags = @("--draft", "--title", "Statistical Research Assistant $env:VERSION", "--notes-file", "release-notes.md", "--target", "${{ github.sha }}")
           if ($env:CHANNEL -eq "preview") { $flags += "--prerelease" }
-          gh release create $env:TAG @flags dist\*.exe dist\*.sha256 dist\installer.json dist\build_info.json "dist\sra-update-$env:CHANNEL.json"
+          gh release create $env:TAG @flags dist\*.exe dist\*.sha256 dist\installer.json dist\build_info.json dist\sbom.cdx.json "dist\sra-update-$env:CHANNEL.json"
           if ($LASTEXITCODE -ne 0) { throw "the draft release could not be created" }
       - name: Upload release evidence
         if: always()

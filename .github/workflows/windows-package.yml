@@ -31,6 +31,10 @@ on:
       - "import_session.py"
       - "workspace_*.py"
       - "requirements.txt"
+      - "requirements-dev.txt"
+      - ".github/actions/pinned-windows-toolchain/**"
+      - "tools/build_toolchain.py"
+      - "tools/build_sbom.py"
       - "packaging/**"
       - "tools/prepare_windows_ocr_runtime.py"
       - "tools/check_gui_startup.py"
@@ -61,13 +65,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-      - name: Install direct project dependencies
-        run: python -m pip install -r requirements.txt "zstandard>=0.23,<1"
+      - name: Pinned build toolchain (exact Python, hashed locks, verified Flutter and template)
+        uses: ./.github/actions/pinned-windows-toolchain
       - name: Cache pinned OCR packages
         uses: actions/cache@v4
         with:
@@ -139,6 +138,7 @@ jobs:
       - name: Build unsigned Windows desktop bundle
         run: >-
           flet build windows .
+          --template "$env:SRA_FLET_TEMPLATE"
           --module-name app
           --python-version 3.12
           --product "Statistical Research Assistant"
@@ -154,6 +154,19 @@ jobs:
           "EXE_PATH=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Get-ChildItem -Path "build/windows" -Recurse -Include "*.zip" | ForEach-Object { "$($_.FullName) $($_.Length)" }
           python tools/check_packaged_ocr.py build/windows
+
+      - name: Build identity, SBOM and file manifest (checked against the locks)
+        shell: pwsh
+        run: |
+          # Host Python and packages, flet/flet-cli, Flutter SDK, Dart packages
+          # and the Python packages inside the bundle, against the locks.
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+          python tools/build_toolchain.py identity --bundle build/windows --strict --out diagnostics/build-identity.json
+          if ($LASTEXITCODE -ne 0) { throw "build identity failed" }
+          python tools/build_sbom.py --out diagnostics/sbom.cdx.json --pubspec-lock build/flutter/pubspec.lock --licenses-md diagnostics/licenses.md
+          if ($LASTEXITCODE -ne 0) { throw "SBOM failed" }
+          python tools/build_toolchain.py manifest build/windows --out diagnostics/bundle-manifest.json
+          if ($LASTEXITCODE -ne 0) { throw "bundle manifest failed" }
 
       - name: Run OCR self-test inside the packaged application
         shell: pwsh

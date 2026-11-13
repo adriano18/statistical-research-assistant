@@ -24,8 +24,12 @@ sequence. This module works from Tesseract word boxes instead
    produces for them (``12375``, ``1—2``, ``[1``, ``|``, ``5”``, ``—``, one
    letter glued to digits such as ``a2345``, a single digit look-alike
    letter such as ``L`` or ``Z``, any other lone letter scored below 60).
-   A token with two or more letters is never removed (OCR junk such as
-   ``LZ`` for ``1 2`` therefore stays, flagged by its low OCR score).
+   Stage 36.8: when that run holds a digit, it also takes the answer-area
+   marks in it, tokens with a digit or scored below 60 (``Ll``, ``Ss``,
+   ``du`` and ``Lzs45`` were appended to real statements by the Windows
+   engine). Every such mark is named in the item's flags and notes. A
+   confidently read word never goes, and a run without any digit keeps
+   its letters as read (flagged by their low OCR score).
 4. **Rows**, in two passes with look-ahead. A line whose number-column text
    reads as the next number starts a row. A sequence starts only where the
    following rows confirm it (a bare ``5`` opening an instruction line, or
@@ -412,14 +416,40 @@ def _answer_floor(rows) -> float | None:
     return lefts[len(lefts) // 10] - 0.03
 
 
+def answer_area_mark(word: OCRWord) -> bool:
+    """A token in the answer area that is no reliable text: it has a digit,
+    or OCR scored it below 60 (or not at all). Stage 36.8: misread answer
+    codes such as ``Ll``, ``Ss``, ``du`` or ``Lzs45`` stood in the answer
+    columns, right of every statement, and were appended to the wording.
+    A confidently read word without digits is never one."""
+    text = word.text.strip()
+    if not text or len(text) > 8:
+        return False
+    if any(ch.isdigit() for ch in text):
+        return True
+    return word.confidence is None or word.confidence < TEXT_CONFIDENCE
+
+
 def _split_answers(words, geo: PageGeometry):
     """(words, answer tokens): a trailing run of answer-like tokens right of
-    the floor comes off the END of the line; nothing else is removed."""
+    the floor comes off the END of the line; nothing else is removed.
+
+    Stage 36.8: a run that holds a digit (so it is the answer codes) also
+    takes the answer-area marks inside it, tokens OCR misread there with a
+    digit or a score below 60 (``Ll``, ``Ss``, ``du``). A run without any
+    digit keeps them as read, and a confidently read word always stays.
+    The marks taken out are named in the item's flags (``_structured``)."""
     if geo.answer_floor is None:
         return list(words), []
     k = len(words)
     while k > 0 and words[k - 1].box[0] >= geo.answer_floor and answer_like(words[k - 1]):
         k -= 1
+    wide = len(words)
+    while wide > 0 and words[wide - 1].box[0] >= geo.answer_floor and (
+            answer_like(words[wide - 1]) or answer_area_mark(words[wide - 1])):
+        wide -= 1
+    if wide < k and any(ch.isdigit() for w in words[wide:] for ch in w.text):
+        k = wide
     return list(words[:k]), list(words[k:])
 
 
@@ -842,6 +872,13 @@ def _structured(row: TableRow, scales, titles, notes) -> StructuredItemLine:
         remarks.append(f"Prompt joined from {row.prompt_lines} wrapped source lines.")
     tokens = normalize_tokens(row.answers)
     clean = tokens if tokens and all(re.fullmatch(r"\d{1,2}", t) for t in tokens) else ()
+    marks = [t for t in row.answers if re.search(r"[^\d\s.,;:|\-–—'\"’”“]", t)]
+    if marks:
+        # Left out of the wording, never silently (Stage 36.8).
+        flags.append("answer-area marks left out of the wording: " + " ".join(marks))
+        remarks.append("OCR read “" + " ".join(row.answers) + "” in the answer columns; these "
+                       "marks were left out of the item wording. Compare the item with the "
+                       "source page.")
     return StructuredItemLine(
         f"{row.number}. {row.prompt}", number=row.number, prompt=row.prompt,
         excerpt=row.excerpt, group=row.group, title=titles.get(row.group, ""),

@@ -233,20 +233,23 @@ def _item_report(result) -> str:
     lines = ["Scale quality: internal consistency and item diagnostics (Stage 36.3)",
              f"Items: k = {len(result.items)} ({', '.join(result.items)}); complete cases "
              f"n = {result.n_complete} of {result.n_total} (listwise).",
+             # ci_text() names its level itself ("95% CI [.., ..]").
              f"Cronbach’s α = {result.alpha.text()}"
-             + (f", 95% CI {result.alpha.ci_text()}" if result.alpha.ci_text() else "")
+             + (f", {result.alpha.ci_text()}" if result.alpha.ci_text() else "")
              + (f" — {result.alpha.note}" if result.alpha.note and not result.alpha.ok else ""),
              f"McDonald’s ω (one factor) = {result.omega.text()}"
-             + (f", 95% CI {result.omega.ci_text()}" if result.omega.ci_text() else "")
+             + (f", {result.omega.ci_text()}" if result.omega.ci_text() else "")
              + (f" — {result.omega.note}" if result.omega.note and not result.omega.ok else ""),
-             "Model assumptions for ω: " + "; ".join(result.omega_assumptions) + "."]
+             "Model assumptions for ω: "
+             + "; ".join(a.rstrip(".") for a in result.omega_assumptions) + "."]
     if result.flagged_reverse:
         lines.append("Possibly reverse-keyed and not recoded (check the scoring key; nothing "
                      "was recoded): " + ", ".join(result.flagged_reverse) + ".")
     if result.reverse_keyed:
         lines.append(f"Reverse-keyed items from {result.reverse_source or 'a confirmed definition'}: "
                      + ", ".join(result.reverse_keyed) + ".")
-    lines.append(f"Floor and ceiling use the codes {result.bounds_text}.")
+    # The result's notes say which codes floor and ceiling use, and how they
+    # were found; the line is not written a second time here.
     lines += [f"Warning: {warning}" for warning in result.warnings]
     lines += list(result.notes)
     return "\n".join(lines)
@@ -560,9 +563,11 @@ def run_ancova(df: pd.DataFrame, outcome: str, group: str, covariates: list[str]
 
 
 # ------------------------------------------------------------ Stage 36 batches
-def _family_report(table, interpretation, method_lines, warnings) -> str:
+def _family_report(table, interpretation, method_lines, warnings, extra=()) -> str:
     lines = [table.title, "", " | ".join(table.columns)]
     lines += [" | ".join(row) for row in table.rows]
+    for more in extra:
+        lines += ["", more.title, " | ".join(more.columns), *(" | ".join(r) for r in more.rows)]
     lines += ["", "Interpretation:", *interpretation, "", "Methods:", *method_lines, "",
               "Notes:", *warnings]
     return "\n".join(lines)
@@ -621,7 +626,9 @@ def run_batch_groups(df: pd.DataFrame, group: str, outcomes: list[str], *, scale
         method_lines = ["Test: Kruskal–Wallis H, tie-corrected.",
                         "Effect sizes: η²_H = (H − k + 1)/(N − k), truncated at 0; "
                         "ε²_R = H/(N − 1).",
-                        "Pairwise: Dunn z tests with Holm adjustment within each outcome."]
+                        "Pairwise: Dunn z tests with Holm adjustment within each outcome, "
+                        "shown for the outcomes whose Kruskal–Wallis test is significant after "
+                        "the adjustment across outcomes."]
         if first is not None:
             method_lines.insert(1, f"p-values: {first.p_method}.")
     method_lines.append(f"Adjustment across outcomes: {family.adjustment_text}; "
@@ -629,12 +636,15 @@ def run_batch_groups(df: pd.DataFrame, group: str, outcomes: list[str], *, scale
     from batch_groups import interpret_groups
 
     table = family.table()
+    # Kruskal–Wallis: groups (n, median, mean rank) and Dunn's pairs follow
+    # the omnibus table (review finding K5).
+    extra = family.tables()[1:] if hasattr(family, "tables") else ()
     interpretation = interpret_groups(family, language)
-    report = _family_report(table, interpretation, method_lines, family.warnings)
+    report = _family_report(table, interpretation, method_lines, family.warnings, extra)
     return AnalysisRun(
         "batch_groups", table.title, report, group_boxplots(df, family), result=family,
         summary="\n".join(interpretation), interpretation="\n".join(interpretation),
         guide="\n".join(method_lines), warnings=tuple(family.warnings),
-        tables=(ResultTable(table.title, table.columns, table.rows),),
+        tables=tuple(ResultTable(t.title, t.columns, t.rows) for t in (table, *extra)),
         inputs={"group": group, "outcomes": list(outcomes), "adjust": adjust,
                 "two_group_method": two_group_method if count == 2 else None})

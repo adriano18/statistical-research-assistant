@@ -1,0 +1,26 @@
+# Direct runtime dependencies of Statistical Research Assistant: the ranges
+# the code supports. Never install from this file. Install from the lock,
+# requirements.txt, which pins every package (direct and transitive) to one
+# version with SHA-256 hashes. `flet build windows` bundles exactly that lock.
+#
+# Regenerate the lock after editing this file (docs/STAGE368_BUILD_LOCK.md):
+#   uv pip compile requirements.in --universal --python-version 3.12 \
+#     --generate-hashes --exclude-newer <UTC timestamp> -o requirements.txt
+#
+# Flet is pinned exactly: the Python package, the flet-cli that builds the
+# Windows program (requirements-dev.in) and the Flutter client it embeds
+# must all be the same release.
+flet==1.1.2
+pandas>=2.2,<4
+openpyxl>=3.1,<4
+matplotlib>=3.9,<4
+pingouin>=0.6,<1
+scipy>=1.16,<2
+statsmodels>=0.14,<1
+python-docx>=1.1,<2
+Pillow>=10,<13
+pypdf>=5,<7
+pypdfium2>=4.30,<6
+# Verifies the Ed25519 signature of update manifests (Stage 35, #45).
+cryptography>=42,<60
+threadpoolctl>=3,<5

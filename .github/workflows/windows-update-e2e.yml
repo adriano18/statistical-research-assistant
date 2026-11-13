@@ -22,6 +22,9 @@ on:
       - "project_store.py"
       - "workspace_shell.py"
       - "requirements.txt"
+      - "requirements-dev.txt"
+      - ".github/actions/pinned-windows-toolchain/**"
+      - "tools/build_toolchain.py"
       - "packaging/**"
       - "tools/build_installer.py"
       - "tools/write_build_info.py"
@@ -50,13 +53,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-      - name: Install dependencies and the UI Automation driver
-        run: python -m pip install -r requirements.txt "zstandard>=0.23,<1" "pywinauto==0.6.9"
+      - name: Pinned build toolchain (exact Python, hashed locks, verified Flutter and template)
+        uses: ./.github/actions/pinned-windows-toolchain
       - name: Cache pinned OCR packages
         uses: actions/cache@v4
         with:
@@ -83,6 +81,7 @@ jobs:
       - name: Build the Windows application
         run: >-
           flet build windows .
+          --template "$env:SRA_FLET_TEMPLATE"
           --module-name app
           --python-version 3.12
           --product "Statistical Research Assistant"
@@ -97,15 +96,11 @@ jobs:
           $exe = Get-ChildItem -Path build/windows -Filter StatisticalResearchAssistant.exe -Recurse | Select-Object -First 1
           if (-not $exe) { throw "Expected .exe was not created" }
           "BUNDLE=$(Split-Path $exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Install Inno Setup when the runner has none
+      - name: Inno Setup compiler of the lock (installed if the runner has another version)
         shell: pwsh
         run: |
-          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
-          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ }
-          if (-not $iscc -and -not (Get-Command ISCC -ErrorAction SilentlyContinue)) {
-            choco install innosetup --no-progress -y
-            if ($LASTEXITCODE -ne 0) { throw "Inno Setup could not be installed" }
-          }
+          python tools/build_toolchain.py iscc
+          if ($LASTEXITCODE -ne 0) { throw "the Inno Setup version of the lock is not available" }
       - name: Installers A and B (B differs in version only)
         shell: pwsh
         run: |

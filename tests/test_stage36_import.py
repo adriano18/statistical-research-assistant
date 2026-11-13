@@ -670,10 +670,17 @@ class RealScanPatternTests(unittest.TestCase):
         rows, _ = rows_of([page.ocr_page()])
         self.assertEqual(rows[1].prompt, long, "a statement word near the answers stays")
         self.assertEqual(rows[2].prompt, endings[2][0], "digits inside the statement stay")
-        self.assertTrue(rows[3].prompt.endswith(" ab"), "two letters are never stripped")
+        # Stage 36.8: low-scored letters in an answer run that holds digits are
+        # misread answer codes (on the Windows engine: "Ll", "Ss", "du", "Z Ss"
+        # appended to real statements). They leave the wording and are named
+        # in the item's flags; a confidently read letter still stays, and so
+        # do letters in a run without any digit (test_7).
+        self.assertEqual(rows[3].prompt, endings[3][0], "a low-scored 'ab' among digits goes")
         self.assertTrue(rows[4].prompt.endswith(" k"), "a confidently read letter stays")
         self.assertEqual(rows[5].prompt, endings[5][0], "a look-alike letter (L for 1) goes")
-        self.assertTrue(rows[6].prompt.endswith(" LZ"), "two-letter junk stays, as read")
+        self.assertEqual(rows[6].prompt, endings[6][0], "'LZ' scored 51 among digits goes")
+        self.assertIn("ab", rows[3].answers)
+        self.assertIn("LZ", rows[6].answers)
 
     def test_6_a_legend_merged_with_rule_noise_never_becomes_an_item(self):
         second = RealLayout(2)
@@ -695,6 +702,22 @@ class RealScanPatternTests(unittest.TestCase):
         self.assertEqual(rows[27].prompt, invented(27))
         self.assertEqual(rows[27].number_source, "printed")
         self.assertIn("ZT vārds cits 5- vienmēr", [str(line) for line in tables.lines[2]])
+
+    def test_5_answer_area_marks_left_out_are_named_in_the_flags(self):
+        from ocr_table_rows import _structured
+
+        page = RealLayout(1)
+        page.legend()
+        for n in range(1, 6):
+            tokens = [("Ll", 0.76, 42.0), "2%", "3.", "4.15"] if n == 3 else "1 2 3 4 5".split()
+            page.row(f"{n}.", invented(n), tokens_at(tokens, x=0.76))
+        rows, _ = rows_of([page.ocr_page()])
+        self.assertEqual(rows[3].prompt, invented(3))
+        line = _structured(rows[3], {}, {}, {})
+        self.assertIn("answer-area marks left out of the wording: Ll 2%", line.flags)
+        self.assertTrue(any("left out of the item wording" in note for note in line.notes))
+        clean = _structured(rows[2], {}, {}, {})
+        self.assertFalse([f for f in clean.flags if f.startswith("answer-area marks")])
 
     def test_7_rows_without_answer_digits_count_when_their_number_fits(self):
         def blank(sheet, n):
@@ -939,6 +962,18 @@ class RealOCRTableTests(unittest.TestCase):
         warnings = " ".join(self.review.warnings)
         self.assertIn("OCR confidence measures character recognition only", warnings)
         self.assertIn("Found 52 candidate items", warnings)
+
+    def test_every_statement_ends_as_printed_no_answer_area_marks(self):
+        # Stage 36.8: misread answer codes ("i aga", "Ll 2% 3. 4.15") no longer
+        # end a statement; the generator's text is the reference.
+        from stage36_fixtures import generator
+
+        module = generator()
+        (instrument,) = self.review.instruments
+        for q in instrument.questions:
+            printed = module._lv_statement(q.number)
+            tail = printed.split(" es ", 1)[1]
+            self.assertTrue(q.question["prompt"].endswith(tail), (q.number, q.question["prompt"]))
 
     def test_the_same_table_set_in_a_times_like_font_gives_52(self):
         # Before 36.7 this reading kept no row at all: the rules made Tesseract

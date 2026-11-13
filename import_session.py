@@ -87,6 +87,7 @@ class ImportSession:
         could not be read. Raises ``ValueError`` for unusable input,
         including a legacy ``.doc`` that cannot be converted here.
         """
+        from ocr_profile import stage
         from visual_survey_review import (
             attach_docx_matrices, attach_text_layer_geometry, pdf_page_count,
             word_structure_page_count,
@@ -105,14 +106,15 @@ class ImportSession:
         self.facts = []
         self.expected_count, self.non_items = None, ()
         try:
-            self.page_count = (pdf_page_count(binary) if suffix == ".pdf"
-                               else word_structure_page_count(binary, suffix))
+            with stage("pdf_loading"):
+                self.page_count = (pdf_page_count(binary) if suffix == ".pdf"
+                                   else word_structure_page_count(binary, suffix))
         except LegacyDocUnavailable as error:
             self._unreadable(error)
             raise
         parsed, failure = None, None
         try:
-            with TemporaryDirectory(prefix="workspace-survey-import-") as tmp:
+            with stage("pdf_loading"), TemporaryDirectory(prefix="workspace-survey-import-") as tmp:
                 path = Path(tmp) / Path(filename).name
                 path.write_bytes(binary)
                 parsed = read_scientific_document(path)
@@ -130,26 +132,28 @@ class ImportSession:
                     parsed = matrices
         if failure is None:
             try:
-                if suffix == ".pdf":
-                    parsed = attach_text_layer_geometry(parsed, binary)
-                elif suffix == ".docx":
-                    parsed = attach_docx_matrices(parsed, binary)
+                with stage("pdf_loading"):
+                    if suffix == ".pdf":
+                        parsed = attach_text_layer_geometry(parsed, binary)
+                    elif suffix == ".docx":
+                        parsed = attach_docx_matrices(parsed, binary)
             except Exception:
                 pass  # spatial evidence is optional; never block import
         if suffix == ".pdf":
             parsed = self._read_image_pages(parsed, failure, progress=progress,
                                             cancel=cancel, language=language)
-        self.review = parsed
-        self._take_evidence(parsed, failure)
-        if self.instruments:
-            head = (f"Read {len(self.instruments)} instrument(s), "
-                    f"{sum(len(x.questions) for x in self.instruments)} candidate questions "
-                    f"from {filename}.")
-        elif self.non_items or failure is None:
-            head = f"No questionnaire items were found in {filename}."
-        else:
-            head = f"No text-based questionnaire extracted: {failure}"
-        return self._report(head)
+        with stage("review_model"):
+            self.review = parsed
+            self._take_evidence(parsed, failure)
+            if self.instruments:
+                head = (f"Read {len(self.instruments)} instrument(s), "
+                        f"{sum(len(x.questions) for x in self.instruments)} candidate questions "
+                        f"from {filename}.")
+            elif self.non_items or failure is None:
+                head = f"No questionnaire items were found in {filename}."
+            else:
+                head = f"No text-based questionnaire extracted: {failure}"
+            return self._report(head)
 
     def ocr_pages(self, pages: list[int], language: str = "eng", rotation: int = 0,
                   cancel=None) -> str:
@@ -180,13 +184,15 @@ class ImportSession:
         Returns the OCR review when it finds items on those pages, else the
         text review unchanged; every outcome is recorded in ``notes``.
         """
+        from ocr_profile import stage
         from ocr_runtime import OCRCancelled
         from visual_survey_review import (
             MAX_BATCH_PAGES, ocr_scientific_pdf, pdf_image_coverage, tesseract_available,
         )
 
         try:
-            shares = pdf_image_coverage(self.source)
+            with stage("pdf_loading"):
+                shares = pdf_image_coverage(self.source)
             self.image_pages = tuple(page for page, share in sorted(shares.items())
                                      if share >= AUTO_OCR_MIN_IMAGE_SHARE)
         except Exception:  # fall back to the pages pypdf lists with images

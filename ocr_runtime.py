@@ -223,6 +223,10 @@ def run_tesseract(
     """
     if not 0 < timeout <= 600:
         raise ValueError("OCR timeout must be 1–600 seconds.")
+    import ocr_profile
+
+    profile = ocr_profile.current()
+    started, cpu_started = time.perf_counter(), time.thread_time()
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
     with TemporaryDirectory(prefix="sra-ocr-") as folder:
         args = list(arguments)
@@ -243,6 +247,10 @@ def run_tesseract(
                     "The OCR engine could not start. A bundled DLL may be "
                     f"missing or blocked: {error}"
                 ) from error
+            spawned = time.perf_counter()
+            if profile is not None:
+                profile.add("ocr_initialization", spawned - started,
+                            time.thread_time() - cpu_started)
             reason = []
 
             def watchdog():
@@ -275,6 +283,12 @@ def run_tesseract(
             process.stdout.close()
             code = process.wait()
             guard.join(timeout=1)
+            if profile is not None:
+                finished = time.perf_counter()
+                profile.add("ocr_execution", finished - spawned)
+                profile.engine_run(seconds=round(finished - spawned, 3),
+                                   arguments=[a for a in arguments if not a.startswith("{")][:6],
+                                   **ocr_profile.child_usage(process))
         diagnostic = error_path.read_text(
             encoding="utf-8", errors="replace",
         ).strip()[-MAX_DIAGNOSTIC_CHARS:]

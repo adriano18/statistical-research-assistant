@@ -12,6 +12,7 @@ keeps each document's review on this computer (``import_review``).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -53,25 +54,27 @@ KINDS = ("single_choice", "multiple_choice", "likert5", "likert7", "rating_scale
 CHOICE_KINDS = {"single_choice", "multiple_choice"}
 SCALE_KINDS = {"likert5", "likert7", "rating_scale"}
 CONDITION_PARENTS = {"single_choice", "yes_no", "likert5", "likert7", "rating_scale", "number"}
-OPERATORS = (("equals", "Equals"), ("not_equals", "Not equal"),
-             ("greater", "Greater than"), ("less", "Less than"))
+OPERATORS = ("equals", "not_equals", "greater", "less")     # labels: q.operator.*
+TEMPLATES = ("psychology", "demographics", "hr", "marketing")  # labels: q.template.*
 
 
 def scale_library(language: str, draft: list[dict]) -> list[tuple[str, str, dict]]:
     """(id, label, {"kind", "value_labels"}) — presets plus scales in the draft."""
     from survey_ui import preset_value_labels, semantic_differential_labels
+    from workspace_text import t
 
     library = []
-    for name, label in (("agreement", "Agreement"), ("frequency", "Frequency"),
-                        ("quality", "Quality: poor → good")):
+    for name in ("agreement", "frequency", "quality"):
         for kind in ("likert5", "likert7"):
             try:
                 labels = preset_value_labels(name, kind, language)
             except (KeyError, ValueError):
                 continue
-            library.append((f"{name}-{kind}", f"{label} · {kind[-1]} points",
+            library.append((f"{name}-{kind}", t(language, "q.scale.points",
+                                                scale=t(language, f"q.scale.{name}"),
+                                                count=kind[-1]),
                             {"kind": kind, "value_labels": labels}))
-    library.append(("semantic", "Semantic differential −3…3",
+    library.append(("semantic", t(language, "q.scale.semantic"),
                     {"kind": "rating_scale", "value_labels": semantic_differential_labels(language)}))
     seen = set()
     for q in draft:
@@ -80,9 +83,9 @@ def scale_library(language: str, draft: list[dict]) -> list[tuple[str, str, dict
             signature = tuple(labels.items())
             if signature not in seen and len(library) < 40:
                 seen.add(signature)
-                library.append((f"draft-{len(seen)}", "From this draft: "
-                                + " / ".join(list(labels.values())[:3])
-                                + ("…" if len(labels) > 3 else ""),
+                shown = " / ".join(list(labels.values())[:3]) + ("…" if len(labels) > 3 else "")
+                library.append((f"draft-{len(seen)}", t(language, "q.scale.from_draft",
+                                                        labels=shown),
                                 {"kind": q["kind"], "value_labels": dict(labels)}))
     return library
 
@@ -264,11 +267,11 @@ class QuestionnairesPage:
                 show_default_drag_handles=True)
         else:
             listing = wc.caption(ui, ui.t("q.empty"))
-        templates = wc.dropdown(ui, ui.t("q.template"), [
-            ("psychology", "Psychology / Likert"), ("demographics", "Demographics"),
-            ("hr", "HR / Workplace"), ("marketing", "Marketing / Feedback")],
-            self.template, on_select=lambda e: setattr(self, "template", e.control.value),
-            width=None, data="q-template")
+        templates = wc.dropdown(ui, ui.t("q.template"),
+                                [(k, ui.t(f"q.template.{k}")) for k in TEMPLATES],
+                                self.template,
+                                on_select=lambda e: setattr(self, "template", e.control.value),
+                                width=None, data="q-template")
         return wc.card(ui, [
             ft.Row([wc.button(ui, ui.t("q.add"), self._add, kind="primary", icon=ft.Icons.ADD,
                               data="q-add")], wrap=True),
@@ -463,7 +466,8 @@ class QuestionnairesPage:
                                 width=340, data="editor-condition")]
         if condition.get("question"):
             controls += [
-                wc.dropdown(ui, "Condition operator", list(OPERATORS),
+                wc.dropdown(ui, ui.t("q.condition_operator"),
+                            [(k, ui.t(f"q.operator.{k}")) for k in OPERATORS],
                             condition.get("operator", "equals"),
                             on_select=lambda e: self._set_condition("operator", e.control.value),
                             width=200),
@@ -863,6 +867,7 @@ class ImportPage:
         self.step = "source"
         self.filter = "all"         # items step: "all" or "attention"
         self.progress: str | None = None   # what the reading is doing now
+        self.progress_done: tuple[int, int] | None = None  # OCR pages read, of how many
         self._cancel = None         # threading.Event while reading
         self.opened: set[str] = set()
         self._editor_height = 0.0   # the open item editor, as laid out
@@ -881,6 +886,8 @@ class ImportPage:
         self.restore_partial = False
         self._typed: dict[int, str] = {}          # wording typed, not applied yet
         self._ocr_runtime: tuple[bool, tuple[str, ...]] | None = None
+        self._profile = None                # ocr_profile.Profile while reading
+        self.last_profile: dict | None = None
         self.store = ReviewStore(sessions_folder(app.survey_root))
 
     # ----------------------------------------------------------- reading
@@ -919,6 +926,8 @@ class ImportPage:
         local OCR in that language."""
         import threading
 
+        import ocr_profile
+
         problem = self.unreadable(name)
         if problem:
             # Nothing is opened, and a document already under review stays.
@@ -928,8 +937,11 @@ class ImportPage:
             self._fail(self.app.t("imp.read_failed", name=name,
                                   error=self.app.t("common.not_available")))
             return
-        sha = source_sha256(binary)
-        record = self.store.load(sha)
+        # Where this reading's time goes (Stage 36.8): ocr_profile.
+        profile = ocr_profile.Profile(f"{name} · {language or 'text'}")
+        with profile.stage("source_open"):
+            sha = source_sha256(binary)
+            record = self.store.load(sha)
         chosen_language = language
         if language is None and record is not None:
             language = record.ocr_language
@@ -941,9 +953,13 @@ class ImportPage:
         loop = asyncio.get_running_loop()
         self._cancel = threading.Event()
         self.busy, self.error, self.progress = True, None, None
+        self.progress_done = None
         self.reading = "ocr" if language else "text"
         self.reading_name, self.reading_language = name, language
-        self.app.render()
+        self._profile = profile
+        with profile.stage("ui_update"):
+            self.app.render()
+        profile.renders += 1
 
         def progress(message: str):
             loop.call_soon_threadsafe(self._show_progress, message)
@@ -951,28 +967,55 @@ class ImportPage:
         fresh = ImportSession()
         manual = record.ocr_pages if record is not None and language else ()
         restored = remember = False
+        first_page = None
+        stop = asyncio.Event()
+        watcher = asyncio.create_task(ocr_profile.watch_event_loop(profile, stop))
         try:
-            await asyncio.to_thread(fresh.open, binary, name, progress=progress,
-                                    cancel=self._cancel, language=language)
-            if manual:
-                await asyncio.to_thread(fresh.ocr_pages, list(manual), language,
-                                        cancel=self._cancel)
+            with ocr_profile.activate(profile):
+                await asyncio.to_thread(fresh.open, binary, name, progress=progress,
+                                        cancel=self._cancel, language=language)
+                if manual:
+                    await asyncio.to_thread(fresh.ocr_pages, list(manual), language,
+                                            cancel=self._cancel)
+                # The page shown first is drawn here, in the worker: drawn
+                # while rendering, it held the window (the event loop) still.
+                number = (fresh.instrument.first_page if fresh.instrument is not None else 1) or 1
+                with contextlib.suppress(Exception):
+                    with profile.stage("page_rendering"):
+                        first_page = (number, await asyncio.to_thread(fresh.render_page, number))
         except Exception as error:
             self.error = self.app.t("imp.read_failed", name=name, error=error)
         else:
-            self._adopt(fresh, sha=sha, path=path, language=language, manual=manual)
-            if record is not None:
-                restored = self._restore(record)
+            with profile.stage("review_model"):
+                self._adopt(fresh, sha=sha, path=path, language=language, manual=manual)
+                if first_page is not None and first_page[0] == self.page_number:
+                    self._page_cache[(self.page_number, 0)] = first_page[1]
+                if record is not None:
+                    restored = self._restore(record)
             # The OCR language the researcher chose is part of the review.
             remember = bool(chosen_language) and not restored
         finally:
             self.busy, self.progress, self._cancel = False, None, None
+            stop.set()
+            with contextlib.suppress(Exception):
+                await watcher
         if remember:
-            self._autosave()
+            with profile.stage("review_model"):
+                self._autosave()
         self._announce()
-        self.app.render()
+        with profile.stage("ui_update"):
+            self.app.render()
+        profile.renders += 1
         if restored and self.step == "items" and self.selected is not None:
             self._reveal(self.selected)
+        profile.facts.update({
+            "language": language, "pages": self.session.page_count,
+            "ocr_pages": list(self.session.ocr_pages_used),
+            "items": sum(len(x.questions) for x in self.session.instruments),
+            "forms": len(self.session.instruments), "error": bool(self.error)})
+        self.last_profile = profile.result()
+        self._profile = None
+        profile.write()
 
     async def _offer_scan(self, binary: bytes, name: str, sha: str, path, pages):
         """A PDF without any text layer: show it and offer local OCR in the
@@ -1054,10 +1097,17 @@ class ImportPage:
         match = re.search(r"page (\d+) with local OCR \((\d+) of (\d+)\)", message)
         if match:
             self.reading = "ocr"
+            self.progress_done = (int(match[2]) - 1, int(match[3]))
         self.progress = (self.app.t("imp.ocr_progress", page=match[1], done=match[2],
                                     total=match[3]) if match else message)
         if self.busy:
-            self.app.render()
+            profile = getattr(self, "_profile", None)
+            if profile is None:
+                self.app.render()
+                return
+            with profile.stage("ui_update"):
+                self.app.render()
+            profile.renders += 1
 
     def cancel_reading(self, e=None):
         if self._cancel is not None:
@@ -1445,7 +1495,7 @@ class ImportPage:
             return None
         state, title, lines, tone, actions = found
         bg, fg, icon = wc.TONES[tone]
-        leading = (ft.ProgressRing(width=20, height=20, stroke_width=3) if self.busy
+        leading = (self._reading_indicator() if self.busy
                    else ft.Icon(icon, color=getattr(ui.p, fg), size=20))
         texts: list[ft.Control] = [wc.text(ui, title, tk.TYPE_LABEL, weight=ft.FontWeight.W_600,
                                            data="imp-status-title")]
@@ -1462,6 +1512,23 @@ class ImportPage:
             ft.Column(column, spacing=tk.SPACE_2), bgcolor=getattr(ui.p, bg),
             border_radius=ui.radius("card"), padding=ft.Padding.symmetric(
                 horizontal=tk.SPACE_4, vertical=tk.SPACE_3), data="imp-status", key="imp-status"))
+
+    def _reading_indicator(self) -> ft.Control:
+        """How far a reading is, without an endless animation.
+
+        An indeterminate ring is redrawn on every frame. In the Windows GUI
+        journey (run 43421786722, no graphics card) the program used about 3.4
+        of the runner's 4 processor cores during a 50 s OCR reading, while
+        Tesseract got about 4.5 s of processor time per page. A determinate
+        ring changes only when a page is done; the text beside it names the
+        page."""
+        ui = self.app.ui
+        if self.progress_done is None:
+            return ft.Icon(ft.Icons.HOURGLASS_TOP, color=ui.p.text_secondary, size=20,
+                           data="imp-reading-icon")
+        done, total = self.progress_done
+        return ft.ProgressRing(value=done / max(total, 1), width=20, height=20, stroke_width=3,
+                               bgcolor=ui.p.border_strong, data="imp-reading-progress")
 
     # ------------------------------------------------------------------ OCR
     def _ocr_code(self) -> str:
@@ -1522,6 +1589,7 @@ class ImportPage:
         self.busy, self.error = True, None
         self.reading, self.reading_language = "ocr", language
         self.progress = self.app.t("imp.ocr_progress", page=page, done=1, total=1)
+        self.progress_done = (0, 1)
         self.app.render()
         try:
             await asyncio.to_thread(s.ocr_pages, [page], language)
@@ -1598,16 +1666,25 @@ class ImportPage:
     def _stepper(self) -> ft.Control:
         ui = self.app.ui
         status = self._status()
-        buttons = []
+        steps, locked_any = [], False
         for key in self.STEPS:
-            locked = self._locked(key)
-            buttons.append(wc.button(
+            if self._locked(key):
+                # Not a disabled button: UI Automation on Windows would report
+                # it as enabled (wc.locked_step, Stage 36.8).
+                locked_any = True
+                steps.append(wc.locked_step(ui, self._step_label(key, status),
+                                            data=f"imp-step-{key}"))
+                continue
+            steps.append(wc.button(
                 ui, self._step_label(key, status), lambda e, k=key: self._go(k),
                 kind="primary" if key == self.step else "secondary",
                 icon=ft.Icons.CHECK_CIRCLE if status[key] else ft.Icons.RADIO_BUTTON_UNCHECKED,
-                disabled=locked, tooltip=ui.t("imp.choose_form_first") if locked else None,
                 data=f"imp-step-{key}"))
-        return ft.Row(buttons, wrap=True, spacing=tk.SPACE_2, data="imp-steps")
+        row = ft.Row(steps, wrap=True, spacing=tk.SPACE_2, data="imp-steps")
+        if not locked_any:
+            return row
+        return ft.Column([row, wc.caption(ui, ui.t("imp.choose_form_first"),
+                                          data="imp-steps-locked")], spacing=tk.SPACE_1)
 
     def _go(self, step: str):
         if step in self.STEPS and not self._locked(step):
@@ -1632,18 +1709,17 @@ class ImportPage:
         else:
             counts = ui.t("imp.counts", total=status["total"], attention=status["attention"],
                           checked=status["checked"])
-        actions = [
-            wc.button(ui, ui.t("imp.back"), lambda e: self._go(self.STEPS[index - 1]),
-                      kind="quiet", icon=ft.Icons.ARROW_BACK, disabled=index == 0,
-                      data="imp-back"),
-        ]
-        if index < len(self.STEPS) - 1:
-            locked = self._locked(self.STEPS[index + 1])
+        # Back and Next appear only when they lead somewhere: a disabled button
+        # is reported as enabled by UI Automation on Windows (wc.locked_step).
+        # The footer caption already says what to do first.
+        actions = []
+        if index > 0:
+            actions.append(wc.button(ui, ui.t("imp.back"), lambda e: self._go(self.STEPS[index - 1]),
+                                     kind="quiet", icon=ft.Icons.ARROW_BACK, data="imp-back"))
+        if index < len(self.STEPS) - 1 and not self._locked(self.STEPS[index + 1]):
             actions.append(wc.button(ui, ui.t("imp.next"),
                                      lambda e: self._go(self.STEPS[index + 1]),
                                      kind="secondary", icon=ft.Icons.ARROW_FORWARD,
-                                     disabled=locked,
-                                     tooltip=ui.t("imp.choose_form_first") if locked else None,
                                      data="imp-next"))
         actions.append(wc.button(ui, ui.t("imp.create_draft"), self._create_draft,
                                  kind="primary", icon=ft.Icons.CHECK,
@@ -2269,7 +2345,7 @@ class ImportPage:
                         ui.language, scheme.evidence), page=scheme.page))], wrap=True,
                    spacing=tk.SPACE_2),
             *fields, *issues,
-            wc.text_field(ui, "Reverse-keyed items (as documented)", edits["reverse"], width=320,
+            wc.text_field(ui, ui.t("imp.reverse_items"), edits["reverse"], width=320,
                           on_change=lambda e: edits.__setitem__("reverse", e.control.value or "")),
             wc.checkbox(ui, ui.t("imp.confirm_structure"), edits["structure"],
                         on_change=lambda e: edits.__setitem__("structure", bool(e.control.value)),

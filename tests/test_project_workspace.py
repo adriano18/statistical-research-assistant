@@ -315,7 +315,8 @@ class StaleResultWorkspaceTests(ProjectWorkspaceCase):
         self.assertEqual(analyze.form_roles, GROUPS)
         self.assertEqual(analyze.form_confirms, {}, "confirmations are given again")
         self.assertTrue(ws.find("analyze-message"))
-        analyze.form_confirms = {"independent": True}
+        # Given with its checkbox, which records what it is given for (36.8).
+        ws.check("form-confirm-independent")
         fresh = ws.run(analyze._run_form())
         self.assertIsNone(fresh)            # _run_form returns nothing; the result is added
         newest = ws.app.session.results[-1]

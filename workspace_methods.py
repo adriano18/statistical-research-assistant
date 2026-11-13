@@ -46,9 +46,21 @@ class Option:
 
 @dataclass(frozen=True)
 class Confirmation:
+    """What the researcher states before a run (Stage 36.8, K1).
+
+    A *design* confirmation is about how the study was done (independent
+    groups, the same participants, items written for one construct) and
+    names the roles it speaks about (``about``): it holds while those
+    variables are the same. Every other confirmation is a *data*
+    confirmation, about what the researcher saw in the data
+    (distributions, outliers, group sizes, linearity, recoded items): it
+    holds for one table, one set of variables and one method."""
+
     key: str
     label: str                     # classic English label, shown verbatim
     applies_to: tuple[str, ...] = ()   # option values it is required for ('' = always)
+    kind: str = "data"             # "design" or "data"
+    about: tuple[str, ...] = ()    # design: the roles the statement is about
 
 
 @dataclass(frozen=True)
@@ -69,9 +81,11 @@ CATEGORICAL = ("nominal", "ordinal")
 ANY = ("nominal", "ordinal", "scale")
 
 INDEPENDENT = Confirmation(
-    "independent", "I confirm that the two groups contain independent observations")
+    "independent", "I confirm that the two groups contain independent observations",
+    kind="design", about=("group",))
 OMNI_INDEPENDENT = Confirmation(
-    "independent", "I confirm the groups contain independent participants")
+    "independent", "I confirm the groups contain independent participants",
+    kind="design", about=("group",))
 
 
 def _level(session, name):
@@ -244,7 +258,8 @@ METHODS: dict[str, MethodSpec] = {spec.key: spec for spec in (
         options=(Option("ci", "Omega 95% bootstrap CI",
                         (("0", "Off (fast)"), ("300", "300 resamples")), "300"),),
         confirmations=(Confirmation(
-            "one_construct", "I checked that the items are meant to measure one construct"),),
+            "one_construct", "I checked that the items are meant to measure one construct",
+            kind="design", about=("items",)),),
         runner=_run_item_diagnostics),
     MethodSpec(
         "factor", "factor", "measurement", "Exploratory factor / component analysis",
@@ -294,7 +309,8 @@ METHODS: dict[str, MethodSpec] = {spec.key: spec for spec in (
         (Role("a", "role.a", CATEGORICAL), Role("b", "role.b", CATEGORICAL)),
         confirmations=(Confirmation(
             "categorical",
-            "I confirmed two categorical scales and independent observations"),),
+            "I confirmed two categorical scales and independent observations",
+            kind="design", about=("a", "b")),),
         runner=_run_chi),
     MethodSpec(
         "groups", "groups", "differences", "Two independent groups (Welch t / Mann–Whitney U)",
@@ -333,7 +349,8 @@ METHODS: dict[str, MethodSpec] = {spec.key: spec for spec in (
                          ("paired_t", "Paired-samples t-test")), "wilcoxon"),),
         confirmations=(
             Confirmation("same_people",
-                         "Each row contains two measurements from the SAME participant"),
+                         "Each row contains two measurements from the SAME participant",
+                         kind="design", about=("before", "after")),
             Confirmation("assumptions",
                          "I reviewed difference scores, their symmetry/normality as "
                          "appropriate, outliers and independence between participants"),
@@ -349,7 +366,8 @@ METHODS: dict[str, MethodSpec] = {spec.key: spec for spec in (
                          ("rm_anova", "Repeated-measures ANOVA")), "friedman"),),
         confirmations=(
             Confirmation("same_people",
-                         "Selected columns measure the same construct in the SAME participants"),
+                         "Selected columns measure the same construct in the SAME participants",
+                         kind="design", about=("measures",)),
             Confirmation("assumptions",
                          "I reviewed measurement scales, difference scores, outliers and "
                          "design assumptions"),
@@ -444,6 +462,64 @@ def default_options(spec: MethodSpec) -> dict[str, str]:
 def required_confirmations(spec: MethodSpec, options: dict) -> tuple[Confirmation, ...]:
     values = set(options.values())
     return tuple(c for c in spec.confirmations if not c.applies_to or values & set(c.applies_to))
+
+
+def confirmation_scope(confirmation: Confirmation, method: str, roles: dict, options: dict,
+                       session) -> dict:
+    """What a confirmation is given for (Stage 36.8, K1), as plain JSON data.
+
+    Design: the variables of the roles it speaks about. Data: the table on
+    screen (the SHA-256 that results record), every variable of the
+    analysis with its confirmed level, and the method with all its
+    options. Multiple variables of one role are a set."""
+    if confirmation.kind == "design":
+        return {"kind": "design", "variables": {
+            role: sorted(_names(roles.get(role))) for role in confirmation.about}}
+    effective = {**default_options(METHODS[method]), **(options or {})}
+    variables = {role: sorted(_names(value)) for role, value in sorted((roles or {}).items())
+                 if _names(value)}
+    names = sorted({name for value in variables.values() for name in value})
+    return {"kind": "data", "dataset": session.dataset_sha256(), "method": method,
+            "options": {key: str(value) for key, value in sorted(effective.items())},
+            "variables": variables, "levels": {name: session.level(name) for name in names}}
+
+
+def method_confirmations(spec: MethodSpec) -> tuple[Confirmation, ...]:
+    """Every confirmation a method can ask for (with D5's for reliability)."""
+    return spec.confirmations + ((ITEMS_NOT_TOTALS,) if spec.key in RELIABILITY_METHODS else ())
+
+
+def holding_confirmations(method: str, roles: dict, options: dict, confirms: dict,
+                          scopes: dict, session) -> dict[str, dict]:
+    """``{key: scope}`` of the ticked confirmations that hold for this
+    analysis: given for its variables (design) or for its table, variables
+    and method (data). One without a recorded scope — a task saved before
+    Stage 36.8 — does not hold: nothing says what it was given for."""
+    held = {}
+    for confirmation in method_confirmations(METHODS[method]):
+        scope = (scopes or {}).get(confirmation.key)
+        if (confirms or {}).get(confirmation.key) and scope is not None and scope == \
+                confirmation_scope(confirmation, method, roles, options, session):
+            held[confirmation.key] = scope
+    return held
+
+
+def settle_confirmations(method: str, roles: dict, options: dict, confirms: dict,
+                         scopes: dict, session) -> tuple[dict, dict]:
+    """``(holding, kept)`` for the analysis on screen, both ``{key: scope}``.
+
+    ``holding`` are the confirmations that hold for it. ``kept`` is what
+    stays given: ``holding`` plus design confirmations this method does not
+    ask for (it has no role they speak about, e.g. a chi-square test between
+    two comparisons of the same groups). Everything else was given for other
+    variables, another table or another method and is cleared."""
+    holding = holding_confirmations(method, roles, options, confirms, scopes, session)
+    asked = {c.key for c in method_confirmations(METHODS[method])}
+    kept = {key: scope for key, scope in (scopes or {}).items()
+            if key not in asked and (confirms or {}).get(key)
+            and isinstance(scope, dict) and scope.get("kind") == "design"}
+    kept.update(holding)
+    return holding, kept
 
 
 def role_problems(spec: MethodSpec, roles: dict, session) -> list[tuple[str, dict]]:

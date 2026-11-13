@@ -24,6 +24,9 @@ on:
       - "research_app.py"
       - "workspace_*.py"
       - "requirements.txt"
+      - "requirements-dev.txt"
+      - ".github/actions/pinned-windows-toolchain/**"
+      - "tools/build_toolchain.py"
       - "pyproject.toml"
       - "packaging/**"
       - "tools/build_installer.py"
@@ -48,13 +51,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-      - name: Install dependencies and the UI Automation driver
-        run: python -m pip install -r requirements.txt "zstandard>=0.23,<1" "pywinauto==0.6.9"
+      - name: Pinned build toolchain (exact Python, hashed locks, verified Flutter and template)
+        uses: ./.github/actions/pinned-windows-toolchain
       - name: Cache pinned OCR packages
         uses: actions/cache@v4
         with:
@@ -72,6 +70,7 @@ jobs:
       - name: Build the Windows application
         run: >-
           flet build windows .
+          --template "$env:SRA_FLET_TEMPLATE"
           --module-name app
           --python-version 3.12
           --product "Statistical Research Assistant"
@@ -93,17 +92,19 @@ jobs:
           python tools/check_packaged_ocr.py build/windows
           if ($LASTEXITCODE -ne 0) { throw "packaged OCR check failed" }
 
-      - name: Install Inno Setup when the runner has none
+      - name: Inno Setup compiler of the lock (installed if the runner has another version)
         shell: pwsh
         run: |
-          $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
-          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ }
-          if (-not $iscc -and -not (Get-Command ISCC -ErrorAction SilentlyContinue)) {
-            choco install innosetup --no-progress -y
-            if ($LASTEXITCODE -ne 0) { throw "Inno Setup could not be installed" }
-          }
+          python tools/build_toolchain.py iscc
+          if ($LASTEXITCODE -ne 0) { throw "the Inno Setup version of the lock is not available" }
       - name: Build the installer (unsigned preview)
         run: python tools/build_installer.py "${{ env.BUNDLE }}" --out dist
+      - name: Build identity of the installer build (checked against the locks)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force installed | Out-Null
+          python tools/build_toolchain.py identity --bundle "${{ env.BUNDLE }}" --iscc --strict --out installed/build-identity.json
+          if ($LASTEXITCODE -ne 0) { throw "build identity failed" }
       - name: Build a later version for the upgrade test
         shell: pwsh
         run: |
@@ -189,6 +190,23 @@ jobs:
           python tools/check_installed_app.py uninstall --log installed\uninstall-2.log
           python tools/check_installed_app.py removed
 
+      - name: Synthetic files for the owner's manual acceptance (no study data)
+        if: always()
+        shell: pwsh
+        run: |
+          # The examples the checklist of docs/STAGE368_REAL_USER_ACCEPTANCE.md
+          # uses: generated here from tests/fixtures/stage36, synthetic only.
+          New-Item -ItemType Directory -Force acceptance-files | Out-Null
+          python -c "import sys, shutil; sys.path.insert(0, 'tests'); import stage36_fixtures as fx; [shutil.copy(fx.fixture(n), 'acceptance-files') for n in (fx.CSV, fx.DOCX_UNNUMBERED, fx.SCAN_TABLE_LV, fx.ITEMS_CSV)]"
+          Get-ChildItem acceptance-files | ForEach-Object { "$($_.Name) $($_.Length)" }
+      - name: Upload the synthetic acceptance files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-acceptance-files
+          path: acceptance-files/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload the installer (unsigned preview)
         if: always()
         uses: actions/upload-artifact@v4

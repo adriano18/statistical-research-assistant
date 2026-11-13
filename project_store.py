@@ -420,6 +420,13 @@ class RunRecord:
     structured: dict | None = None      # format 4: result_store JSON of the engine result
     charts: dict | None = None          # format 5: chart_views.ChartState JSON
 
+    @property
+    def reviewed(self) -> tuple[str, ...]:
+        """Assumption checks the researcher marked as reviewed (Stage 36.8).
+        Kept in ``provenance`` under ``reviewed``: no new column, and a
+        format-5 program ignores the key."""
+        return tuple(str(a) for a in self.provenance.get("reviewed") or ())
+
 
 @dataclass(frozen=True)
 class TaskRecord:
@@ -1475,8 +1482,25 @@ class Project:
         return RunStatus(run.id, bool(reasons), tuple(reasons))
 
     def set_note(self, run_id: str, note: str) -> None:
+        """The researcher's interpretation note on a run (column of format 1)."""
         with self._write() as db:
             db.execute("UPDATE runs SET note = ? WHERE id = ?", (str(note), run_id))
+            self._touch(db)
+
+    def set_reviewed(self, run_id: str, assumptions: Iterable[str]) -> None:
+        """The assumption checks marked as reviewed on a run (Stage 36.8).
+
+        Stored in the run's ``provenance`` JSON under ``reviewed``, which
+        programs reading format 5 ignore: no migration is needed."""
+        with self._write() as db:
+            row = db.execute("SELECT provenance FROM runs WHERE id = ?", (run_id,)).fetchone()
+            if row is None:
+                raise ProjectError(f"No analysis run {run_id} in this project.")
+            provenance = json.loads(row["provenance"])
+            provenance["reviewed"] = sorted(str(a) for a in assumptions)
+            db.execute("UPDATE runs SET provenance = ? WHERE id = ?",
+                       (json.dumps(provenance, default=str), run_id))
+            self._touch(db)
 
     def delete_run(self, run_id: str) -> None:
         run = self.run(run_id)
@@ -1548,6 +1572,31 @@ class Project:
         with self._db() as db:
             ids = [r["run_id"] for r in db.execute("SELECT run_id FROM report_items ORDER BY position")]
         return [self.run(i) for i in ids]
+
+    REPORT_SETTINGS = "report_settings"
+
+    def save_report_settings(self, settings: dict) -> None:
+        """Record the research report's settings (title, sections left out,
+        language) as an entry of the activity log (Stage 36.8, K2).
+
+        The log is the project's extensible store: the latest entry of this
+        kind is the current setting, earlier ones are its history, and a
+        program reading format 5 ignores entries of kinds it does not know,
+        so no migration is needed."""
+        with self._write() as db:
+            _log(db, self.REPORT_SETTINGS, dict(settings))
+            self._touch(db)
+
+    def report_settings(self) -> dict:
+        """The latest saved report settings ({} when none were saved)."""
+        with self._db() as db:
+            row = db.execute("SELECT detail FROM events WHERE kind = ? ORDER BY id DESC LIMIT 1",
+                             (self.REPORT_SETTINGS,)).fetchone()
+        try:
+            detail = json.loads(row["detail"]) if row is not None else {}
+        except ValueError:
+            detail = {}
+        return detail if isinstance(detail, dict) else {}
 
     def report_text(self, *, allow_stale: bool = False) -> str:
         """The combined report; refuses stale results unless explicitly allowed."""

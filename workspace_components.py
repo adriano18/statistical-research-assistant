@@ -150,6 +150,30 @@ def button(ui: Ui, label: str, on_click=None, *, kind: str = "secondary",
     return ft.Button(**kwargs)
 
 
+def locked_step(ui: Ui, label: str, *, data=None) -> ft.Container:
+    """A step that cannot be opened yet: text with a lock, not a button.
+
+    Stage 36.8 (issue #62): Flutter's Windows accessibility bridge reports
+    every button as enabled to UI Automation. Not one of ~4,800 elements in
+    the UI Automation trees of the Stage 36 Windows runs was reported as
+    disabled, so Narrator would announce a disabled step button as
+    available. Plain text is announced as what it is, takes no keyboard
+    focus and has nothing to invoke; the caller shows the reason as text.
+    """
+    return ft.Container(
+        content=ft.Row(
+            [ft.Icon(ft.Icons.LOCK_OUTLINE, size=16, color=ui.p.text_muted),
+             text(ui, label, tk.TYPE_LABEL, color=ui.p.text_muted)],
+            spacing=tk.SPACE_1, tight=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        height=tk.CONTROL_HEIGHT, border_radius=ui.radius("control"),
+        border=ft.Border.all(1, ui.p.border),
+        padding=ft.Padding.symmetric(horizontal=tk.SPACE_4, vertical=tk.SPACE_2),
+        data=data,
+    )
+
+
 def icon_button(ui: Ui, icon, tooltip: str, on_click=None, *, selected: bool = False,
                 data=None, disabled: bool = False) -> ft.IconButton:
     if not tooltip:
@@ -315,7 +339,8 @@ def apa_table(ui: Ui, columns: tuple[str, ...], rows: tuple[tuple[str, ...], ...
     )
     controls: list[ft.Control] = []
     if number is not None:
-        controls.append(text(ui, f"Table {number}", tk.TYPE_LABEL, weight=ft.FontWeight.W_700))
+        controls.append(text(ui, ui.t("results.table_number", number=number), tk.TYPE_LABEL,
+                             weight=ft.FontWeight.W_700))
     if title:
         controls.append(text(ui, title, tk.TYPE_BODY, italic=True))
     controls.append(ft.Row([table], scroll=ft.ScrollMode.AUTO))
@@ -331,7 +356,7 @@ def figure(ui: Ui, png: bytes, *, caption_text: str = "", on_enlarge=None,
     ``semantics`` is what a screen reader says for the image (its text
     alternative); by default the caption."""
     image = ft.Image(src=png, fit=ft.BoxFit.CONTAIN, height=max_height,
-                     semantics_label=semantics or caption_text or "Figure",
+                     semantics_label=semantics or caption_text or ui.t("results.figure"),
                      gapless_playback=True)
     controls: list[ft.Control] = [
         ft.Container(image, bgcolor="#FFFFFF", border_radius=ui.radius("card"),
@@ -342,7 +367,7 @@ def figure(ui: Ui, png: bytes, *, caption_text: str = "", on_enlarge=None,
     if caption_text:
         row.append(ft.Container(caption(ui, caption_text), expand=True))
     if on_enlarge is not None:
-        row.append(button(ui, enlarge_label or "Enlarge", on_enlarge, kind="quiet",
+        row.append(button(ui, enlarge_label or ui.t("results.enlarge"), on_enlarge, kind="quiet",
                           icon=ft.Icons.OPEN_IN_FULL))
     if row:
         controls.append(ft.Row(row, vertical_alignment=ft.CrossAxisAlignment.CENTER))

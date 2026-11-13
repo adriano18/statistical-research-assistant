@@ -1,4 +1,4 @@
-name: Windows native display scale 100/125/150 % (packaged program)
+name: Windows native display scale 100/125/150/175 % (packaged program)
 
 # Stage 35 (#46): the packaged program at real Windows display scales, set
 # the way Settings -> Display -> Scale sets them. This is not browser zoom:
@@ -15,6 +15,10 @@ on:
       - "window_guard.py"
       - "tools/set_display_scale.py"
       - "tools/check_native_dpi.py"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+      - ".github/actions/pinned-windows-toolchain/**"
+      - "tools/build_toolchain.py"
       - ".github/workflows/windows-native-dpi.yml"
 
 permissions:
@@ -31,13 +35,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-      - name: Install dependencies and the UI Automation driver
-        run: python -m pip install -r requirements.txt "zstandard>=0.23,<1" "pywinauto==0.6.9"
+      - name: Pinned build toolchain (exact Python, hashed locks, verified Flutter and template)
+        uses: ./.github/actions/pinned-windows-toolchain
       - name: Cache pinned OCR packages
         uses: actions/cache@v4
         with:
@@ -54,12 +53,13 @@ jobs:
       - name: Build the Windows application
         run: >-
           flet build windows .
+          --template "$env:SRA_FLET_TEMPLATE"
           --module-name app
           --python-version 3.12
           --product "Statistical Research Assistant"
           --artifact "StatisticalResearchAssistant"
           --no-rich-output --yes
-      - name: The program at 100, 125 and 150 %
+      - name: The program at 100, 125, 150 and 175 %
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step

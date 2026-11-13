@@ -45,6 +45,23 @@ Journeys (synthetic data only; see JOURNEYS):
 * import-damaged a damaged PDF while a document is under review: refused
                  with its reason, the review kept
 * blocked-design a quantitative group variable refused in words
+* psychometrics  (Stage 36.8, spec F) the scale check of an item-level
+                 scale: α, ω and the α-if-item-deleted table on screen,
+                 checked against numpy α computed here; the TXT report; no
+                 coefficient from totals
+* import-resume  (Stage 36.8, spec E) local OCR cancelled while it reads,
+                 read again, one item checked, restart, the same PDF brings
+                 the saved review back
+* negative-paths (Stage 36.8) saving into a read-only folder and over a
+                 read-only file refused in words; the AI assistant without a
+                 provider; an AI permission allowed and revoked
+* confirmations  (review K1, spec B) other outcomes after a run keep the
+                 design confirmation and clear the data one; nothing runs
+                 until it is given again; another group clears both
+* report-composition
+                 (review K2, spec G) report order, a note, a reviewed check,
+                 title, a section left out and Latvian, kept over a restart
+                 and in the Word report; none of it in a second project
 
 Every step is recorded in OUT_DIR: a screenshot, the UI Automation tree
 when something is missing, an animated recording per journey
@@ -214,6 +231,8 @@ class Gui:
             "PATH": f"{system}\\System32;{system};{system}\\System32\\Wbem",
             "SRA_UI": "workspace",
             "SRA_LOG_DIR": str(self.out / "app-logs"),
+            # Every document reading writes its stage timings here (ocr_profile).
+            "SRA_OCR_PROFILE": str(self.out / "ocr-profiles"),
         })
         if not self.real_data:
             env["SRA_DATA_DIR"] = str(self.data_dir)
@@ -650,7 +669,7 @@ class Gui:
         with contextlib.suppress(Exception):
             _, _, _, bottom = self.window_box()
             tops = [e.element_info.rectangle.top
-                    for name in (T("imp.back"), T("imp.next"))
+                    for name in (T("imp.back"), T("imp.next"), T("imp.create_draft"))
                     for e in self.query(name, control_type="Button")
                     if e.element_info.rectangle.top > bottom - 260]
             top = min(tops) - 12 if tops else None
@@ -1488,10 +1507,15 @@ def journey_import_cope_docx(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text(COPE_SITUATIONAL)
         gui.wait_text(T("imp.form.options", labels=GENERAL_OPTIONS))
         gui.wait_text(T("imp.form.options", labels=SITUATIONAL_OPTIONS))
-        with contextlib.suppress(StepFailure):
-            step2 = gui.find(regex=r"^2\. [^\n]* · ", control_type="Button", timeout=5,
-                             scroll=False, visible=False)
-            journey.facts["step_2_enabled_before_choice"] = bool(step2.element_info.enabled)
+        # Stage 36.8: a step that cannot open is text, not a button (UI
+        # Automation on Windows reports every button as enabled). Before the
+        # choice no step-2 button exists to announce or invoke; the reason is
+        # shown as text.
+        journey.facts["step_2_button_before_choice"] = bool(
+            gui.query(regex=r"^2\. [^\n]* · ", control_type="Button"))
+        expect(not journey.facts["step_2_button_before_choice"],
+               "step 2 is offered as a button before a form is chosen")
+        gui.wait_text(T("imp.choose_form_first"))
     with journey.step("review the second (situational) form: its own options"):
         # Only the choice shows "form 2 of 2" (step 1's label); the options
         # are on the form's card before it, so they cannot tell a click.
@@ -1558,6 +1582,62 @@ def direct_rows(pdf: Path, language: str) -> dict:
         return {"error": f"{type(error).__name__}: {error}"}
 
 
+def process_cpu_seconds(pid: int | None) -> float | None:
+    """User plus kernel processor seconds a process has used so far (Windows)."""
+    if not pid or os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        times = [wintypes.FILETIME() for _ in range(4)]
+        if not kernel32.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+            return None
+        return sum(((t.dwHighDateTime << 32) | t.dwLowDateTime) / 1e7 for t in times[2:])
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def program_cpu_cores(gui: Gui, seconds: float = 6.0) -> float | None:
+    """Processor cores the program uses while this driver only waits: no UI
+    Automation queries, no input. The baseline for a reading's profile."""
+    pid = gui.window_pid or (gui.process.pid if gui.process is not None else None)
+    before, started = process_cpu_seconds(pid), time.monotonic()
+    time.sleep(seconds)
+    after = process_cpu_seconds(pid)
+    if before is None or after is None:
+        return None
+    return round((after - before) / (time.monotonic() - started), 2)
+
+
+def latest_profile(gui: Gui, after: set | None = None) -> dict | None:
+    """The newest reading profile the program wrote (ocr_profile), as a
+    compact fact: total, per-stage seconds, engine runs, the event-loop
+    stall; ``after`` = file names already seen."""
+    folder = gui.out / "ocr-profiles"
+    files = sorted(p for p in folder.glob("ocr-profile-*.json") if p.name not in (after or set()))
+    if not files:
+        return None
+    data = json.loads(files[-1].read_text(encoding="utf-8"))
+    return {
+        "file": files[-1].name, "total_seconds": data["total_seconds"],
+        "stages": {k: v["seconds"] for k, v in data["stages"].items()},
+        "unaccounted_seconds": data["unaccounted_seconds"],
+        "engine_runs": [{k: r.get(k) for k in ("seconds", "cpu_seconds", "peak_memory_bytes")}
+                        for r in data["engine_runs"]],
+        "event_loop_max_stall_seconds": data["event_loop_max_stall_seconds"],
+        "renders": data["renders"], "peak_memory_bytes": data["peak_memory_bytes"],
+        "process_cpu_seconds": data["process_cpu_seconds"], "max_threads": data["max_threads"],
+        "program_cpu_cores": round(data["process_cpu_seconds"] / data["total_seconds"], 2)
+        if data["total_seconds"] else None,
+        "items": data["facts"].get("items"),
+    }
+
+
 def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
     """Spec §14 journey 6 on the packaged EXE: a scanned Latvian 52-item
     table without a text layer is detected, read with the bundled local OCR
@@ -1585,12 +1665,22 @@ def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
     with journey.step("read it with local OCR in Latvian (lav)"):
         options = [label for _, label in ocr_language_options("en")]
         gui.choose(T("imp.ocr_language"), T("imp.ocr_lang.lav"), options=options)
+        # The program's processor use while it only shows the page, as the
+        # baseline for the reading's own (program_cpu_cores of the profile).
+        journey.facts["program_cpu_cores_idle"] = program_cpu_cores(gui)
+        journey.facts["logical_processors"] = os.cpu_count()
+        seen = {p.name for p in (gui.out / "ocr-profiles").glob("*.json")}
         gui.click(T("imp.ocr_run"), control_type="Button")
         started = time.monotonic()
         # Whatever the reading gives is recorded before it is checked.
         gui.wait_text(T("imp.state.ocr_used", pages="pages 1 and 2",
                         ocr=T("imp.ocr_lang.lav")), timeout=600)
+        # Until UI Automation shows the result (this driver's polling and
+        # scrolling included); the program's own timings are the profile.
         journey.facts["ocr_in_program_seconds"] = round(time.monotonic() - started, 1)
+        journey.facts["ocr_profile_first"] = latest_profile(gui, seen)
+        print(f"  [ocr] in the program (first reading): {journey.facts['ocr_profile_first']}",
+              flush=True)
         journey.facts["candidates_in_program"] = [
             text for text in gui.texts() if "candidate items" in text][:3]
         gui.wait_text(T("imp.read_ok", instruments=1, items=52, name=pdf.name), timeout=30)
@@ -1598,6 +1688,19 @@ def journey_import_scan_lv(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text("52 candidate items")
         gui.wait_text(T("imp.state.ocr_used", pages="pages 1 and 2",
                         ocr=T("imp.ocr_lang.lav")))
+    with journey.step("read it again in the same program (warm): the same 52 candidates"):
+        seen = {p.name for p in (gui.out / "ocr-profiles").glob("*.json")}
+        gui.click(T("imp.ocr_again"), control_type="Button")
+        deadline = time.monotonic() + 300
+        while time.monotonic() < deadline and latest_profile(gui, seen) is None:
+            time.sleep(0.5)
+        journey.facts["ocr_profile_again"] = latest_profile(gui, seen)
+        print(f"  [ocr] in the program (read again): {journey.facts['ocr_profile_again']}",
+              flush=True)
+        expect(journey.facts["ocr_profile_again"] is not None, "the second reading wrote no profile")
+        expect(journey.facts["ocr_profile_again"]["items"] == 52,
+               f"{journey.facts['ocr_profile_again']['items']} candidates on the second reading")
+        gui.wait_text("52 candidate items", timeout=60)
     with journey.step("the legend is offered as one documented scale for all 52 items"):
         wizard_step(gui, 2)
         gui.wait_text(T("imp.scale_items", count=52))
@@ -2328,6 +2431,1429 @@ def journey_installed_reopen(gui: Gui, work: Path, journey: Journey) -> None:
             open_project(gui, title)
 
 
+# ============================== Stage 36.8 (#62, Part 8): user acceptance
+# Spec journeys F (psychometrics) and E (import: cancel, resume after a
+# restart) and the negative paths a researcher can meet, as far as the
+# packaged program shows them. tests/test_stage368_acceptance.py walks the
+# same flows in the workspace harness, with the texts defined here.
+PSYCHOMETRICS_PROJECT = "Fictional psychometrics study"
+NEGATIVE_PROJECT = "Fictional negative paths"
+ALPHA_ITEM = "ZEP04"      # α if this item were deleted: computed by the driver itself
+ALPHA_IF_DELETED = "α if deleted"        # the column of the item diagnostics table
+TOTALS_ONLY = "Only a total score is available now"     # D5, as journey stage36-report
+RESUME_ITEM = 13          # the item compared with the source before the restart
+# The scale check's summary (run.summary), e.g.
+# "Cronbach’s α = 0.57; McDonald’s ω = 0.71; k = 10, n = 192."
+SUMMARY = re.compile(r"Cronbach’s α = (?P<alpha>[−-]?\d*\.\d+); McDonald’s ω = "
+                     r"(?P<omega>[−-]?\d*\.\d+); k = (?P<k>\d+), n = (?P<n>\d+)")
+
+
+def data_folder(gui: Gui) -> Path:
+    """Where the program keeps this run's projects, questionnaires and reviews."""
+    if gui.real_data:
+        return Path(os.environ["LOCALAPPDATA"]) / "StatisticalResearchAssistant"
+    return Path(gui.data_dir)
+
+
+def template_pattern(key: str) -> re.Pattern:
+    """The English text of ``key`` as a pattern: each {placeholder} matches
+    any text (a folder may be shown in its long or its 8.3 form)."""
+    from workspace_text import T as TABLE
+
+    parts = re.split(r"\{[a-z_]+\}", TABLE[key][0])
+    return re.compile(".+?".join(re.escape(part) for part in parts))
+
+
+def number_shown(text: str) -> float:
+    """A number as the program shows it: "0.57", ".72" (APA, no leading
+    zero), "−.12", "+.154"."""
+    return float(text.strip().replace("−", "-").replace("+", ""))
+
+
+def same_as_shown(value: float, text: str) -> bool:
+    """``value`` is what ``text`` shows, at the precision shown."""
+    shown = text.strip().replace("−", "-").replace("+", "")
+    digits = len(shown.split(".", 1)[1]) if "." in shown else 0
+    return f"{float(value):.{digits}f}" == f"{number_shown(shown):.{digits}f}"
+
+
+# ------------------------------------------------- what is on the screen
+def element_text(gui: Gui, element) -> str:
+    """What an element shows: its name, or a text field's value."""
+    info = element.element_info
+    name = info.name or ""
+    if not name and info.control_type in TEXT_FIELDS:
+        return gui.value(element)
+    return name
+
+
+def screen_texts(gui: Gui) -> list[tuple[object, str]]:
+    """(element, text) of everything that shows a text: its name and, for
+    a text field, its value (Flutter's selectable text; see Gui.texts)."""
+    found = []
+    for element in gui.elements():
+        with contextlib.suppress(Exception):
+            info = element.element_info
+            if info.name:
+                found.append((element, info.name))
+            if info.control_type in TEXT_FIELDS:
+                value = gui.value(element)
+                if value:
+                    found.append((element, value))
+    return found
+
+
+def find_text(gui: Gui, fragment: str | None = None, *, regex: str | None = None,
+              exact: bool = False, timeout: float = 30, moves: int = 60,
+              first: str = "down", control_type=None) -> tuple[object, str]:
+    """(element, text) of what shows ``fragment`` (or matches ``regex``),
+    scrolled into view; only elements of ``control_type`` when it is given.
+    Waits; then scrolls ``first`` down (or up) and back, in steps larger than
+    Gui.find's, as a person looks for one line of a long page (a result's
+    tables run thousands of pixels below its summary)."""
+    pattern = re.compile(regex) if regex is not None else None
+    kinds = (control_type,) if isinstance(control_type, str) else control_type
+
+    def matches(element, text: str) -> bool:
+        if kinds and element.element_info.control_type not in kinds:
+            return False
+        if pattern is not None:
+            return bool(pattern.search(text))
+        return text == fragment if exact else fragment in text
+
+    deadline = time.monotonic() + timeout
+    settle = time.monotonic() + min(4.0, timeout / 2)
+    done, direction = 0, (-1 if first == "down" else 1)
+    while True:
+        for element, text in screen_texts(gui):
+            if matches(element, text):
+                with contextlib.suppress(Exception):
+                    gui.scroll_into_view(element)
+                return element, text
+        if time.monotonic() > deadline:
+            break
+        if time.monotonic() > settle and done < 2 * moves:
+            gui.wheel(5 * direction)
+            done += 1
+            if done == moves:
+                direction = -direction
+        else:
+            time.sleep(0.4)
+    what = regex if pattern is not None else fragment
+    gui.dump(f"no-text-{what}")
+    gui.shot(f"no-text-{what}")
+    gui.log_screen(f"text never appeared: {str(what)[:50]!r}")
+    raise StepFailure(f"text never appeared: {what!r}")
+
+
+def wait_any(gui: Gui, wanted: dict, timeout: float = 30, *, scroll: bool = True,
+             step: int = 3) -> tuple[str, str]:
+    """(name, text) of the first of several outcomes on screen: ``wanted``
+    maps a name to a text fragment or a compiled pattern, in priority order.
+    It scrolls down, then up, by ``step`` wheel notches at a time."""
+    deadline = time.monotonic() + timeout
+    settle = time.monotonic() + min(4.0, timeout / 2)
+    moves, direction = 0, -1
+    while True:
+        texts = [text for _, text in screen_texts(gui)]
+        for key, what in wanted.items():
+            for text in texts:
+                if (what.search(text) if hasattr(what, "search") else what in text):
+                    return key, text
+        if time.monotonic() > deadline:
+            break
+        if scroll and time.monotonic() > settle and moves < 40:
+            gui.wheel(step * direction)
+            moves += 1
+            if moves == 20:
+                direction = 1
+        else:
+            time.sleep(0.5)
+    gui.dump("no-outcome")
+    gui.shot("no-outcome")
+    gui.log_screen(f"none of {list(wanted)} appeared")
+    raise StepFailure(f"none of these appeared: {list(wanted)}")
+
+
+def shot_at(gui: Gui, element, title: str) -> Path | None:
+    """A screenshot with ``element`` on screen (what is being verified, not
+    another part of the page), and a close-up of it next to it."""
+    with contextlib.suppress(Exception):
+        gui.scroll_into_view(element)
+    path = gui.shot(title)
+    with contextlib.suppress(Exception):
+        box = element.element_info.rectangle
+        left, top, right, bottom = gui.window_box()
+        crop = (max(box.left - 160, left) - left, max(box.top - 90, top) - top,
+                min(box.right + 160, right) - left, min(box.bottom + 90, bottom) - top)
+        gui.grab().crop(crop).save(path.with_name(path.stem + "-closeup.png"))
+    return path
+
+
+def row_cells(gui: Gui, anchor) -> list[tuple[int | None, str]]:
+    """(left, text) of the cells in ``anchor``'s table row, left to right.
+    Windows may expose a table row as ONE element whose name holds its cells
+    as lines (journey stage36-groups), or each cell on its own; a merged row
+    gives its lines with left None."""
+    own = element_text(gui, anchor)
+    if "\n" in own:
+        return [(None, line) for line in own.split("\n") if line.strip()]
+    box = anchor.element_info.rectangle
+    height = max(1, box.height())
+    found, seen = [], set()
+    for element, text in screen_texts(gui):
+        if "\n" in text:            # a merged row over the same cells
+            continue
+        with contextlib.suppress(Exception):
+            rect = element.element_info.rectangle
+            middle = (rect.top + rect.bottom) // 2
+            if (box.top - 4 <= middle <= box.bottom + 4 and rect.height() <= 3 * height + 12
+                    and rect.right > box.left - 2 and (rect.left, text) not in seen):
+                seen.add((rect.left, text))
+                found.append((rect.left, text))
+    found.sort(key=lambda cell: cell[0])
+    return found
+
+
+def column_cell(gui: Gui, header_anchor, header: str, row_anchor) -> str | None:
+    """The text of ``row_anchor``'s row in the column headed ``header``: by
+    position when the cells are separate elements, else by column order."""
+    heads, cells = row_cells(gui, header_anchor), row_cells(gui, row_anchor)
+    left = next((x for x, text in heads if text == header), None)
+    if left is not None and cells and all(x is not None for x, _ in cells):
+        return min(cells, key=lambda cell: abs(cell[0] - left))[1]
+    names, values = [text for _, text in heads], [text for _, text in cells]
+    if header in names and len(names) == len(values):
+        return values[names.index(header)]
+    return None
+
+
+def toggle_state(element):
+    """1 (ticked), 0 or None (not readable through UI Automation)."""
+    with contextlib.suppress(Exception):
+        return int(element.get_toggle_state())
+    return None
+
+
+# --------------------------------------------------- the project on disk
+def project_database(gui: Gui, title: str) -> Path:
+    """The database of the project ``title`` (the newest one of that title)."""
+    import sqlite3
+
+    found = []
+    for db in (data_folder(gui) / "projects").glob("*/project.sqlite3"):
+        with contextlib.suppress(sqlite3.Error):
+            with contextlib.closing(sqlite3.connect(db.resolve().as_uri() + "?mode=ro",
+                                                    uri=True)) as con:
+                row = con.execute("SELECT title, created_at FROM project").fetchone()
+            if row and row[0] == title:
+                found.append((row[1], str(db)))
+    expect(found, f"no project {title!r} in {data_folder(gui)}")
+    return Path(max(found)[1])
+
+
+def project_query(gui: Gui, title: str, sql: str, args=()) -> list[tuple]:
+    """Rows of a read-only query of the project's database (the program
+    keeps it open; a read-only connection does not disturb it)."""
+    import sqlite3
+
+    database = project_database(gui, title)
+    with contextlib.closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro",
+                                            uri=True)) as con:
+        return con.execute(sql, args).fetchall()
+
+
+# ------------------------------------------- journey F: psychometrics
+def independent_alpha(csv_path: Path, items, *, without: str | None = None) -> tuple[float, int]:
+    """(Cronbach's α, complete respondents) computed here with numpy from the
+    CSV itself, not by the program's engine: α = k/(k−1)·(1 − Σ var_i /
+    var_total) with sample variances (ddof = 1), on the respondents who
+    answered every item (the program's complete cases). ``without`` leaves
+    one item out of the same respondents: α if that item were deleted."""
+    import csv
+
+    import numpy as np
+
+    items = list(items)
+    with open(csv_path, encoding="utf-8-sig", newline="") as file:
+        rows = [[(row.get(item) or "").strip() for item in items] for row in csv.DictReader(file)]
+    answers = np.array([[float(value) for value in row] for row in rows if all(row)])
+    if without is not None:
+        answers = np.delete(answers, items.index(without), axis=1)
+    k = answers.shape[1]
+    alpha = k / (k - 1) * (1 - answers.var(axis=0, ddof=1).sum()
+                           / answers.sum(axis=1).var(ddof=1))
+    return float(alpha), int(answers.shape[0])
+
+
+def reference_omega(csv_path: Path, items) -> float:
+    """McDonald's ω of the same items from the program's validated engine
+    (item_diagnostics, which uses omega_analysis), run in this process."""
+    import warnings
+
+    from data_loader import load_dataset
+    from item_diagnostics import diagnose_items
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return float(diagnose_items(load_dataset(csv_path), list(items), ci=False).omega.value)
+
+
+def psychometrics_expected(csv_path: Path) -> dict:
+    """What the scale check of the item-level fixture must show."""
+    from stage36_fixtures import ITEMS
+
+    alpha, n = independent_alpha(csv_path, ITEMS)
+    deleted, _ = independent_alpha(csv_path, ITEMS, without=ALPHA_ITEM)
+    return {"k": len(ITEMS), "n": n, "alpha": alpha, "alpha_if_deleted": deleted,
+            "omega": reference_omega(csv_path, ITEMS)}
+
+
+def item_table_title(expected: dict) -> str:
+    """The title of the item diagnostics table (ItemDiagnostics.table)."""
+    return f"Item diagnostics: {expected['k']} items, N = {expected['n']} complete respondents"
+
+
+def scale_check_confirmations() -> list[str]:
+    """The confirmations the scale check asks for (engine wording, never pre-ticked)."""
+    from workspace_methods import METHODS, default_options, required_confirmations
+    from workspace_text import label as engine_label
+
+    spec = METHODS["item_diagnostics"]
+    return [engine_label("en", c.label) for c in required_confirmations(spec, default_options(spec))]
+
+
+def psychometrics_report_fragments(expected: dict) -> tuple[str, ...]:
+    """What the saved TXT report must hold: the driver's own α and n, the
+    engine's ω, at the report's precision."""
+    return (f"Items: k = {expected['k']} (", f"complete cases n = {expected['n']} of ",
+            f"Cronbach’s α = {expected['alpha']:.2f}",
+            f"McDonald’s ω (one factor) = {expected['omega']:.2f}")
+
+
+def journey_psychometrics(gui: Gui, work: Path, journey: Journey) -> None:
+    """Spec journey F on the packaged program: the item-level scale (ten
+    invented items, two of them reverse-keyed and not recoded) is checked
+    through the guided scale question; Cronbach's α, McDonald's ω and the
+    α-if-item-deleted table are on screen and agree with the driver's own
+    numpy α (and α without ZEP04) and with ω from the engine run here; the
+    TXT report holds them. A totals-only dataset in the same project gets
+    no coefficient and no Run button (D5). tests/test_stage368_acceptance.py
+    walks the same flow."""
+    from stage36_fixtures import ITEMS, SCALES, generator
+
+    csv_path = generator().create_items_csv(work)
+    expected = psychometrics_expected(csv_path)
+    journey.facts["driver"] = {
+        "alpha_numpy": round(expected["alpha"], 6), "n_complete": expected["n"],
+        f"alpha_if_deleted_{ALPHA_ITEM}_numpy": round(expected["alpha_if_deleted"], 6),
+        "omega_engine_in_driver": round(expected["omega"], 6)}
+    create_project(gui, journey, PSYCHOMETRICS_PROJECT)
+    open_data(gui, journey, csv_path)
+    accept_levels(gui, journey)
+    with journey.step("scale check: the ten items of one scale, one construct confirmed"):
+        nav(gui, "nav.analyze")
+        gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
+        click_chip(gui, T("goal.scale"))
+        gui.click(T("pick.all_ordinal", count=len(ITEMS)), control_type="Button")
+        gui.wait_text(T("design.levels_summary", count=len(ITEMS), levels=T("level.ordinal")))
+        journey.facts["items_ticked"] = {
+            item: toggle_state(box) for item in ITEMS
+            for box in gui.query(option_label(item, "ordinal"), control_type="CheckBox")[:1]}
+        for confirmation in scale_check_confirmations():
+            gui.check(confirmation)
+        gui.click(regex="^" + re.escape(T("rec.run", method="")), control_type="Button")
+        # The result opens at its summary; its export buttons lie below two
+        # tables (145 and 10 rows), beyond what Gui.wait_text scrolls to.
+        find_text(gui, regex=SUMMARY.pattern, timeout=300, first="up")
+    with journey.step("Cronbach's α and McDonald's ω as the driver computes them"):
+        element, text = find_text(gui, regex=SUMMARY.pattern, timeout=60, first="up")
+        shown = SUMMARY.search(text).groupdict()
+        journey.facts["shown_summary"] = text
+        expect(same_as_shown(expected["alpha"], shown["alpha"]),
+               f"α shown {shown['alpha']}, the driver's numpy α {expected['alpha']:.4f}")
+        omega = number_shown(shown["omega"])
+        expect(0 <= omega <= 1, f"ω shown {shown['omega']} is not in [0, 1]")
+        expect(same_as_shown(expected["omega"], shown["omega"]),
+               f"ω shown {shown['omega']}, the engine in the driver {expected['omega']:.4f}")
+        expect((int(shown["k"]), int(shown["n"])) == (expected["k"], expected["n"]),
+               f"k = {shown['k']}, n = {shown['n']} shown; {expected['k']} items and "
+               f"{expected['n']} complete respondents in the CSV")
+        shot_at(gui, element, "alpha and omega")
+    label = f"{ALPHA_IF_DELETED}: {ALPHA_ITEM}"
+    with journey.step(f"verified estimates: {label} as the driver computes it"):
+        row, _ = find_text(gui, regex=rf"(?:^|\n){re.escape(label)}(?:\n|$)", timeout=150,
+                           moves=90)
+        cells = [text for _, text in row_cells(gui, row)]
+        journey.facts["verified_estimate_row"] = cells
+        value = cells[cells.index(label) + 1] if label in cells[:-1] else None
+        expect(value is not None and same_as_shown(expected["alpha_if_deleted"], value),
+               f"{label} shown as {value!r}; the driver's numpy value "
+               f"{expected['alpha_if_deleted']:.4f}")
+        shot_at(gui, row, "alpha if deleted, verified estimates")
+    with journey.step(f"the α-if-item-deleted table: {ALPHA_ITEM} as the driver computes it"):
+        find_text(gui, item_table_title(expected), timeout=180, moves=120)
+        header, _ = find_text(gui, regex=rf"(?:^|\n){re.escape(ALPHA_IF_DELETED)}(?:\n|$)",
+                              timeout=30)
+        row, _ = find_text(gui, regex=rf"(?:^|\n){ALPHA_ITEM}(?:\n|$)", timeout=30)
+        value = column_cell(gui, header, ALPHA_IF_DELETED, row)
+        journey.facts["item_table_header"] = [text for _, text in row_cells(gui, header)]
+        journey.facts[f"item_table_row_{ALPHA_ITEM}"] = [text for _, text in row_cells(gui, row)]
+        journey.facts[f"item_table_alpha_if_deleted_{ALPHA_ITEM}"] = value
+        expect(value is not None and same_as_shown(expected["alpha_if_deleted"], value),
+               f"{ALPHA_IF_DELETED} of {ALPHA_ITEM} in the table: {value!r}; the driver's "
+               f"numpy value {expected['alpha_if_deleted']:.4f}")
+        shot_at(gui, row, "alpha-if-item-deleted table")
+    with journey.step("the export buttons below the tables"):
+        find_text(gui, T("results.save_txt"), exact=True, timeout=120)
+    save_via_dialog(gui, journey, T("results.save_txt"), work / "psychometrics_report.txt",
+                    kind="txt", contains=psychometrics_report_fragments(expected))
+    journey.facts["report_lines"] = [
+        line for line in (work / "psychometrics_report.txt").read_text(
+            encoding="utf-8-sig").splitlines() if line.startswith(("Cronbach", "McDonald"))]
+    totals = generator().create_csv(work)
+    with journey.step("a totals-only dataset in the same project"):
+        nav(gui, "nav.data")
+    open_data(gui, journey, totals)
+    accept_levels(gui, journey)
+    with journey.step("totals get no reliability coefficient and no Run button (D5)"):
+        nav(gui, "nav.analyze")
+        gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
+        gui.click(T("task.new"), control_type="Button")
+        click_chip(gui, T("goal.scale"))
+        for scale in SCALES[:3]:
+            gui.check(option_label(scale, "scale"))
+        element, text = find_text(gui, TOTALS_ONLY, timeout=20)
+        journey.facts["totals_refusal"] = text
+        runs = gui.query(regex="^" + re.escape(T("rec.run", method="")), control_type="Button")
+        expect(not runs, f"a Run button is offered for totals: {len(runs)}")
+        shot_at(gui, element, "no coefficient from totals")
+    with journey.step("nothing was calculated from the totals"):
+        runs = project_query(gui, PSYCHOMETRICS_PROJECT, "SELECT method FROM runs")
+        journey.facts["runs_in_project"] = [method for (method,) in runs]
+        expect(journey.facts["runs_in_project"] == ["item_diagnostics"],
+               f"results in the project: {journey.facts['runs_in_project']}")
+
+
+# --------------------------------- journey E: cancel, change, restart, resume
+def counts_pattern() -> re.Pattern:
+    """The items step's counts, "52 items · 17 need attention · 0 compared
+    with the source" (imp.counts)."""
+    from workspace_text import T as TABLE
+
+    pattern = re.escape(TABLE["imp.counts"][0])
+    for name in ("total", "attention", "checked"):
+        pattern = pattern.replace(re.escape("{" + name + "}"), rf"(?P<{name}>\d+)")
+    return re.compile(pattern)
+
+
+def read_counts(gui: Gui, *, checked: int | None = None, timeout: float = 30) -> dict:
+    """The counts on screen (until ``checked`` items are checked, if given)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        _, text = find_text(gui, regex=counts_pattern().pattern, timeout=max(5, timeout / 2))
+        counts = {k: int(v) for k, v in counts_pattern().search(text).groupdict().items()}
+        if checked is None or counts["checked"] == checked or time.monotonic() > deadline:
+            return counts
+        time.sleep(0.5)
+
+
+def import_resume_texts(name: str, *, checked: int = 1, total: int = 52) -> dict[str, str]:
+    """What journey import-resume waits for, for the document ``name``."""
+    return {
+        "cancelled": T("imp.scan.cancelled", pages="Pages 1 and 2"),
+        "read": T("imp.read_ok", instruments=1, items=total, name=name),
+        "ocr_used": T("imp.state.ocr_used", pages="pages 1 and 2", ocr=T("imp.ocr_lang.lav")),
+        "offer": T("imp.resume", file=name, checked=checked, total=total),
+        "restored": T("imp.state.restored", checked=checked, total=total),
+        "discarded": T("imp.discarded", file=name),
+    }
+
+
+def saved_review(gui: Gui, sha: str) -> dict | None:
+    """The review the program keeps on disk for the document ``sha``."""
+    path = data_folder(gui) / "import_sessions" / f"{sha}.json"
+    with contextlib.suppress(OSError, ValueError):
+        return json.loads(path.read_text(encoding="utf-8"))
+    return None
+
+
+def journey_import_resume(gui: Gui, work: Path, journey: Journey) -> None:
+    """Spec journey E on the packaged program, the parts the earlier
+    journeys do not cover: local OCR of the scanned Latvian 52-item table is
+    cancelled while it reads (explained, nothing applied, offered again),
+    read to completion, one item is compared with the source, the program is
+    closed and started again, and the same PDF opened again brings the saved
+    review back: the change, the 52 items and the items still needing
+    attention. tests/test_stage368_acceptance.py walks the same flow."""
+    import hashlib
+
+    from stage36_fixtures import generator
+    from workspace_questionnaires import ocr_language_options
+
+    pdf = generator().create_lv_table_scan_pdf(work)
+    sha = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    texts = import_resume_texts(pdf.name)
+    options = [label for _, label in ocr_language_options("en")]
+    latvian = T("imp.ocr_lang.lav")
+    stale = data_folder(gui) / "import_sessions" / f"{sha}.json"
+    if stale.exists():
+        # Left by an earlier run on a real data folder that stopped midway
+        # (journey import-scan-lv ends its own review with the draft). A saved
+        # review would be read again at once, without the scan offer.
+        stale.unlink()
+        journey.facts["stale_review_removed"] = str(stale)
+    import_document(gui, journey, pdf, shows=T("imp.state.scan"))
+    with journey.step("local OCR in Latvian, cancelled with Cancel while it reads"):
+        gui.choose(T("imp.ocr_language"), latvian, options=options)
+        gui.click(T("imp.ocr_run"), control_type="Button")
+        gui.wait_text(T("imp.state.recognizing"), timeout=60, scroll=False)
+        started = time.monotonic()
+        gui.click(T("imp.cancel_ocr"), control_type="Button", timeout=20)
+        key, _ = wait_any(gui, {"cancelled": texts["cancelled"], "read": texts["read"]},
+                          timeout=300, scroll=False)
+        journey.facts["cancel"] = {"outcome": key,
+                                   "seconds_click_to_outcome": round(time.monotonic() - started, 1)}
+        expect(key == "cancelled", "the reading finished although Cancel was pressed")
+    with journey.step("cancelled: explained, nothing applied, local OCR offered again"):
+        element, line = find_text(gui, texts["cancelled"], first="up")
+        journey.facts["cancel"]["explanation"] = line
+        gui.wait_text(T("imp.state.scan"), scroll=False)
+        gui.find(T("imp.ocr_run"), control_type="Button")
+        expect(not gui.has_text("candidate items"), "items were applied after the cancel")
+        expect(not gui.query(regex=r"^\d\. [^\n]* · ", control_type="Button"),
+               "the review wizard opened after the cancel")
+        journey.facts["cancel"]["review_saved"] = saved_review(gui, sha) is not None
+        expect(not journey.facts["cancel"]["review_saved"], "a review was saved after the cancel")
+        shot_at(gui, element, "OCR cancelled")
+    with journey.step("read it again to completion: 52 candidates"):
+        gui.choose(T("imp.ocr_language"), latvian, options=options)
+        gui.click(T("imp.ocr_run"), control_type="Button")
+        gui.wait_text(texts["read"], timeout=600, scroll=False)
+        gui.wait_text(texts["ocr_used"], timeout=30)
+        gui.wait_text("52 candidate items", timeout=30)
+    with journey.step(f"one review change: item {RESUME_ITEM} compared with the source"):
+        wizard_step(gui, 3)
+        before = read_counts(gui)
+        row, _ = find_text(gui, regex=rf"(?:^|\n){RESUME_ITEM}\. ")
+        row.click_input()
+        time.sleep(1.5)
+        box = gui.check(T("imp.item_reviewed"))
+        after = read_counts(gui, checked=before["checked"] + 1)
+        journey.facts.update(counts_before_change=before, counts_after_change=after)
+        expect(after["total"] == 52 and after["checked"] == before["checked"] + 1,
+               f"counts after the change: {after} (before: {before})")
+        expect(before["attention"] - after["attention"] in (0, 1),
+               f"items needing attention: {before['attention']} → {after['attention']}")
+        record = saved_review(gui, sha)
+        expect(record is not None, "the change was not saved on this computer")
+        form = (record.get("forms") or {}).get(str(record.get("chosen")), {})
+        journey.facts["saved_review"] = {key: record.get(key) for key in
+                                         ("file", "ocr_language", "chosen", "step", "selected")}
+        journey.facts["saved_review"]["reviewed"] = form.get("reviewed")
+        expect(len(form.get("reviewed") or ()) == 1, f"saved review: {record}")
+        shot_at(gui, box, "item compared with the source")
+    with journey.step("restart the program"):
+        gui.stop()
+        gui.start()
+    with journey.step("after the restart the unfinished review is offered"):
+        nav(gui, "nav.questionnaires")
+        element, _ = find_text(gui, texts["offer"])
+        shot_at(gui, element, "unfinished review offered")
+    with journey.step("the same PDF opened again: the saved review comes back"):
+        gui.click(T("q.import"), control_type=("Button", "Text"))
+        gui.file_dialog(pdf, save=False)
+        gui.wait_text(texts["read"], timeout=600, scroll=False)
+        element, line = find_text(gui, texts["restored"], first="up")
+        journey.facts["restored"] = line
+        gui.wait_text(texts["ocr_used"])
+        shot_at(gui, element, "review restored")
+    with journey.step("the change, the 52 items and the items needing attention are shown"):
+        counts = read_counts(gui)
+        journey.facts["counts_after_restore"] = counts
+        expect(counts == after, f"after the restart: {counts}; before it: {after}")
+        # The status line is a live region: Windows may expose it as one text.
+        find_text(gui, T("imp.state.review"), first="up")
+        if counts["attention"]:
+            find_text(gui, T("imp.filter.attention", count=counts["attention"]))
+        # The restored review opens at the item last selected, its editor open.
+        box, _ = find_text(gui, T("imp.item_reviewed"), exact=True)
+        journey.facts["item_checked_after_restore"] = toggle_state(box)
+        expect(journey.facts["item_checked_after_restore"] in (1, None),
+               f"item {RESUME_ITEM} is no longer marked as compared with the source")
+        shot_at(gui, box, "change restored")
+    with journey.step("discard the review (the journey can run again on this computer)"):
+        # The review is long: the page stands thousands of pixels down at the
+        # item, and the mouse wheel over the item list scrolls the list, not
+        # the page (round 7, run 43434129037: the status line with "Discard
+        # this review" stayed 3,700 px above the window). After a restart the
+        # unfinished review is offered at the top of Questionnaires; the offer
+        # opens the review from its file on a page not yet scrolled, where the
+        # status line and its Discard are found as the restored text was.
+        gui.stop()
+        gui.start()
+        nav(gui, "nav.questionnaires")
+        find_text(gui, texts["offer"])
+        gui.click(texts["offer"], control_type=("Button", "Text"))
+        gui.wait_text(texts["read"], timeout=600, scroll=False)
+        find_text(gui, texts["restored"], first="up")
+        find_text(gui, T("imp.discard"), exact=True, first="up")
+        gui.click(T("imp.discard"), control_type=("Button", "Text"))
+        gui.click(T("imp.discard_confirm"), control_type="Button")
+        gui.wait_text(texts["discarded"], timeout=20)
+        expect(saved_review(gui, sha) is None, "the saved review was kept after Discard")
+        expect(not gui.has_text(texts["offer"]), "the discarded review is still offered")
+
+
+# ------------------------------------------------- negative paths
+# Message boxes of the Windows Save dialog: the buttons by name and by id
+# (MessageBox and TaskDialog ids), so that any Windows language is answered.
+DIALOG_BUTTONS = {"yes": (("Yes",), ("6", "CommandButton_6")),
+                  "no": (("No",), ("7", "CommandButton_7")),
+                  "ok": (("OK",), ("1", "CommandButton_1")),
+                  "cancel": (("Cancel",), ("2", "CommandButton_2"))}
+# Every outcome of a save (workspace_files): a refusal names why.
+SAVE_REFUSALS = ("save.folder_read_only", "save.file_locked", "save.blocked", "save.not_written",
+                 "save.failed_reason", "save.dialog_failed")
+
+
+def save_outcomes(target: Path) -> dict:
+    """What the program can say after a save to ``target``, in priority
+    order: "saved" (naming the file), each refusal, "cancelled"."""
+    stem = target.name.split(".")[0]
+    found = {"saved": re.compile(re.escape(T("save.saved", path="")) + r".*" + re.escape(stem))}
+    found.update({key.split(".", 1)[1]: template_pattern(key) for key in SAVE_REFUSALS})
+    found["cancelled"] = re.compile(re.escape(T("save.cancelled")))
+    return found
+
+
+def current_user() -> str:
+    """This user for icacls: ``*<SID>`` (any Windows language), else the name."""
+    import csv
+
+    with contextlib.suppress(Exception):
+        out = subprocess.run(["whoami", "/user", "/fo", "csv", "/nh"], capture_output=True,
+                             text=True, timeout=30).stdout.strip()
+        sid = next(csv.reader([out]))[1]
+        if sid.startswith("S-1-"):
+            return "*" + sid
+    return os.environ.get("USERNAME", "")
+
+
+@contextlib.contextmanager
+def read_only_folder(folder: Path):
+    """``folder`` made read-only for this user: the read-only attribute and
+    an access-control entry that denies writing (inherited by its files);
+    undone afterwards. Yields facts, including whether the driver itself is
+    refused (else the folder is not read-only on this computer)."""
+    folder.mkdir(parents=True, exist_ok=True)
+    who = current_user()
+    attrib = subprocess.run(["attrib", "+R", str(folder)], capture_output=True, text=True)
+    # Creating files and writing data, attributes and extended attributes are
+    # denied; reading and listing stay allowed (the plain W right would also
+    # deny SYNCHRONIZE and READ_CONTROL, and the folder could not be opened).
+    deny = subprocess.run(["icacls", str(folder), "/deny", f"{who}:(OI)(CI)(WD,AD,WEA,WA)"],
+                          capture_output=True, text=True)
+    facts = {"folder": str(folder), "user": who, "attrib_rc": attrib.returncode,
+             "icacls_rc": deny.returncode,
+             "icacls": " ".join((deny.stdout + deny.stderr).split())[-200:]}
+    probe = folder / "driver-probe.txt"
+    try:
+        probe.write_bytes(b"x")
+        facts["driver_refused"] = False
+        with contextlib.suppress(OSError):
+            probe.unlink()
+    except PermissionError:
+        facts["driver_refused"] = True
+    try:
+        yield facts
+    finally:
+        subprocess.run(["icacls", str(folder), "/remove:d", who], capture_output=True)
+        subprocess.run(["attrib", "-R", str(folder)], capture_output=True)
+
+
+@contextlib.contextmanager
+def read_only_file(path: Path, text: str):
+    """``path`` with ``text``, read-only (its attribute); writable again afterwards."""
+    import stat
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    os.chmod(path, stat.S_IREAD)
+    facts = {"file": str(path)}
+    try:
+        with open(path, "ab"):
+            pass
+        facts["driver_refused"] = False
+    except PermissionError:
+        facts["driver_refused"] = True
+    try:
+        yield facts
+    finally:
+        os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+
+
+def _has_name_box(window) -> bool:
+    """The Save dialog itself (it has a File name box), not a message box over it."""
+    with contextlib.suppress(Exception):
+        return bool(window.descendants(control_type="Edit"))
+    return False
+
+
+def _is_message_box(window) -> bool:
+    """A message box: no File name box, and Yes, No or OK to answer it."""
+    if _has_name_box(window):
+        return False
+    with contextlib.suppress(Exception):
+        for button in window.descendants(control_type="Button"):
+            info = button.element_info
+            for answer in ("yes", "no", "ok"):
+                names, ids = DIALOG_BUTTONS[answer]
+                if (info.name or "").replace("&", "") in names or (info.automation_id or "") in ids:
+                    return True
+    return False
+
+
+def save_dialog_windows(gui: Gui) -> tuple[list, list]:
+    """(Save dialogs, message boxes) of the program now. UI Automation lists
+    a window owned by another under its owner (Gui.dialogs), so a message
+    box of the Save dialog may be one of that dialog's children."""
+    dialogs, boxes = [], []
+    for window in gui.dialogs():
+        if not _has_name_box(window):
+            if _is_message_box(window):
+                boxes.append(window)
+            continue
+        dialogs.append(window)
+        with contextlib.suppress(Exception):
+            boxes += [child for child in window.children()
+                      if child.element_info.class_name == "#32770" and _is_message_box(child)]
+    return dialogs, boxes
+
+
+def _dialog_text(window) -> str:
+    parts = []
+    with contextlib.suppress(Exception):
+        parts.append(window.window_text())
+    with contextlib.suppress(Exception):
+        parts += [e.element_info.name for e in window.descendants(control_type="Text")
+                  if (e.element_info.name or "").strip()]
+    return " | ".join(part for part in parts if part)
+
+
+def _press(window, *answers: str) -> str:
+    """Press the first of ``answers`` (DIALOG_BUTTONS keys) the window offers."""
+    from pywinauto import keyboard
+
+    buttons = []
+    with contextlib.suppress(Exception):
+        buttons = window.descendants(control_type="Button")
+    for answer in answers:
+        names, ids = DIALOG_BUTTONS[answer]
+        for button in buttons:
+            info = button.element_info
+            if (info.name or "").replace("&", "") in names or (info.automation_id or "") in ids:
+                button.click_input()
+                time.sleep(0.8)
+                return answer
+    keyboard.send_keys("{ESC}")
+    time.sleep(0.8)
+    return "escape"
+
+
+def refused_save(gui: Gui, button: str, target: Path) -> dict:
+    """Press ``button`` and save to ``target`` in the Windows Save dialog
+    where the save cannot succeed. Unlike Gui.file_dialog, the dialog's own
+    questions are answered so that the program gets the path wherever
+    Windows lets it: Yes to replacing an existing file, otherwise No (never
+    "save somewhere else instead"). When Windows itself refuses the location
+    and the dialog stays open, it is cancelled. Returns what happened."""
+    from pywinauto import keyboard
+
+    gui.click(button, control_type=("Button", "Text"))
+    deadline, dialog = time.monotonic() + 30, None
+    while time.monotonic() < deadline and dialog is None:
+        dialog = next((w for w in gui.dialogs() if _has_name_box(w)), None)
+        time.sleep(0.5)
+    expect(dialog is not None, "the Windows Save dialog did not open")
+    time.sleep(1.0)
+    edits = []
+    with contextlib.suppress(Exception):
+        edits = dialog.descendants(control_type="Edit")
+    edit = next((e for key in ("1001", "1148") for e in edits
+                 if e.element_info.automation_id == key), None)
+    if edit is None and edits:
+        edit = max(edits, key=lambda e: e.element_info.rectangle.top)
+    if edit is not None:
+        with contextlib.suppress(Exception):
+            edit.click_input()
+    else:
+        keyboard.send_keys("%n")
+    time.sleep(0.3)
+    keyboard.send_keys("^a{BACKSPACE}")
+    keyboard.send_keys(escape_keys(str(target)), with_spaces=True, pause=0.01)
+    time.sleep(0.4)
+    keyboard.send_keys("{ENTER}")
+    facts = {"typed": str(target), "dialog_messages": [], "answers": [],
+             "cancelled_by_driver": False}
+    answered, quiet = set(), time.monotonic()
+    end = time.monotonic() + 40
+    while time.monotonic() < end:
+        windows, boxes = save_dialog_windows(gui)
+        if not windows and not boxes:
+            break
+        for box in boxes:
+            handle = getattr(box.element_info, "handle", None) or id(box)
+            if handle in answered:
+                continue
+            answered.add(handle)
+            text = _dialog_text(box)
+            gui.shot("save dialog message")
+            replace = re.search(r"replace|already exists", text, re.IGNORECASE)
+            facts["dialog_messages"].append(text)
+            facts["answers"].append(_press(box, *(("yes",) if replace else ()), "no", "ok",
+                                           "cancel"))
+            quiet = time.monotonic()
+        if not boxes and windows and time.monotonic() - quiet > 5:
+            # Only the Save dialog is open: Windows refused the location (or
+            # went into a folder). Cancel it; nothing may be saved elsewhere.
+            gui.shot("save dialog still open")
+            for window in windows:
+                facts["answers"].append(_press(window, "cancel"))
+            facts["cancelled_by_driver"] = True
+            quiet = time.monotonic()
+        time.sleep(0.5)
+    if any(save_dialog_windows(gui)):
+        gui.shot("save dialog stayed open")
+        raise StepFailure("the Windows Save dialog stayed open")
+    return facts
+
+
+def program_outcome(gui: Gui, target: Path) -> tuple[str, str]:
+    """(outcome, message) the program shows after a save to ``target``."""
+    time.sleep(3)        # the outcome replaces any earlier one on screen
+    return wait_any(gui, save_outcomes(target), timeout=40)
+
+
+def check_refused(journey: Journey, name: str, attempt: dict, outcome: str, message: str,
+                  *, unchanged: bool) -> None:
+    """A save that could not succeed was not claimed as saved, nothing was
+    written, and whoever refused it said why: the program (when it got the
+    path) or Windows' Save dialog (the program then says nothing was saved)."""
+    attempt.update(outcome=outcome, message=message)
+    journey.facts[name] = attempt
+    expect(outcome != "saved", f"the program claims a save that cannot have succeeded: {message}")
+    expect(unchanged, "a file was written or changed where the save had to fail")
+    if attempt["cancelled_by_driver"]:
+        attempt["refused_by"] = "the Windows Save dialog"
+        expect(outcome == "cancelled", f"after Windows refused the location: {message}")
+        expect(attempt["dialog_messages"], "the Save dialog stayed open without a message")
+    else:
+        attempt["refused_by"] = "the program"
+        expect(outcome in ("folder_read_only", "file_locked", "blocked"),
+               f"the program did not say why it could not save: {message}")
+
+
+def assistant_states() -> dict:
+    """What the assistant section can show, in priority order: a Send
+    button (a provider is connected on this computer) or why it is off."""
+    return {"ready": template_pattern("assistant.send"),
+            "no_key": T("assistant.off.no_key"),
+            "no_model": template_pattern("assistant.off.no_model"),
+            "no_store": T("assistant.off.no_store")}
+
+
+def ai_traffic(gui: Gui, title: str) -> dict:
+    """What the program recorded of AI requests: the project's audit log (a
+    request that may have reached a provider is always logged), today's
+    token count and the local log of requests without a project."""
+    import ai_assist
+    import ai_providers
+
+    usage = {}
+    with contextlib.suppress(OSError, ValueError):
+        usage = json.loads(ai_providers.usage_path(data_folder(gui)).read_text(encoding="utf-8"))
+    return {"logged_requests": len(project_query(
+                gui, title, "SELECT id FROM events WHERE kind = 'ai_request'")),
+            "tokens_today": int(usage.get("tokens", 0) or 0),
+            "local_log": ai_assist.local_log_path(data_folder(gui)).exists()}
+
+
+def permission(gui: Gui, title: str, source: str, allowed: int, timeout: float = 15) -> list:
+    """The stored decision for ``source``, once it is ``allowed`` (or the timeout)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        rows = project_query(gui, title, "SELECT allowed FROM ai_permissions WHERE source = ?",
+                             (source,))
+        if [row[0] for row in rows] == [allowed] or time.monotonic() > deadline:
+            return [row[0] for row in rows]
+        time.sleep(0.5)
+
+
+def journey_negative_paths(gui: Gui, work: Path, journey: Journey) -> None:
+    """Negative paths a researcher can meet, as far as the packaged program
+    shows them: (a) saving a result into a folder made read-only (attribute
+    and ACL) and over a read-only file, each refused in words and never
+    claimed as saved; (b) the AI assistant on a result without a provider:
+    it says why and offers nothing to send, and nothing is sent; (c) an AI
+    permission allowed and revoked for the project. A request refused after
+    the revocation needs a connected provider (a real key and a model): it
+    is recorded as not reachable, never attempted. No key is used anywhere.
+    tests/test_stage368_acceptance.py walks the same flow."""
+    import workspace_ai
+    from stage36_fixtures import generator
+
+    create_project(gui, journey, NEGATIVE_PROJECT)
+    open_data(gui, journey, generator().create_csv(work))
+    accept_levels(gui, journey)
+    with journey.step("a result to save: describe UCLA"):
+        nav(gui, "nav.analyze")
+        gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
+        click_chip(gui, T("goal.describe"))
+        gui.choose(T("role.variable"), option_label("UCLA", "scale"), options=stage36_options())
+        gui.click(regex="^" + re.escape(T("rec.run", method="")), control_type="Button")
+        gui.wait_text("Descriptive: UCLA", timeout=120)
+        find_text(gui, T("results.save_txt"), exact=True, timeout=120)
+    locked = work / "read-only-folder"
+    with journey.step("(a) save TXT into a folder made read-only: refused, not claimed"):
+        target = locked / "negative_result.txt"
+        with read_only_folder(locked) as lock:
+            expect(lock["driver_refused"], f"the folder could not be made read-only: {lock}")
+            attempt = refused_save(gui, T("results.save_txt"), target)
+            outcome, message = program_outcome(gui, target)
+            attempt.update(lock)
+            check_refused(journey, "read_only_folder", attempt, outcome, message,
+                          unchanged=not target.exists())
+        element, _ = find_text(gui, message)
+        shot_at(gui, element, "read-only folder refused")
+    with journey.step("(a) save TXT over a read-only file: refused, the file unchanged"):
+        existing = work / "read-only-file" / "negative_report.txt"
+        original = "Fictional placeholder: this file must stay as it is.\n"
+        # Typed without its extension: the dialog accepts the new name and the
+        # program adds ".txt" (workspace_files.with_extension), which is the
+        # read-only file; the program itself must then refuse.
+        typed = existing.with_name("negative_report")
+        with read_only_file(existing, original) as lock:
+            expect(lock["driver_refused"], f"the file could not be made read-only: {lock}")
+            find_text(gui, T("results.save_txt"), exact=True, timeout=60)
+            attempt = refused_save(gui, T("results.save_txt"), typed)
+            outcome, message = program_outcome(gui, existing)
+            attempt.update(lock, placeholder_left=typed.exists())
+            check_refused(journey, "read_only_file", attempt, outcome, message,
+                          unchanged=existing.read_text(encoding="utf-8") == original)
+        element, _ = find_text(gui, message)
+        shot_at(gui, element, "read-only file refused")
+    before = ai_traffic(gui, NEGATIVE_PROJECT)
+    journey.facts["ai_traffic_before"] = before
+    with journey.step("(b) the AI assistant without a provider: why, and nothing to send"):
+        header, _ = find_text(gui, regex="^" + re.escape(T("assistant.title")), first="up")
+        header.click_input()
+        try:
+            state, text = wait_any(gui, assistant_states(), timeout=10)
+        except StepFailure:
+            print("  [assistant] the click did not open the section; opening it through "
+                  "UI Automation", flush=True)
+            try:
+                header.expand()
+            except Exception:
+                Gui.activate(header)
+            state, text = wait_any(gui, assistant_states(), timeout=20)
+        journey.facts["assistant"] = {"state": state, "text": text}
+        if state == "ready":
+            journey.facts["assistant"]["note"] = (
+                "a provider is connected on this computer, so (b) and (c) do not apply; "
+                "nothing was sent")
+        else:
+            element, _ = find_text(gui, T("assistant.off_title"))
+            sends = gui.query(regex="^" + re.escape(T("assistant.send", provider="\0",
+                                                      model="").split("\0")[0]),
+                              control_type="Button")
+            expect(not sends, f"a Send button is offered without a provider: {len(sends)}")
+            shot_at(gui, element, "assistant not connected")
+            gui.click(T("assistant.open_settings"), control_type=("Button", "Text"))
+            # Settings → AI providers, below the appearance, profile and AI
+            # assistance cards (several thousand pixels down).
+            key_state, key_text = wait_any(gui, {
+                "no_key": workspace_ai.t("en", "no_key", provider="OpenAI"),
+                "no_store": workspace_ai.t("en", "no_store"),
+                "stored": workspace_ai.t("en", "stored", provider="OpenAI")},
+                timeout=120, step=5)
+            journey.facts["assistant"]["settings"] = {"key": key_state, "text": key_text}
+            element, _ = find_text(gui, key_text)
+            shot_at(gui, element, "no key stored")
+            element, _ = find_text(gui, T("ai.unavailable"), first="up", timeout=120)
+            shot_at(gui, element, "AI assistance not connected")
+    with journey.step("(c) an AI permission allowed, then revoked for the project"):
+        if journey.facts["assistant"]["state"] == "ready":
+            journey.facts["permission"] = "not attempted: a provider is connected on this computer"
+        else:
+            nav(gui, "nav.settings")
+            find_text(gui, T("ai.sources", title=NEGATIVE_PROJECT), timeout=120)
+            allowed = gui.check(T("ai.allow"), True, index=0)       # the first: Project overview
+            stored = permission(gui, NEGATIVE_PROJECT, "overview", 1)
+            shot_at(gui, allowed, "permission allowed")
+            gui.check(T("ai.allow"), False, index=0)
+            revoked = permission(gui, NEGATIVE_PROJECT, "overview", 0)
+            changes = [json.loads(detail) for (detail,) in project_query(
+                gui, NEGATIVE_PROJECT, "SELECT detail FROM events WHERE kind = 'ai_permission' "
+                                       "ORDER BY id")]
+            journey.facts["permission"] = {"overview_allowed": stored, "overview_revoked": revoked,
+                                           "logged": changes[-2:]}
+            expect(stored == [1] and revoked == [0], f"overview stored {stored}, then {revoked}")
+            expect(changes[-2:] == [{"source": "overview", "allowed": True},
+                                    {"source": "overview", "allowed": False}],
+                   f"the permission changes logged in the project: {changes[-2:]}")
+        journey.facts["request_after_revocation"] = (
+            "not reachable without a connected provider: the assistant prepares and sends a "
+            "request only with a provider, a key in the credential store and a model, and any "
+            "Send then contacts that provider; no key is used here. The refusal of a revoked "
+            "source is covered by tests/test_workspace_assistant.py (RefusalTests, a fake "
+            "credential store and a local mock provider)")
+    with journey.step("nothing was sent to an AI provider"):
+        after = ai_traffic(gui, NEGATIVE_PROJECT)
+        journey.facts["ai_traffic_after"] = after
+        expect(after == before, f"AI traffic recorded: before {before}, after {after}")
+
+
+# ============================ Stage 36.8 review findings K1 and K2 (#62)
+# tests/test_stage368_review_journeys.py walks both flows in the workspace harness.
+CONFIRMATIONS_PROJECT = "Fictional confirmations study"
+REPORT_PROJECT = "Fictional report composition"
+SECOND_REPORT_PROJECT = "Fictional second study"
+DESCRIPTIVE_UCLA = "Descriptive: UCLA"                     # the describe result's title
+REPORT_TITLE = "Fictional loneliness study"
+REPORT_NOTE = "Fictional reading: loneliness goes with more cautious action."
+LEFT_OUT = "limitations"                                  # the section left out (research_report)
+REPORT_LANGUAGES = ["English", "Latviešu", "Русский"]       # the report language dropdown
+
+
+def run_button() -> str:
+    """The guided Run button ("Run <method>"), not "Run again" beside a task's result."""
+    run, again = T("rec.run", method=""), T("task.rerun")
+    return "^" + re.escape(run) + "(?!" + re.escape(again[len(run):]) + "$)"
+
+
+def group_confirmations(options: dict | None = None) -> dict[str, str]:
+    """``{"design": label, "data": label}``: what the group comparison of
+    several outcomes asks the researcher to confirm (engine wording), for
+    these options (a two-group test: ``{"two_group_method": ...}``)."""
+    from workspace_methods import METHODS, default_options, required_confirmations
+    from workspace_text import label as engine_label
+
+    spec = METHODS["batch_groups"]
+    found = {}
+    for confirmation in required_confirmations(spec, {**default_options(spec), **(options or {})}):
+        found.setdefault(confirmation.kind, engine_label("en", confirmation.label))
+    return found
+
+
+def group_runs(gui: Gui, title: str) -> list[list[str]]:
+    """The outcomes of every group-comparison result of the project, in the
+    order they were calculated (its database, read-only)."""
+    rows = project_query(gui, title, "SELECT roles FROM runs WHERE method = 'batch_groups' "
+                                     "ORDER BY rowid")
+    return [list(json.loads(roles).get("outcomes") or ()) for (roles,) in rows]
+
+
+def project_runs(gui: Gui, title: str) -> int:
+    """How many results (runs of any method) the project holds."""
+    return project_query(gui, title, "SELECT COUNT(*) FROM runs")[0][0]
+
+
+def runs_after(gui: Gui, title: str, before: int, wait: float = 10) -> int:
+    """How many results the project holds once ``wait`` seconds have passed
+    (earlier if one more than ``before`` appears)."""
+    deadline = time.monotonic() + wait
+    while True:
+        count = project_runs(gui, title)
+        if count > before or time.monotonic() > deadline:
+            return count
+        time.sleep(1)
+
+
+def confirmation_states(gui: Gui, labels) -> dict[str, int | None]:
+    """The toggle state of each confirmation box, read through UI Automation."""
+    return {label: toggle_state(gui.find(label, control_type="CheckBox")) for label in labels}
+
+
+def journey_confirmations(gui: Gui, work: Path, journey: Journey) -> None:
+    """Review finding K1 on the packaged program (spec B: change the
+    variables, then run again). A design confirmation (independent groups)
+    holds while its variables are the same; a data confirmation (outcome
+    distributions, outliers, group sizes) holds for one table, one set of
+    variables and one method. After a batch run the program keeps the
+    researcher in the task with its variables step above the result
+    ("Change variables"), so the outcomes are changed after the run.
+    UI Automation reports every button as enabled (docs/STAGE368_A11Y_AND_
+    LOCALE.md §1): instead of Run's state, the project's database shows
+    that Run, Ctrl+Enter and Run again add no result before the data
+    confirmation is given again. tests/test_stage368_review_journeys.py
+    walks the same flow."""
+    from stage36_fixtures import SCALES, generator
+
+    labels = group_confirmations()
+    design, data = labels["design"], labels["data"]
+    dropped, title = SCALES[0], CONFIRMATIONS_PROJECT
+    create_project(gui, journey, title)
+    open_data(gui, journey, generator().create_csv(work))
+    accept_levels(gui, journey)
+    with journey.step("eight scales by UCLA_Level, both confirmations, Run"):
+        nav(gui, "nav.analyze")
+        gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
+        click_chip(gui, T("goal.compare"))
+        gui.choose(T("role.group"), option_label("UCLA_Level", "ordinal"),
+                   options=stage36_options())
+        gui.click(T("pick.all_scale", count=10), control_type="Button")
+        gui.check(option_label("Age", "scale"), False)
+        gui.check(option_label("UCLA", "scale"), False)
+        gui.wait_text("fewer than five values", timeout=20)
+        gui.check(design)
+        gui.check(data)
+        gui.click(regex=run_button(), control_type="Button")
+        gui.wait_text(T("task.title_compare", group="UCLA_Level", count=8), timeout=180)
+        runs = group_runs(gui, title)
+        journey.facts["first_run_outcomes"] = runs[-1] if runs else None
+        expect(len(runs) == 1 and sorted(runs[0]) == sorted(SCALES),
+               f"group comparisons in the project: {runs}")
+    with journey.step(f"after the run, {dropped} left out of the outcomes"):
+        gui.click(T("task.change_variables"), control_type=("Button", "Text"))
+        gui.check(option_label(dropped, "scale"), False)
+    with journey.step("the design confirmation holds, the data confirmation is cleared"):
+        states = confirmation_states(gui, (design, data))
+        journey.facts["after_outcome_change"] = states
+        expect(states[design] == 1, f"{design!r} after other outcomes: {states[design]}")
+        expect(states[data] == 0, f"{data!r} after other outcomes: {states[data]}")
+        element, _ = find_text(gui, T("design.reconfirm"))
+        shot_at(gui, element, "data confirmation to give again")
+    with journey.step("Run, Ctrl+Enter and Run again add no result before re-confirming"):
+        before = project_runs(gui, title)
+        attempts = {"runs_before": before}
+        gui.click(regex=run_button(), control_type="Button")
+        attempts["after_run"] = runs_after(gui, title, before)
+        gui.keys("^{ENTER}")
+        attempts["after_ctrl_enter"] = runs_after(gui, title, before)
+        # Said in the status line after Ctrl+Enter; also Run's tooltip, so
+        # only a fact, the database count above is the evidence.
+        attempts["confirm_first_text_shown"] = gui.has_text(T("disabled.confirm_first"))
+        gui.click(T("task.rerun"), control_type="Button")
+        attempts["after_run_again"] = runs_after(gui, title, before)
+        journey.facts["attempts_before_reconfirming"] = attempts
+        expect(all(attempts[key] == before for key in ("after_run", "after_ctrl_enter",
+                                                       "after_run_again")),
+               f"a result was added before the data confirmation was given again: {attempts}")
+    with journey.step(f"the data confirmation given again: a result for {len(SCALES) - 1} "
+                      f"outcomes"):
+        gui.check(data)
+        gui.click(regex=run_button(), control_type="Button")
+        expect(runs_after(gui, title, before, wait=180) == before + 1, "no second result")
+        runs = group_runs(gui, title)
+        journey.facts["second_run_outcomes"] = runs[-1]
+        expect(sorted(runs[-1]) == sorted(SCALES[1:]),
+               f"outcomes of the second result: {runs[-1]}")
+        element, _ = find_text(gui, T("task.versions", count=2), timeout=60)
+        shot_at(gui, element, "second result of the task")
+    with journey.step("another grouping variable, Sex (two groups): both cleared"):
+        gui.choose(T("role.group"), option_label("Sex", "nominal"), options=stage36_options())
+        find_text(gui, design, exact=True)
+        asked = [name for name in dict.fromkeys(
+            e.element_info.name or "" for e in gui.query(control_type="CheckBox"))
+            if name and " · " not in name]              # not a variable's box ("Age · …")
+        states = confirmation_states(gui, asked)
+        expected = list(group_confirmations({"two_group_method": "welch"}).values())
+        journey.facts["two_group_test"] = {"asked": asked, "states": states,
+                                           "engine_labels": expected}
+        expect(sorted(asked) == sorted(expected), f"the two-group test asks for {asked}")
+        expect(all(state == 0 for state in states.values()),
+               f"confirmations given for UCLA_Level are still ticked: {states}")
+        element, _ = find_text(gui, T("design.reconfirm"))
+        shot_at(gui, element, "both confirmations to give again")
+
+
+def press_in_row(gui: Gui, row_text: str, name: str):
+    """Press the control named ``name`` (an icon button, named by its
+    tooltip) in the same row as the text ``row_text`` (a report entry)."""
+    anchor, _ = find_text(gui, row_text, exact=True)
+    box = anchor.element_info.rectangle
+    middle = (box.top + box.bottom) // 2
+    found = []
+    for element in gui.query(name):
+        with contextlib.suppress(Exception):
+            rect = element.element_info.rectangle
+            if rect.left >= box.left and abs((rect.top + rect.bottom) // 2 - middle) <= 45:
+                found.append((abs((rect.top + rect.bottom) // 2 - middle), element))
+    expect(found, f"no {name!r} in the row of {row_text!r}")
+    element = min(found, key=lambda pair: pair[0])[1]
+    element.click_input()
+    time.sleep(1.0)
+    return element
+
+
+def set_box(gui: Gui, box, value: bool):
+    """Tick or clear a checkbox found by pattern (Gui.check needs its exact name)."""
+    if toggle_state(box) != int(value):
+        rect = box.element_info.rectangle
+        box.click_input(coords=(min(20, rect.width() // 2), rect.height() // 2))
+        time.sleep(0.8)
+    if toggle_state(box) not in (int(value), None):
+        with contextlib.suppress(Exception):
+            box.toggle()
+        time.sleep(0.8)
+    expect(toggle_state(box) in (int(value), None), f"the box could not be set to {value}")
+    return box
+
+
+def section_pattern(language: str, key: str = LEFT_OUT) -> str:
+    """The Reports page's box of one section, "14. Limitations · …": its
+    title is written in the report's language."""
+    import research_report as rr
+
+    number = rr.SECTIONS.index(key) + 1
+    return rf"^{number}\. {re.escape(rr.text(language, key))} · "
+
+
+def section_box(gui: Gui, language: str, key: str = LEFT_OUT):
+    box, _ = find_text(gui, regex=section_pattern(language, key), timeout=60,
+                       control_type="CheckBox")
+    return box
+
+
+def open_interpretation(gui: Gui) -> None:
+    """Open a result's Interpretation section (it holds the researcher's
+    note), unless it is open already: a click on an open section closes it."""
+    header, _ = find_text(gui, regex="^" + re.escape(T("results.interpretation")) + r"(\n|$)")
+    for attempt in range(3):
+        with contextlib.suppress(StepFailure):
+            find_text(gui, T("results.notes"), exact=True, timeout=6, moves=3)
+            return
+        if attempt == 0:
+            header.click_input()
+        else:
+            try:
+                header.expand()
+            except Exception:
+                Gui.activate(header)
+        time.sleep(1.0)
+    raise StepFailure("the Interpretation section did not open")
+
+
+def saved_entries(gui: Gui, title: str, method: str, wait: float = 15) -> dict:
+    """The note and reviewed checks the project holds for its ``method``
+    result (typed text reaches the program a little after the keys)."""
+    deadline = time.monotonic() + wait
+    while True:
+        rows = project_query(gui, title, "SELECT note, provenance FROM runs WHERE method = ?",
+                             (method,))
+        found = {"note": rows[0][0], "reviewed": json.loads(rows[0][1]).get("reviewed")} \
+            if rows else {}
+        if (found.get("note") == REPORT_NOTE and found.get("reviewed")) or \
+                time.monotonic() > deadline:
+            return found
+        time.sleep(1)
+
+
+def batch_title(csv_path: Path) -> str:
+    """The title of the eight-correlation batch result, from the engine."""
+    import pandas as pd
+
+    from batch_correlation import correlate_many
+    from stage36_fixtures import SCALES
+
+    return correlate_many(pd.read_csv(csv_path), "UCLA", list(SCALES),
+                          method="spearman").table().title
+
+
+def docx_tables(path: Path) -> list[list[list[str]]]:
+    """Every table of a Word document as rows of cell texts."""
+    from docx import Document
+
+    return [[[cell.text.strip() for cell in row.cells] for row in table.rows]
+            for table in Document(str(path)).tables]
+
+
+def report_order(path: Path, language: str) -> dict[str, list[str]]:
+    """The results in the order the research report lists them: its data and
+    sample table and its reproducibility appendix (research_report)."""
+    from research_report import TEXT as REPORT
+
+    order = {}
+    for table in docx_tables(path):
+        if table and tuple(table[0]) == tuple(REPORT[language]["data_columns"]):
+            order["data_and_sample"] = [row[0] for row in table[1:]]
+        if table and tuple(table[0]) == tuple(REPORT[language]["appendix_columns"]):
+            order["appendix"] = [row[1] for row in table[1:]]
+    return order
+
+
+def report_checks(batch: str) -> dict[str, str]:
+    """The batch result's first assumption check (reviewed) and its second
+    (left open), as the Latvian report writes them."""
+    from interpretation_i18n import translate_assumption
+    from interpretation_wizard import METHOD_PROFILES
+    from research_report import TEXT as REPORT
+
+    first, second = METHOD_PROFILES["batch_correlation"].assumptions[:2]
+    return {"reviewed": first, "open": second,
+            "reviewed_lv": f"{translate_assumption(first, 'lv')} — "
+                           f"{REPORT['lv']['assumption_reviewed']}",
+            "open_lv": f"{translate_assumption(second, 'lv')} — {REPORT['lv']['assumption_open']}"}
+
+
+def journey_report_composition(gui: Gui, work: Path, journey: Journey) -> None:
+    """Review finding K2 on the packaged program (spec G: compose the report,
+    restart, the composition is kept). Two results go into the report and
+    their order is changed with the Reports page's own Move up; the batch
+    result gets a researcher's note and one assumption check reviewed; the
+    report gets a title, one section left out and Latvian. After a restart
+    all of it is back, and the Word report has the results in that order,
+    the title, no left-out section and the reviewed check marked in
+    Latvian. A second project created in the hub shows none of it.
+    tests/test_stage368_review_journeys.py walks the same flow."""
+    import research_report as rr
+    from stage36_fixtures import generator
+
+    csv_path = generator().create_csv(work)
+    batch = batch_title(csv_path)
+    checks = report_checks(batch)
+    journey.facts["engine_titles"] = [batch, DESCRIPTIVE_UCLA]
+    create_project(gui, journey, REPORT_PROJECT)
+    open_data(gui, journey, csv_path)
+    accept_levels(gui, journey)
+    with journey.step("eight correlations: a result in the report"):
+        run_eight_correlations(gui)
+        gui.click(T("results.add_report"), control_type="Button")
+        gui.find(T("results.in_report"), control_type="Button", timeout=20)
+    with journey.step("a description of UCLA: a second result in the report"):
+        gui.click(T("task.new"), control_type="Button")
+        click_chip(gui, T("goal.describe"))
+        gui.choose(T("role.variable"), option_label("UCLA", "scale"), options=stage36_options())
+        gui.click(regex=run_button(), control_type="Button")
+        gui.wait_text(DESCRIPTIVE_UCLA, timeout=120)
+        gui.click(T("results.add_report"), control_type="Button")
+        gui.find(T("results.in_report"), control_type="Button", timeout=20)
+    with journey.step("Move up on the Reports page: the description first"):
+        nav(gui, "nav.reports")
+        find_text(gui, f"1. {batch}", exact=True)
+        press_in_row(gui, f"2. {DESCRIPTIVE_UCLA}", T("reports.move_up"))
+        element, _ = find_text(gui, f"1. {DESCRIPTIVE_UCLA}", exact=True, timeout=20)
+        find_text(gui, f"2. {batch}", exact=True)
+        shot_at(gui, element, "report order changed")
+    with journey.step("the batch result: one check reviewed and a researcher's note"):
+        press_in_row(gui, f"2. {batch}", T("reports.open_result"))
+        gui.wait_text(batch, timeout=30)
+        box = gui.check(checks["reviewed"])
+        open_interpretation(gui)
+        gui.type_into(T("results.notes"), REPORT_NOTE)
+        saved = saved_entries(gui, REPORT_PROJECT, "batch_correlation")
+        journey.facts["saved_note_and_review"] = saved
+        expect(saved == {"note": REPORT_NOTE, "reviewed": [checks["reviewed"]]},
+               f"saved in the project: {saved}")
+        shot_at(gui, box, "check reviewed")
+    with journey.step("a study title, the limitations left out, the report in Latvian"):
+        nav(gui, "nav.reports")
+        gui.type_into(T("reports.study_title"), REPORT_TITLE)
+        gui.keys("{TAB}")                  # the title is saved when its field is left
+        set_box(gui, section_box(gui, "en"), False)
+        gui.choose(T("reports.language"), "Latviešu", options=REPORT_LANGUAGES)
+        box = section_box(gui, "lv")       # the sections are named in the report's language
+        expect(toggle_state(box) == 0 and T("reports.section_off") in element_text(gui, box),
+               f"the section is not left out: {element_text(gui, box)!r}, "
+               f"toggle state {toggle_state(box)}")
+        settings = [json.loads(detail) for (detail,) in project_query(
+            gui, REPORT_PROJECT, "SELECT detail FROM events WHERE kind = 'report_settings' "
+                                 "ORDER BY id")]
+        journey.facts["saved_report_settings"] = settings[-1] if settings else None
+        expect(settings and settings[-1] == {"title": REPORT_TITLE, "sections_off": [LEFT_OUT],
+                                             "language": "lv"},
+               f"report settings saved in the project: {settings[-1:] or None}")
+        shot_at(gui, box, "section left out")
+    with journey.step("restart the program and open the project"):
+        gui.stop()
+        gui.start()
+        open_project(gui, REPORT_PROJECT)
+    with journey.step("after the restart: the order, title, section and language are kept"):
+        nav(gui, "nav.reports")
+        element, _ = find_text(gui, f"1. {DESCRIPTIVE_UCLA}", exact=True)
+        find_text(gui, f"2. {batch}", exact=True)
+        field = gui.find(T("reports.study_title"), control_type="Edit")
+        journey.facts["title_after_restart"] = gui.value(field)
+        expect(gui.value(field) == REPORT_TITLE, f"the study title: {gui.value(field)!r}")
+        box = section_box(gui, "lv")
+        journey.facts["section_after_restart"] = {"text": element_text(gui, box),
+                                                  "ticked": toggle_state(box)}
+        expect(toggle_state(box) == 0 and T("reports.section_off") in element_text(gui, box),
+               f"the section after the restart: {journey.facts['section_after_restart']}")
+        language, _ = wait_any(gui, {code: re.compile(section_pattern(code, "descriptives"))
+                                     for code in ("lv", "en")}, timeout=30)
+        journey.facts["report_language_after_restart"] = language
+        expect(language == "lv", "the report language came back as English")
+        shot_at(gui, element, "report composition after the restart")
+    with journey.step("after the restart: the note and the reviewed check are back"):
+        press_in_row(gui, f"2. {batch}", T("reports.open_result"))
+        gui.wait_text(batch, timeout=30)
+        reviewed = toggle_state(gui.find(checks["reviewed"], control_type="CheckBox"))
+        still_open = toggle_state(gui.find(checks["open"], control_type="CheckBox"))
+        open_interpretation(gui)
+        note = gui.value(gui.find(T("results.notes"), control_type="Edit"))
+        journey.facts["after_restart"] = {"reviewed": reviewed, "open": still_open, "note": note}
+        expect((reviewed, still_open) == (1, 0),
+               f"assumption checks after the restart (toggle states): {reviewed}, {still_open}")
+        expect(note == REPORT_NOTE, f"the note after the restart: {note!r}")
+    with journey.step("the Word report"):
+        nav(gui, "nav.reports")
+    path = work / "report_composition.docx"
+    save_via_dialog(gui, journey, T("reports.export_docx"), path, kind="docx",
+                    contains=(REPORT_TITLE, checks["reviewed_lv"], checks["open_lv"],
+                              REPORT_NOTE))
+    with journey.step("the Word report: the chosen order, nothing left out shown"):
+        order = report_order(path, "lv")
+        journey.facts["word_report_order"] = order
+        expect(order.get("data_and_sample") == [DESCRIPTIVE_UCLA, batch]
+               and order.get("appendix") == [DESCRIPTIVE_UCLA, batch],
+               f"results in the Word report: {order}")
+        from docx import Document
+
+        document = Document(str(path))
+        text = "\n".join(p.text for p in document.paragraphs)
+        headings = [p.text for p in document.paragraphs if p.style.name.startswith("Heading")]
+        journey.facts["word_report_headings"] = headings
+        left_out = rr.text("lv", LEFT_OUT)
+        expect(not any(left_out in heading for heading in headings) and left_out not in text,
+               f"the left-out section {left_out!r} is in the report")
+    # A second project, created in the hub (Home), with a result of its own.
+    create_project(gui, journey, SECOND_REPORT_PROJECT)
+    open_data(gui, journey, csv_path)
+    accept_levels(gui, journey)
+    with journey.step("the second project shows none of these entries"):
+        nav(gui, "nav.analyze")
+        gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
+        click_chip(gui, T("goal.describe"))
+        gui.choose(T("role.variable"), option_label("UCLA", "scale"), options=stage36_options())
+        gui.click(regex=run_button(), control_type="Button")
+        gui.wait_text(DESCRIPTIVE_UCLA, timeout=120)
+        from interpretation_wizard import METHOD_PROFILES
+
+        described = confirmation_states(gui, METHOD_PROFILES["descriptive"].assumptions)
+        open_interpretation(gui)
+        note = gui.value(gui.find(T("results.notes"), control_type="Edit"))
+        gui.click(T("results.add_report"), control_type="Button")
+        gui.find(T("results.in_report"), control_type="Button", timeout=20)
+        nav(gui, "nav.reports")
+        find_text(gui, f"1. {DESCRIPTIVE_UCLA}", exact=True)
+        others = [text for _, text in screen_texts(gui)
+                  if text == f"2. {DESCRIPTIVE_UCLA}" or text.startswith(f"2. {batch}")]
+        title = gui.value(gui.find(T("reports.study_title"), control_type="Edit"))
+        box = section_box(gui, "en")
+        second = {"checks_reviewed": described, "note": note, "title": title,
+                  "limitations": {"text": element_text(gui, box), "ticked": toggle_state(box)},
+                  "other_entries": others}
+        journey.facts["second_project"] = second
+        expect(all(state == 0 for state in described.values()) and note == "" and title == ""
+               and not others, f"the second project shows entries of the first: {second}")
+        expect(toggle_state(box) == 1 and T("reports.section_off") not in
+               element_text(gui, box), "a section is left out in the second project")
+        shot_at(gui, box, "second project report settings")
+
+
 # Journeys that prepare the machine and start the program themselves.
 STARTS_ITSELF = {"legacy-migration", "installed-reopen", "update-a-to-b"}
 
@@ -2358,6 +3884,15 @@ JOURNEYS = {
     # project stage36-report continues).
     "stage36-report": journey_stage36_report,
     "import-damaged": journey_import_damaged,
+    # Stage 36.8 (#62, Part 8: installed-Windows user acceptance): spec
+    # journeys F and E and the negative paths, after the 13 journeys above,
+    # which run unchanged and in their order.
+    "psychometrics": journey_psychometrics,
+    "import-resume": journey_import_resume,
+    "negative-paths": journey_negative_paths,
+    # Stage 36.8 review findings K1 and K2 (#62), after the journeys above.
+    "confirmations": journey_confirmations,
+    "report-composition": journey_report_composition,
 }
 
 
@@ -2442,7 +3977,8 @@ def main(argv=None) -> int:
           + "".join(f"\n  {event}" for event in report["window_guard"]), flush=True)
     (out / "gui-e2e-result.json").write_text(json.dumps(report, indent=1, ensure_ascii=False),
                                              encoding="utf-8")
-    for name in ("ancova_report.txt", "combined_report.txt", "pilot_responses.csv"):
+    for name in ("ancova_report.txt", "combined_report.txt", "pilot_responses.csv",
+                 "psychometrics_report.txt"):
         with contextlib.suppress(OSError):
             shutil.copy(work / name, out / name)
     return 0 if report["ok"] else 1

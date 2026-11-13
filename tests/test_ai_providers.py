@@ -160,7 +160,10 @@ class ProviderTests(unittest.TestCase):
         self.mock.faults = ["slow"] * (ap.RETRIES + 1)
         with self.assertRaises(ap.ProviderError) as caught:
             ap.generate("openai", KEY, "gpt-test-1", "x", timeout=0.3, **self.http)
-        self.assertEqual(caught.exception.reason, "offline")
+        # Stage 36.8 (#62): a timeout is reported as one, not as "offline",
+        # and a generation is not sent again (test_stage368_ai_gate, gate 7).
+        self.assertEqual(caught.exception.reason, "timeout")
+        self.assertEqual(len([r for r in self.mock.requests if r[0] == "POST"]), 1)
         cancel = threading.Event()
         cancel.set()
         with self.assertRaises(ap.ProviderError) as caught:
