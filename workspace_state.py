@@ -276,7 +276,9 @@ class ResearchSession:
         distinct = series.nunique()
         numeric = pd.api.types.is_numeric_dtype(series)
         if distinct == len(series) and distinct > 20:
-            return f"{distinct} unique"
+            from workspace_text import t
+
+            return t(language, "data.values_unique", count=distinct)
         if numeric and distinct > 12:
             low, high = series.min(), series.max()
             fmt = (lambda v: f"{v:g}")

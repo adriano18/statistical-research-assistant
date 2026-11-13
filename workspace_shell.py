@@ -32,19 +32,20 @@ from workspace_text import count_text
 
 ROOT = Path(__file__).resolve().parent
 EXAMPLES = ROOT / "examples"
+# Sample datasets: (file in examples/, text key of its label).
 SAMPLES = (
-    ("sample_scale.csv", "Questionnaire scale · two groups"),
-    ("sample_survey.csv", "Small survey"),
-    ("sample_three_groups.csv", "Three groups"),
-    ("sample_paired.csv", "Before / after"),
-    ("sample_repeated.csv", "Three occasions"),
-    ("sample_categorical.csv", "Two categorical variables"),
-    ("sample_regression.csv", "Regression"),
-    ("sample_logistic.csv", "Binary outcome"),
-    ("sample_ancova.csv", "ANCOVA"),
-    ("sample_ancova_interaction.csv", "ANCOVA with interaction"),
-    ("sample_omega_bootstrap.csv", "Reliability with bootstrap CI"),
-    ("sample_factor.csv", "Factor analysis"),
+    ("sample_scale.csv", "sample.scale"),
+    ("sample_survey.csv", "sample.survey"),
+    ("sample_three_groups.csv", "sample.three_groups"),
+    ("sample_paired.csv", "sample.paired"),
+    ("sample_repeated.csv", "sample.repeated"),
+    ("sample_categorical.csv", "sample.categorical"),
+    ("sample_regression.csv", "sample.regression"),
+    ("sample_logistic.csv", "sample.logistic"),
+    ("sample_ancova.csv", "sample.ancova"),
+    ("sample_ancova_interaction.csv", "sample.ancova_interaction"),
+    ("sample_omega_bootstrap.csv", "sample.omega_bootstrap"),
+    ("sample_factor.csv", "sample.factor"),
 )
 AREAS = ("home", "data", "questionnaires", "analyze", "results", "reports")
 _ACTIVE: "weakref.ReferenceType[WorkspaceApp] | None" = None
@@ -484,7 +485,7 @@ class WorkspaceApp:
             body = page.build()
         except Exception as error:  # a page bug must not blank the window
             body = wc.notice(self.ui, f"{type(error).__name__}: {error}", "danger",
-                             title="This page could not be shown")
+                             title=self.t("page.failed"))
         if self.route in self.JOURNEY_ROUTES:
             body = ft.Column([self.constrained(self._journey()), body], spacing=tk.SPACE_3,
                              horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
@@ -1081,7 +1082,8 @@ class DataPage:
                 ft.DataCell(wc.text(ui, info.name, weight=ft.FontWeight.W_600, selectable=True)),
                 ft.DataCell(wc.text(ui, ui.t(f"storage.{info.storage}"),
                                     color=ui.p.text_secondary)),
-                ft.DataCell(wc.text(ui, s.value_summary(info.name), color=ui.p.text_secondary,
+                ft.DataCell(wc.text(ui, s.value_summary(info.name, ui.language),
+                                    color=ui.p.text_secondary,
                                     max_lines=2, data=f"values-{info.name}")),
                 ft.DataCell(wc.text(ui, suggestion, color=ui.p.text_secondary)),
                 ft.DataCell(level),
@@ -1161,28 +1163,29 @@ class DataPage:
                 sheets = workbook_sheets(s.source_path)
             except Exception:
                 sheets = []
+
+        def choices(group, values):
+            return [(v, ui.t(f"data.opt.{group}.{v}")) for v in values]
+
+        encodings = choices("encoding", ("auto",))
+        encodings += [("utf-8-sig", "UTF-8"), ("utf-16", "UTF-16")]
+        encodings += choices("encoding", ("cp1257", "cp1251", "cp1252"))
         fields = [
-            wc.dropdown(ui, "Excel worksheet", [(n, n) for n in sheets], o["sheet"],
+            wc.dropdown(ui, ui.t("data.opt.sheet"), [(n, n) for n in sheets], o["sheet"],
                         on_select=setter("sheet"), width=220, disabled=not sheets),
-            wc.text_field(ui, "Header row (1-based)", o["header_row"], width=170,
+            wc.text_field(ui, ui.t("data.opt.header_row"), o["header_row"], width=170,
                           on_change=setter("header_row")),
-            wc.text_field(ui, "Data begins at row (optional)", o["data_start"], width=230,
+            wc.text_field(ui, ui.t("data.opt.data_start"), o["data_start"], width=230,
                           on_change=setter("data_start")),
-            wc.dropdown(ui, "CSV separator", [("auto", "Auto detect"), ("comma", "Comma ,"),
-                                              ("semicolon", "Semicolon ;"), ("tab", "Tab"),
-                                              ("pipe", "Pipe |")], o["separator"],
-                        on_select=setter("separator"), width=190),
-            wc.dropdown(ui, "Decimal notation", [("auto", "Auto (conservative)"),
-                                                 ("dot", "Dot decimal / 1,234.5"),
-                                                 ("comma", "Comma decimal / 1.234,5")],
+            wc.dropdown(ui, ui.t("data.opt.separator"),
+                        choices("separator", ("auto", "comma", "semicolon", "tab", "pipe")),
+                        o["separator"], on_select=setter("separator"), width=190),
+            wc.dropdown(ui, ui.t("data.opt.decimal"),
+                        choices("decimal", ("auto", "dot", "comma")),
                         o["decimal"], on_select=setter("decimal"), width=230),
-            wc.dropdown(ui, "Text encoding", [("auto", "Auto detect / UTF-8"),
-                                              ("utf-8-sig", "UTF-8"), ("utf-16", "UTF-16"),
-                                              ("cp1257", "Windows Baltic (CP1257)"),
-                                              ("cp1251", "Windows Cyrillic (CP1251)"),
-                                              ("cp1252", "Windows Western (CP1252)")],
+            wc.dropdown(ui, ui.t("data.opt.encoding"), encodings,
                         o["encoding"], on_select=setter("encoding"), width=250),
-            wc.text_field(ui, "Missing text markers (semicolon-separated)", o["missing"],
+            wc.text_field(ui, ui.t("data.opt.missing"), o["missing"],
                           width=360, on_change=setter("missing")),
         ]
         report = s.import_report
@@ -1285,7 +1288,7 @@ class DataPage:
             await self.app.load_sample(self.sample)
 
         return wc.card(ui, [ft.Row([
-            wc.dropdown(ui, ui.t("data.sample_pick"), [(n, f"{label} · {n}") for n, label in SAMPLES],
+            wc.dropdown(ui, ui.t("data.sample_pick"), [(n, f"{ui.t(key)} · {n}") for n, key in SAMPLES],
                         self.sample, on_select=pick, width=380, data="data-sample-pick"),
             wc.button(ui, ui.t("data.sample"), load, icon=ft.Icons.SCIENCE_OUTLINED,
                       data="data-sample"),
@@ -1294,7 +1297,7 @@ class DataPage:
 
     def _path_fallback(self) -> ft.Control:
         ui = self.app.ui
-        field = wc.text_field(ui, "Full local file path", width=520)
+        field = wc.text_field(ui, ui.t("data.path_field"), width=520)
 
         async def open_path(e):
             raw = (field.value or "").strip().strip('"')
