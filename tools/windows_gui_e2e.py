@@ -2972,11 +2972,26 @@ def journey_import_resume(gui: Gui, work: Path, journey: Journey) -> None:
                f"item {RESUME_ITEM} is no longer marked as compared with the source")
         shot_at(gui, box, "change restored")
     with journey.step("discard the review (the journey can run again on this computer)"):
+        # The review is long: the page stands thousands of pixels down at the
+        # item, and the mouse wheel over the item list scrolls the list, not
+        # the page (round 7, run 43434129037: the status line with "Discard
+        # this review" stayed 3,700 px above the window). After a restart the
+        # unfinished review is offered at the top of Questionnaires; the offer
+        # opens the review from its file on a page not yet scrolled, where the
+        # status line and its Discard are found as the restored text was.
+        gui.stop()
+        gui.start()
+        nav(gui, "nav.questionnaires")
+        find_text(gui, texts["offer"])
+        gui.click(texts["offer"], control_type=("Button", "Text"))
+        gui.wait_text(texts["read"], timeout=600, scroll=False)
+        find_text(gui, texts["restored"], first="up")
         find_text(gui, T("imp.discard"), exact=True, first="up")
         gui.click(T("imp.discard"), control_type=("Button", "Text"))
         gui.click(T("imp.discard_confirm"), control_type="Button")
         gui.wait_text(texts["discarded"], timeout=20)
         expect(saved_review(gui, sha) is None, "the saved review was kept after Discard")
+        expect(not gui.has_text(texts["offer"]), "the discarded review is still offered")
 
 
 # ------------------------------------------------- negative paths
