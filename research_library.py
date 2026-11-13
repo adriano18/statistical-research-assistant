@@ -207,8 +207,9 @@ def _diacritics_option(tokenizer: str) -> int:
     return 0 if tokenizer.startswith("trigram") else 1
 
 
-# Function words of English, Latvian and Russian, left out of prefix queries
-# (negations stay: "no effect" and "не отличаются" mean something).
+# Function words of English, Latvian and Russian, left out of stemmed and
+# prefix queries. Negations stay ("not", "ne", "не"); "no" is left out because
+# it is also the Latvian "from".
 STOPWORDS = frozenset("""
 a an and are as at be been by for from has have how if in into is it its of on or
 that the their there these this those to was were what when where which who why with

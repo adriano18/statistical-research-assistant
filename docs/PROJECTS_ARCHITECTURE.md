@@ -60,6 +60,10 @@ projects/
     datasets/<sha256><ext>      imported copies, content-addressed, immutable
     datasets/<sha256>.schema.json  column types of a table the project wrote as CSV
     figures/<run-id>.png        chart of each saved run
+    library/                    Stage 37.3: the research library, its own database
+                                (library.sqlite3, schema 1) and the added documents;
+                                in backups and copies only when the researcher
+                                chose so (docs/STAGE37_RAG.md)
     project.lock                while an app instance has it open
   .trash/<id>-<timestamp>/      deleted projects (restorable)
   .backups/                     database copies taken before a migration
