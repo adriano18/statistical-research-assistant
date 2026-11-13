@@ -3300,6 +3300,25 @@ T.update({
 })
 
 
+# Stage 37 (independent review §7, gap 1): what the data rows leave out.
+# LV/RU drafts — needs native review.
+T.update({
+    "ai.excluded.identifier": ("identifier", "identifikators", "идентификатор"),
+    "ai.excluded.free_text": ("free text", "brīvs teksts", "свободный текст"),
+    "assistant.preview.excluded": (
+        "Left out of the data rows: {columns}.",
+        "Datu rindās netiek iekļauts: {columns}.",
+        "Не включается в строки данных: {columns}."),
+    "ai.excluded": (
+        "Never sent with the data rows: {columns}. Identifier and free-text columns are always "
+        "left out.",
+        "Ar datu rindām nekad netiek sūtīts: {columns}. Identifikatoru un brīva teksta kolonnas "
+        "vienmēr tiek izlaistas.",
+        "Никогда не отправляется вместе со строками данных: {columns}. Столбцы-идентификаторы и "
+        "столбцы со свободным текстом всегда исключаются."),
+})
+
+
 # Engine-facing confirmation and option labels: canonical English (kept in
 # provenance) → displayed LV/RU. Method names stay international.
 LABELS: dict[str, tuple[str, str]] = {

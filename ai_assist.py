@@ -357,6 +357,8 @@ class Request:
     language: str
     reply_tokens: int
     includes_result: bool
+    # Stage 37: (column, reason) left out of the data rows, for the preview.
+    excluded: tuple[tuple[str, str], ...] = ()
 
     @property
     def characters(self) -> int:
@@ -394,8 +396,9 @@ def build_request(task: str, *, result: str = "", question: str = "", sources=()
                             question=question)
     rows = ai_context.data_rows(sources, session) if context.get("raw_data", "").strip() else 0
     material = tuple(text for text in (result, question, *context.values()) if text.strip())
+    excluded = tuple(ai_context.excluded_columns(session)) if "raw_data" in sources else ()
     return Request(task, prompt, sources, material, rows, depth, language,
-                   TASK_SPECS[task].reply_tokens, bool(result.strip()))
+                   TASK_SPECS[task].reply_tokens, bool(result.strip()), excluded)
 
 
 def local_log_path(data_root: Path) -> Path:

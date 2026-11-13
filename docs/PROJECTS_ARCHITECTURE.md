@@ -288,7 +288,7 @@ contract:
 | Variable dictionary (names, levels) | off | no values |
 | Aggregated results (reports, tables) | off | numbers already in reports |
 | Questionnaire wording | off | may be copyrighted; licence reminder |
-| Raw data rows | off, cannot be enabled together with any remote provider unless the project's privacy note says the data is anonymous | |
+| Raw data rows | off, cannot be enabled together with any remote provider unless the project's privacy note says the data is anonymous | Stage 37: identifier columns (confirmed, suggested, named like one, or unique codes) and free-text columns are never sent; the preview and Settings name them (`ai_context.excluded_columns`, `tests/test_stage37_ai_rows.py`) |
 | Profile fields | off | explanations, experience and language only — never the name or study level, never used to infer ability |
 
 Rules: nothing is sent without a visible, editable context preview and a

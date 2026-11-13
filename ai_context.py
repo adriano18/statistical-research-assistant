@@ -11,7 +11,9 @@ exactly as before, offline. The contract every request follows:
   off until the researcher allows it **for this project**
   (``Project.set_ai_permission``, stored in the project database);
 * data rows can never go to a remote provider unless the researcher has
-  stated, for this project, that its data rows identify nobody;
+  stated, for this project, that its data rows identify nobody; even then
+  identifier and free-text columns are left out (``excluded_columns``,
+  Stage 37) and the preview names them;
 * before every request the researcher sees exactly what would be sent
   (``preview``) and confirms it; the transfer is logged in the project's
   activity log; switching projects means a new context;
@@ -187,7 +189,67 @@ def data_rows(sources, session) -> int:
     """How many data rows a request with these sources would contain."""
     if "raw_data" not in sources or session is None or not session.has_data:
         return 0
+    if not _shared_columns(session):
+        return 0
     return min(PREVIEW_ROWS, len(session.df))
+
+
+# Stage 37 (independent review §7, gap 1): columns never sent with the data
+# rows, whatever the anonymity statement says.
+# "identifier": confirmed as an identifier, suggested as one and not yet
+#   confirmed, named like one (participant_id, respondent …), or a text column
+#   whose values are all different codes with digits (SYN-P001, A17 …), even
+#   when it was confirmed as a category, e.g. by accepting every suggestion;
+# "free_text": a text column holding prose (a value of six or more words, or
+#   40+ characters on average), or text neither confirmed nor suggested as a
+#   category.
+EXCLUSION_REASONS = ("identifier", "free_text")
+PROSE_WORDS = 6
+PROSE_CHARACTERS = 40
+
+
+def _prose(values) -> bool:
+    texts = [str(value) for value in values.dropna().head(200)]
+    if not texts:
+        return False
+    if max(len(text.split()) for text in texts) >= PROSE_WORDS:
+        return True
+    return sum(len(text) for text in texts) / len(texts) >= PROSE_CHARACTERS
+
+
+def _codes(values) -> bool:
+    """Every value a different short code that holds a digit."""
+    texts = [str(value).strip() for value in values.dropna()]
+    return (len(texts) >= 5 and len(set(texts)) == len(texts)
+            and all(any(c.isdigit() for c in text) and len(text) <= 40 for text in texts))
+
+
+def excluded_columns(session) -> list[tuple[str, str]]:
+    """(column, reason) of every column left out of the data rows, in the
+    dataset's order; reason is "identifier" or "free_text"."""
+    from variable_rules import looks_like_identifier
+
+    if session is None or not session.has_data:
+        return []
+    found = []
+    for column in session.df.columns:
+        name = str(column)
+        info = session.variables.get(name)
+        if info is None:
+            continue
+        level = info.confirmed if info.confirmed != "unknown" else info.suggested
+        values = session.df[column]
+        if (level == "id" or looks_like_identifier(name)
+                or (info.storage == "text" and _codes(values))):
+            found.append((name, "identifier"))
+        elif info.storage == "text" and (level not in ("nominal", "ordinal") or _prose(values)):
+            found.append((name, "free_text"))
+    return found
+
+
+def _shared_columns(session) -> list:
+    left_out = {name for name, _ in excluded_columns(session)}
+    return [column for column in session.df.columns if str(column) not in left_out]
 
 
 # -------------------------------------------------------------- preview
@@ -267,7 +329,10 @@ def preview(source: str, *, project=None, session=None, profile=None,
     if source == "raw_data":
         if session is None or not session.has_data:
             return ""
-        frame = session.df
+        columns = _shared_columns(session)      # identifiers and free text left out
+        if not columns:
+            return ""
+        frame = session.df[columns]
         head = frame.head(PREVIEW_ROWS).to_csv(index=False, lineterminator="\n").strip()
         more = len(frame) - min(len(frame), PREVIEW_ROWS)
         return head + (f"\n… {more} more rows" if more > 0 else "")

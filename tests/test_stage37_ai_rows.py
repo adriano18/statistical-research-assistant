@@ -51,7 +51,6 @@ def session_with(frame: pd.DataFrame) -> ResearchSession:
 
 
 class DataRowsPreviewTests(unittest.TestCase):
-    @unittest.expectedFailure   # red: fixed in the next commit
     def test_identifier_and_free_text_columns_are_left_out_of_the_data_rows(self):
         session = session_with(sensitive_frame())
         session.confirm_level("participant_code", "id")
@@ -65,20 +64,17 @@ class DataRowsPreviewTests(unittest.TestCase):
             ("participant_code", "identifier"), ("respondent", "identifier"),
             ("comment", "free_text")])
 
-    @unittest.expectedFailure   # red: fixed in the next commit
     def test_a_comment_confirmed_as_a_category_is_still_free_text(self):
         session = session_with(sensitive_frame())
         session.confirm_level("comment", "nominal")       # e.g. accepted in bulk
         self.assertIn(("comment", "free_text"), ai_context.excluded_columns(session))
         self.assertNotIn(COMMENTS[0], ai_context.preview("raw_data", session=session))
 
-    @unittest.expectedFailure   # red: fixed in the next commit
     def test_nothing_left_means_no_row_is_sent(self):
         session = session_with(sensitive_frame()[["participant_code", "comment"]])
         self.assertEqual(ai_context.preview("raw_data", session=session), "")
         self.assertEqual(ai_context.data_rows(("raw_data",), session), 0)
 
-    @unittest.expectedFailure   # red: fixed in the next commit
     def test_the_request_names_what_was_left_out(self):
         session = session_with(sensitive_frame())
         request = ai_assist.build_request("explain_table", result="Synthetic result", sources=(),
@@ -108,7 +104,6 @@ class DataRowsOnScreenTests(GateCase):
     """The assistant panel and Settings show what the data rows leave out;
     the request that leaves holds none of it (fake provider, no network)."""
 
-    @unittest.expectedFailure   # red: fixed in the next commit
     def test_the_preview_shows_the_columns_left_out_and_the_request_has_none(self):
         ws = self.workspace()
         self.connect(ws)

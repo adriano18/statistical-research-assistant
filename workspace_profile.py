@@ -143,6 +143,15 @@ class ProfileSettings:
                         color=ui.p.text if text else ui.p.text_secondary,
                         data=f"ai-preview-{source.key}"), padding=tk.SPACE_3)],
                     key=f"ai-preview-tile-{source.key}", opened=self.opened))
+                if source.key == "raw_data":
+                    # Stage 37: what the data rows never contain, shown here too.
+                    left_out = ai_context.excluded_columns(app.session)
+                    if left_out:
+                        from workspace_assistant import excluded_text
+
+                        block.append(wc.caption(
+                            ui, ui.t("ai.excluded", columns=excluded_text(ui, left_out)),
+                            data="ai-excluded-raw_data"))
             rows.append(ft.Container(ft.Column(block, spacing=tk.SPACE_2), padding=tk.SPACE_3,
                                      border=ft.Border.all(1, ui.p.border),
                                      border_radius=ui.radius("card")))

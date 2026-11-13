@@ -289,6 +289,10 @@ class AssistantPanel:
         rows = (ui.t("assistant.preview.rows_some", rows=request.data_rows) if request.data_rows
                 else ui.t("assistant.preview.rows_none"))
         text = wc.text(ui, request.prompt, tk.TYPE_BODY, selectable=True, data="ai-preview-text")
+        # Stage 37: identifier and free-text columns never go with the rows.
+        left_out = ([wc.text(ui, ui.t("assistant.preview.excluded",
+                                      columns=excluded_text(ui, request.excluded)),
+                             data="ai-preview-excluded")] if request.excluded else [])
         return wc.card(ui, [
             wc.text(ui, ui.t("assistant.preview.to", provider=setup.provider_name,
                              host=setup.host, model=setup.model), data="ai-preview-to"),
@@ -296,6 +300,7 @@ class AssistantPanel:
                              tokens=request.tokens, reply=request.reply_tokens),
                     data="ai-preview-size"),
             wc.text(ui, rows, data="ai-preview-rows"),
+            *left_out,
             wc.text(ui, ui.t("assistant.preview.sources", sources=", ".join(included)),
                     data="ai-preview-sources"),
             wc.expansion(ui, wc.text(ui, ui.t("assistant.preview.text"), tk.TYPE_LABEL,
@@ -515,6 +520,11 @@ class AssistantPanel:
         state = self.state(entry_id)
         state.draft, state.used, state.notice = None, False, None
         self.app.render()
+
+
+def excluded_text(ui, excluded) -> str:
+    """"code (identifier), comment (free text)": the columns the data rows leave out."""
+    return ", ".join(f"{name} ({ui.t('ai.excluded.' + reason)})" for name, reason in excluded)
 
 
 def _provider_name(provider: str) -> str:
