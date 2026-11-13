@@ -108,9 +108,25 @@ The cause counts as confirmed only if, on the next Windows run:
 - the reading's `program_cpu_cores` falls to the idle level;
 - the engine's time approaches its processor time.
 
-*Result: filled in from the run of the final commit.*
+**Result: confirmed.** Packaged program, GUI journey `import-scan-lv`, run 43429053006 (467945c), the same runner type, document and pages:
 
-Where it matters outside CI: computers that draw without a graphics card, such as virtual machines, remote desktop sessions and some older laptops. On a computer with a working graphics driver the ring costs little, and the gain is smaller there.
+| | Before (run 43421786722) | After (run 43429053006) |
+|---|---:|---:|
+| Program's processor use while it only shows the page (`program_cpu_cores_idle`) | not measured | 0.00 cores |
+| Program's processor use while reading, first reading / read again | 3.4 / 3.4 cores | **0.78 / 0.56 cores** |
+| Each Tesseract process, wall / processor seconds, first reading | 26.8 / 4.5 and 22.3 / 4.3 | **2.5 / 2.4 and 2.9 / 2.4** |
+| Total in the program, first reading / read again (profile) | 50.4 / 38.3 s | **6.1 / 5.7 s** |
+| Until UI Automation showed "52 candidate items" (`ocr_in_program_seconds`) | 50.0 s | **5.5 s** |
+| Engine alone outside the program, same pages (`direct_ocr`) | 7.8 + 6.4 s | 6.6 + 5.3 s |
+| Longest stall of the event loop | 0.03 s | 0.01 s |
+| Candidates found | 52 | 52 |
+
+The engine's time now equals its processor time: it no longer waits. Inside the program it is even faster than the engine alone on the raw page, because the program gives it the page with the table rules whitened (§1, stage 4).
+
+The Stage 36 question (about 40 s in the program against about 12 s for the engine) is answered. Over 30 s of it was the engine waiting for the processor while the program redrew an animation. The rest was PNG encoding and a render on the event loop (§2).
+
+**Where this applies.** On computers that draw without a graphics card (virtual machines, remote desktop sessions, some older laptops) the gain is about as large as here. A computer with a working graphics driver draws the ring cheaply, so the gain there is the smaller one of §3: about 2 s from PNG encoding and the event loop.
+
 
 ## 4. Progress and responsiveness
 
