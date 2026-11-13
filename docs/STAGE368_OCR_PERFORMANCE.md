@@ -121,6 +121,11 @@ The cause counts as confirmed only if, on the next Windows run:
 | Longest stall of the event loop | 0.03 s | 0.01 s |
 | Candidates found | 52 | 52 |
 
+On the final RC code commit b2abe20 (run 43440145161), the same journey gave:
+- 6.2 s for the first reading and 5.9 s read again;
+- 0.83 and 0.54 cores while reading, 0.00 idle;
+- 6.1 s until UI Automation showed the 52 candidates.
+
 The engine's time now equals its processor time: it no longer waits. Inside the program it is even faster than the engine alone on the raw page, because the program gives it the page with the table rules whitened (§1, stage 4).
 
 The Stage 36 question (about 40 s in the program against about 12 s for the engine) is answered. Over 30 s of it was the engine waiting for the processor while the program redrew an animation. The rest was PNG encoding and a render on the event loop (§2).
