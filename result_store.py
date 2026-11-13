@@ -26,6 +26,11 @@ def to_json(result) -> dict | None:
     for kind, cls in _kinds().items():
         if isinstance(result, cls):
             return {"kind": kind, "data": result.to_dict()}
+    # Stage 37: a result of another engine (path models, the linear model)
+    # is stored as the structured result it gives; it comes back as that.
+    structured = getattr(result, "structured", None)
+    if callable(structured):
+        return {"kind": "structured", "data": structured().to_dict()}
     return None
 
 

@@ -206,6 +206,7 @@ TABLES: tuple[TableSpec, ...] = (
               "languages", "engine"),
     TableSpec("batch_groups.GROUP_TEMPLATES", "batch_groups", "GROUP_TEMPLATES", "languages",
               "engine"),
+    TableSpec("process_text.TEXT", "process_text", "TEXT", "languages", "engine"),
 )
 
 
