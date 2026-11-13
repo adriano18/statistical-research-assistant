@@ -54,7 +54,7 @@ _ACTIVE: "weakref.ReferenceType[WorkspaceApp] | None" = None
 def active_app() -> "WorkspaceApp | None":
     """The workspace most recently mounted in this process (tests, diagnostics)."""
     return _ACTIVE() if _ACTIVE is not None else None
-DATA_EXTENSIONS = ["csv", "tsv", "xlsx", "xlsm"]
+DATA_EXTENSIONS = ["csv", "tsv", "xlsx", "xlsm", "sav", "zsav"]
 DOCUMENT_EXTENSIONS = ["pdf", "docx", "doc"]
 
 
@@ -998,8 +998,12 @@ class DataPage:
         from workspace_groups import GroupsCard
 
         self.groups = GroupsCard(app)      # Stage 36.3: groups from a scale
+        from workspace_export import ExportPanel
+
+        self.export = ExportPanel(app, "data")     # Stage 37 (#67): one Export action
         self.options = {"sheet": None, "header_row": "1", "data_start": "", "separator": "auto",
-                        "decimal": "auto", "encoding": "auto", "missing": "NA;N/A;NULL"}
+                        "decimal": "auto", "encoding": "auto", "missing": "NA;N/A;NULL",
+                        "user_missing": "missing"}
 
     def build(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session
@@ -1038,6 +1042,7 @@ class DataPage:
         ], spacing=tk.SPACE_3, run_spacing=tk.SPACE_3)
         return app.constrained(ft.Column([
             ft.Container(header, key=ft.ScrollKey("data-top")), stats, self._next_step(),
+            ft.Container(self.export.build(), key=ft.ScrollKey("data-export")),
             ft.Container(self._dictionary(), key=ft.ScrollKey("data-variables")),
             ft.Container(self.groups.build(), key=ft.ScrollKey("data-groups")), self._preview(),
             self._import_options(), self._preparation_card(), self._sample_picker(),
@@ -1082,8 +1087,14 @@ class DataPage:
             suggestion = ui.t(f"level.{info.suggested}")
             if info.binary:
                 suggestion += f" · {ui.t('level.binary')}"
+            name = wc.text(ui, info.name, weight=ft.FontWeight.W_600, selectable=True)
+            if info.label:
+                # Stage 37 (#67): the label the data file documents.
+                name = ft.Column([name, wc.caption(ui, info.label, max_lines=1,
+                                                   data=f"label-{info.name}")],
+                                 spacing=0, tight=True)
             rows.append(ft.DataRow(cells=[
-                ft.DataCell(wc.text(ui, info.name, weight=ft.FontWeight.W_600, selectable=True)),
+                ft.DataCell(name),
                 ft.DataCell(wc.text(ui, ui.t(f"storage.{info.storage}"),
                                     color=ui.p.text_secondary)),
                 ft.DataCell(wc.text(ui, s.value_summary(info.name, ui.language),
@@ -1192,6 +1203,11 @@ class DataPage:
             wc.text_field(ui, ui.t("data.opt.missing"), o["missing"],
                           width=360, on_change=setter("missing")),
         ]
+        if s.source_path and Path(s.source_path).suffix.lower() in {".sav", ".zsav"}:
+            fields.append(wc.dropdown(
+                ui, ui.t("data.opt.user_missing"),
+                choices("user_missing", ("missing", "codes")), o["user_missing"],
+                on_select=setter("user_missing"), width=320, data="data-opt-user-missing"))
         report = s.import_report
         diagnostics = []
         if report is not None:
@@ -1235,6 +1251,7 @@ class DataPage:
                 decimal=o["decimal"] or "auto",
                 missing_tokens=("", *[x.strip() for x in (o["missing"] or "").split(";")
                                       if x.strip()]),
+                user_missing=o.get("user_missing") or "missing",
             )
         except ValueError as error:
             self.app.status(self.app.t("data.load_failed", error=error), "danger")

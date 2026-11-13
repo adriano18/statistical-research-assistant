@@ -2,7 +2,10 @@
 
 * :class:`VariableInfo` — one row of the variable dictionary. The suggested
   measurement level is a heuristic; only ``confirmed`` is ever used by an
-  analysis, and every confirmation records where it was made.
+  analysis, and every confirmation records where it was made. Stage 37
+  (#67): what the data documents about a variable — its label, the labels of
+  its codes and its user-missing codes — read from a .sav file or an
+  exported codebook, never inferred; exports and the codebook use it.
 * :class:`ResearchSession` — the open dataset, its dictionary, the results
   log and the report selection. Everything lives in memory for the current
   session; nothing here pretends to be project persistence.
@@ -33,10 +36,45 @@ class VariableInfo:
     binary: bool              # numeric values ⊆ {0, 1}
     confirmed: str = "unknown"
     confirmed_in: str = ""    # "data", "analyze", "data-bulk"
+    # Stage 37 (#67): documented metadata (empty unless the data carried it).
+    label: str = ""
+    value_labels: tuple = ()        # ((code as text, label), ...) in code order
+    missing_codes: tuple = ()       # user-missing codes: text, or ("range", lo, hi)
+    metadata_source: str = ""       # "sav", "codebook" or "project"
 
     @property
     def level(self) -> str:
         return self.confirmed
+
+    @property
+    def value_label_map(self) -> dict[str, str]:
+        return dict(self.value_labels)
+
+    def metadata(self) -> dict:
+        """The documented metadata as plain data (for the project and exports)."""
+        return {"label": self.label, "value_labels": dict(self.value_labels),
+                "missing_codes": [list(c) if isinstance(c, tuple) else c
+                                  for c in self.missing_codes],
+                "source": self.metadata_source}
+
+
+def metadata_fields(item: dict | None) -> dict:
+    """``VariableInfo`` fields from a metadata dict ({"label", "value_labels",
+    "missing_codes", "source"}); unknown or malformed parts are left out."""
+    item = item if isinstance(item, dict) else {}
+    labels = item.get("value_labels") or {}
+    pairs = tuple((str(code), str(text)) for code, text in labels.items()) \
+        if isinstance(labels, dict) else ()
+    codes = []
+    for code in item.get("missing_codes") or ():
+        if isinstance(code, (list, tuple)) and len(code) == 3 and code[0] == "range":
+            codes.append(("range", code[1], code[2]))
+        elif isinstance(code, dict) and {"lo", "hi"} <= set(code):
+            codes.append(("range", code["lo"], code["hi"]))
+        elif isinstance(code, (str, int, float)) and not isinstance(code, bool):
+            codes.append(str(code) if not isinstance(code, str) else code)
+    return {"label": str(item.get("label") or ""), "value_labels": pairs,
+            "missing_codes": tuple(codes), "metadata_source": str(item.get("source") or "")}
 
 
 def suggest_level(name: str, values: pd.Series) -> tuple[str, str, int, bool]:
@@ -81,6 +119,10 @@ def build_dictionary(df: pd.DataFrame,
         old = previous.get(str(name))
         if old is not None and old.storage == storage and old.confirmed != "unknown":
             info = replace(info, confirmed=old.confirmed, confirmed_in=old.confirmed_in)
+        if old is not None and old.storage == storage:
+            # What the data documents about the column stays with it.
+            info = replace(info, label=old.label, value_labels=old.value_labels,
+                           missing_codes=old.missing_codes, metadata_source=old.metadata_source)
         result[str(name)] = info
     return result
 
@@ -236,6 +278,9 @@ class ResearchSession:
         # the columns that are still there keep their confirmed levels.
         keep = same_columns or (origin == "prepared" and self.df is not None)
         self.variables = build_dictionary(df, self.variables if keep else None)
+        metadata = getattr(report, "metadata", None)
+        if metadata:
+            self.set_metadata(metadata, notify=False)
         self.df = df
         self._digest = None
         self.source_name = name
@@ -297,6 +342,46 @@ class ResearchSession:
         self.dataset_origin = "prepared"
         self.pending_transformations.append(dict(record))
         self.notify("dataset")
+
+    def set_metadata(self, metadata: dict, *, notify: bool = True,
+                     source: str | None = None, replace_all: bool = False) -> int:
+        """Apply documented metadata ({variable: {"label", "value_labels",
+        "missing_codes", "source", "measure"}}) to the dictionary. A level the
+        file documents ("measure") becomes the *suggested* level only: the
+        researcher still confirms it. ``replace_all`` clears the metadata of
+        every variable not in ``metadata`` (another dataset's). Returns how
+        many variables changed."""
+        changed = 0
+        metadata = metadata or {}
+        if replace_all:
+            empty = metadata_fields({})
+            for name, info in list(self.variables.items()):
+                if name not in metadata and replace(info, **empty) != info:
+                    self.variables[name] = replace(info, **empty)
+                    changed += 1
+        for name, item in metadata.items():
+            info = self.variables.get(str(name))
+            if info is None or not isinstance(item, dict):
+                continue
+            fields = metadata_fields(item)
+            if source is not None:
+                fields["metadata_source"] = source
+            measure = item.get("measure")
+            if measure in ("nominal", "ordinal", "scale") and info.confirmed == "unknown" \
+                    and info.suggested != "id":
+                fields["suggested"] = measure
+            updated = replace(info, **fields)
+            if updated != info:
+                self.variables[str(name)] = updated
+                changed += 1
+        if changed and notify:
+            self.notify("metadata")
+        return changed
+
+    def metadata(self) -> dict[str, dict]:
+        """{variable: documented metadata} of every variable that has some."""
+        return {name: info.metadata() for name, info in self.variables.items()
+                if info.label or info.value_labels or info.missing_codes}
 
     def confirm_level(self, name: str, level: str, where: str = "data") -> None:
         if level not in LEVELS:

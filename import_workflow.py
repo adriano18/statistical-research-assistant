@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable, Any
 
-SUPPORTED_EXTENSIONS = frozenset({".csv", ".tsv", ".xlsx", ".xlsm"})
+# Stage 37 (#67): SPSS files, read by data_loader with pyreadstat.
+SUPPORTED_EXTENSIONS = frozenset({".csv", ".tsv", ".xlsx", ".xlsm", ".sav", ".zsav"})
 MAX_TRANSFER_BYTES = 25_000_000
 
 
@@ -45,7 +46,7 @@ async def import_picked_files(
     if Path(name).suffix.lower() not in SUPPORTED_EXTENSIONS:
         return ImportAttempt(
             False,
-            "Unsupported file extension. Choose CSV, TSV, XLSX or XLSM.",
+            "Unsupported file extension. Choose CSV, TSV, XLSX, XLSM or SAV.",
         )
 
     try:

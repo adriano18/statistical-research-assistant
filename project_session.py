@@ -151,6 +151,8 @@ class ProjectBinding:
         # Stage 36.8 (K2): the researcher's entries as saved in the project.
         self._saved_notes: dict[int, tuple[str, frozenset]] = {}  # entry id -> (note, reviewed)
         self._saved_report = ReportSettings()
+        # Stage 37 (#67): the variable metadata as saved for the dataset in use.
+        self._saved_metadata: dict | None = None
         self.message: tuple[str, str] | None = None  # (text key, tone) for the UI
         session.subscribe(self._on_session)
         atexit.register(_release_at_exit, weakref.ref(self))
@@ -230,6 +232,7 @@ class ProjectBinding:
         self._saved_charts = {}
         self._saved_notes = {}
         self._saved_report = ReportSettings()
+        self._saved_metadata = None
         for entry in self.session.results:
             entry.record_id = None
             entry.stale_reasons = ()
@@ -333,6 +336,14 @@ class ProjectBinding:
         session.set_dataset(frame, record.name, path=record.source_path, origin=origin,
                             survey_id=record.survey_id)
         self.dataset_id = record.id
+        # Stage 37 (#67): the labels, value labels and user-missing codes the
+        # project keeps for this dataset (no change event: nothing to save).
+        try:
+            metadata = project.variable_metadata(record.id)
+        except ProjectError:
+            metadata = {}
+        session.set_metadata(metadata, notify=False, replace_all=True)
+        self._saved_metadata = session.metadata()
         saved = project.levels(record.id)
         for name in list(session.variables):
             row = saved.get(name) or {}
@@ -464,6 +475,8 @@ class ProjectBinding:
                 self._save_dataset()
             elif what == "dictionary":
                 self._save_levels()
+            elif what == "metadata":
+                self._save_metadata()
             elif what == "results":
                 self._save_results()
             elif what == "report":
@@ -590,7 +603,21 @@ class ProjectBinding:
         self.dataset_id = record.id
         self._saved_levels = {}
         self._save_levels()
+        self._saved_metadata = None
+        self._save_metadata()
         self._refresh_stale()
+
+    def _save_metadata(self) -> None:
+        """Labels, value labels and user-missing codes of the dataset in use
+        (Stage 37, #67), written when they differ from what is saved."""
+        if self.dataset_id is None:
+            return
+        current = self.session.metadata()
+        if current == self._saved_metadata or (not current and self._saved_metadata is None):
+            self._saved_metadata = current
+            return
+        self.project.save_variable_metadata(self.dataset_id, current)
+        self._saved_metadata = current
 
     def _current_levels(self) -> dict[str, tuple[str, str]]:
         return {name: (info.confirmed, info.confirmed_in)

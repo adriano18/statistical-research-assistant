@@ -76,6 +76,9 @@ LIBRARIES = ("numpy", "scipy", "pandas", "statsmodels", "pingouin", "matplotlib"
              "scikit-learn", "openpyxl", "python-docx")
 PROJECT_FIELDS = ("title", "description", "research_area", "population_notes",
                   "language", "design")
+# Stage 37 (#67): the JSON document in ``datasets.notes`` that holds value
+# labels and user-missing codes (labels are in ``variables.label``).
+METADATA_FORMAT = "sra-variable-metadata"
 
 
 class ProjectError(Exception):
@@ -1614,6 +1617,60 @@ class Project:
             return {r["name"]: dict(r) for r in db.execute(
                 "SELECT * FROM variables WHERE dataset_id = ? ORDER BY rowid", (dataset_id,))}
 
+    # ------------------------------------------- variable metadata (Stage 37)
+    def save_variable_metadata(self, dataset_id: str, metadata: dict[str, dict]) -> None:
+        """What the data documents about its variables (Stage 37, #67), kept in
+        format 6 without a new column: each label in ``variables.label`` (a
+        column every format-6 project has, unused before), and the value labels
+        and user-missing codes as one JSON document in ``datasets.notes``
+        (also unused before; marked with :data:`METADATA_FORMAT`). ``metadata``
+        is the complete set for the dataset: {variable: {"label",
+        "value_labels", "missing_codes", "source"}}. Notes that hold anything
+        else are never overwritten."""
+        self.dataset(dataset_id)
+        document = {"format": METADATA_FORMAT, "version": 1, "variables": {
+            str(name): {"value_labels": {str(k): str(v) for k, v in
+                                         (item.get("value_labels") or {}).items()},
+                        "missing_codes": list(item.get("missing_codes") or []),
+                        "source": str(item.get("source") or "")}
+            for name, item in metadata.items()}}
+        with self._write() as db:
+            notes = db.execute("SELECT notes FROM datasets WHERE id = ?",
+                               (dataset_id,)).fetchone()["notes"] or ""
+            if notes.strip() and metadata_document(notes) is None:
+                raise ProjectError("The dataset's notes hold other text; its variable "
+                                   "metadata was not saved.")
+            db.execute("UPDATE variables SET label = '' WHERE dataset_id = ?", (dataset_id,))
+            for name, item in metadata.items():
+                db.execute("INSERT INTO variables (dataset_id, name, label) VALUES (?, ?, ?)"
+                           " ON CONFLICT(dataset_id, name) DO UPDATE SET label = excluded.label",
+                           (dataset_id, str(name), str(item.get("label") or "")))
+            db.execute("UPDATE datasets SET notes = ? WHERE id = ?",
+                       (json.dumps(document, ensure_ascii=False, sort_keys=True)
+                        if metadata else "", dataset_id))
+            self._touch(db)
+            _log(db, "variable_metadata", {"dataset": dataset_id, "variables": len(metadata)})
+
+    def variable_metadata(self, dataset_id: str) -> dict[str, dict]:
+        """{variable: {"label", "value_labels", "missing_codes", "source"}}
+        as :meth:`save_variable_metadata` kept them ({} when none)."""
+        with self._db() as db:
+            row = db.execute("SELECT notes FROM datasets WHERE id = ?", (dataset_id,)).fetchone()
+            labels = {r["name"]: r["label"] for r in db.execute(
+                "SELECT name, label FROM variables WHERE dataset_id = ? AND label != ''",
+                (dataset_id,))}
+        if row is None:
+            raise ProjectError(f"No dataset {dataset_id} in this project.")
+        document = metadata_document(row["notes"] or "") or {"variables": {}}
+        found: dict[str, dict] = {}
+        for name in [*labels, *document["variables"]]:
+            item = document["variables"].get(name, {})
+            found[name] = {"label": labels.get(name, ""),
+                           "value_labels": dict(item.get("value_labels") or {}),
+                           "missing_codes": list(item.get("missing_codes") or []),
+                           "source": str(item.get("source") or "")}
+        return found
+
     def add_transformation(self, dataset_id: str, kind: str, params: dict,
                            output_columns: list[str]) -> str:
         step_id = str(uuid.uuid4())
@@ -2127,6 +2184,19 @@ def _load_frame(path: Path):
     from data_loader import load_dataset
 
     return load_dataset(path)
+
+
+def metadata_document(text: str) -> dict | None:
+    """The variable-metadata document kept in ``datasets.notes``, or None
+    when the notes hold nothing of that kind."""
+    try:
+        document = json.loads(text)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(document, dict) or document.get("format") != METADATA_FORMAT \
+            or not isinstance(document.get("variables"), dict):
+        return None
+    return document
 
 
 def _dataset(row: sqlite3.Row) -> DatasetRecord:
