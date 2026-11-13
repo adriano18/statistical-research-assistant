@@ -54,7 +54,8 @@ async def projects(app) -> None:
     page.selection = {"outcome": "stress_q1", "group": "group"}
     s.confirm_level("stress_q1", "ordinal", "analyze")
     s.confirm_level("group", "nominal", "analyze")
-    page.confirms = {"independent": True}
+    # Ticked through the handler, which records what it is given for (36.8).
+    page._confirm("independent", True)
     await page._run_guided()
     s.toggle_report(s.results[-1].id)
     s.confirm_level("stress_q1", "scale", "data")      # the result now needs review
@@ -75,7 +76,7 @@ async def project_page(app) -> None:
     page.selection = {"outcome": "stress_q1", "group": "group"}
     s.confirm_level("stress_q1", "ordinal", "analyze")
     s.confirm_level("group", "nominal", "analyze")
-    page.confirms = {"independent": True}
+    page._confirm("independent", True)
     await page._run_guided()
     s.toggle_report(s.results[-1].id)
     survey = create_survey(app.survey_root, "Fictional wellbeing check", "Fictional items", [
@@ -132,7 +133,7 @@ async def apply(app, name: str) -> None:
         page.selection = {"outcome": "stress_q1", "group": "group"}
         s.confirm_level("stress_q1", "ordinal", "analyze")
         s.confirm_level("group", "nominal", "analyze")
-        page.confirms = {"independent": True}
+        page._confirm("independent", True)
         app.navigate("analyze")
         if name == "guided":
             return
@@ -148,7 +149,8 @@ async def apply(app, name: str) -> None:
             # pass silently, or the report would lose its first result.
             from workspace_methods import advise
 
-            page.confirms = dict.fromkeys(advise("scale", page.selection, s).design_checks, True)
+            for key in advise("scale", page.selection, s).design_checks:
+                page._confirm(key, True)
             before = len(s.results)
             await page._run_guided()
             if len(s.results) != before + 1:

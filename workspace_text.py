@@ -1088,6 +1088,11 @@ T: dict[str, tuple[str, str, str]] = {
                              "Подтвердите уровень измерения переменной {name}."),
     "design.saved_level": ("Saved to the variable dictionary.", "Saglabāts mainīgo vārdnīcā.",
                            "Сохранено в словаре переменных."),
+    # Stage 36.8 (K1): why a box ticked earlier is empty now.
+    "design.reconfirm": (
+        "Confirm these checks again: a confirmation holds only for the variables, data and method it was given for.",
+        "Apstipriniet šīs pārbaudes vēlreiz: apstiprinājums ir spēkā tikai tiem mainīgajiem, datiem un metodei, kam tas tika dots.",
+        "Подтвердите эти проверки снова: подтверждение действует только для тех переменных, данных и метода, для которых оно было дано."),
     "rec.title": ("Recommended: {method}", "Ieteikts: {method}", "Рекомендуется: {method}"),
     "rec.why": ("Why this method", "Kāpēc šī metode", "Почему этот метод"),
     "rec.alternatives": ("Alternatives", "Alternatīvas", "Альтернативы"),

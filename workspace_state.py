@@ -111,6 +111,11 @@ class ResultEntry:
     # Stage 36.4: the values the result's charts are drawn from and the
     # researcher's chart views (chart_views.ChartState); None until opened.
     charts: object | None = None
+    # Stage 36.8 (K2): the researcher's own entries on this result — the
+    # interpretation note and the assumption checks marked as reviewed. A
+    # project keeps them with the saved run.
+    note: str = ""
+    reviewed: frozenset = frozenset()
 
     @property
     def title(self) -> str:
@@ -131,6 +136,28 @@ class ResearchTask:
     confirms: dict = field(default_factory=dict)
     hypothesis_id: str | None = None
     state: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ReportSettings:
+    """Stage 36.8 (K2): the researcher's choices for the research report,
+    kept in the project rather than on the page."""
+
+    title: str = ""
+    sections_off: frozenset = frozenset()   # sections left out (new ones are in)
+    language: str | None = None             # None: the interface language
+
+    def to_dict(self) -> dict:
+        return {"title": self.title, "sections_off": sorted(self.sections_off),
+                "language": self.language}
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "ReportSettings":
+        data = data if isinstance(data, dict) else {}
+        language = data.get("language")
+        return cls(title=str(data.get("title") or ""),
+                   sections_off=frozenset(str(s) for s in data.get("sections_off") or ()),
+                   language=language if language in ("en", "lv", "ru") else None)
 
 
 @dataclass
@@ -155,12 +182,15 @@ class ResearchSession:
     # Stage 36.3: history records of derived variables not yet stored with
     # the dataset version they created (the project stores and clears them).
     pending_transformations: list[dict] = field(default_factory=list, repr=False)
+    # Stage 36.8 (K2): the report's title, sections and language.
+    report: ReportSettings = field(default_factory=ReportSettings)
     language: str = "en"
     theme: str = "light"
     corners: str = "windows"
     accent: str = "blue"           # accent colour preset (workspace_tokens.ACCENTS)
     _ids: itertools.count = field(default_factory=lambda: itertools.count(1), repr=False)
     _listeners: list[Callable[[str], None]] = field(default_factory=list, repr=False)
+    _digest: tuple | None = field(default=None, repr=False)   # (id(df), shape, SHA-256)
 
     # ----------------------------------------------------------- events
     def subscribe(self, listener: Callable[[str], None]) -> None:
@@ -186,6 +216,8 @@ class ResearchSession:
         self.guided = {}
         self.tasks = []
         self.pending_transformations = []
+        self.report = ReportSettings()
+        self._digest = None
         self.notify("dataset")
         self.notify("results")
 
@@ -200,8 +232,12 @@ class ResearchSession:
         if df is None or df.columns.empty:
             raise ValueError("No variables found in this file.")
         same_columns = self.df is not None and list(self.df.columns) == list(df.columns)
-        self.variables = build_dictionary(df, self.variables if same_columns else None)
+        # A prepared table is made from the table on screen (Stage 36.8, K3):
+        # the columns that are still there keep their confirmed levels.
+        keep = same_columns or (origin == "prepared" and self.df is not None)
+        self.variables = build_dictionary(df, self.variables if keep else None)
         self.df = df
+        self._digest = None
         self.source_name = name
         self.import_report = report
         self.source_path = path
@@ -209,6 +245,35 @@ class ResearchSession:
         self.dataset_survey_id = survey_id
         self.guided = {}
         self.notify("dataset")
+
+    def dataset_sha256(self) -> str:
+        """SHA-256 of the table on screen, as results record it (its CSV
+        text); computed once per table ("" without data)."""
+        import hashlib
+
+        if self.df is None:
+            return ""
+        key = (id(self.df), self.df.shape)
+        if self._digest is None or self._digest[:2] != key:
+            table = self.df.to_csv(index=False, lineterminator="\n").encode("utf-8")
+            self._digest = (*key, hashlib.sha256(table).hexdigest())
+        return self._digest[2]
+
+    def add_prepared_columns(self, frame: pd.DataFrame, records: list[dict]) -> None:
+        """Use ``frame`` — the table on screen plus the new columns that
+        Data → Prepare made — as the new version of the data (Stage 36.8,
+        K3). As with :meth:`add_derived_column`, every column that is still
+        there keeps its confirmed level; a new column waits for the
+        researcher's confirmation, and each step is kept as a history record
+        (``kind``, ``params``, ``output_columns``) for the project."""
+        if frame is None or frame.columns.empty:
+            raise ValueError("No variables found in this file.")
+        name = self.source_name or "Dataset"
+        # Before the "dataset" event: the project stores them with this version.
+        self.pending_transformations.extend(dict(record) for record in records)
+        # No source file to read it again from, as for any prepared table.
+        self.set_dataset(frame, name if name.endswith("(prepared)") else f"{name} (prepared)",
+                         origin="prepared")
 
     def add_derived_column(self, frame: pd.DataFrame, column: str, level: str,
                            record: dict) -> None:
@@ -225,6 +290,7 @@ class ResearchSession:
         variables[column] = replace(variables[column], confirmed=level, confirmed_in="derived")
         self.variables = variables
         self.df = frame
+        self._digest = None
         if not name.endswith("(prepared)"):
             name = f"{name} (prepared)"
         self.source_name = name
@@ -319,8 +385,6 @@ class ResearchSession:
 
     def provenance_for(self, roles: dict | None) -> dict:
         """The facts a result rests on, taken from the table on screen."""
-        import hashlib
-
         if self.df is None:
             return {}
         used = []
@@ -328,15 +392,44 @@ class ResearchSession:
             for name in (value if isinstance(value, (list, tuple)) else [value]):
                 if isinstance(name, str) and name in self.df.columns and name not in used:
                     used.append(name)
-        table = self.df.to_csv(index=False, lineterminator="\n").encode("utf-8")
         levels = {name: self.level(name) for name in used}
         groups = {name: self.group_labels(name)[:12] for name in used
                   if levels[name] in ("nominal", "ordinal")}
         complete = int(self.df[used].notna().all(axis=1).sum()) if used else len(self.df)
         how = {name: self.variables[name].confirmed_in for name in used if name in self.variables}
-        return {"dataset_sha256": hashlib.sha256(table).hexdigest(), "variables": used,
+        return {"dataset_sha256": self.dataset_sha256(), "variables": used,
                 "levels": levels, "groups": groups, "complete": complete,
                 "rows": len(self.df), "confirmed_in": how}
+
+    # ------------------------------------------- the researcher's entries
+    def set_note(self, entry_id: int, note: str) -> None:
+        """The researcher's interpretation note on a result (listeners save it)."""
+        entry = self.result(entry_id)
+        if entry is not None and entry.note != (note or ""):
+            entry.note = note or ""
+            self.notify("notes")
+
+    def set_reviewed(self, entry_id: int, assumption: str, reviewed: bool) -> None:
+        """Mark one assumption check of a result as reviewed, or not."""
+        entry = self.result(entry_id)
+        if entry is None:
+            return
+        checks = set(entry.reviewed)
+        (checks.add if reviewed else checks.discard)(assumption)
+        if frozenset(checks) != entry.reviewed:
+            entry.reviewed = frozenset(checks)
+            self.notify("notes")
+
+    def update_report(self, *, save: bool = True, **changes) -> ReportSettings:
+        """Change the report settings. ``save=False`` keeps a change in the
+        session only (the title while it is typed); listeners save it on
+        the next saved change or :meth:`notify` of ``report_settings``."""
+        settings = replace(self.report, **changes)
+        if settings != self.report:
+            self.report = settings
+            if save:
+                self.notify("report_settings")
+        return settings
 
     # ------------------------------------------------------ research tasks
     def task(self, task_id: str | None) -> ResearchTask | None:
