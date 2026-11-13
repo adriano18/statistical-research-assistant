@@ -24,6 +24,7 @@ from workspace_methods import (
 )
 from workspace_state import LEVELS, ResearchTask
 from workspace_text import count_text, label as engine_label
+import workspace_variables as wv
 
 GOAL_ICONS = {
     "compare": ft.Icons.COMPARE_ARROWS, "change": ft.Icons.TIMELINE,
@@ -79,6 +80,87 @@ def _variable_options(ui: wc.Ui, session, *, allow_id: bool = False):
     return options
 
 
+def _names(value) -> list[str]:
+    return list(value) if isinstance(value, (list, tuple)) else ([value] if value else [])
+
+
+def selection_from_run(goal: str, method: str, roles: dict | None) -> dict | None:
+    """The guided choices (``GOAL_ROLES[goal]``) of a run's method roles: how
+    *Repeat with changes* gives back the variables a result was calculated
+    with, also when the task's own choices have changed since. None when
+    the method is not one ``goal`` leads to."""
+    r = dict(roles or {})
+    if goal == "relate":
+        pairs = {"batch_correlation": ("x", "ys"), "correlation": ("x", "y"), "chi": ("a", "b")}
+        if method in pairs:
+            first, second = pairs[method]
+            return {"x": r.get(first), "y": _names(r.get(second))}
+    if goal == "compare":
+        if method == "batch_groups":
+            return {"outcome": _names(r.get("outcomes")), "group": r.get("group")}
+        if method in ("groups", "omnibus"):
+            return {"outcome": _names(r.get("outcome")), "group": r.get("group")}
+        if method == "chi":
+            return {"outcome": _names(r.get("b")), "group": r.get("a")}
+        if method == "ancova":
+            return {"outcome": _names(r.get("outcome")), "group": r.get("group"),
+                    "covariates": _names(r.get("covariates"))}
+    if goal == "change":
+        if method == "paired":
+            return {"measures": [n for n in (r.get("before"), r.get("after")) if n]}
+        if method == "repeated":
+            return {"measures": _names(r.get("measures"))}
+    if goal == "associate" and method == "chi":
+        return {"a": r.get("a"), "b": r.get("b")}
+    if goal == "predict":
+        if method in ("regression", "logistic"):
+            return {"outcome": r.get("outcome"), "predictors": _names(r.get("predictors"))}
+        if method == "ancova":
+            return {"outcome": r.get("outcome"),
+                    "predictors": [*_names(r.get("group")), *_names(r.get("covariates"))]}
+    if goal in ("scale", "structure") and r.get("items"):
+        return {"items": _names(r.get("items"))}
+    if goal == "describe" and method in ("descriptive", "explore"):
+        found = {"variable": r.get("variable")}
+        if r.get("group"):
+            found["group"] = r["group"]
+        return found
+    return None
+
+
+def scored_item_sets(app) -> list[tuple[str, list[str]]]:
+    """``(score, its items)`` of the scale scores made in Data → Prepare
+    that are in the data on screen, newest first (at most three): the
+    session's steps not stored yet, then the project's history of this
+    dataset version and of the versions it was prepared from."""
+    session = app.session
+    if not session.has_data:
+        return []
+    steps = list(reversed(session.pending_transformations))
+    projects = app.projects
+    if projects.active and projects.dataset_id:
+        dataset_id, seen = projects.dataset_id, set()
+        while dataset_id and dataset_id not in seen:
+            seen.add(dataset_id)
+            try:
+                steps += list(reversed(projects.project.transformations(dataset_id)))
+                dataset_id = projects.project.dataset(dataset_id).parent_id
+            except Exception:
+                break
+    columns = set(map(str, session.df.columns))
+    found: list[tuple[str, list[str]]] = []
+    for step in steps:
+        params = step.get("params") or {}
+        if step.get("kind") != "score_scale":
+            continue
+        target = str(params.get("target") or "")
+        sources = [str(name) for name in params.get("sources") or []]
+        if (target in columns and len(sources) > 1 and all(n in columns for n in sources)
+                and target not in {t for t, _ in found}):
+            found.append((target, sources))
+    return found[:3]
+
+
 class AnalyzePage:
     def __init__(self, app):
         self.app = app
@@ -104,6 +186,12 @@ class AnalyzePage:
         self.task_id: str | None = None     # Stage 36: the research task on screen
         # Stage 37.0a: the hypothesis a new analysis (not yet a task) will test.
         self.pending_hypothesis: str | None = None
+        # Stage 37 (Issue #68): what the variable panels show (their search,
+        # and "{key}:all" for a long list shown in full), and the task or
+        # result the analysis on screen is a copy of (it becomes a new task
+        # at its first run; nothing confirmed is copied).
+        self.filters: dict[str, str] = {}
+        self.copy_of: dict | None = None
 
     def rerun(self, entry) -> None:
         """Open a saved result's analysis for the current data. The researcher
@@ -113,6 +201,7 @@ class AnalyzePage:
         self.form_roles = dict(entry.roles or {})
         self.form_options = {**default_options(METHODS[key]), **(entry.options or {})}
         self.form_confirms, self.form_scopes, self.form_reconfirm = {}, {}, set()
+        self.filters, self.copy_of = {}, None
         self.message = (self.app.t("analyze.rerun", title=entry.title), "info")
         self.app.navigate("analyze")
 
@@ -125,6 +214,7 @@ class AnalyzePage:
         self.pending_hypothesis = None
         self.method, self.form_roles, self.form_options = None, {}, {}
         self.form_confirms, self.form_scopes, self.form_reconfirm = {}, {}, set()
+        self.filters, self.copy_of = {}, None
         self.message = None
 
     # ------------------------------------------------- confirmations (K1)
@@ -239,7 +329,8 @@ class AnalyzePage:
                       wc.step_card(ui, 4, ui.t("step.method"), [], state="locked",
                                    scroll_key="step-method")]
             return steps
-        steps.append(wc.step_card(ui, 2, ui.t("step.variables"), self._role_pickers(),
+        steps.append(wc.step_card(ui, 2, ui.t("step.variables"),
+                                  self._copy_notice() + self._role_pickers(),
                                   state="active", data="step-variables",
                                   scroll_key="step-variables"))
         advice = advise(self.goal, self.selection, s)
@@ -262,6 +353,7 @@ class AnalyzePage:
             task = session.task(self.task_id)
             self.goal, self.selection, self.override = goal, {}, None
             self.confirms, self.confirm_scopes, self.reconfirm = {}, {}, set()
+            self.filters, self.copy_of = {}, None     # another question: not a copy
             self.message = None
             if (task is not None and (task.state or {}).get("auto_title")
                     and not session.task_results(task.id)):
@@ -292,21 +384,20 @@ class AnalyzePage:
     def _role_pickers(self) -> list[ft.Control]:
         ui, s = self.app.ui, self.app.session
         controls: list[ft.Control] = []
-        for role in GOAL_ROLES[self.goal]:
-            options = _variable_options(ui, s)
+        roles = GOAL_ROLES[self.goal]
+        for role in roles:
             if role.multiple:
-                chosen = list(self.selection.get(role.key) or [])
-                boxes = [wc.checkbox(ui, label, name in chosen,
-                                     on_change=lambda e, r=role.key, n=name: self._toggle(r, n,
-                                                                                          e.control.value),
-                                     data=f"role-{role.key}-{name}")
-                         for name, label in options]
-                controls += [wc.section_label(ui, ui.t(role.label)),
-                             self._quick_select(role, options),
-                             ft.Container(ft.Row(boxes, wrap=True, spacing=tk.SPACE_4,
-                                                 run_spacing=0),
-                                          data=f"role-{role.key}")]
+                # Stage 37 (Issue #68, UX-3): search, name groups, ranges and
+                # only the variables this role can take (D7), with the reason
+                # for every other one.
+                controls.append(self._panel(
+                    f"role-{role.key}", role, roles, self.selection,
+                    quick=self._quick_select(role, _variable_options(ui, s)),
+                    on_toggle=lambda n, v, r=role.key: self._toggle(r, n, v),
+                    on_add=lambda names, r=role.key: self._add(r, names),
+                    on_remove=lambda names, r=role.key: self._remove(r, names)))
             else:
+                options = _variable_options(ui, s)
                 if role.optional:
                     options = [("", ui.t("role.none"))] + options
                 controls.append(wc.dropdown(
@@ -314,7 +405,33 @@ class AnalyzePage:
                     on_select=lambda e, r=role.key: self._pick(r, e.control.value),
                     width=360, data=f"role-{role.key}"))
         return [ft.Row(controls[:2], wrap=True, spacing=tk.SPACE_4)] + controls[2:] \
-            if not any(r.multiple for r in GOAL_ROLES[self.goal]) else controls
+            if not any(r.multiple for r in roles) else controls
+
+    def _panel(self, key: str, role, roles, chosen_roles: dict, *, quick, on_toggle, on_add,
+               on_remove) -> ft.Control:
+        """The variable panel of one multiple role (guided step 2 or the form)."""
+        ui, s = self.app.ui, self.app.session
+        taken = wv.taken_by_others(roles, chosen_roles, role.key)
+        offered, left_out = wv.offered_variables(s, role, taken)
+        levels = {info.name: ui.t(f"level.{info.confirmed}") for info in s.variables.values()}
+
+        def query(text: str):
+            self.filters[key] = text
+            self.app.render()
+
+        def expand(value: bool):
+            # A long list is shown in full only when asked: kept as "the
+            # search" of this panel (the empty search shows it all).
+            self.filters[f"{key}:all"] = "1" if value else ""
+            self.app.render()
+
+        return wv.role_panel(
+            ui, key=key, title=ui.t(role.label), offered=offered, left_out=left_out,
+            chosen=list(chosen_roles.get(role.key) or []), query=self.filters.get(key, ""),
+            allowed=role.levels, label=lambda name: f"{name} · {levels.get(name, '—')}",
+            on_toggle=on_toggle, on_add=on_add, on_remove=on_remove, on_query=query,
+            quick=quick, order=list(s.variables),
+            expanded=bool(self.filters.get(f"{key}:all")), on_expand=expand)
 
     def _pick(self, role: str, value):
         self.selection[role] = value or None
@@ -331,6 +448,15 @@ class AnalyzePage:
         self.override = None
         self.app.render()
 
+    def _add(self, role: str, names: list[str]):
+        """A name group, the shown variables or Enter in the search: added to
+        what is chosen (in column order), nothing removed."""
+        self._select(role, wv.merged(list(self.selection.get(role) or []), names))
+
+    def _remove(self, role: str, names: list[str]):
+        gone = set(names)
+        self._select(role, [n for n in self.selection.get(role) or [] if n not in gone])
+
     def _others_chosen(self, role_key: str) -> set[str]:
         chosen = set()
         for key, value in self.selection.items():
@@ -338,7 +464,7 @@ class AnalyzePage:
                 chosen.update(value if isinstance(value, list) else ([value] if value else []))
         return chosen
 
-    def _quick_select(self, role, options) -> ft.Control:
+    def _quick_select(self, role, options) -> list[ft.Control]:
         """Batch first (spec §2D): every variable of one level in one action."""
         ui, s = self.app.ui, self.app.session
         taken = self._others_chosen(role.key)
@@ -369,11 +495,33 @@ class AnalyzePage:
                             data=f"role-{role.key}-from-{task.id}"))
             if len(buttons) >= 4:
                 break
+        buttons += self._score_buttons(role, f"role-{role.key}", self.selection, taken,
+                                       lambda names, r=role.key: self._select(r, names))
         if self.selection.get(role.key):
             buttons.append(wc.button(ui, ui.t("pick.clear"),
                                      lambda e, r=role.key: self._select(r, []), kind="quiet",
                                      icon=ft.Icons.CLEAR, data=f"role-{role.key}-clear"))
-        return ft.Row(buttons, wrap=True, spacing=tk.SPACE_2)
+        return buttons
+
+    def _score_buttons(self, role, key: str, chosen_roles: dict, taken, select) -> list:
+        """Stage 37 (Issue #68): the items a scale score was made from (Data →
+        Prepare), offered for the items of its reliability: an item set is
+        chosen once, not again box by box."""
+        ui, s = self.app.ui, self.app.session
+        if role.key != "items":
+            return []
+        current = list(chosen_roles.get(role.key) or [])
+        buttons = []
+        for target, sources in scored_item_sets(self.app):
+            usable = [n for n in sources if n in s.variables and n not in taken
+                      and s.level(n) in role.levels + ("unknown",)]
+            if len(usable) == len(sources) > 1 and usable != current:
+                buttons.append(wc.button(
+                    ui, ui.t("pick.score_items", score=target, count=len(usable)),
+                    lambda e, n=tuple(usable): select(list(n)), kind="quiet",
+                    icon=ft.Icons.FUNCTIONS, tooltip=ui.t("pick.score_items_tip", score=target),
+                    data=f"{key}:score:{target}"))
+        return buttons
 
     def _select(self, role: str, names: list[str]):
         self.selection[role] = list(names)
@@ -532,11 +680,18 @@ class AnalyzePage:
                 return f"H{numbers[task.hypothesis_id]} · {task.title}"
             return task.title
 
-        chips = [wc.chip(ui, title(task), "info" if task.id == self.task_id else "neutral",
-                         icon=ft.Icons.ASSIGNMENT_OUTLINED,
-                         tooltip=ui.t("task.open_tip"),
-                         on_click=lambda e, t=task.id: self._open_task(t), data=f"task-{task.id}")
-                 for task in tasks]
+        # Stage 37 (Issue #68): each task can be duplicated into a new one with
+        # the same question, variables and method (nothing confirmed is copied).
+        chips = [ft.Row([
+            wc.chip(ui, title(task), "info" if task.id == self.task_id else "neutral",
+                    icon=ft.Icons.ASSIGNMENT_OUTLINED, tooltip=ui.t("task.open_tip"),
+                    on_click=lambda e, t=task.id: self._open_task(t), data=f"task-{task.id}"),
+            wc.icon_button(ui, ft.Icons.CONTENT_COPY_OUTLINED,
+                           ui.t("task.duplicate_tip", title=title(task)),
+                           lambda e, t=task.id: self.duplicate_task(t),
+                           data=f"task-duplicate-{task.id}"),
+        ], spacing=0, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            for task in tasks]
         chips.append(wc.button(ui, ui.t("task.new"), self._new_task, kind="quiet",
                                icon=ft.Icons.ADD, data="task-new"))
         return [ft.Column([wc.section_label(ui, ui.t("task.tasks")),
@@ -548,6 +703,7 @@ class AnalyzePage:
         if task is None:
             return
         self.pending_hypothesis = None
+        self.filters, self.copy_of = {}, None
         self.mode, self.task_id, self.goal = "guided", task.id, task.goal or None
         self.selection = {k: (list(v) if isinstance(v, list) else v)
                           for k, v in task.selection.items()}
@@ -567,7 +723,61 @@ class AnalyzePage:
         self.confirms, self.confirm_scopes, self.reconfirm = {}, {}, set()
         self.choosing_goal, self.message = False, None
         self.pending_hypothesis = None
+        self.filters, self.copy_of = {}, None
         self.app.render()
+
+    # ---------------------------------------------- reuse (Stage 37, #68)
+    def duplicate_task(self, task_id: str) -> None:
+        """A new analysis with the question, variables and method of a task.
+        It becomes a new task at its first run: the original keeps its runs,
+        title and choices (review D5). Confirmations are not copied: each
+        holds for what it was given for (K1), so the researcher gives them
+        again; the link to a hypothesis is chosen again too."""
+        task = self.app.session.task(task_id)
+        if task is None or task.goal not in GOALS:
+            self.app.render()
+            return
+        self._start_copy(task.title, task.id, task.goal, task.selection, task.method,
+                         task.options)
+
+    def repeat_result(self, entry) -> None:
+        """Results → *Repeat with changes*: the analysis of this result (its
+        variables, method and options) as a new task, nothing confirmed; a
+        result of All methods opens its form the same way."""
+        key = "omnibus" if entry.method == "posthoc" else entry.method
+        task = self.app.session.task(entry.task_id)
+        if task is not None and task.goal in GOALS:
+            selection = selection_from_run(task.goal, key, entry.roles) or task.selection
+            self._start_copy(entry.title, task.id, task.goal, selection, key,
+                             entry.options or {})
+        elif key in METHODS:
+            self.rerun(entry)
+
+    def _start_copy(self, title: str, source: str | None, goal: str, selection: dict,
+                    method: str, options: dict) -> None:
+        app = self.app
+        self.mode, self.task_id, self.goal = "guided", None, goal
+        self.selection = {k: (list(v) if isinstance(v, list) else v)
+                          for k, v in (selection or {}).items()}
+        self.confirms, self.confirm_scopes, self.reconfirm = {}, {}, set()
+        self.pending_hypothesis = None
+        self.choosing_goal, self.message, self.filters = False, None, {}
+        self.override = None
+        if method in METHODS:
+            # The method of the original, unless it is what is recommended anyway.
+            advice = advise(goal, self.selection, app.session)
+            if not (advice.ready and advice.method == method and all(
+                    (options or {}).get(k) == v for k, v in advice.options.items())):
+                self.override = (method, dict(options or {}))
+        self.copy_of = {"title": title, "task": source}
+        app.navigate("analyze", section="variables")
+
+    def _copy_notice(self) -> list[ft.Control]:
+        if not self.copy_of or self.task_id:
+            return []
+        ui = self.app.ui
+        return [wc.notice(ui, ui.t("task.copy_notice", title=self.copy_of["title"]), "info",
+                          data="task-copy-notice")]
 
     def _task_title(self, key: str, roles: dict) -> str:
         ui = self.app.ui
@@ -577,6 +787,11 @@ class AnalyzePage:
             return ui.t("task.title_compare", group=roles["group"], count=len(roles["outcomes"]))
         names = [v for value in roles.values()
                  for v in (value if isinstance(value, list) else [value]) if v]
+        if len(names) > 3:
+            # Stage 37 (Issue #68): a task and its copy with one item fewer
+            # must not carry the same name ("… SYN_LON_01 … SYN_LON_19 (19)").
+            return (f"{method_label(key, {})}: {names[0]} … {names[-1]} "
+                    f"({count_text(ui.language, len(names), 'variables')})")
         return f"{method_label(key, {})}: {', '.join(names[:3])}"
 
     def _remember_task(self, key: str, roles: dict, options: dict, confirms: dict,
@@ -591,9 +806,12 @@ class AnalyzePage:
         if task is None:
             # Stage 37.0a: a new analysis tests the hypothesis chosen in step 1.
             linked, self.pending_hypothesis = self.pending_hypothesis, None
+            state = {"created": datetime.now().isoformat(timespec="seconds")}
+            if self.copy_of and self.copy_of.get("task"):
+                state["copied_from"] = self.copy_of["task"]     # Stage 37 (Issue #68)
             task = ResearchTask(str(uuid.uuid4()), self._task_title(key, roles), self.goal, {},
-                                hypothesis_id=linked,
-                                state={"created": datetime.now().isoformat(timespec="seconds")})
+                                hypothesis_id=linked, state=state)
+            self.copy_of = None
         task.selection = {k: (list(v) if isinstance(v, list) else v)
                           for k, v in self.selection.items()}
         task.method, task.options = key, dict(options)
@@ -890,6 +1108,26 @@ class AnalyzePage:
                    vertical_alignment=ft.CrossAxisAlignment.CENTER),
         ]
         shown = 0
+        recent = [] if query else self._recent()
+        if recent:
+            # Stage 37 (Issue #68): the methods last used in this project, with
+            # the variables and options of their last run (nothing confirmed).
+            sections += [wc.heading(ui, ui.t("catalog.recent"), tk.TYPE_TITLE_S),
+                         ft.ResponsiveRow([ft.Container(
+                             content=ft.Column([
+                                 wc.text(ui, METHODS[key].title, tk.TYPE_LABEL,
+                                         weight=ft.FontWeight.W_600),
+                                 wc.caption(ui, ui.t("catalog.recent_last", title=entry.title,
+                                                     time=f"{entry.created:%H:%M}"),
+                                            color=ui.p.text_secondary, max_lines=2),
+                             ], spacing=tk.SPACE_1),
+                             bgcolor=ui.p.surface, border=ft.Border.all(1, ui.p.border),
+                             border_radius=ui.radius("card"), padding=tk.SPACE_4, ink=True,
+                             on_click=lambda e, ent=entry: self._open_recent(ent),
+                             col={"xs": 12, "md": 6, "xl": 3}, data=f"recent-{key}",
+                             tooltip=ui.t("catalog.recent_tip"))
+                             for key, entry in recent], spacing=tk.SPACE_3,
+                             run_spacing=tk.SPACE_3)]
         for family in FAMILIES:
             cards = []
             for spec in METHODS.values():
@@ -919,6 +1157,36 @@ class AnalyzePage:
         self.search = e.control.value or ""
         self.app.render()
 
+    def _recent(self) -> list[tuple[str, object]]:
+        """``(method, its newest result)`` of the last four methods run in this
+        project whose variables are all in the data on screen."""
+        session, found, seen = self.app.session, [], set()
+        for entry in reversed(session.results):
+            key = "omnibus" if entry.method == "posthoc" else entry.method
+            if key not in METHODS or key in seen:
+                continue
+            names = [n for value in (entry.roles or {}).values() for n in _names(value)]
+            if names and all(n in session.variables for n in names):
+                seen.add(key)
+                found.append((key, entry))
+            if len(found) == 4:
+                break
+        return found
+
+    def _open_recent(self, entry):
+        """A recent method's form with the variables and options of its last
+        run; every confirmation is given again (K1)."""
+        key = "omnibus" if entry.method == "posthoc" else entry.method
+        self.method = key
+        self.form_roles = {k: (list(v) if isinstance(v, list) else v)
+                           for k, v in (entry.roles or {}).items()}
+        self.form_options = {**default_options(METHODS[key]), **(entry.options or {})}
+        self.form_confirms, self.form_scopes, self.form_reconfirm = {}, {}, set()
+        self.filters = {}
+        self.message = (self.app.t("analyze.recent_notice", method=METHODS[key].title,
+                                   time=f"{entry.created:%H:%M}"), "info")
+        self.app.render()
+
     def _open_method(self, key: str):
         self.method = key
         self.form_roles, self.form_confirms, self.form_scopes = {}, {}, {}
@@ -945,13 +1213,23 @@ class AnalyzePage:
         for role in spec.roles:
             options = _variable_options(ui, s)
             if role.multiple:
-                chosen = list(self.form_roles.get(role.key) or [])
-                roles += [wc.section_label(ui, ui.t(role.label)), ft.Row([
-                    wc.checkbox(ui, label, name in chosen,
-                                on_change=lambda e, r=role.key, n=name: self._form_toggle(
-                                    r, n, e.control.value),
-                                data=f"form-{role.key}-{name}")
-                    for name, label in options], wrap=True, spacing=tk.SPACE_4)]
+                # Stage 37 (Issue #68, D7): the same panel as the guided step:
+                # ANCOVA's covariates never offer its outcome or its group.
+                taken = wv.taken_by_others(spec.roles, self.form_roles, role.key)
+                quick = self._score_buttons(role, f"form-{role.key}", self.form_roles, taken,
+                                            lambda names, r=role.key: self._form_set(r, names))
+                if self.form_roles.get(role.key):
+                    quick.append(wc.button(ui, ui.t("pick.clear"),
+                                           lambda e, r=role.key: self._form_set(r, []),
+                                           kind="quiet", icon=ft.Icons.CLEAR,
+                                           data=f"form-{role.key}-clear"))
+                roles.append(self._panel(
+                    f"form-{role.key}", role, spec.roles, self.form_roles, quick=quick,
+                    on_toggle=lambda n, v, r=role.key: self._form_toggle(r, n, v),
+                    on_add=lambda names, r=role.key: self._form_set(
+                        r, wv.merged(list(self.form_roles.get(r) or []), names)),
+                    on_remove=lambda names, r=role.key: self._form_set(
+                        r, [n for n in self.form_roles.get(r) or [] if n not in set(names)])))
             else:
                 if role.optional:
                     options = [("", ui.t("role.none"))] + options
@@ -1018,6 +1296,11 @@ class AnalyzePage:
 
     def _form_pick(self, role, value):
         self.form_roles[role] = value or None
+        self.form_confirms.pop(ITEMS_NOT_TOTALS.key, None)   # given for other columns
+        self.app.render()
+
+    def _form_set(self, role, names):
+        self.form_roles[role] = list(names)
         self.form_confirms.pop(ITEMS_NOT_TOTALS.key, None)   # given for other columns
         self.app.render()
 
@@ -1183,8 +1466,14 @@ class ResultsPage:
         items = []
         for entry in reversed(self.app.session.results):
             selected = entry.id == current.id
+            # Stage 37 (Issue #68): a result can be repeated with changes from
+            # the list itself, as a new task (nothing confirmed is copied).
+            repeat = [wc.icon_button(ui, ft.Icons.CONTENT_COPY_OUTLINED,
+                                     ui.t("results.repeat_named", title=entry.title),
+                                     lambda e, i=entry.id: self._repeat(i),
+                                     data=f"result-repeat-{entry.id}")] if entry.method else []
             items.append(ft.Container(
-                content=ft.Column([
+                content=ft.Row([ft.Column([
                     wc.text(ui, entry.title, tk.TYPE_LABEL, weight=ft.FontWeight.W_600,
                             max_lines=2),
                     wc.caption(ui, f"{entry.dataset} · {entry.created:%H:%M}"),
@@ -1192,7 +1481,8 @@ class ResultsPage:
                                icon=ft.Icons.DESCRIPTION_OUTLINED)] if entry.in_report else []),
                     *([wc.chip(ui, ui.t("results.stale"), "warning", icon=ft.Icons.UPDATE,
                                data=f"result-stale-{entry.id}")] if entry.stale_reasons else []),
-                ], spacing=2),
+                ], spacing=2, expand=True), *repeat], spacing=tk.SPACE_1,
+                    vertical_alignment=ft.CrossAxisAlignment.START),
                 bgcolor=ui.p.accent_subtle if selected else ui.p.surface,
                 border=ft.Border.all(1, ui.p.accent if selected else ui.p.border),
                 border_radius=ui.radius("card"), padding=tk.SPACE_3, ink=True,
@@ -1220,6 +1510,7 @@ class ResultsPage:
                 ft.Column([wc.heading(ui, run.title, tk.TYPE_TITLE_M, data="result-title"),
                            wc.caption(ui, f"{evidence.method} · {entry.dataset}")],
                           spacing=2, expand=True),
+                *self._repeat_button(entry),
                 self._report_toggle(entry),
             ], vertical_alignment=ft.CrossAxisAlignment.START),
         ]
@@ -1361,8 +1652,43 @@ class ResultsPage:
         sections.append(wc.card(ui, provenance, title=ui.t("results.provenance"),
                                 data="result-provenance"))
         sections.append(self._exports(entry, evidence, reviewed))
+        others = self._others(entry)
+        if others is not None:
+            sections.append(others)
         return ft.Column(sections, spacing=tk.SPACE_4, data=f"result-detail-{entry.id}",
-                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                         key=ft.ScrollKey("result-detail"))
+
+    OTHERS = 5     # other results listed at the end of a result
+
+    def _others(self, current) -> ft.Control | None:
+        """Stage 37 (Issue #68): the newest other results at the end of this
+        one, to open or to repeat with changes from where the reading ends
+        (the results list is above the whole result: an item analysis of 20
+        items is about 13,000 px long)."""
+        ui = self.app.ui
+        others = [e for e in reversed(self.app.session.results) if e.id != current.id]
+        if not others:
+            return None
+        rows = []
+        for entry in others[:self.OTHERS]:
+            row = [wc.button(ui, f"{entry.title} · {entry.created:%H:%M}",
+                             lambda e, i=entry.id: self._open_other(i), kind="quiet",
+                             icon=ft.Icons.ARROW_UPWARD, tooltip=ui.t("results.other_open_tip"),
+                             data=f"result-other-{entry.id}")]
+            if entry.method:
+                row.append(wc.icon_button(ui, ft.Icons.CONTENT_COPY_OUTLINED,
+                                          ui.t("results.repeat_named", title=entry.title),
+                                          lambda e, i=entry.id: self._repeat(i),
+                                          data=f"result-other-repeat-{entry.id}"))
+            rows.append(ft.Row(row, spacing=tk.SPACE_1, wrap=True,
+                               vertical_alignment=ft.CrossAxisAlignment.CENTER))
+        return wc.card(ui, rows, title=ui.t("results.others"), data="result-others")
+
+    def _open_other(self, entry_id: int):
+        """Another result, shown from its top (the page scrolls to it)."""
+        self.app.session.selected_result = entry_id
+        self.app.navigate("results", section="detail")
 
     def _hypothesis_line(self, entry) -> ft.Control | None:
         """Stage 37.0a: the hypothesis this result was calculated as a test of,
@@ -1460,6 +1786,20 @@ class ResultsPage:
         if not app.compact:
             width -= tk.PANE_LIST_WIDTH + tk.SPACE_5
         return width >= 1000
+
+    def _repeat_button(self, entry) -> list[ft.Control]:
+        """*Repeat with changes*: this analysis as a new task (Stage 37, #68)."""
+        if not entry.method:
+            return []
+        ui = self.app.ui
+        return [wc.button(ui, ui.t("results.repeat"), lambda e, i=entry.id: self._repeat(i),
+                          icon=ft.Icons.CONTENT_COPY_OUTLINED, tooltip=ui.t("results.repeat_tip"),
+                          data="result-repeat")]
+
+    def _repeat(self, entry_id: int):
+        entry = self.app.session.result(entry_id)
+        if entry is not None and entry.method:
+            self.app.pages["analyze"].repeat_result(entry)
 
     def _report_toggle(self, entry) -> ft.Control:
         ui = self.app.ui
