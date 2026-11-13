@@ -621,20 +621,59 @@ def pe_normalized_sha256(data: bytes) -> str | None:
 # `python -m compileall -b` there (bin/package_command.dart, `package`). Dart
 # appends a random name to that folder, and compileall writes the folder into
 # every code object (co_filename), so the app's .pyc files of two clean builds
-# differ in those bytes alone. The site-packages are compiled in the build
+# differ there, also in length. The site-packages are compiled in the build
 # folder, whose path is the same on every runner.
-COMPILE_FOLDER = re.compile(rb"serious_python_temp[0-9A-Za-z_-]+")
-_COMPILE_PREFIX = b"serious_python_temp"
+COMPILE_FOLDER = re.compile(r"serious_python_temp[0-9A-Za-z_-]+")
 
 
-def pyc_masked_sha256(body: bytes) -> str | None:
-    """SHA-256 of a .pyc body with the compile folder's random name masked.
+def pyc_code_sha256(data: bytes) -> str | None:
+    """SHA-256 of the code a .pyc holds, with the compile folder's random name
+    masked in every file name (co_filename).
 
-    The mask keeps the length, so a name of another length still differs. None
-    if the body names no such folder."""
-    masked, count = COMPILE_FOLDER.subn(
-        lambda match: _COMPILE_PREFIX + b"*" * (len(match.group(0)) - len(_COMPILE_PREFIX)), body)
-    return hashlib.sha256(masked).hexdigest() if count else None
+    It hashes what Python runs — the bytecode, constants, names, line and
+    exception tables of every code object — and not marshal's byte layout, so
+    a folder name of another length still compares equal. Everything else
+    that differs still differs. None if this Python cannot read the file (an
+    other version's magic number) or it names no such folder."""
+    import importlib.util
+    import marshal
+    import types
+
+    if len(data) < 16 or data[:4] != importlib.util.MAGIC_NUMBER:
+        return None
+    try:
+        code = marshal.loads(data[16:])
+    except (EOFError, ValueError, TypeError):
+        return None
+    if not isinstance(code, types.CodeType):
+        return None
+    digest, masked = hashlib.sha256(), []
+
+    def feed(value) -> None:
+        if isinstance(value, types.CodeType):
+            filename, count = COMPILE_FOLDER.subn("serious_python_temp*", value.co_filename)
+            masked.append(count)
+            digest.update(b"<code")
+            for name in ("co_argcount", "co_posonlyargcount", "co_kwonlyargcount",
+                         "co_stacksize", "co_flags", "co_firstlineno", "co_names",
+                         "co_varnames", "co_freevars", "co_cellvars", "co_name", "co_qualname"):
+                digest.update(repr(getattr(value, name)).encode("utf-8", "backslashreplace"))
+            for part in (value.co_code, value.co_linetable, value.co_exceptiontable,
+                         filename.encode("utf-8", "backslashreplace")):
+                digest.update(len(part).to_bytes(8, "little") + part)
+            for constant in value.co_consts:
+                feed(constant)
+            digest.update(b">")
+        elif isinstance(value, (tuple, frozenset)):
+            digest.update(b"(" if isinstance(value, tuple) else b"{")
+            for item in (value if isinstance(value, tuple) else sorted(value, key=repr)):
+                feed(item)
+            digest.update(b")")
+        else:
+            digest.update(f"{type(value).__name__}:{value!r};".encode("utf-8", "backslashreplace"))
+
+    feed(code)
+    return digest.hexdigest() if any(masked) else None
 
 
 def launcher_parts(data: bytes) -> dict | None:
@@ -686,9 +725,9 @@ def describe_file(path: Path) -> dict:
             data.decode("utf-8", "replace"))
     elif suffix == ".pyc" and len(data) >= 16:
         entry["pyc_body_sha256"] = hashlib.sha256(data[16:]).hexdigest()
-        masked = pyc_masked_sha256(data[16:])
-        if masked:
-            entry["pyc_masked_sha256"] = masked
+        code = pyc_code_sha256(data)
+        if code:
+            entry["pyc_code_sha256"] = code
     elif suffix == ".zip":
         try:
             with zipfile.ZipFile(path) as handle:
@@ -731,8 +770,8 @@ def classify(path: str, a: dict, b: dict) -> str:
         return "RECORD: only the console launchers' hashes"
     if "pyc_body_sha256" in a and a.get("pyc_body_sha256") == b.get("pyc_body_sha256"):
         return ".pyc header (source timestamp) only"
-    if "pyc_masked_sha256" in a and a.get("pyc_masked_sha256") == b.get("pyc_masked_sha256"):
-        return ".pyc compile folder name (serious_python temp folder) only"
+    if "pyc_code_sha256" in a and a.get("pyc_code_sha256") == b.get("pyc_code_sha256"):
+        return ".pyc: the same code; only the compile folder's name (serious_python) differs"
     if "zip_members" in a and a.get("zip_members") == b.get("zip_members"):
         return "zip metadata (timestamps, order) only, same members"
     if "zip_members" in a and "zip_members" in b:

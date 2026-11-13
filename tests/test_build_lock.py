@@ -327,6 +327,15 @@ def _pe(timestamp: int, guid: bytes, body: bytes = b"code") -> bytes:
     return bytes(image)
 
 
+def _pyc(source: str, folder: str) -> bytes:
+    """A .pyc of ``source`` as compileall writes it in ``folder``."""
+    import importlib.util
+    import marshal
+
+    code = compile(source, folder + "\\app.py", "exec")
+    return importlib.util.MAGIC_NUMBER + b"\0" * 12 + marshal.dumps(code)
+
+
 class ManifestCompareTests(unittest.TestCase):
     def _zip(self, path: Path, when: tuple) -> None:
         with zipfile.ZipFile(path, "w") as handle:
@@ -347,14 +356,15 @@ class ManifestCompareTests(unittest.TestCase):
             (b / "changed.dll").write_bytes(_pe(1000, b"\x01" * 16, b"two"))
             (a / "m.pyc").write_bytes(b"\x01" * 16 + b"body")
             (b / "m.pyc").write_bytes(b"\x02" * 16 + b"body")
-            folder_a = rb"C:\Temp\serious_python_temp1b2c3d4e-0000-11f0-9a6b-000d3a8b1c2d\app.py"
-            folder_b = rb"C:\Temp\serious_python_temp9f8e7d6c-1111-11f0-8b5a-000d3a8b1c2d\app.py"
-            (a / "app" / "app.pyc").write_bytes(b"\x01" * 16 + b"code" + folder_a + b"more")
-            (b / "app" / "app.pyc").write_bytes(b"\x02" * 16 + b"code" + folder_b + b"more")
-            (a / "app" / "other.pyc").write_bytes(b"\x01" * 16 + b"code" + folder_a + b"one")
-            (b / "app" / "other.pyc").write_bytes(b"\x01" * 16 + b"code" + folder_b + b"two")
-            (a / "app" / "short.pyc").write_bytes(b"\x01" * 16 + folder_a)
-            (b / "app" / "short.pyc").write_bytes(b"\x01" * 16 + folder_b.replace(b"-1111", b"-11"))
+            folder_a = r"C:\Temp\serious_python_temp4183527409"
+            folder_b = r"C:\Temp\serious_python_temp51234567"       # another length
+            source = "def f(x):\n    return {1.5, 'a'} if x else (x, b'z')\n"
+            (a / "app" / "app.pyc").write_bytes(_pyc(source, folder_a))
+            (b / "app" / "app.pyc").write_bytes(_pyc(source, folder_b))
+            (a / "app" / "other.pyc").write_bytes(_pyc(source, folder_a))
+            (b / "app" / "other.pyc").write_bytes(_pyc(source.replace("1.5", "2.5"), folder_b))
+            (a / "app" / "moved.pyc").write_bytes(_pyc(source, folder_a))
+            (b / "app" / "moved.pyc").write_bytes(_pyc(source, r"C:\Temp\elsewhere"))
             self._zip(a / "lib.zip", (2026, 1, 1, 0, 0, 0))
             self._zip(b / "lib.zip", (2026, 2, 2, 0, 0, 0))
             (a / "notes.txt").write_text("x", encoding="utf-8")
@@ -369,16 +379,16 @@ class ManifestCompareTests(unittest.TestCase):
         self.assertEqual(kinds["changed.dll"], "content differs")
         self.assertEqual(kinds["m.pyc"], ".pyc header (source timestamp) only")
         self.assertEqual(kinds["app/app.pyc"],
-                         ".pyc compile folder name (serious_python temp folder) only")
-        # Anything else that differs, or a name of another length, is not hidden.
+                         ".pyc: the same code; only the compile folder's name (serious_python) differs")
+        # Other code, or a file name other than the compile folder, is not hidden.
         self.assertEqual(kinds["app/other.pyc"], "content differs")
-        self.assertEqual(kinds["app/short.pyc"], "content differs")
+        self.assertEqual(kinds["app/moved.pyc"], "content differs")
         self.assertEqual(kinds["lib.zip"], "zip metadata (timestamps, order) only, same members")
         self.assertEqual(kinds["notes.txt"], "content differs")
         markdown = toolchain.comparison_markdown(result, "Test")
         self.assertIn("| PE link timestamp, checksum or PDB id only | 1 |", markdown)
         self.assertEqual(sorted(toolchain.unexplained(result)),
-                         ["app/other.pyc", "app/short.pyc", "changed.dll", "notes.txt"])
+                         ["app/moved.pyc", "app/other.pyc", "changed.dll", "notes.txt"])
         self.assertIn("- Not explained by a known build-time difference: **4**", markdown)
 
     @staticmethod

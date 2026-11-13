@@ -20,7 +20,7 @@ Every gate below names its evidence. "done" means verified by the named test or 
 | Every required earlier feature is in the integration graph | done | `docs/STAGE368_BRANCH_INTEGRATION.md`: the only missing commit, af300b5, is merged (3435368) |
 | One reproducible RC branch | done | `claude/stage368-rc`; `docs/STAGE368_BUILD_LOCK.md` |
 | Runtime dependencies and toolchain pinned | done | hashed locks, `packaging/build_toolchain.lock.json`, Dart lock; strict build identity; `tests/test_build_lock.py` |
-| No known critical data-loss, startup or workflow bug | **open** | the review findings K1–K5 in §3 |
+| No known critical data-loss, startup or workflow bug | done in code and tests; Windows GUI confirmation in §5 | the review findings K1–K5 in §3 are fixed (`tests/test_stage368_review.py`, `tests/test_stage368_review_fixes.py`) |
 | Import accessibility discrepancy resolved or documented | done | `docs/STAGE368_A11Y_AND_LOCALE.md` §1; Windows run 43418623163 |
 | OCR performance profiled, improvements measured | done (Windows after-profile from the final run) | `docs/STAGE368_OCR_PERFORMANCE.md` |
 | Scientific safeguards kept | done | full suite incl. numeric oracles; no automatic confirmation (scales, versions, scoring keys, reverse items, coding) |
@@ -36,9 +36,9 @@ Every gate below names its evidence. "done" means verified by the named test or 
 
 | Finding | Kind | State |
 |---|---|---|
-| K1: design and data confirmations carried over to other variables and data | scientific integrity | being fixed on this branch (see commit log) |
-| K2: notes, review ticks and report settings not saved across a restart; report title shown in another project | data loss | being fixed on this branch |
-| K3: data preparation reset confirmed measurement levels and was missing from the project history | data integrity | being fixed on this branch |
+| K1: design and data confirmations carried over to other variables and data | scientific integrity | **fixed** 23f4f4a. A design confirmation holds while its variables are the same. A data confirmation holds for one table (SHA-256), one set of variables with their levels, and one method with its options. Otherwise it is cleared, with a notice. "Run again" on the same data still takes two actions. `DesignConfirmationTests` |
+| K2: notes, review ticks and report settings not saved across a restart; report title shown in another project | data loss | **fixed** 23f4f4a. Stored in the project, format 5 kept, no migration. Restored after a restart; another project shows none of them. `ResearcherEntriesTests` |
+| K3: data preparation reset confirmed measurement levels and was missing from the project history | data integrity | **fixed** 23f4f4a. Levels of existing columns kept; each step recorded and shown in the report's data-preparation section. `PreparationHistoryTests` |
 | K4: "p(adjusted)" written also without correction | scientific correctness | **fixed** f193df2, `tests/test_stage368_review_fixes.py` |
 | K5: Kruskal–Wallis batch without group medians, mean ranks and Dunn pairs | scientific reporting | **fixed** f193df2 |
 | K6: UI Automation disabled state, keyboard, Narrator | accessibility | step fixed (dff65c8); platform limitation and the open items documented |

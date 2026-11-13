@@ -319,8 +319,13 @@ class ResearcherEntriesTests(unittest.TestCase):
                 # The Word report written after the restart knows what was reviewed.
                 again.click("reports-export-docx")
                 text = document_text(again.saved[-1])
-                self.assertIn(f"{assumptions[0]} — {REPORT['lv']['assumption_reviewed']}", text)
-                self.assertIn(f"{assumptions[1]} — {REPORT['lv']['assumption_open']}", text)
+                # The report writes each check in its own language (Stage 36.8
+                # locale audit); the review is recorded against the English text.
+                from interpretation_i18n import translate_assumption
+
+                reviewed, still_open = (translate_assumption(a, "lv") for a in assumptions[:2])
+                self.assertIn(f"{reviewed} — {REPORT['lv']['assumption_reviewed']}", text)
+                self.assertIn(f"{still_open} — {REPORT['lv']['assumption_open']}", text)
                 self.assertIn(NOTE, text)
                 self.assertIn("Fictional loneliness study", text)
                 self.assertNotIn(REPORT["lv"]["limitations"], text, "left out by the researcher")

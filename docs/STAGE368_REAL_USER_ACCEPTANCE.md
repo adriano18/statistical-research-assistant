@@ -69,8 +69,9 @@ When a newer preview is published: the program shows it with "What's new". Press
 
 ## 4. Known gaps that affect acceptance (documented, not hidden)
 
-- Review findings K1–K3 were confirmed in code and are being fixed on this RC branch. The status of each is in `docs/STAGE368_RELEASE_CHECKLIST.md`.
-  - K1: design confirmations were not bound to the data and variables.
-  - K2: notes and report settings were not saved across a restart.
-  - K3: data preparation reset measurement levels and was missing from the project history.
+- Review findings K1–K3 were confirmed and are fixed on this RC branch (23f4f4a), with tests that failed before the fix. The details are in `docs/STAGE368_RELEASE_CHECKLIST.md` §3.
+  - K1: design and data confirmations are now bound to what they were given for.
+  - K2: notes, review ticks, the report title, left-out sections and language are now saved in the project.
+  - K3: data preparation keeps the confirmed levels and is recorded in the project history.
+  The Windows GUI journeys for K1 (another variable, then run again) and K2 (report order, title and sections after a restart) are listed in §2 when they have run.
 - The installer is **unsigned**. SmartScreen warnings are expected and must not be bypassed for anyone but the owner testing this preview.
