@@ -166,9 +166,28 @@ The installers were 103,235,360 and 103,234,508 bytes and not identical, because
 
 The random compile-folder name cannot be removed without changing serious_python. It changes no instruction, only the file name in tracebacks.
 
-### 4.3 Final release-candidate commit
+### 4.3 After the changes: runs 43429053134 (467945c) and 43434129024 (83eb93e)
 
-*Filled in from the run on the final commit.*
+| | First comparison (9e5f65a) | With `SOURCE_DATE_EPOCH` (467945c) | And the code comparison (83eb93e) |
+|---|---:|---:|---:|
+| Bundle files byte-identical, of 6,848 | 2,528 | **6,698** | **6,698** |
+| `.pyc` header only | 4,150 | 0 | 0 |
+| pip launchers and their RECORD files | 20 | 0 | 0 |
+| App `.pyc`: the same code, only the compile folder's name differs | (139 unexplained) | (139 unexplained: names of different length) | **139** |
+| PE link timestamp, checksum or PDB id only | 10 | 10 | 10 |
+| Build metadata (`app/build_info.json`) | 1 | 1 | 1 |
+| **Not explained by a known build-time difference** | 159 | 139 | **0** |
+| Installed folder: the same, plus Inno Setup's uninstall log | | | 0 unexplained of 6,850 |
+
+**Result.** On 83eb93e, two clean runners built the same 6,848 files, with the same total size (408,893,366 bytes). 6,698 of them are byte-identical. Every other file differs only in one of these:
+- the build's own stamps: PE link time and PDB id, and `build_info.json` (build time);
+- the name of serious_python's temporary compile folder inside the app's `.pyc` files. Their code was compared object by object and is identical.
+
+No dependency, setting or source differs between the two builds.
+
+The installers are not byte-identical (103,282,902 and 103,284,223 bytes). Inno Setup stores its build time and compresses the stamped files above. What they install is compared file by file in the installed-folder rows.
+
+The 10 PE files, the app's `.pyc` names and `build_info.json` remain. Making them byte-identical would need changes to the Flutter/MSVC link step and to serious_python. That is not done here.
 
 ## 5. Licences
 

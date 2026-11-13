@@ -212,8 +212,8 @@ class DriverHelperTests(unittest.TestCase):
             "stage36-tasks", "stage36-charts", "stage36-groups", "project-a", "project-b",
             "import-30", "review-120", "responses", "blocked-design", "import-cope-docx",
             "import-scan-lv", "stage36-report", "import-damaged"])
-        self.assertEqual(list(e2e.JOURNEYS)[13:], ["psychometrics", "import-resume",
-                                                    "negative-paths"])
+        self.assertEqual(list(e2e.JOURNEYS)[13:16], ["psychometrics", "import-resume",
+                                                      "negative-paths"])
         self.assertEqual(e2e.TOTALS_ONLY, "Only a total score is available now",
                          "the D5 text of journey stage36-report")
 
@@ -717,13 +717,27 @@ class ImportResumeJourneyTests(unittest.TestCase):
             self.assertEqual((box.label, box.value), (T("imp.item_reviewed"), True))
             self.assertEqual(len(page.session.instrument.questions), 52)
 
-            # Discard: the journey can run again.
-            self.assertEqual(label(again, "imp-discard"), T("imp.discard"))
-            again.click("imp-discard")
-            self.assertEqual(label(again, "imp-discard-confirm"), T("imp.discard_confirm"))
-            again.click("imp-discard-confirm")
-            self.assertTrue(on_screen(again, texts["discarded"]))
+            # Discard after another restart, from the offer at the top of
+            # Questionnaires (the journey cannot reach the status line of a
+            # long review on Windows): the journey can run again.
+            again.close()
+            third = Workspace(root=root)
+            self.addCleanup(third.close)
+            third.app.navigate("questionnaires")
+            self.assertIn(texts["offer"], buttons(third, re.escape(texts["offer"])))
+            # The offer opens the review from its file (resume_review).
+            page = third.app.pages["import"]
+            with mock.patch.object(third.app, "reveal"):
+                third.run(page.resume_review(sha))
+            for key in ("restored", "read"):
+                self.assertTrue(on_screen(third, texts[key]), key)
+            self.assertEqual(label(third, "imp-discard"), T("imp.discard"))
+            third.click("imp-discard")
+            self.assertEqual(label(third, "imp-discard-confirm"), T("imp.discard_confirm"))
+            third.click("imp-discard-confirm")
+            self.assertTrue(on_screen(third, texts["discarded"]))
             self.assertIsNone(e2e.saved_review(disk, sha))
+            self.assertFalse(buttons(third, re.escape(texts["offer"])), "no longer offered")
 
 
 class NegativePathsJourneyTests(unittest.TestCase):

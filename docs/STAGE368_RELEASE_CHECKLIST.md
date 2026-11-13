@@ -8,7 +8,7 @@ Every gate below names its evidence. "done" means verified by the named test or 
 
 | Status | State |
 |---|---|
-| Automated QA passed | see §2; all major checks on one final commit (§5) |
+| Automated QA passed | **yes**, on the final RC code commit b2abe20 (§5). The commits after it change only `docs/` |
 | Manual user acceptance passed | **not yet** (`docs/STAGE368_REAL_USER_ACCEPTANCE.md` §3) |
 | Language review passed (LV, RU) | **not yet**: no native-speaker review has taken place (`docs/STAGE368_LOCALE_REVIEW.md`) |
 | Production signing configured | **no**: unsigned preview; `SRA_UPDATE_SIGNING_KEY`, `WINDOWS_SIGNING_PFX_BASE64` and `WINDOWS_SIGNING_PFX_PASSWORD` are owner-supplied and not configured |
@@ -21,16 +21,16 @@ Every gate below names its evidence. "done" means verified by the named test or 
 | One reproducible RC branch | done | `claude/stage368-rc`; `docs/STAGE368_BUILD_LOCK.md` |
 | Runtime dependencies and toolchain pinned | done | hashed locks, `packaging/build_toolchain.lock.json`, Dart lock; strict build identity; `tests/test_build_lock.py` |
 | No known critical data-loss, startup or workflow bug | done in code and tests; Windows GUI confirmation in §5 | the review findings K1–K5 in §3 are fixed (`tests/test_stage368_review.py`, `tests/test_stage368_review_fixes.py`) |
-| Import accessibility discrepancy resolved or documented | done | `docs/STAGE368_A11Y_AND_LOCALE.md` §1; Windows run 43418623163 |
-| OCR performance profiled, improvements measured | done (Windows after-profile from the final run) | `docs/STAGE368_OCR_PERFORMANCE.md` |
+| Import accessibility discrepancy resolved or documented | done | `docs/STAGE368_A11Y_AND_LOCALE.md` §1; Windows runs 43418623163 and 43440145161 |
+| OCR performance profiled, improvements measured | done | `docs/STAGE368_OCR_PERFORMANCE.md`: the 52-item scan in the packaged program, 50.4 s before, 6.2 s on b2abe20 (run 43440145161), the same 52 candidates |
 | Scientific safeguards kept | done | full suite incl. numeric oracles; no automatic confirmation (scales, versions, scoring keys, reverse items, coding) |
-| RU/LV reviewable quality report | see `docs/STAGE368_LOCALE_REVIEW.md` | |
-| All 13 Windows GUI journeys pass on the final commit | | §5 |
-| Installer and A → B update pass | | §5 |
-| Project data survive update and reinstall | | installer workflow (upgrade, uninstall, reinstall); update workflow |
+| RU/LV reviewable quality report | done (the review itself is the owner's) | `docs/STAGE368_LOCALE_REVIEW.md`: missing translations 11 → 0, English in workspace screens 49 → 2, a review list by screen and a glossary |
+| All Windows GUI journeys pass on the final commit | done | 18 of 18 on the packaged program, and the same 18 on the installed program (§5) |
+| Installer and A → B update pass | done | §5 |
+| Project data survive update and reinstall | done | installer run 43440145158: B over A opens the same projects, uninstall keeps the data, the new installation finds it; update run 43440145261: the project opens in B |
 | AI privacy gates enforced | done with mocked providers | `docs/STAGE368_AI_GATE.md`: the 10 gates of issue #62 in `tests/test_stage368_ai_gate.py` (30 tests, a network guard fails any real connection). Four defects found and fixed: a model refusing the request, a timed-out generation sent four times, cut-off replies crashing Test connection, Send after a provider change elsewhere. The assistant is off until a key and a model are set. **No real provider was called**: the live smoke test needs an authorised key and runs only when the owner enables it |
 | Unsigned-release limitations explicit | done | this file §4; installer and release texts say "unsigned preview" |
-| Checklist and evidence complete | this file | |
+| Checklist and evidence complete | done | this file; `docs/STAGE368_REAL_USER_ACCEPTANCE.md` §2 |
 
 ## 3. Review findings (independent Fable review) and their state
 
@@ -55,17 +55,22 @@ Every gate below names its evidence. "done" means verified by the named test or 
 
 ## 5. All major checks on one final commit
 
-*Filled in once the final RC commit is pushed. Each row is the run on that SHA.*
+The final RC code commit is **b2abe20** (`b2abe20ba7e5e26c3f06c5f85ce97b0621aaf648`). Every row is the run on that SHA. Later commits change only `docs/`. CI runs again on the branch head, and PR #64 lists those runs as well.
 
 | Check | Run | Result |
 |---|---|---|
-| Python tests (Linux suite with real OCR; pruned runtime; Windows SQLite; Windows research journey; browser screenshots and state checks) | | |
-| Windows bundle (toolchain, hashed install, real OCR tests, packaged OCR and analysis self-tests, identity strict, SBOM, size budget) | | |
-| Packaged GUI journeys (13 existing + new) | | |
-| Installer (install, legacy migration, journeys on the installed program, B over A, uninstall keeps data, reinstall) | | |
-| In-app update A → B (refusals, interrupted download, update, project in B) | | |
-| Native display scale 100/125/150/175 % | | |
-| Reproducible build (two runners, compared) | | |
+| Python tests (Linux suite with real OCR; pruned runtime; Windows SQLite; Windows research journey; browser screenshots and state checks) | [43440145111](https://github.com/adriano18/statistical-research-assistant/actions/runs/43440145111) | success. The same suite locally: 1,249 tests OK (10 skipped: live AI and platform-only) |
+| Windows bundle (toolchain, hashed install, real OCR tests, packaged OCR and analysis self-tests, identity strict, SBOM, size budget) | [43440145139](https://github.com/adriano18/statistical-research-assistant/actions/runs/43440145139) | success |
+| Packaged GUI journeys (13 existing + 5 new) | [43440145161](https://github.com/adriano18/statistical-research-assistant/actions/runs/43440145161) | success: 18 of 18 in 27.6 min |
+| Installer (install, legacy migration, journeys on the installed program, B over A, uninstall keeps data, reinstall) | [43440145158](https://github.com/adriano18/statistical-research-assistant/actions/runs/43440145158) | success: 18 of 18 journeys on the installed program, then upgrade, uninstall and reinstall |
+| In-app update A → B (refusals, interrupted download, update, project in B) | [43440145261](https://github.com/adriano18/statistical-research-assistant/actions/runs/43440145261) | success |
+| Native display scale 100/125/150/175 % | [43440145321](https://github.com/adriano18/statistical-research-assistant/actions/runs/43440145321) | success |
+| Reproducible build (two runners, compared) | [43440145269](https://github.com/adriano18/statistical-research-assistant/actions/runs/43440145269) | success: 0 deviations not explained by a known build-time difference (`docs/STAGE368_BUILD_LOCK.md` §4) |
+| Packaging experiments (size and start-up, informative) | [43440145142](https://github.com/adriano18/statistical-research-assistant/actions/runs/43440145142) | success |
+
+The unsigned preview installer of this commit is the artifact `StatisticalResearchAssistant-Setup-unsigned-preview` of the installer run. The synthetic files for the owner's checklist are its `synthetic-acceptance-files` artifact. Both are kept for 14 days by GitHub.
+
+**Not a release.** These are temporary GitHub Actions artifacts, made for review. The public update channel is the GitHub Release made by `release.yml` (§6), after the owner's go-ahead.
 
 ## 6. Releasing the preview (after the owner's go-ahead; not done by this work)
 
