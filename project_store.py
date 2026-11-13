@@ -25,7 +25,9 @@ moved or rewritten here.
 Every analysis run stores what is needed to reproduce and audit it: method
 key, variable roles, options, confirmations, measurement levels, the
 dataset version (SHA-256 of its content), the report text and its SHA-256,
-library versions and the time. A run becomes *stale* — never silently
+library versions, the time and (format 6) the hypothesis it was calculated
+for. The research plan is versioned; the researcher's decisions about it
+(format 6) are append-only protocol records. A run becomes *stale* — never silently
 deleted — when its dataset content or a measurement level it relied on
 changes afterwards.
 
@@ -58,7 +60,7 @@ from typing import Any, Iterable
 import uuid
 import zipfile
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 PACKAGE_FORMAT = "sra-project"
 PACKAGE_VERSION = 1
 DB_NAME = "project.sqlite3"
@@ -86,6 +88,16 @@ class ProjectLocked(ProjectError):
 
 class ProjectFormatError(ProjectError):
     """A project database or package this version cannot use safely."""
+
+
+class DesignationReasonNeeded(ProjectError):
+    """A hypothesis's priority changes after results and no reason was given
+    (Stage 37.0a). ``hypotheses`` names them; nothing was saved."""
+
+    def __init__(self, hypotheses: tuple[str, ...], runs: int):
+        self.hypotheses, self.runs = tuple(hypotheses), int(runs)
+        super().__init__(f"The priority of {len(self.hypotheses)} hypothesis(es) changes after "
+                         f"{self.runs} results; give the reason for each.")
 
 
 def now() -> str:
@@ -287,7 +299,37 @@ def _migrate_v5(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE runs ADD COLUMN charts TEXT")
 
 
-MIGRATIONS = {1: _create_v1, 2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5}
+def _migrate_v6(db: sqlite3.Connection) -> None:
+    """Format 6 (Stage 37.0a): the protocol records of the research plan.
+
+    The researcher's recorded decisions about the plan: a priority changed
+    after results, a task linked to a hypothesis, a check acknowledged, a
+    deviation from the plan, a justification, and the withdrawal of one of
+    them. The table only grows: triggers refuse every UPDATE and DELETE, so
+    a record is withdrawn by a new record that names it. Nothing existing is
+    altered (additive), and ``IF NOT EXISTS`` keeps the records of a copy
+    that comes back from an older version (docs/STAGE37_DESIGN.md §8.6)."""
+    db.execute("CREATE TABLE IF NOT EXISTS protocol_records ("
+               " id TEXT PRIMARY KEY, at TEXT NOT NULL,"
+               " kind TEXT NOT NULL CHECK (kind IN ('designation', 'link', 'acknowledgement',"
+               " 'deviation', 'justification', 'withdrawal')),"
+               " hypothesis_id TEXT, task_id TEXT, run_id TEXT,"
+               " check_key TEXT NOT NULL DEFAULT '', fingerprint TEXT NOT NULL DEFAULT '',"
+               " plan_version INTEGER,"
+               " results_of_hypothesis INTEGER NOT NULL DEFAULT 0,"
+               " results_in_project INTEGER NOT NULL DEFAULT 0,"
+               " detail TEXT NOT NULL DEFAULT '{}', reason TEXT NOT NULL DEFAULT '',"
+               " supersedes TEXT)")
+    db.execute("CREATE INDEX IF NOT EXISTS protocol_records_hypothesis"
+               " ON protocol_records (hypothesis_id, at)")
+    for action in ("UPDATE", "DELETE"):
+        db.execute(f"CREATE TRIGGER IF NOT EXISTS protocol_records_no_{action.lower()}"
+                   f" BEFORE {action} ON protocol_records"
+                   " BEGIN SELECT RAISE(ABORT, 'protocol records are append-only'); END")
+
+
+MIGRATIONS = {1: _create_v1, 2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5,
+              6: _migrate_v6}
 
 
 def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
@@ -427,6 +469,13 @@ class RunRecord:
         format-5 program ignores the key."""
         return tuple(str(a) for a in self.provenance.get("reviewed") or ())
 
+    @property
+    def hypothesis(self) -> dict | None:
+        """The hypothesis the run was calculated as a test of, as the plan
+        stated it then (Stage 37.0a), or None. Kept in ``provenance``."""
+        snapshot = self.provenance.get("hypothesis")
+        return dict(snapshot) if isinstance(snapshot, dict) else None
+
 
 @dataclass(frozen=True)
 class TaskRecord:
@@ -485,13 +534,110 @@ HYPOTHESIS_FIELDS = ("text", "h0", "outcome", "predictors", "covariates", "metho
                      "exclusions")
 DIRECTIONS = ("two-sided", "greater", "less")
 PRIORITIES = ("primary", "secondary", "exploratory")
+# Stage 37.0a: the kinds of research question are the guided goals
+# (workspace_methods.GOALS; tests/test_stage37_workflow.py keeps them equal).
+QUESTION_TYPES = ("compare", "change", "relate", "associate", "predict", "scale", "structure",
+                  "describe")
+PROTOCOL_KINDS = ("designation", "link", "acknowledgement", "deviation", "justification",
+                  "withdrawal")
+REASON_KINDS = ("designation", "acknowledgement", "deviation", "justification", "withdrawal")
+DEVIATION_WHAT = ("method", "variables", "direction", "alpha", "designation", "sample",
+                  "exclusions", "data", "other")
+_HEX12 = re.compile(r"[0-9a-f]{12}")
+
+
+def _plan_questions(plan: dict) -> list[dict]:
+    """Typed research questions (plan format 2): id, kind and sentence."""
+    questions, seen = [], set()
+    for raw in plan.get("questions") or []:
+        if not isinstance(raw, dict):
+            continue
+        text = str(raw.get("text") or "").strip()[:2000]
+        kind = str(raw.get("type") or "")
+        if not text and not kind:
+            continue
+        if kind and kind not in QUESTION_TYPES:
+            raise ProjectError(f"Unknown kind of research question {kind!r}.")
+        question_id = str(raw.get("id") or "") or uuid.uuid4().hex[:12]
+        if not _HEX12.fullmatch(question_id) or question_id in seen:
+            raise ProjectError("Invalid research question identifier.")
+        seen.add(question_id)
+        questions.append({"id": question_id, "type": kind, "text": text})
+    if len(questions) > 100:
+        raise ProjectError("A plan holds at most 100 research questions.")
+    return questions
+
+
+def _typed_hypothesis(raw: dict, questions: dict[str, dict]) -> dict:
+    """The optional typed fields of a hypothesis (plan format 2), validated;
+    only those that hold a value are kept."""
+    typed: dict = {}
+    question_id = str(raw.get("question_id") or "")
+    if question_id:
+        if question_id not in questions:
+            raise ProjectError("The hypothesis names a research question that is not in the plan.")
+        typed["question_id"] = question_id
+    method_key = str(raw.get("method_key") or "")
+    options = raw.get("method_options") or {}
+    if not isinstance(options, dict):
+        raise ProjectError("The intended method's options are a set of named values.")
+    if method_key:
+        from workspace_methods import METHODS
+
+        spec = METHODS.get(method_key)
+        if spec is None:
+            raise ProjectError(f"Unknown intended method {method_key!r}.")
+        choices = {o.key: {k for k, _ in o.choices} for o in spec.options}
+        clean = {}
+        for key, value in options.items():
+            if key not in choices or str(value) not in choices[key]:
+                raise ProjectError(f"Unknown option {key}={value!r} of the intended method.")
+            clean[str(key)] = str(value)
+        typed["method_key"] = method_key
+        if clean:
+            typed["method_options"] = clean
+    elif options:
+        raise ProjectError("Options of an intended method need the method.")
+    roles = raw.get("roles") or {}
+    if not isinstance(roles, dict):
+        raise ProjectError("The planned variables are a set of roles.")
+    if roles:
+        from workspace_methods import GOAL_ROLES
+
+        kind = questions.get(question_id, {}).get("type", "")
+        allowed = ({r.key for r in GOAL_ROLES.get(kind, ())} if kind else
+                   {r.key for goal in GOAL_ROLES.values() for r in goal})
+        clean_roles = {}
+        for role, value in roles.items():
+            if role not in allowed:
+                raise ProjectError(f"{role!r} is not a role of this kind of question.")
+            names = value if isinstance(value, (list, tuple)) else [value]
+            names = [str(n).strip()[:200] for n in names if str(n or "").strip()]
+            if len(names) > 100:
+                raise ProjectError("A role holds at most 100 planned variables.")
+            if names:
+                clean_roles[str(role)] = names if isinstance(value, (list, tuple)) else names[0]
+        if clean_roles:
+            typed["roles"] = clean_roles
+    expected = str(raw.get("expected") or "").strip()[:200]
+    if expected:
+        typed["expected"] = expected
+    return typed
 
 
 def normalise_plan(plan: dict) -> dict:
-    """A research plan as stored: known fields only, trimmed, validated."""
+    """A research plan as stored: known fields only, trimmed, validated.
+
+    Plan format 2 (Stage 37.0a) adds typed research questions and, per
+    hypothesis, its question, intended method, planned variables and the
+    expected group. They are optional and kept only when they hold a value,
+    so a plan without them stays exactly as earlier versions stored it."""
     if not isinstance(plan, dict):
         raise ProjectError("A research plan is a set of named fields.")
     clean = {name: str(plan.get(name) or "").strip()[:4000] for name in PLAN_TEXT_FIELDS}
+    questions = _plan_questions(plan)
+    by_id = {q["id"]: q for q in questions}
+    typed_any = bool(questions)
     hypotheses = []
     for raw in plan.get("hypotheses") or []:
         if not isinstance(raw, dict):
@@ -514,12 +660,108 @@ def normalise_plan(plan: dict) -> dict:
         hypothesis_id = str(raw.get("id") or "") or uuid.uuid4().hex[:12]
         if not re.fullmatch(r"[0-9a-f]{12}", hypothesis_id):
             raise ProjectError("Invalid hypothesis identifier.")
+        typed = _typed_hypothesis(raw, by_id)
+        typed_any = typed_any or bool(typed)
         hypotheses.append({**item, "id": hypothesis_id, "direction": direction,
-                           "priority": priority, "alpha": alpha})
+                           "priority": priority, "alpha": alpha, **typed})
     if len(hypotheses) > 100:
         raise ProjectError("A plan holds at most 100 hypotheses.")
+    if typed_any:
+        clean["plan_format"] = 2
+        clean["questions"] = questions
     clean["hypotheses"] = hypotheses
     return clean
+
+
+def _snapshot(hypothesis: dict | None) -> dict | None:
+    """The hypothesis a run is calculated for, as the plan stated it then
+    (Stage 37.0a): known keys only, validated."""
+    if hypothesis is None:
+        return None
+    if not isinstance(hypothesis, dict):
+        raise ProjectError("A hypothesis snapshot is a set of named values.")
+    hypothesis_id = str(hypothesis.get("id") or "")
+    question_id = str(hypothesis.get("question_id") or "")
+    if not _HEX12.fullmatch(hypothesis_id) or (question_id and not _HEX12.fullmatch(question_id)):
+        raise ProjectError("Invalid hypothesis identifier in the result.")
+    priority = str(hypothesis.get("priority") or "primary")
+    direction = str(hypothesis.get("direction") or "two-sided")
+    if priority not in PRIORITIES or direction not in DIRECTIONS:
+        raise ProjectError("Invalid hypothesis snapshot.")
+    try:
+        alpha = float(hypothesis.get("alpha", 0.05))
+        version = hypothesis.get("plan_version")
+        version = None if version is None else int(version)
+    except (TypeError, ValueError) as error:
+        raise ProjectError("Invalid hypothesis snapshot.") from error
+    return {"id": hypothesis_id, "plan_version": version, "priority": priority,
+            "direction": direction, "alpha": alpha,
+            "standing": str(hypothesis.get("standing") or "")[:40], "question_id": question_id}
+
+
+def _insert_protocol_record(db: sqlite3.Connection, kind: str, *, hypothesis_id=None,
+                            task_id=None, run_id=None, check_key: str = "",
+                            fingerprint: str = "", detail: dict | None = None, reason: str = "",
+                            supersedes: str | None = None, plan_version: int | None = None) -> str:
+    """Validate and append one protocol record inside the caller's transaction."""
+    if kind not in PROTOCOL_KINDS:
+        raise ProjectError(f"Unknown kind of protocol record {kind!r}.")
+    reason = str(reason or "").strip()
+    if kind in REASON_KINDS and not reason:
+        raise ProjectError("Give the reason: it is kept with the record.")
+    if len(reason) > 4000:
+        raise ProjectError("The reason is longer than 4000 characters.")
+    hypothesis_id = str(hypothesis_id or "") or None
+    if hypothesis_id is not None and not _HEX12.fullmatch(hypothesis_id):
+        raise ProjectError("Invalid hypothesis identifier.")
+    for name, value in (("task", task_id), ("run", run_id)):
+        if value is not None and (not isinstance(value, str) or len(value) > 64):
+            raise ProjectError(f"Invalid {name} identifier.")
+    check_key = str(check_key or "")
+    if not re.fullmatch(r"[A-Z0-9-]{0,40}", check_key):
+        raise ProjectError("Invalid check name.")
+    fingerprint = str(fingerprint or "")
+    if fingerprint and not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+        raise ProjectError("Invalid fingerprint.")
+    if kind == "acknowledgement" and not (check_key and fingerprint):
+        raise ProjectError("An acknowledgement names the check and the facts it was given for.")
+    detail = dict(detail or {})
+    if kind == "deviation" and detail.get("what") not in DEVIATION_WHAT:
+        raise ProjectError("Say what deviates from the plan.")
+    payload = json.dumps(detail, ensure_ascii=False, sort_keys=True, default=str)
+    if len(payload) > 8000:
+        raise ProjectError("The record's details are too long.")
+    if kind == "withdrawal":
+        target = db.execute("SELECT kind FROM protocol_records WHERE id = ?",
+                            (str(supersedes or ""),)).fetchone()
+        if target is None:
+            raise ProjectError("A withdrawal names the record it withdraws.")
+        if target["kind"] == "withdrawal":
+            raise ProjectError("A withdrawal cannot be withdrawn; record the decision again.")
+        if db.execute("SELECT 1 FROM protocol_records WHERE kind = 'withdrawal'"
+                      " AND supersedes = ?", (supersedes,)).fetchone():
+            raise ProjectError("That record was already withdrawn.")
+    elif supersedes is not None:
+        raise ProjectError("Only a withdrawal names another record.")
+    if plan_version is None:
+        row = db.execute("SELECT MAX(id) FROM plan_versions").fetchone()
+        plan_version = row[0]
+    in_project = db.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+    of_hypothesis = 0
+    if hypothesis_id is not None:
+        of_hypothesis = db.execute(
+            "SELECT COUNT(*) FROM runs r JOIN research_tasks t ON r.task_id = t.id"
+            " WHERE t.hypothesis_id = ?", (hypothesis_id,)).fetchone()[0]
+    record_id = str(uuid.uuid4())
+    db.execute("INSERT INTO protocol_records (id, at, kind, hypothesis_id, task_id, run_id,"
+               " check_key, fingerprint, plan_version, results_of_hypothesis,"
+               " results_in_project, detail, reason, supersedes)"
+               " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+               (record_id, now(), kind, hypothesis_id, task_id, run_id, check_key, fingerprint,
+                plan_version, of_hypothesis, in_project, payload, reason, supersedes))
+    _log(db, "protocol_record", {"record": record_id, "kind": kind, "hypothesis": hypothesis_id,
+                                 "task": task_id, "check": check_key})
+    return record_id
 
 
 class ProjectStore:
@@ -1055,12 +1297,19 @@ class Project:
             _log(db, "ai_request", detail)
 
     # -------------------------------------------------------- research plan
-    def save_plan(self, plan: dict, note: str = "") -> int:
+    def save_plan(self, plan: dict, note: str = "", *,
+                  reasons: dict[str, str] | None = None) -> int:
         """Save the research plan as a new version and return its number.
 
         Nothing is overwritten: the history keeps every version. Saving the
         same plan again adds no version. Hypotheses keep their identity
-        across versions (ids are given on first save)."""
+        across versions (ids are given on first save).
+
+        Stage 37.0a: a hypothesis's priority is set before results. Changing
+        it once the project has results needs a reason in ``reasons``
+        ({hypothesis id: reason}); without one nothing is saved
+        (:class:`DesignationReasonNeeded`). The change and its reason are
+        recorded as a ``designation`` protocol record of the new version."""
         with self._write() as db:
             latest = db.execute("SELECT id, plan FROM plan_versions ORDER BY id DESC LIMIT 1").fetchone()
             previous = json.loads(latest["plan"]) if latest is not None else {"hypotheses": []}
@@ -1074,14 +1323,30 @@ class Project:
             if latest is not None and previous == clean:
                 return int(latest["id"])
             runs = db.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+            before = {h["id"]: h.get("priority", "primary") for h in previous.get("hypotheses", [])}
+            changed = [(h["id"], before[h["id"]], h["priority"]) for h in clean["hypotheses"]
+                       if h["id"] in before and before[h["id"]] != h["priority"]]
+            reasons = {str(k): str(v or "").strip() for k, v in (reasons or {}).items()}
+            if runs:
+                missing = tuple(hid for hid, _, _ in changed if not reasons.get(hid))
+                if missing:
+                    raise DesignationReasonNeeded(missing, runs)
             cursor = db.execute(
                 "INSERT INTO plan_versions (saved_at, plan, runs_before, note) VALUES (?, ?, ?, ?)",
                 (now(), json.dumps(clean, ensure_ascii=False, sort_keys=True), runs,
                  str(note).strip()[:500]))
-            _log(db, "plan_saved", {"version": cursor.lastrowid,
+            version = int(cursor.lastrowid)
+            _log(db, "plan_saved", {"version": version,
                                     "hypotheses": len(clean["hypotheses"]), "runs_before": runs})
+            for hid, old, new in changed:
+                _log(db, "designation_changed", {"hypothesis": hid, "from": old, "to": new,
+                                                 "version": version, "runs_before": runs})
+                if runs:
+                    _insert_protocol_record(db, "designation", hypothesis_id=hid,
+                                            detail={"from": old, "to": new},
+                                            reason=reasons[hid], plan_version=version)
             self._touch(db)
-            return int(cursor.lastrowid)
+            return version
 
     def plan(self) -> dict | None:
         history = self.plan_history(limit=1)
@@ -1391,11 +1656,15 @@ class Project:
     def record_run(self, run, *, method: str, dataset_id: str | None, roles: dict,
                    options: dict, confirms: dict, confirmations: Iterable[str] = (),
                    levels: dict | None = None, dataset_sha256: str | None = None,
-                   task_id: str | None = None) -> RunRecord:
+                   task_id: str | None = None, hypothesis: dict | None = None) -> RunRecord:
         """Save one completed analysis (an ``analysis_runs.AnalysisRun``).
 
         ``dataset_sha256`` names the dataset version the run was calculated on
-        when that is not the current one (a follow-up of an earlier result)."""
+        when that is not the current one (a follow-up of an earlier result).
+        ``hypothesis`` (Stage 37.0a) is what the plan said, at calculation
+        time, about the hypothesis the run tests; it is kept in the
+        provenance and never updated afterwards."""
+        snapshot = _snapshot(hypothesis)
         if dataset_sha256 and dataset_id:
             known = {v["sha256"] for v in self.dataset_versions(dataset_id)}
             if dataset_sha256 not in known:
@@ -1414,6 +1683,8 @@ class Project:
         provenance = {"libraries": library_versions(), "seed": options.get("seed"),
                       "rows": self.dataset(dataset_id).rows if dataset_id else None,
                       "inputs": run.inputs}
+        if snapshot is not None:
+            provenance["hypothesis"] = snapshot
         with self._write() as db:
             db.execute(
                 "INSERT INTO runs (id, method, section, title, dataset_id, dataset_sha256, roles,"
@@ -1597,6 +1868,67 @@ class Project:
         except ValueError:
             detail = {}
         return detail if isinstance(detail, dict) else {}
+
+    REPORT_EXPORTED = "report_exported"
+
+    def record_report_export(self, run_ids: Iterable[str], fmt: str) -> None:
+        """Remember that the report, with these results, was exported (Stage
+        37.0a: the next action knows the report as composed was written)."""
+        with self._write() as db:
+            _log(db, self.REPORT_EXPORTED, {"format": str(fmt)[:10],
+                                            "runs": [str(r) for r in run_ids]})
+
+    def last_report_export(self) -> dict | None:
+        """``{"format", "runs"}`` of the latest export, or None."""
+        with self._db() as db:
+            row = db.execute("SELECT detail FROM events WHERE kind = ? ORDER BY id DESC LIMIT 1",
+                             (self.REPORT_EXPORTED,)).fetchone()
+        if row is None:
+            return None
+        try:
+            detail = json.loads(row["detail"])
+        except ValueError:
+            return None
+        return detail if isinstance(detail, dict) else None
+
+    # ------------------------------------------- protocol records (format 6)
+    def add_protocol_record(self, kind: str, *, hypothesis_id: str | None = None,
+                            task_id: str | None = None, run_id: str | None = None,
+                            check_key: str = "", fingerprint: str = "",
+                            detail: dict | None = None, reason: str = "",
+                            supersedes: str | None = None) -> dict:
+        """Append one of the researcher's recorded decisions about the plan
+        (Stage 37.0a) and return it. Records are never changed or deleted: a
+        ``withdrawal`` names the record it withdraws (``supersedes``), and
+        both stay in the history. A reason is required for designations,
+        acknowledgements, deviations, justifications and withdrawals; the
+        record keeps the plan version and how many results existed."""
+        with self._write() as db:
+            record_id = _insert_protocol_record(
+                db, kind, hypothesis_id=hypothesis_id, task_id=task_id, run_id=run_id,
+                check_key=check_key, fingerprint=fingerprint, detail=detail, reason=reason,
+                supersedes=supersedes)
+            self._touch(db)
+        return next(r for r in self.protocol_records() if r["id"] == record_id)
+
+    def protocol_records(self, *, hypothesis_id: str | None = None) -> list[dict]:
+        """The protocol records, oldest first (of one hypothesis if given)."""
+        query = "SELECT rowid AS position, * FROM protocol_records"
+        values: tuple = ()
+        if hypothesis_id is not None:
+            query += " WHERE hypothesis_id = ?"
+            values = (hypothesis_id,)
+        with self._db() as db:
+            rows = db.execute(query + " ORDER BY at, rowid", values).fetchall()
+        records = []
+        for row in rows:
+            record = {key: row[key] for key in row.keys() if key != "position"}
+            try:
+                record["detail"] = json.loads(record["detail"] or "{}")
+            except ValueError:
+                record["detail"] = {}
+            records.append(record)
+        return records
 
     def report_text(self, *, allow_stale: bool = False) -> str:
         """The combined report; refuses stale results unless explicitly allowed."""

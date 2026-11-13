@@ -434,6 +434,7 @@ class WorkspaceApp:
                     ("analyze", "design"): "step-design", ("analyze", "method"): "step-method",
                     ("analyze", "variables"): "step-variables",
                     ("analyze", "task-result"): "task-result",
+                    ("project", "hypotheses"): "project-hypotheses",
                     ("settings", "ai"): "settings-ai"}
     section: str | None = None
 

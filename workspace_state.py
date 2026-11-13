@@ -370,9 +370,15 @@ class ResearchSession:
                    confirms: dict | None = None, dataset: str | None = None,
                    rows: int | None = None, created: datetime | None = None,
                    record_id: str | None = None, restored: bool = False,
-                   provenance: dict | None = None, task_id: str | None = None) -> ResultEntry:
+                   provenance: dict | None = None, task_id: str | None = None,
+                   hypothesis: dict | None = None) -> ResultEntry:
+        """Add a result. ``hypothesis`` (Stage 37.0a) is the snapshot of the
+        hypothesis it is calculated as a test of (research_workflow
+        .hypothesis_snapshot); it stays with the result's provenance."""
         if provenance is None:
             provenance = {} if restored else self.provenance_for(roles)
+        if hypothesis is not None:
+            provenance = {**provenance, "hypothesis": dict(hypothesis)}
         entry = ResultEntry(
             id=next(self._ids), run=run, dataset=self.source_name if dataset is None else dataset,
             rows=(0 if self.df is None else len(self.df)) if rows is None else rows,

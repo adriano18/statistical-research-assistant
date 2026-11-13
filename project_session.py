@@ -291,7 +291,9 @@ class ProjectBinding:
                     rows=run.provenance.get("rows") or 0, created=_local_time(run.created_at),
                     record_id=run.id, restored=True, task_id=run.task_id,
                     provenance={"dataset_sha256": run.dataset_sha256, "levels": dict(run.levels),
-                                "variables": list(run.levels), "rows": run.provenance.get("rows")})
+                                "variables": list(run.levels), "rows": run.provenance.get("rows")},
+                    # Stage 37.0a: the hypothesis it was calculated for, if any.
+                    hypothesis=run.hypothesis)
                 entry.stale_reasons = project.run_status(run).reasons
                 self._saved_runs[entry.id] = id(entry.run)
                 # Stage 36.8 (K2): the researcher's note and reviewed checks.
@@ -638,7 +640,8 @@ class ProjectBinding:
                 entry.run, method=entry.method, dataset_id=dataset_id,
                 roles=entry.roles or {}, options=entry.options or {},
                 confirms=entry.confirms or {}, confirmations=entry.confirmations,
-                levels=levels, dataset_sha256=version or None, task_id=entry.task_id)
+                levels=levels, dataset_sha256=version or None, task_id=entry.task_id,
+                hypothesis=(entry.provenance or {}).get("hypothesis"))
             # The researcher's entries stay with the result (also a replaced one).
             if entry.note:
                 self.project.set_note(record.id, entry.note)
