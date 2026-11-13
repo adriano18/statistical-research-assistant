@@ -77,7 +77,40 @@ After, locally (Linux, in the program through the harness, `tests/test_stage368_
 | **total** | **4.30** (was ≈ 6.6) | |
 | event-loop stall | 0.00 | |
 
-Windows after: *filled from the GUI journeys of the final commit (in-program profile of the first and of a second reading).*
+### 3.1 Windows after the PNG change: what remained
+
+Packaged program, GUI journey `import-scan-lv`, run 43421786722 (216353d). The profile is the program's own; the journey reads the same document twice in one program.
+
+| | First reading | Read again (warm) |
+|---|---:|---:|
+| Total in the program (profile) | 50.4 s | 38.3 s |
+| OCR execution (2 Tesseract processes) | 26.8 + 22.3 s | 18.5 + 18.5 s |
+| Processor time of each Tesseract process | 4.5 + 4.3 s | 4.3 + 4.4 s |
+| All other stages together | 1.3 s | 1.3 s |
+| Longest stall of the interface's event loop | 0.03 s | 0.03 s |
+| Processor time of the **program's own process** | 173 s (3.4 of 4 cores) | 130 s (3.4 of 4 cores) |
+| Engine alone outside the program, same pages (`direct_ocr`) | 7.8 + 6.4 s | |
+
+So the PNG and first-page changes did what they should: everything apart from OCR now takes 1.3 s, and the window never froze.
+
+But each Tesseract process ran 18–27 s while it needed only about 4.5 s of processor time. **The engine was waiting for the processor, not working.** In the same seconds the program's own process used about 3.4 of the runner's 4 cores, while its Python side was only waiting for Tesseract's output.
+
+The UI Automation driver is not the cause: during the second reading it only watched for the profile file, and the ratio was the same.
+
+What the program did meanwhile: the status line showed an indeterminate `ProgressRing`. Flutter redraws such a ring on every frame, and the runner draws without a graphics card. Every other profile of that run, even a 0.2 s text reading, shows the same ~3.4 cores while busy.
+
+### 3.2 The change for it (f528a1c), and how it is verified
+
+- While reading, the ring is **determinate**: it shows the OCR pages already read (0 of 2, then 1 of 2) and changes only when a page is done. The text beside it still names the page being read. A text reading shows an hourglass icon. Nothing animates on its own (`tests/test_stage368_ocr_profile.py::ReadingIndicatorTests`).
+- The scan journey now measures the program's processor use while it only shows the page (`program_cpu_cores_idle`). Each reading's profile gives `program_cpu_cores`.
+
+The cause counts as confirmed only if, on the next Windows run:
+- the reading's `program_cpu_cores` falls to the idle level;
+- the engine's time approaches its processor time.
+
+*Result: filled in from the run of the final commit.*
+
+Where it matters outside CI: computers that draw without a graphics card, such as virtual machines, remote desktop sessions and some older laptops. On a computer with a working graphics driver the ring costs little, and the gain is smaller there.
 
 ## 4. Progress and responsiveness
 
