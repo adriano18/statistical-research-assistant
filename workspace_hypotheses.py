@@ -113,7 +113,7 @@ class HypothesisPanel:
     def next_action(self, datasets, views=None) -> rw.NextAction:
         app = self.app
         views = self._views if views is None else views
-        draft = app.pages["project"].plan.current_draft()
+        draft = app.pages["project"].plan.facts_draft()
         facts = rw.project_facts(app.session, self.project, views=views, draft=draft,
                                  questionnaire_draft=bool(app.pages["questionnaires"].draft),
                                  has_datasets=bool(datasets), exported=self.exported())
@@ -285,6 +285,11 @@ class HypothesisPanel:
         out: list[ft.Control] = []
         if view.plan.get("h0"):
             out.append(wc.labeled(ui, ui.t("plan.h.h0"), view.plan["h0"]))
+        if f.planned_version is not None:
+            # Stage 37.0b (review S16): what the standing was decided on.
+            out.append(wc.caption(ui, ui.t("hyp.standing_facts", version=f.planned_version,
+                                           total=f.results_then, counted=f.runs_before),
+                                  data=f"hyp-{n}-standing-facts"))
         plan_ids = frozenset(v.facts.id for v in self._views)
         if view.tasks:
             for index, task in enumerate(view.tasks):
@@ -402,7 +407,10 @@ class HypothesisPanel:
                      "task_id": check.task_id if check else None,
                      "fingerprint": check.fingerprint if check else "",
                      "what": rw.DEVIATION.get(check.key) if check and kind == "deviation" else None,
-                     "record": record_id}
+                     "record": record_id,
+                     # Stage 37.0b: what was planned and what was done, kept
+                     # with a deviation so the report can say it.
+                     "facts": dict(check.facts) if check and kind == "deviation" else {}}
         self.reason, self.message = "", None
         self.app.render()
 
@@ -454,11 +462,17 @@ class HypothesisPanel:
         detail = {}
         if form["kind"] == "deviation":
             detail["what"] = form["what"] or self.what
+            facts = form.get("facts") or {}
+            planned = facts.get("planned", facts.get("first"))
+            actual = facts.get("actual", facts.get("later"))
+            if planned is not None and actual is not None:
+                detail["planned"], detail["actual"] = planned, actual
         try:
             self.project.add_protocol_record(
                 form["kind"], hypothesis_id=hypothesis_id, task_id=form["task_id"],
-                check_key=form["check_key"], fingerprint=form["fingerprint"], detail=detail,
-                reason=reason, supersedes=form["record"])
+                run_id=self._run_of(form["task_id"]), check_key=form["check_key"],
+                fingerprint=form["fingerprint"], detail=detail, reason=reason,
+                supersedes=form["record"])
         except (ProjectError, OSError) as error:
             self.message = (hypothesis_id, ui.t("hyp.not_recorded", reason=str(error)), "danger")
             self.app.render()
@@ -466,6 +480,14 @@ class HypothesisPanel:
         self.form, self.reason = None, ""
         self.message = (hypothesis_id, ui.t("hyp.recorded"), "success")
         self.app.render()
+
+    def _run_of(self, task_id: str | None) -> str | None:
+        """The saved result a decision about a task's check is made about:
+        the latest result of that task (Stage 37.0b, review D12)."""
+        if not task_id:
+            return None
+        entries = self.app.session.task_results(task_id)
+        return entries[-1].record_id if entries else None
 
     # ------------------------------------------------ records, history
     def _record_text(self, record: dict) -> str:

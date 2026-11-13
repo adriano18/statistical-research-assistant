@@ -420,8 +420,10 @@ class AnalyzePage:
         project = self._project()
         if project is None or old == new:
             return
+        entries = self.app.session.task_results(task.id)
         try:
             project.add_protocol_record("link", hypothesis_id=new or old, task_id=task.id,
+                                        run_id=entries[-1].record_id if entries else None,
                                         detail={"from": old, "to": new})
         except (ProjectError, OSError) as error:
             self.app.status(self.app.t("hyp.not_recorded", reason=str(error)), "danger")
@@ -569,15 +571,12 @@ class AnalyzePage:
         self.pending_hypothesis = None
         self.app.render()
 
-    def _task_title(self, key: str, roles: dict) -> str:
-        ui = self.app.ui
-        if key == "batch_correlation":
-            return ui.t("task.title_relate", x=roles["x"], count=len(roles["ys"]))
-        if key == "batch_groups":
-            return ui.t("task.title_compare", group=roles["group"], count=len(roles["outcomes"]))
-        names = [v for value in roles.values()
-                 for v in (value if isinstance(value, list) else [value]) if v]
-        return f"{method_label(key, {})}: {', '.join(names[:3])}"
+    def _task_title(self, key: str, roles: dict, options: dict | None = None) -> str:
+        """The task's name for what it runs (Stage 37.0b: with the options of
+        the run, so a Pearson correlation is not named after Spearman)."""
+        from research_workflow import task_title
+
+        return task_title(self.app.ui.language, key, roles, options)
 
     def _remember_task(self, key: str, roles: dict, options: dict, confirms: dict,
                        scopes: dict) -> ResearchTask | None:
@@ -591,7 +590,8 @@ class AnalyzePage:
         if task is None:
             # Stage 37.0a: a new analysis tests the hypothesis chosen in step 1.
             linked, self.pending_hypothesis = self.pending_hypothesis, None
-            task = ResearchTask(str(uuid.uuid4()), self._task_title(key, roles), self.goal, {},
+            task = ResearchTask(str(uuid.uuid4()), self._task_title(key, roles, options),
+                                self.goal, {},
                                 hypothesis_id=linked,
                                 state={"created": datetime.now().isoformat(timespec="seconds")})
         task.selection = {k: (list(v) if isinstance(v, list) else v)
@@ -600,9 +600,12 @@ class AnalyzePage:
         task.confirms = {k: True for k in confirms if confirms[k] and k in scopes}
         task.state = {**(task.state or {}),
                       "confirm_scopes": {k: scopes[k] for k in task.confirms}}
-        if task.state.pop("auto_title", None):
-            # Made for a hypothesis: named after the analysis at its first run.
-            task.title = self._task_title(key, roles)
+        task.state.pop("auto_title", None)
+        # Stage 37.0b (review D5): the task is named after what it runs now
+        # (a task made for a hypothesis, at its first run; a task whose
+        # variables changed, at the run with the new ones). Each result keeps
+        # its own specification and the report names it by that.
+        task.title = self._task_title(key, roles, options)
         self.task_id = task.id
         saved = self.app.session.save_task(task)
         if linked:
@@ -1765,9 +1768,15 @@ class ReportsPage:
         from project_store import library_versions
 
         app, s = self.app, self.app.session
-        tasks = {task.id: task.title for task in s.tasks}
+        # Stage 37.0b (review D5): each result under the name of its own
+        # specification (method, variables and options as it was run).
+        from research_workflow import task_title
+
+        language = self.report_language()
         infos = [rr.result_info(entry, reviewed=entry.reviewed, note=entry.note,
-                                task_title=tasks.get(entry.task_id, ""))
+                                task_title=task_title(language, entry.method or "",
+                                                      entry.roles, entry.options)
+                                if entry.task_id and entry.method else "")
                  for entry in s.report_entries()]
         inputs = rr.ReportInputs(title=self.study_title, language=self.report_language(),
                                  question=app.research_question(), results=infos,
@@ -1780,6 +1789,9 @@ class ReportsPage:
             status = project.hypothesis_status() if plan else {}
             inputs.hypotheses = [{**h, "standing": status.get(h.get("id"), {}).get("standing")}
                                  for h in (plan or {}).get("plan", {}).get("hypotheses", [])]
+            # Stage 37.0b: per hypothesis, the analyses and results that test
+            # it, the recorded decisions and the open checks (saved data only).
+            inputs.evidence = rr.hypothesis_evidence(s, project, s.report_entries())
             inputs.questionnaires = [q["title"] for q in project.questionnaires()]
             names = {d.id: d.name for d in project.datasets()}
             for dataset_id, name in names.items():

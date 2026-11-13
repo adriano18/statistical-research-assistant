@@ -97,6 +97,10 @@ def every_check() -> list:
     out += rw.hypothesis_checks(hypothesis(direction="greater"), (analysis(
         goal="compare", method="omnibus", options={"method": "kruskal"}, family_size=1,
         results=()),))
+    # Stage 37.0b (review S8): a result calculated for a direction the plan no longer has.
+    out += rw.hypothesis_checks(hypothesis(), (analysis(results=(result(snapshot={
+        "id": H, "plan_version": 1, "priority": "primary", "direction": "less",
+        "alpha": 0.05}),)),))
     return out
 
 
@@ -337,7 +341,7 @@ class CheckTests(unittest.TestCase):
 
     def test_every_check_reads_in_three_languages(self):
         checks = every_check()
-        self.assertEqual({c.key for c in checks}, set(rw.CHECK_KEYS), "all 15 checks covered")
+        self.assertEqual({c.key for c in checks}, set(rw.CHECK_KEYS), "all 16 checks covered")
         for c in checks:
             for language in LANGS:
                 with self.subTest(check=c.key, text=c.text, language=language):

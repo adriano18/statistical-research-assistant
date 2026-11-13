@@ -61,6 +61,11 @@ class ResearchPlanCard:
         self.feedback: tuple[str, str] | None = None
         # Stage 37.0a: {hypothesis id: reason} for a priority changed after results.
         self.reasons: dict[str, str] = {}
+        # Stage 37.0b: the id of Q1 while it only shows the project's research
+        # question (a plan without typed questions); None once the researcher
+        # uses it (types, chooses its kind, adds a hypothesis to it).
+        self.auto_question: str | None = None
+        self.linked_question: str | None = None   # Q1 that mirrors that row
 
     # --------------------------------------------------------------- state
     def _project(self):
@@ -75,8 +80,63 @@ class ResearchPlanCard:
             self.project_id = info_id
             self.feedback = None
             self.reasons = {}
+            self.auto_question = self.linked_question = None
+            self.draft.setdefault("questions", [])
+            self._show_question_row()
         self.draft.setdefault("questions", [])
         self.draft.setdefault("hypotheses", [])
+        self._refresh_question_row()
+
+    def _show_question_row(self) -> None:
+        """Stage 37.0b (design §7.2, §8.4): a plan without typed questions (a
+        Stage 36 plan, or none yet) shows the project's research question as
+        Q1 by itself, its kind not chosen. Nothing is converted: the row
+        counts for the next step only once the researcher uses it, and it is
+        saved with the next plan version."""
+        if self.draft.get("questions"):
+            return
+        question = {"id": uuid.uuid4().hex[:12], "type": "",
+                    "text": self.app.research_question().strip()}
+        self.draft["questions"] = [question]
+        self.auto_question = self.linked_question = question["id"]
+
+    def _write_through(self, plan: dict) -> None:
+        """Q1 taken from the project's research question keeps that row up to
+        date when the plan is saved (the AI overview and the report's
+        Research question section read the row); so does a first Q1 of a
+        project that had no research question."""
+        questions = plan.get("questions") or []
+        if not questions:
+            return
+        first = questions[0]
+        current = self.app.research_question().strip()
+        text = str(first.get("text") or "").strip()
+        if text and text != current and (first.get("id") == self.linked_question or not current):
+            try:
+                self.app.projects.set_research_question(text)
+            except Exception:       # the plan is saved; the row stays as it was
+                pass
+
+    def _auto_row(self) -> dict | None:
+        """Q1 while it only shows the project's research question."""
+        if self.auto_question is None:
+            return None
+        return next((q for q in self.draft.get("questions", [])
+                     if q.get("id") == self.auto_question), None)
+
+    def _refresh_question_row(self) -> None:
+        """The shown Q1 follows the Question card until the researcher uses it."""
+        row = self._auto_row()
+        if row is None:
+            self.auto_question = None
+            return
+        if not row.get("type"):
+            row["text"] = self.app.research_question().strip()
+
+    def _use_question(self, question_id: str | None) -> None:
+        """The researcher works with this question: Q1 is part of the plan now."""
+        if question_id is not None and question_id == self.auto_question:
+            self.auto_question = None
 
     def current_draft(self) -> dict | None:
         """The plan as it is on screen (unsaved changes included)."""
@@ -85,6 +145,15 @@ class ResearchPlanCard:
             return None
         self._sync(project)
         return self.draft
+
+    def facts_draft(self) -> dict | None:
+        """The draft as the next step judges it: Q1 shown by itself from the
+        project's research question does not start the plan."""
+        draft = self.current_draft()
+        if draft is None or self.auto_question is None:
+            return draft
+        return {**draft, "questions": [q for q in draft.get("questions", [])
+                                       if q.get("id") != self.auto_question]}
 
     def _set(self, key: str, value: str) -> None:
         self.draft[key] = value
@@ -100,14 +169,43 @@ class ResearchPlanCard:
         return {h["id"]: h.get("priority", "primary")
                 for h in ((current or {}).get("plan") or {}).get("hypotheses", [])}
 
+    def _changes(self, project, hypothesis: dict) -> list[str]:
+        """What changes in a saved hypothesis (Stage 37.0b, review S8): its
+        priority, wording (H1, H0), direction or α. The α as typed: one that
+        is not a number is explained when the plan is saved."""
+        current = project.plan()
+        saved = {h["id"]: h for h in ((current or {}).get("plan") or {}).get("hypotheses", [])}
+        old = saved.get(hypothesis.get("id"))
+        if old is None:
+            return []
+        changes = []
+        if old.get("priority", "primary") != hypothesis.get("priority", "primary"):
+            changes.append("designation")
+        if (str(old.get("text", "")).strip() != str(hypothesis.get("text") or "").strip()
+                or str(old.get("h0", "")).strip() != str(hypothesis.get("h0") or "").strip()):
+            changes.append("wording")
+        if old.get("direction", "two-sided") != hypothesis.get("direction", "two-sided"):
+            changes.append("direction")
+        try:
+            if abs(float(old.get("alpha", 0.05)) - float(hypothesis.get("alpha", 0.05))) > 1e-12:
+                changes.append("alpha")
+        except (TypeError, ValueError):
+            pass
+        return changes
+
     def _needs_reason(self, project, hypothesis: dict) -> bool:
-        """A saved hypothesis whose priority changes while results exist."""
+        """A saved hypothesis that changes while results exist (its priority,
+        and since Stage 37.0b its wording, direction or α)."""
         if not self.app.session.results:
             return False
-        saved = self._saved_priorities(project)
-        hypothesis_id = hypothesis.get("id")
-        return (hypothesis_id in saved
-                and saved[hypothesis_id] != hypothesis.get("priority", "primary"))
+        return bool(self._changes(project, hypothesis))
+
+    def _reason_message(self, project, number: int, hypothesis: dict) -> str:
+        """The message of a missing reason: the 37.0a one for a priority."""
+        ui = self.app.ui
+        if self._changes(project, hypothesis) == ["designation"]:
+            return ui.t("plan.reason_needed", h=number)
+        return ui.t("plan.change_reason_needed", h=number)
 
     # --------------------------------------------------------------- build
     def build(self) -> ft.Control:
@@ -159,7 +257,9 @@ class ResearchPlanCard:
                                   wc.caption(ui, ui.t("plan.questions_body"))]
         for index, question in enumerate(questions):
             number = index + 1
-            rows.append(ft.Container(ft.Column([
+            shown = ([wc.caption(ui, ui.t("plan.q.from_project"), data=f"plan-q{index}-auto")]
+                     if question.get("id") == self.auto_question else [])
+            rows.append(ft.Container(ft.Column(shown + [
                 wc.text_field(ui, ui.t("plan.q.text", n=number), question.get("text", ""),
                               multiline=True,
                               on_change=lambda e, i=index: self._set_question(
@@ -191,7 +291,8 @@ class ResearchPlanCard:
             tone = {"confirmatory": "success", "added_after_results": "warning"}.get(
                 standing["standing"], "neutral")
             fields.append(wc.chip(ui, ui.t(f"plan.standing.{standing['standing']}",
-                                           runs=standing["runs_before"]), tone,
+                                           runs=standing.get("inferential_before",
+                                                             standing["runs_before"])), tone,
                                   data=f"plan-standing-{index}"))
         else:
             fields.append(wc.chip(ui, ui.t("plan.standing.new"), "neutral",
@@ -216,6 +317,7 @@ class ResearchPlanCard:
                 on_change=lambda e, i=index, k=key: self._set_hypothesis(i, k, e.control.value or ""),
                 data=f"plan-h{index}-{key}"))
         fields += self._planned_method(index, hypothesis)
+        fields += self._planned_roles(index, hypothesis)
         fields.append(ft.Row([
             wc.dropdown(ui, ui.t("plan.h.direction"),
                         [(d, ui.t(f"plan.direction.{d}")) for d in ("two-sided", "greater", "less")],
@@ -232,8 +334,10 @@ class ResearchPlanCard:
                           data=f"plan-h{index}-alpha"),
         ], wrap=True, spacing=tk.SPACE_2))
         if self._needs_reason(project, hypothesis):
+            label = ("plan.h.reason" if self._changes(project, hypothesis) == ["designation"]
+                     else "plan.h.change_reason")
             fields.append(wc.text_field(
-                ui, ui.t("plan.h.reason"), self.reasons.get(hypothesis["id"], ""), multiline=True,
+                ui, ui.t(label), self.reasons.get(hypothesis["id"], ""), multiline=True,
                 on_change=lambda e, h=hypothesis["id"]: self._set_reason(h, e.control.value or ""),
                 data=f"plan-h{index}-reason"))
         fields.append(wc.button(ui, ui.t("plan.remove"), lambda e, i=index: self._remove(i),
@@ -267,24 +371,39 @@ class ResearchPlanCard:
 
     # ------------------------------------------------------------- actions
     def _set_question(self, index: int, key: str, value: str) -> None:
-        self.draft["questions"][index][key] = value      # no re-render while typing
+        question = self.draft["questions"][index]
+        self._use_question(question.get("id"))
+        question[key] = value                            # no re-render while typing
 
     def _set_question_type(self, index: int, value) -> None:
-        self.draft["questions"][index]["type"] = value or ""
+        question = self.draft["questions"][index]
+        self._use_question(question.get("id"))
+        question["type"] = value or ""
+        for hypothesis in self.draft["hypotheses"]:
+            if hypothesis.get("question_id") == question.get("id"):
+                self._prune_roles(hypothesis)
         self.app.render()                                # the H1 hints follow the kind
 
     def _remove_question(self, index: int) -> None:
         removed = self.draft["questions"].pop(index)
+        self._use_question(removed.get("id"))
         for hypothesis in self.draft["hypotheses"]:
             if hypothesis.get("question_id") == removed.get("id"):
                 hypothesis["question_id"] = ""
+                self._prune_roles(hypothesis)
         self.app.render()
 
     def add_question(self, *, prefill: bool = False) -> None:
         """A new research question. The first one starts from the project's
         research question; from the next-action bar an empty question is
-        reused rather than a second one added."""
+        reused rather than a second one added. Q1 shown by itself (from the
+        project's research question) is taken into the plan instead of a
+        second question being added."""
         questions = self.draft.setdefault("questions", [])
+        if self._auto_row() is not None:
+            self._use_question(self.auto_question)
+            self.app.render()
+            return
         empty = [q for q in questions if not str(q.get("text") or "").strip() and not q.get("type")]
         if not (prefill and empty):
             text = self.app.research_question().strip() if not questions else ""
@@ -298,6 +417,7 @@ class ResearchPlanCard:
         question = questions[number - 1] if 0 < number <= len(questions) else None
         hypothesis = {"text": "", "direction": "two-sided", "priority": "primary", "alpha": 0.05}
         if question is not None:
+            self._use_question(question.get("id"))
             hypothesis["question_id"] = question["id"]
             _, h0 = rw.draft_keys(question.get("type") or "")
             if h0:
@@ -308,12 +428,112 @@ class ResearchPlanCard:
     def _set_question_link(self, index: int, value) -> None:
         hypothesis = self.draft["hypotheses"][index]
         hypothesis["question_id"] = value or ""
+        self._use_question(value or None)
+        self._prune_roles(hypothesis)
         question = self._questions_by_id().get(value or "")
         if question is not None and not str(hypothesis.get("h0") or "").strip():
             _, h0 = rw.draft_keys(question.get("type") or "")
             if h0:
                 hypothesis["h0"] = self.app.ui.t(h0)
         self.app.render()
+
+    # ------------------------------------- planned variables (Stage 37.0b)
+    def _goal_of(self, hypothesis: dict) -> str:
+        question = self._questions_by_id().get(hypothesis.get("question_id") or "")
+        return (question or {}).get("type") or ""
+
+    def _prune_roles(self, hypothesis: dict) -> None:
+        """Planned variables belong to the roles of the question's kind: those
+        of another kind are left out of the draft (nothing saved is changed)."""
+        from workspace_methods import GOAL_ROLES
+
+        roles = hypothesis.get("roles") or {}
+        allowed = {role.key for role in GOAL_ROLES.get(self._goal_of(hypothesis), ())}
+        kept = {key: value for key, value in roles.items() if key in allowed}
+        if kept:
+            hypothesis["roles"] = kept
+        else:
+            hypothesis.pop("roles", None)
+
+    def _set_role(self, index: int, role, names: list[str]) -> None:
+        hypothesis = self.draft["hypotheses"][index]
+        roles = dict(hypothesis.get("roles") or {})
+        names = [n for n in dict.fromkeys(str(n).strip() for n in names) if n]
+        if names:
+            roles[role.key] = names if role.multiple else names[0]
+        else:
+            roles.pop(role.key, None)
+        if roles:
+            hypothesis["roles"] = roles
+        else:
+            hypothesis.pop("roles", None)
+
+    def _type_role(self, index: int, role, value: str) -> None:
+        self._set_role(index, role, value.split(","))   # no re-render while typing
+
+    def _pick_role(self, index: int, role, value) -> None:
+        self._set_role(index, role, [value] if value else [])
+
+    def _toggle_role(self, index: int, role, name: str, value: bool) -> None:
+        planned = (self.draft["hypotheses"][index].get("roles") or {}).get(role.key) or []
+        names = list(planned) if isinstance(planned, list) else [planned]
+        if value and name not in names:
+            names.append(name)
+        if not value:
+            names = [n for n in names if n != name]
+        self._set_role(index, role, names)
+
+    def _planned_roles(self, index: int, hypothesis: dict) -> list[ft.Control]:
+        """The variables the plan names for each role of the question's kind
+        (design §7.3). Chosen from the data once it is open; typed as names
+        before that. A planned name missing from the data is shown as such.
+        The check H-VARIABLES-DIFFER compares them with the analysis run."""
+        from workspace_analyze import _variable_options
+        from workspace_methods import GOAL_ROLES
+
+        roles = GOAL_ROLES.get(self._goal_of(hypothesis))
+        if not roles:
+            return []
+        ui, session = self.app.ui, self.app.session
+        planned = hypothesis.get("roles") or {}
+        options = _variable_options(ui, session) if session.has_data else []
+        present = {name for name, _ in options}
+        controls: list[ft.Control] = [wc.section_label(ui, ui.t("plan.h.roles")),
+                                      wc.caption(ui, ui.t("plan.h.roles_body"))]
+        missing: list[str] = []
+        for role in roles:
+            value = planned.get(role.key)
+            chosen = list(value) if isinstance(value, list) else ([value] if value else [])
+            data = f"plan-h{index}-role-{role.key}"
+            if not options:
+                controls.append(wc.text_field(
+                    ui, ui.t(role.label), ", ".join(chosen), hint=ui.t("plan.h.roles_hint"),
+                    on_change=lambda e, i=index, r=role: self._type_role(i, r, e.control.value or ""),
+                    data=data))
+                continue
+            missing += [name for name in chosen if name not in present]
+            if role.multiple:
+                boxes = [wc.checkbox(ui, text, name in chosen,
+                                     on_change=lambda e, i=index, r=role, n=name: self._toggle_role(
+                                         i, r, n, bool(e.control.value)),
+                                     data=f"{data}-{name}") for name, text in options]
+                controls.append(ft.Column([
+                    wc.text(ui, ui.t(role.label), tk.TYPE_LABEL, weight=ft.FontWeight.W_600),
+                    ft.Row(boxes, wrap=True, spacing=tk.SPACE_4, run_spacing=0)],
+                    spacing=tk.SPACE_1, data=data))
+            else:
+                choices = ([("", ui.t("plan.h.role_none"))] + options
+                           + [(name, ui.t("plan.h.role_missing", name=name))
+                              for name in chosen if name not in present])
+                controls.append(wc.dropdown(
+                    ui, ui.t(role.label), choices, chosen[0] if chosen else "",
+                    on_select=lambda e, i=index, r=role: self._pick_role(i, r, e.control.value),
+                    width=360, data=data))
+        if missing:
+            controls.append(wc.notice(ui, ui.t("plan.h.roles_missing",
+                                               names=", ".join(dict.fromkeys(missing))),
+                                      "warning", data=f"plan-h{index}-roles-missing"))
+        return controls
 
     def _set_method(self, index: int, value) -> None:
         hypothesis = self.draft["hypotheses"][index]
@@ -370,7 +590,8 @@ class ResearchPlanCard:
                    if str(h.get("text") or "").strip() and self._needs_reason(project, h)
                    and not self.reasons.get(h.get("id"), "").strip()]
         if missing:
-            self.feedback = (ui.t("plan.reason_needed", h=missing[0]), "danger")
+            self.feedback = (self._reason_message(project, missing[0],
+                                                  hypotheses[missing[0] - 1]), "danger")
             self.app.render()
             return
         reasons = {hid: text.strip() for hid, text in self.reasons.items() if text.strip()}
@@ -379,7 +600,9 @@ class ResearchPlanCard:
         except DesignationReasonNeeded as error:
             ids = [h.get("id") for h in hypotheses]
             number = ids.index(error.hypotheses[0]) + 1 if error.hypotheses[0] in ids else 1
-            self.feedback = (ui.t("plan.reason_needed", h=number), "danger")
+            self.feedback = (self._reason_message(project, number, hypotheses[number - 1])
+                             if number <= len(hypotheses) else
+                             ui.t("plan.change_reason_needed", h=number), "danger")
             self.app.render()
             return
         except (ProjectError, OSError) as error:
@@ -390,8 +613,11 @@ class ResearchPlanCard:
             self.feedback = (ui.t("plan.unchanged"), "info")
         else:
             self.feedback = (ui.t("plan.saved", version=version), "success")
+        self._write_through(project.plan()["plan"])
         self.draft = copy.deepcopy(project.plan()["plan"])
         self.draft.setdefault("questions", [])
+        self.auto_question = None
+        self._show_question_row()
         self.reasons = {}
         self.app.render()
 
