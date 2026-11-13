@@ -67,7 +67,8 @@ class ShellTests(unittest.TestCase):
 
     def test_language_switch_translates_navigation_and_keeps_data(self):
         self.ws.run(self.ws.app.load_sample("sample_scale.csv"))
-        self.ws.segment("context-language", "ru")
+        # Stage 37 (#68): Russian from the globe menu; EN and LV are quick buttons.
+        self.ws.click("context-language-menu-ru")
         self.assertTrue(self.ws.has_text("Анализ"))
         self.assertTrue(self.ws.has_text("Данные"))
         self.ws.segment("context-language", "lv")
@@ -142,9 +143,16 @@ class ShellTests(unittest.TestCase):
         self.ws.run(self.ws.app.load_sample("sample_scale.csv"))
         self.assertIn("sample_scale.csv", self.ws.find("workspace-status").value)
 
-    def test_preview_is_marked_as_prototype(self):
-        self.assertTrue(self.ws.has_text("Preview"))
-        self.assertTrue(self.ws.has_text("Prototype"))
+    def test_the_workspace_is_no_longer_marked_as_a_preview(self):
+        """Stage 37 (#68, U1): the workspace is the normal start, so neither
+        the sidebar, Home nor Help calls it a preview or a prototype."""
+        from workspace_text import T
+
+        for route in ("home", "help", "settings"):
+            self.ws.app.navigate(route)
+            texts = self.ws.texts()
+            for key in ("preview.badge", "common.prototype", "preview.note"):
+                self.assertNotIn(T[key][0], texts, (route, key))
 
 
 class SelectableTextAccessibilityTests(unittest.TestCase):

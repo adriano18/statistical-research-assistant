@@ -138,18 +138,19 @@ def build_interface(
                     ft.Icon(ft.Icons.SCIENCE_OUTLINED, color="#2755A1"),
                     ft.Column(
                         controls=[
-                            localized_text("Try the new research workspace (Stage 33 preview)",
+                            localized_text("Research workspace",
                                            size=15, weight="bold", color="#172A43"),
                             localized_text(
-                                "Guided analysis, a results log, a three-pane questionnaire "
-                                "builder and a focused scientific import. Same engine, same "
-                                "data; this classic interface stays available.",
+                                "The normal start of the program: projects, guided analysis, "
+                                "results, reports and questionnaires. Same engine, same data; "
+                                "this classic interface stays available, and Settings in the "
+                                "workspace choose which interface opens at start.",
                                 size=13, color="#415570"),
                         ],
                         spacing=3, expand=True,
                     ),
                     ft.Button(
-                        content=localized_text("Open the preview"),
+                        content=localized_text("Open the research workspace"),
                         on_click=a["open_workspace_preview"],
                         data="open-workspace-preview",
                     ),
@@ -1076,6 +1077,9 @@ def build_interface(
 
     if a.get("register_import_navigation"):
         a["register_import_navigation"](switch_screen)
+    if a.get("register_language_setter"):
+        # Stage 37 (#68): the workspace's language choice reaches these screens.
+        a["register_language_setter"](lambda code: change_language(code))
 
     for key, label in labels.items():
         buttons[key] = ft.Button(

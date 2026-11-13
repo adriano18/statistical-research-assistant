@@ -7,7 +7,6 @@ while these libraries load.
 """
 
 import asyncio
-import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -21,7 +20,7 @@ from data_loader import (
 from import_workflow import import_picked_files, SUPPORTED_EXTENSIONS
 from import_layout import manual_file_path_field, manual_file_path_row
 from app_preferences import (
-    AppPreferences, load_preferences, save_preferences, remember_file,
+    AppPreferences, load_preferences, remember_file, update_preferences,
 )
 from localization import tr
 from ui_i18n import UITranslator
@@ -111,16 +110,33 @@ def _mark(startup, phase):
         startup.mark(phase)
 
 
-async def main(page: ft.Page, startup=None):
+def start_interface(requested: str | None = None) -> str:
+    """The interface shown at start (Stage 37, issue #68): ``requested`` (a
+    caller that needs one), else ``SRA_UI`` (tests, support), else the
+    researcher's choice in Settings. The research workspace is the default,
+    also for researchers who have never chosen."""
+    from user_settings import START_INTERFACES, load_quietly, start_interface_override
+
+    if requested in START_INTERFACES:
+        return requested
+    return start_interface_override() or load_quietly().get("start_interface")
+
+
+async def main(page: ft.Page, startup=None, *, interface: str | None = None):
     """Build the full interface on ``page``.
 
     The launcher has already shown a splash on the visible window; this
-    function replaces it with the workspace in one update. ``startup`` is an
-    optional :class:`startup_diagnostics.StartupTimeline`.
+    function replaces it with the start interface in one update: the research
+    workspace, or the classic interface when the researcher chose it as the
+    start interface (``interface`` overrides both). ``startup`` is an optional
+    :class:`startup_diagnostics.StartupTimeline`.
     """
     page.title = "Statistical Research Assistant"
-    page.window.width = 1200
-    page.window.height = 720
+    # The launcher restores the saved window (window_state); only a page
+    # opened without it gets the default size.
+    if not getattr(page.window, "width", None):
+        page.window.width = 1200
+        page.window.height = 720
     page.window.resizable = True
     page.padding = 14
     page.bgcolor = "#F5F7FC"
@@ -1163,9 +1179,11 @@ async def main(page: ft.Page, startup=None):
             import_sheet.value = report.sheet if sheets else None
             if not transient:
                 try:
-                    preferences = remember_file(preferences, path)
-                    save_preferences(preferences)
-                except OSError:
+                    # From the settings file as it is now: the workspace may
+                    # have added files to the list meanwhile.
+                    preferences = remember_file(load_preferences(), path)
+                    update_preferences(recent_files=preferences.recent_files)
+                except (OSError, ValueError):
                     import_diagnostics.value += (
                         "\nReview: Could not update the local recent-files list."
                     )
@@ -1614,7 +1632,7 @@ async def main(page: ft.Page, startup=None):
             preferences.language, (), preferences.appearance,
         )
         try:
-            save_preferences(preferences)
+            update_preferences(recent_files=())
             recent_picker.value = None
             refresh_recent_files()
             status.value = "Local recent-file history cleared."
@@ -1631,8 +1649,8 @@ async def main(page: ft.Page, startup=None):
         interpretation_wizard.update_language()
         refresh_output_buttons()
         try:
-            save_preferences(preferences)
-        except OSError as error:
+            update_preferences(language=code)
+        except (OSError, ValueError) as error:
             status.value = f"Language changed for this session; save failed: {error}"
         page.update()
 
@@ -1650,8 +1668,8 @@ async def main(page: ft.Page, startup=None):
             use_material3=True,
         )
         try:
-            save_preferences(preferences)
-        except OSError as error:
+            update_preferences(appearance=style)
+        except (OSError, ValueError) as error:
             status.value = f"Appearance changed for this session; save failed: {error}"
         page.update()
 
@@ -1664,6 +1682,13 @@ async def main(page: ft.Page, startup=None):
     def register_import_navigation(callback):
         nonlocal navigate_to_dataset
         navigate_to_dataset = callback
+
+    # The classic screens' own language switch (interface_layout), so that
+    # the classic interface follows a language chosen in the workspace.
+    classic_language = {"set": None}
+
+    def register_language_setter(callback):
+        classic_language["set"] = callback
 
     async def load_picked_bytes(data: bytes, filename: str) -> bool:
         # In browser mode file.path can be absent; parse the bytes using
@@ -2796,8 +2821,9 @@ async def main(page: ft.Page, startup=None):
         appearance_getter=lambda: preferences.appearance,
     )
 
-    # Stage 33 preview: the new research workspace shares this dataset and
-    # the survey storage; the classic interface stays the default.
+    # The research workspace shares this dataset and the survey storage.
+    # Since Stage 37 (issue #68) it is the normal start; the classic
+    # interface stays one click away (and can be chosen as the start).
     workspace_state = {"app": None, "restore": None}
 
     def current_dataset():
@@ -2817,6 +2843,11 @@ async def main(page: ft.Page, startup=None):
         page.on_keyboard_event = None
         for name, value in restore.items():
             setattr(page, name, value)
+        # One language for both interfaces: the workspace saved its choice.
+        app = workspace_state["app"]
+        chosen = app.session.language if app is not None else preferences.language
+        if chosen != preferences.language and classic_language["set"] is not None:
+            classic_language["set"](chosen)
         page.update()
 
     def open_classic(screen):
@@ -2825,18 +2856,21 @@ async def main(page: ft.Page, startup=None):
             navigate_to_dataset(screen)
 
     def open_workspace_preview(e=None):
+        """Show the research workspace (its settings come from the settings
+        file; a language chosen in the classic screens meanwhile applies)."""
         from project_store import project_data_root
         from workspace_shell import ClassicBridge, WorkspaceApp
 
         workspace_state["restore"] = {
             name: getattr(page, name, None)
             for name in ("on_resize", "theme", "dark_theme", "theme_mode",
-                         "bgcolor", "padding")
+                         "bgcolor", "padding", "on_platform_brightness_change")
+            if hasattr(page, name) or name != "on_platform_brightness_change"
         }
         app = workspace_state["app"]
         if app is None:
             app = WorkspaceApp(
-                page, language=preferences.language, corners=preferences.appearance,
+                page,
                 bridge=ClassicBridge(
                     current_dataset=current_dataset, adopt_dataset=adopt_dataset,
                     return_to_classic=return_to_classic, open_classic=open_classic,
@@ -2845,6 +2879,8 @@ async def main(page: ft.Page, startup=None):
                 ),
             )
             workspace_state["app"] = app
+        elif app.session.language != preferences.language:
+            app.set_language(preferences.language, render=False)
         page.padding = 0
         app.mount()
 
@@ -3014,6 +3050,7 @@ async def main(page: ft.Page, startup=None):
             "choose_file": choose_file,
             "choose_file_action": import_file_action,
             "register_import_navigation": register_import_navigation,
+            "register_language_setter": register_language_setter,
             "open_survey_import": lambda: survey_navigation["import"](),
             "open_survey_responses": lambda: survey_navigation["responses"](),
             "open_report_wizard": lambda: setattr(
@@ -3051,14 +3088,17 @@ async def main(page: ft.Page, startup=None):
     )
     ui_translator.apply(ui, preferences.language)
     _mark(startup, "interface_built")
-    # Replace the launcher splash with the workspace in a single update.
+    # Replace the launcher splash with the start interface in a single update.
+    if start_interface(interface) == "classic":
+        page.controls.clear()
+        page.add(ui)
+        page.update()
+        _mark(startup, "interface_shown")
+        return
     page.controls.clear()
-    page.add(ui)
-    page.update()
+    open_workspace_preview()
     _mark(startup, "interface_shown")
-    if os.environ.get("SRA_UI", "").strip().lower() == "workspace":
-        open_workspace_preview()
-        _mark(startup, "workspace_preview_shown")
+    _mark(startup, "workspace_shown")
 
 
 if __name__ == "__main__":

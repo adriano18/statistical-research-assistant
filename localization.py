@@ -116,6 +116,21 @@ TEXT = {
         "научный импорт. Тот же движок и данные; классический интерфейс остаётся доступным.",
     ),
     "Open the preview": ("Atvērt priekšskatījumu", "Открыть предпросмотр"),
+    # Stage 37 (#68): the research workspace is the normal start. LV/RU are
+    # drafts for native review (docs/STAGE37_UX_SHELL.md).
+    "Research workspace": ("Pētījumu darba vide", "Исследовательская среда"),
+    "The normal start of the program: projects, guided analysis, results, reports and "
+    "questionnaires. Same engine, same data; this classic interface stays available, "
+    "and Settings in the workspace choose which interface opens at start.": (
+        "Programmas parastais sākums: projekti, vadīta analīze, rezultāti, atskaites un "
+        "anketas. Tas pats dzinējs un dati; klasiskā saskarne paliek pieejama, un darba "
+        "vides iestatījumos var izvēlēties, kura saskarne atveras startā.",
+        "Обычный запуск программы: проекты, пошаговый анализ, результаты, отчёты и анкеты. "
+        "Тот же движок и данные; классический интерфейс остаётся доступным, а в настройках "
+        "рабочей среды можно выбрать, какой интерфейс открывается при запуске.",
+    ),
+    "Open the research workspace": ("Atvērt pētījumu darba vidi",
+                                    "Открыть исследовательскую среду"),
 }
 
 

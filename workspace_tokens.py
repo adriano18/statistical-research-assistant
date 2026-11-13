@@ -6,9 +6,14 @@ below. ``tests/test_workspace_tokens.py`` checks WCAG 2.1 contrast for every
 text/background pair in both themes, so a token change that hurts
 readability fails CI.
 
-Typography deliberately sets no font family: Flutter then uses the
-platform UI font (Segoe UI on Windows, the system font on macOS) and its
-own open fallback elsewhere. No proprietary font files are shipped.
+Typography (Stage 37, issue #68) names the Windows interface typeface,
+Segoe UI (or Segoe UI Variable, chosen in Settings), with a fallback list
+whose last members cover Latvian and Cyrillic on any computer. Fonts are
+taken from the operating system: no font file is shipped. The researcher's
+text size (90-125 %) scales the type tokens in ``workspace_components``
+(``Ui.size``) and the Material text theme here; the density
+(comfortable/compact) sets the spacing and control-height tokens
+(``apply_density``).
 """
 
 from __future__ import annotations
@@ -39,8 +44,35 @@ PANE_PREVIEW_WIDTH = 380     # three-pane preview column
 BREAKPOINT_COMPACT = 1280    # 1024–1279: compact laptop
 BREAKPOINT_NARROW = 1024     # < 1024: narrow window / tablet
 
+# ------------------------------------------------------------------ density
+# Stage 37 (#68): the spacing and control-height tokens of each density.
+# Components read the module values when they are built, so a page rendered
+# after ``apply_density`` uses the new ones; comfortable is the design above.
+DENSITIES: dict[str, dict[str, int]] = {
+    "comfortable": {"SPACE_3": 12, "SPACE_4": 16, "SPACE_5": 24, "SPACE_6": 32,
+                    "SPACE_7": 40, "SPACE_8": 48, "CONTROL_HEIGHT": 40,
+                    "CONTEXT_BAR_HEIGHT": 56},
+    "compact": {"SPACE_3": 8, "SPACE_4": 12, "SPACE_5": 16, "SPACE_6": 24,
+                "SPACE_7": 32, "SPACE_8": 40, "CONTROL_HEIGHT": 36,
+                "CONTEXT_BAR_HEIGHT": 48},
+}
+DEFAULT_DENSITY = "comfortable"
+ACTIVE_DENSITY = DEFAULT_DENSITY
+
+
+def apply_density(name: str) -> str:
+    """Make ``name`` the active density (an unknown name: comfortable)."""
+    global ACTIVE_DENSITY
+    if name not in DENSITIES:
+        name = DEFAULT_DENSITY
+    globals().update(DENSITIES[name])
+    ACTIVE_DENSITY = name
+    return name
+
+
 # -------------------------------------------------------------- typography
-# (size, line height, weight). Helper text never goes below 12 px.
+# (size, line height, weight). Helper text never goes below 12 px, also at
+# a text size below 100 % (``scaled``).
 TYPE_DISPLAY = (28, 36, ft.FontWeight.W_600)
 TYPE_TITLE_L = (24, 32, ft.FontWeight.W_600)
 TYPE_TITLE_M = (20, 28, ft.FontWeight.W_600)
@@ -50,6 +82,55 @@ TYPE_BODY = (14, 20, ft.FontWeight.W_400)
 TYPE_LABEL = (13, 18, ft.FontWeight.W_500)
 TYPE_CAPTION = (12, 16, ft.FontWeight.W_400)
 MIN_TEXT_SIZE = 12
+TEXT_SCALES = (90, 100, 110, 125)        # per cent, chosen in Settings
+DEFAULT_TEXT_SCALE = 100
+# Typefaces from the operating system (none is shipped). The fallbacks are
+# used, in order, for a glyph the first font lacks or on a computer without
+# it; DejaVu Sans and Noto Sans cover Latvian and Cyrillic everywhere.
+_FALLBACK = ("Tahoma", "Arial", "Helvetica Neue", "Noto Sans", "DejaVu Sans",
+             "Liberation Sans", "Roboto")
+TYPEFACES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "segoe": ("Segoe UI", ("Segoe UI Variable Text",) + _FALLBACK),
+    "segoe_variable": ("Segoe UI Variable Text",
+                       ("Segoe UI Variable", "Segoe UI") + _FALLBACK),
+}
+DEFAULT_TYPEFACE = "segoe"
+# Flutter's Material 3 type scale (the sizes of text the theme draws: field
+# labels, menu entries, tooltips), scaled like the tokens above.
+MATERIAL_SIZES = {
+    "display_large": 57, "display_medium": 45, "display_small": 36,
+    "headline_large": 32, "headline_medium": 28, "headline_small": 24,
+    "title_large": 22, "title_medium": 16, "title_small": 14,
+    "body_large": 16, "body_medium": 14, "body_small": 12,
+    "label_large": 14, "label_medium": 12, "label_small": 11,
+}
+
+
+def font_family(typeface: str = DEFAULT_TYPEFACE) -> str:
+    return TYPEFACES.get(typeface, TYPEFACES[DEFAULT_TYPEFACE])[0]
+
+
+def font_fallback(typeface: str = DEFAULT_TYPEFACE) -> list[str]:
+    return list(TYPEFACES.get(typeface, TYPEFACES[DEFAULT_TYPEFACE])[1])
+
+
+def scaled(size: float, scale: float) -> float:
+    """``size`` at the text size ``scale`` (1.25 = 125 %); text that is at
+    least 12 px at 100 % never becomes smaller than 12 px."""
+    if scale == 1:
+        return size
+    value = round(size * scale, 1)
+    return max(MIN_TEXT_SIZE, value) if size >= MIN_TEXT_SIZE else value
+
+
+def text_theme(typeface: str = DEFAULT_TYPEFACE, scale: float = 1.0) -> ft.TextTheme:
+    """The Material text styles: the typeface's fallbacks and, below or
+    above 100 %, the scaled sizes."""
+    fallback = font_fallback(typeface)
+    return ft.TextTheme(**{
+        role: ft.TextStyle(size=None if scale == 1 else scaled(size, scale),
+                           font_family_fallback=fallback)
+        for role, size in MATERIAL_SIZES.items()})
 
 
 @dataclass(frozen=True)
@@ -201,19 +282,26 @@ def _color_scheme(p: Palette) -> ft.ColorScheme:
     )
 
 
-def build_theme(mode: str, accent: str = DEFAULT_ACCENT) -> ft.Theme:
-    """Material 3 theme whose colour roles are the Stage 33 tokens."""
+def build_theme(mode: str, accent: str = DEFAULT_ACCENT, *,
+                typeface: str = DEFAULT_TYPEFACE, text_scale: float = 1.0,
+                density: str | None = None) -> ft.Theme:
+    """Material 3 theme whose colour roles are the Stage 33 tokens, with the
+    researcher's typeface, text size and density (Stage 37)."""
     p = palette(mode, accent)
+    compact = (density or ACTIVE_DENSITY) == "compact"
     return ft.Theme(
         color_scheme=_color_scheme(p),
         use_material3=True,
-        visual_density=ft.VisualDensity.STANDARD,
+        font_family=font_family(typeface),
+        text_theme=text_theme(typeface, text_scale),
+        visual_density=ft.VisualDensity.COMPACT if compact else ft.VisualDensity.STANDARD,
         focus_color=ft.Colors.with_opacity(0.18, p.focus),
         hover_color=ft.Colors.with_opacity(0.06, p.text),
         divider_theme=ft.DividerTheme(color=p.border, thickness=1, space=1),
         scrollbar_theme=ft.ScrollbarTheme(thickness=8, radius=4),
         tooltip_theme=ft.TooltipTheme(
-            text_style=ft.TextStyle(size=12, color=p.surface),
+            text_style=ft.TextStyle(size=scaled(12, text_scale), color=p.surface,
+                                    font_family_fallback=font_fallback(typeface)),
             wait_duration=400,
         ),
     )

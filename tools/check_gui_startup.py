@@ -8,6 +8,11 @@ used. ``SRA_STARTUP_SMOKE`` only makes the app write its startup timings and
 an interface summary when the real workspace is on screen, keep the window
 open for screenshots and exit.
 
+Since Stage 37 (issue #68) the normal start shows the research workspace;
+``--classic`` starts the classic interface instead (``SRA_UI=classic``) and
+checks that it is still there. ``--workspace`` (``SRA_UI=workspace``) is
+kept for older workflow steps: it checks the same as the normal start.
+
 While the app starts, the window is captured every 0.5 s. The check fails if
 
 * the app reports a failed startup or the Home screen is missing,
@@ -141,6 +146,21 @@ def frame_stats(image):
     return dark, mean
 
 
+def ui_override(interface: str | None) -> str | None:
+    """SRA_UI for the launch: None is the normal start."""
+    return interface if interface in ("workspace", "classic") else None
+
+
+def interface_errors(smoke: dict, expected: str) -> list[str]:
+    """What is wrong with the interface on screen, for ``expected``
+    ("workspace": the normal start since Stage 37, or "classic")."""
+    if expected == "classic":
+        return [] if smoke.get("has_home_banner") else [
+            "the classic interface's Home screen is not on screen"]
+    return [] if smoke.get("workspace_present") else [
+        "the research workspace is not on screen (the normal start since Stage 37)"]
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("exe", type=Path)
@@ -148,8 +168,12 @@ def main(argv=None) -> int:
     parser.add_argument("--timeout", type=float, default=240)
     parser.add_argument("--max-black", type=float, default=3.0)
     parser.add_argument("--workspace", action="store_true",
-                        help="start in the Stage 33 workspace preview (SRA_UI=workspace)")
+                        help="force the research workspace (SRA_UI=workspace); it is also "
+                             "the normal start")
+    parser.add_argument("--classic", action="store_true",
+                        help="start the classic interface (SRA_UI=classic) and check it")
     args = parser.parse_args(argv)
+    expected = "classic" if args.classic else "workspace"
     if os.name != "nt":
         print("GUI startup check runs on Windows only.")
         return 2
@@ -172,8 +196,9 @@ def main(argv=None) -> int:
         "SRA_STARTUP_SMOKE_HOLD": "12",
         "SRA_LOG_DIR": str(work / "logs"),
     })
-    if args.workspace:
-        env["SRA_UI"] = "workspace"
+    forced = ui_override("classic" if args.classic else "workspace" if args.workspace else None)
+    if forced:
+        env["SRA_UI"] = forced
     started = time.monotonic()
     process = subprocess.Popen([str(args.exe)], cwd=str(args.exe.parent), env=env)
     frames = []  # (seconds, dark_fraction, mean_luma)
@@ -218,10 +243,7 @@ def main(argv=None) -> int:
         smoke = json.loads(result_path.read_text(encoding="utf-8"))
         if smoke.get("outcome") != "ok":
             errors.append(f"startup outcome: {smoke.get('outcome')}: {(smoke.get('error') or '')[-400:]}")
-        if args.workspace and not smoke.get("workspace_present"):
-            errors.append("Stage 33 workspace preview not on screen")
-        if not args.workspace and not smoke.get("has_home_banner"):
-            errors.append("Home screen text not found in the interface")
+        errors.extend(interface_errors(smoke, expected))
         if smoke.get("splash_present") or smoke.get("failure_present"):
             errors.append("splash or failure view still on screen after startup")
     else:
@@ -246,7 +268,7 @@ def main(argv=None) -> int:
     first_light = next((s for s, dark, mean in frames if dark < 0.5 and mean > 150), None)
     phases = {p["phase"]: p["seconds"] for p in smoke.get("phases", [])}
     verdict = {
-        "ok": not errors, "errors": errors,
+        "ok": not errors, "errors": errors, "expected_interface": expected,
         "window_visible_after_s": window_seen,
         "first_light_frame_after_s": first_light,
         "interface_ready_reported_s": phases.get("interface_ready"),

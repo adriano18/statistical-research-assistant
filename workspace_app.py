@@ -1,11 +1,13 @@
-"""Standalone launcher for the Stage 33 research workspace preview.
+"""Standalone launcher for the research workspace (without the classic interface).
 
     python workspace_app.py            # desktop window
     flet run --web workspace_app.py    # local browser preview (screenshots)
 
-The packaged application opens the same workspace from the classic Home
-screen ("Try the new workspace") or with ``SRA_UI=workspace``; this file is
-a developer and review convenience. Data stays on this computer.
+The packaged application starts in the same workspace (Stage 37, issue
+#68: the normal start; the classic interface stays one click away); this
+file is a developer and review convenience. Data stays on this computer.
+``SRA_LANGUAGE``, ``SRA_THEME`` and ``SRA_ROUTE`` override the settings for
+one run (screenshots) without saving them.
 """
 
 from __future__ import annotations
@@ -24,19 +26,18 @@ ROOT = Path(__file__).resolve().parent
 
 def build(page: ft.Page, *, language: str | None = None, theme: str | None = None,
           route: str | None = None) -> WorkspaceApp:
-    from app_preferences import load_preferences
-
-    preferences = load_preferences()
-    page.title = "Statistical Research Assistant — workspace preview"
+    page.title = "Statistical Research Assistant — workspace"
     page.padding = 0
     app = WorkspaceApp(
         page, bridge=ClassicBridge(survey_root=survey_data_root(ROOT),
                                    project_root=project_data_root(ROOT)),
-        language=language or os.environ.get("SRA_LANGUAGE") or preferences.language,
-        corners=preferences.appearance,
     )
-    if theme or os.environ.get("SRA_THEME"):
-        app.session.theme = theme or os.environ["SRA_THEME"]
+    language = language or os.environ.get("SRA_LANGUAGE")
+    if language in ("en", "lv", "ru"):
+        app.session.language = language          # this run only, not saved
+    theme = theme or os.environ.get("SRA_THEME")
+    if theme in ("light", "dark", "system"):
+        app.theme_choice = theme
     app.mount()
     if route or os.environ.get("SRA_ROUTE"):
         app.navigate(route or os.environ["SRA_ROUTE"])

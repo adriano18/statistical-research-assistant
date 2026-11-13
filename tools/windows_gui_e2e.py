@@ -62,6 +62,20 @@ Journeys (synthetic data only; see JOURNEYS):
                  (review K2, spec G) report order, a note, a reviewed check,
                  title, a section left out and Latvian, kept over a restart
                  and in the Word report; none of it in a second project
+* startup-workspace
+                 (Stage 37, #68) the program starts in the research workspace
+                 without SRA_UI; the classic interface is one click away and
+                 back; chosen as the start interface it opens at the next
+                 start, and the choice is kept in the settings file
+* settings-language
+                 (Stage 37, #68) an earlier version's Russian preference
+                 survives the upgrade (the program starts in Russian, the top
+                 bar offers EN and LV only, Settings show Russian); LV in the
+                 top bar, restart, Latvian; text size 125 % on screen
+
+The program starts as a researcher starts it: no ``SRA_UI`` (Stage 37: the
+research workspace is the normal start). ``Gui.start_ui`` forces one for a
+journey that needs it.
 
 Every step is recorded in OUT_DIR: a screenshot, the UI Automation tree
 when something is missing, an animated recording per journey
@@ -106,6 +120,14 @@ def T(key: str, **values) -> str:
     from workspace_text import T as TABLE
 
     text = TABLE[key][0]
+    return text.format(**values) if values else text
+
+
+def text_in(language: str, key: str, **values) -> str:
+    """The interface text for ``key`` in ``language`` (en, lv or ru)."""
+    from workspace_text import LANGS, T as TABLE
+
+    text = TABLE[key][LANGS.index(language)]
     return text.format(**values) if values else text
 
 
@@ -218,6 +240,9 @@ class Gui:
         self.frames: list = []
         self._recording = None
         self.step_index = 0
+        # SRA_UI for the program's starts: None is the normal start (Stage 37:
+        # the research workspace, or the researcher's choice in Settings).
+        self.start_ui: str | None = None
 
     # ----------------------------------------------------------- lifecycle
     def environment(self) -> dict:
@@ -229,13 +254,14 @@ class Gui:
         env.update({
             # A clean machine: neither the runner's Python nor Tesseract.
             "PATH": f"{system}\\System32;{system};{system}\\System32\\Wbem",
-            "SRA_UI": "workspace",
             "SRA_LOG_DIR": str(self.out / "app-logs"),
             # Every document reading writes its stage timings here (ocr_profile).
             "SRA_OCR_PROFILE": str(self.out / "ocr-profiles"),
         })
         if not self.real_data:
             env["SRA_DATA_DIR"] = str(self.data_dir)
+        if self.start_ui:
+            env["SRA_UI"] = self.start_ui
         return env
 
     def start(self, timeout: float = 300, *, ready: str | None = None) -> None:
@@ -3854,6 +3880,238 @@ def journey_report_composition(gui: Gui, work: Path, journey: Journey) -> None:
         shot_at(gui, box, "second project report settings")
 
 
+# ------------------------------------------- Stage 37 (#68): start and settings
+# What the classic interface shows (its own texts, interface_layout).
+CLASSIC_BANNER = "YOUR RESEARCH WORKSPACE"
+CLASSIC_OPEN_WORKSPACE = "Open the research workspace"
+# An earlier version's preferences file with Russian chosen (the upgrade).
+UPGRADE_PREFERENCES = {"language": "ru", "recent_files": [], "appearance": "windows"}
+START_OPTIONS = ["Research workspace", "Classic interface"]
+LANGUAGE_OPTIONS = ["English", "Latviešu", "Русский"]
+
+
+def settings_file(gui: Gui) -> Path:
+    """The settings file of this run's data folder (``user_settings``)."""
+    return data_folder(gui) / "settings.json"
+
+
+def stored_settings(gui: Gui) -> dict:
+    """The settings file as the program wrote it (empty if there is none)."""
+    with contextlib.suppress(OSError, ValueError):
+        value = json.loads(settings_file(gui).read_text(encoding="utf-8"))
+        if isinstance(value, dict):
+            return value
+    return {}
+
+
+def wait_setting(gui: Gui, key: str, expected, timeout: float = 15):
+    """Wait until the program has saved ``key`` (a write follows the click)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        value = stored_settings(gui).get(key)
+        if value == expected or time.monotonic() > deadline:
+            return value
+        time.sleep(0.5)
+
+
+def legacy_preferences() -> Path:
+    """Where versions before Stage 37 kept the language (only read since)."""
+    import app_preferences
+
+    return app_preferences.preferences_path()
+
+
+def restore_settings(gui: Gui, **values) -> None:
+    """Put the given settings back in the file while the program is stopped
+    (a journey that failed half-way leaves the next ones a known start)."""
+    from user_settings import UserSettings
+
+    UserSettings.load(settings_file(gui), migrate=False).update(**values)
+
+
+def nav_in(gui: Gui, language: str, key: str) -> None:
+    """``nav`` in another interface language."""
+    gui.click(regex="^" + re.escape(text_in(language, key)) + r"(\n\d+)?$",
+              control_type=("Button", "Text"))
+
+
+def segment(label: str) -> str:
+    """A segmented button by its label: UI Automation may add its tooltip
+    ("LV. Latviešu" or "LV\nLatviešu"), as for a chip."""
+    return "^" + re.escape(label) + CHIP_END
+
+
+def quick_languages(gui: Gui) -> dict[str, bool]:
+    """Which language buttons the top bar shows (named by their code)."""
+    return {code: bool(gui.query(regex=segment(code.upper()), control_type="Button"))
+            for code in ("en", "lv", "ru")}
+
+
+def text_height(gui: Gui, name: str) -> int:
+    """The height on screen of the text ``name`` (the page heading)."""
+    element = gui.find(name, control_type=("Text", "Group", "Custom"), scroll=False,
+                       visible=False)
+    return element.element_info.rectangle.height()
+
+
+def journey_startup_workspace(gui: Gui, work: Path, journey: Journey) -> None:
+    """Stage 37 (#68) on the packaged program: started as a researcher starts
+    it (no SRA_UI), the program opens the research workspace, not the
+    classic interface and not "Open the preview". The classic interface is
+    one click away (the sidebar) and the classic Home leads back. Chosen in
+    Settings as the start interface, the classic interface opens at the next
+    start; the choice is in the settings file. The workspace is chosen again
+    at the end. tests/test_stage37_shell_journeys.py walks the same flow."""
+    previous = gui.start_ui
+    gui.start_ui = None
+    try:
+        with journey.step("a normal start opens the research workspace"):
+            gui.stop()
+            gui.start()                          # ready: Home's "Create project"
+            expect(not gui.has_text(CLASSIC_BANNER), "the classic interface opened first")
+            stored = stored_settings(gui)
+            journey.facts["start_interface_stored"] = stored.get("start_interface")
+            journey.facts["settings_file"] = str(settings_file(gui))
+            expect(stored.get("start_interface") in (None, "workspace"),
+                   f"start interface stored: {stored.get('start_interface')!r}")
+            gui.find(T("nav.classic"), control_type=("Button", "Text"), scroll=False)
+            gui.shot("the research workspace at start")
+        with journey.step("the classic interface is one click away"):
+            gui.click(T("nav.classic"), control_type=("Button", "Text"))
+            gui.wait_text(CLASSIC_BANNER, timeout=30, scroll=False)
+            gui.find(CLASSIC_OPEN_WORKSPACE, control_type="Button", scroll=False)
+            gui.shot("classic interface")
+        with journey.step("and the classic Home leads back to the workspace"):
+            gui.click(CLASSIC_OPEN_WORKSPACE, control_type="Button")
+            gui.find(T("project.create"), timeout=30, scroll=False, visible=False)
+        with journey.step("Settings: the classic interface as the start interface"):
+            nav(gui, "nav.settings")
+            click_chip(gui, T("settings.section.start"))      # the hub's index
+            gui.choose(T("settings.start_interface"), T("settings.start.classic"),
+                       options=START_OPTIONS)
+            saved = wait_setting(gui, "start_interface", "classic")
+            journey.facts["start_interface_chosen"] = saved
+            expect(saved == "classic", f"start interface saved: {saved!r}")
+        with journey.step("the next start opens the classic interface"):
+            gui.stop()
+            gui.start(ready=CLASSIC_OPEN_WORKSPACE)
+            expect(gui.has_text(CLASSIC_BANNER), "the classic Home is not shown")
+            gui.shot("classic interface at start")
+        with journey.step("the research workspace as the start interface again"):
+            gui.click(CLASSIC_OPEN_WORKSPACE, control_type="Button")
+            gui.find(T("project.create"), timeout=30, scroll=False, visible=False)
+            nav(gui, "nav.settings")
+            click_chip(gui, T("settings.section.start"))
+            gui.choose(T("settings.start_interface"), T("settings.start.workspace"),
+                       options=START_OPTIONS)
+            saved = wait_setting(gui, "start_interface", "workspace")
+            expect(saved == "workspace", f"start interface saved: {saved!r}")
+            gui.stop()
+            gui.start()
+            expect(not gui.has_text(CLASSIC_BANNER), "the classic interface opened")
+    finally:
+        gui.start_ui = previous
+        if stored_settings(gui).get("start_interface") not in (None, "workspace"):
+            gui.stop()
+            with contextlib.suppress(Exception):
+                restore_settings(gui, start_interface="workspace")
+            gui.start()
+
+
+def journey_settings_language(gui: Gui, work: Path, journey: Journey) -> None:
+    """Stage 37 (#68) on the packaged program: a researcher who chose
+    Russian in a version before Stage 37 installs this one. That version
+    kept the language in ~/.statistical_research_assistant/preferences.json;
+    the settings file does not exist yet. The program starts in Russian, the
+    top bar offers EN and LV only, Settings show Russian, and the old file
+    is unchanged. LV in the top bar, a restart: Latvian. Text size 125 %
+    makes the text on screen larger. English and 100 % at the end.
+    tests/test_stage37_shell_journeys.py walks the same flow."""
+    legacy = legacy_preferences()
+    original = legacy.read_bytes() if legacy.is_file() else None
+    previous = gui.start_ui
+    gui.start_ui = None
+    try:
+        with journey.step("an earlier version's Russian preference (the upgrade)"):
+            gui.stop()
+            legacy.parent.mkdir(parents=True, exist_ok=True)
+            legacy.write_text(json.dumps(UPGRADE_PREFERENCES), encoding="utf-8")
+            before = legacy.read_bytes()
+            settings_file(gui).unlink(missing_ok=True)       # this version never ran
+        with journey.step("the program starts in Russian"):
+            gui.start(ready=text_in("ru", "project.create"))
+            stored = stored_settings(gui)
+            journey.facts["settings_after_upgrade"] = {
+                key: stored.get(key) for key in ("language", "migrated")}
+            expect(stored.get("language") == "ru", f"language saved: {stored.get('language')!r}")
+            expect(legacy.read_bytes() == before, "the earlier version's file was changed")
+            gui.find(text_in("ru", "nav.analyze"), control_type=("Button", "Text"), scroll=False)
+            gui.shot("Russian after the upgrade")
+        with journey.step("the top bar offers EN and LV only"):
+            quick = quick_languages(gui)
+            journey.facts["top_bar_languages"] = quick
+            expect(quick == {"en": True, "lv": True, "ru": False}, f"top bar: {quick}")
+        with journey.step("Settings show Russian"):
+            nav_in(gui, "ru", "nav.settings")
+            click_chip(gui, text_in("ru", "settings.section.language"))
+            gui.wait_text(text_in("ru", "settings.language_note"), timeout=30)
+            field = None
+            for kinds in (("ComboBox",), ("Edit",)):
+                found = gui.query(text_in("ru", "settings.language"), control_type=kinds)
+                if found:
+                    field = found[0]
+                    break
+            shown = gui.value(field) if field is not None else ""
+            journey.facts["settings_language_shown"] = shown
+            expect(shown == "Русский" or gui.has_text("Русский"),
+                   f"Settings do not show Russian: {shown!r}")
+            gui.shot("Settings in Russian")
+        with journey.step("LV in the top bar"):
+            gui.click(regex=segment("LV"), control_type="Button")
+            gui.wait_text(text_in("lv", "settings.language_note"), timeout=30)
+            saved = wait_setting(gui, "language", "lv")
+            expect(saved == "lv", f"language saved: {saved!r}")
+        with journey.step("after a restart: Latvian"):
+            gui.stop()
+            gui.start(ready=text_in("lv", "project.create"))
+            gui.find(text_in("lv", "nav.analyze"), control_type=("Button", "Text"), scroll=False)
+            journey.facts["language_after_restart"] = stored_settings(gui).get("language")
+            gui.shot("Latvian after the restart")
+        with journey.step("text size 125 %: the text on screen is larger"):
+            nav_in(gui, "lv", "nav.settings")
+            click_chip(gui, text_in("lv", "settings.section.typography"))
+            label = text_in("lv", "settings.text_size")      # the label above the sizes
+            normal = text_height(gui, label)
+            gui.click(regex=segment("125 %"), control_type="Button")
+            saved = wait_setting(gui, "text_scale", 125)
+            time.sleep(1.5)
+            larger = text_height(gui, label)
+            journey.facts["label_height_px"] = {"100": normal, "125": larger}
+            expect(saved == 125, f"text size saved: {saved!r}")
+            expect(normal > 0 and larger / normal >= 1.15,
+                   f"the label is {normal} px at 100 % and {larger} px at 125 %")
+            gui.shot("text size 125 %")
+        with journey.step("back to 100 % and English"):
+            click_chip(gui, text_in("lv", "settings.section.typography"))
+            gui.click(regex=segment("100 %"), control_type="Button")
+            gui.click(regex=segment("EN"), control_type="Button")
+            gui.wait_text(T("settings.language_note"), timeout=30)
+            expect(wait_setting(gui, "language", "en") == "en", "English was not saved")
+            expect(wait_setting(gui, "text_scale", 100) == 100, "100 % was not saved")
+    finally:
+        gui.start_ui = previous
+        if original is None:
+            legacy.unlink(missing_ok=True)
+        else:
+            legacy.write_bytes(original)
+        stored = stored_settings(gui)
+        if stored.get("language") != "en" or stored.get("text_scale", 100) != 100:
+            gui.stop()
+            with contextlib.suppress(Exception):
+                restore_settings(gui, language="en", text_scale=100)
+            gui.start()
+
+
 # Journeys that prepare the machine and start the program themselves.
 STARTS_ITSELF = {"legacy-migration", "installed-reopen", "update-a-to-b"}
 
@@ -3893,6 +4151,10 @@ JOURNEYS = {
     # Stage 36.8 review findings K1 and K2 (#62), after the journeys above.
     "confirmations": journey_confirmations,
     "report-composition": journey_report_composition,
+    # Stage 37 (#68): the normal start and the settings, after the journeys
+    # above (each restores English, 100 % and the workspace as the start).
+    "startup-workspace": journey_startup_workspace,
+    "settings-language": journey_settings_language,
 }
 
 
@@ -3928,6 +4190,16 @@ def main(argv=None) -> int:
     preferences = Path.home() / ".statistical_research_assistant" / "preferences.json"
     with contextlib.suppress(OSError):
         preferences.unlink()        # default (English) preferences
+    if args.real_data:
+        # The installed program's own settings file (Stage 37): English, 100 %
+        # and the workspace at start; its other settings are kept.
+        with contextlib.suppress(Exception):
+            from user_settings import UserSettings
+
+            real = Path(os.environ["LOCALAPPDATA"]) / "StatisticalResearchAssistant" / "settings.json"
+            if real.is_file():
+                UserSettings.load(real, migrate=False).update(
+                    language="en", text_scale=100, start_interface="workspace")
     gui = Gui(args.exe.resolve(), data, out, real_data=args.real_data)
     report = {"exe": str(args.exe), "journeys": []}
     started = time.monotonic()

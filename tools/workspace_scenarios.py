@@ -234,7 +234,7 @@ async def classic(page, name: str) -> None:
 
     research_app.build_interface = spy
     try:
-        await research_app.main(page)
+        await research_app.main(page, interface="classic")
     finally:
         research_app.build_interface = original
     if name == "classic-groups":
@@ -266,11 +266,16 @@ def serve(scenario: str, port: int, language: str, theme: str) -> None:
         if scenario.startswith("classic"):
             await classic(page, scenario)
             return
-        page.title = "Statistical Research Assistant — workspace preview"
+        from user_settings import UserSettings, path_for
+
+        page.title = "Statistical Research Assistant — workspace"
         page.padding = 0
+        # A settings file of its own, never made from this computer's files
+        # (the scenario's language and theme are what the screenshot shows).
         app = WorkspaceApp(page, bridge=ClassicBridge(survey_root=storage / "surveys"),
-                           language=language)
-        app.session.theme = theme
+                           language=language,
+                           settings=UserSettings.load(path_for(storage), migrate=False))
+        app.theme_choice = theme
         app.mount()
         await apply(app, scenario)
 

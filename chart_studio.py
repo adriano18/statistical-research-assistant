@@ -158,6 +158,22 @@ LOWESS_ITERATIONS = 3
 LOWESS_EXACT_N = 1000        # larger samples interpolate within 1% of the x range
 SVG_HASH_SALT = "chart-studio"
 FALLBACK_FONT = "DejaVu Sans"
+# Stage 37 (#68): charts use the Windows interface font where matplotlib
+# finds it installed, and DejaVu Sans (shipped with matplotlib) elsewhere;
+# no font file is shipped. DejaVu Sans stays the fallback for every glyph.
+PREFERRED_FONT = "Segoe UI"
+
+
+def _installed(family: str) -> bool:
+    try:
+        font_manager.findfont(font_manager.FontProperties(family=[family]),
+                              fallback_to_default=False)
+    except ValueError:
+        return False
+    return True
+
+
+DEFAULT_FONT = PREFERRED_FONT if _installed(PREFERRED_FONT) else FALLBACK_FONT
 TREND_COLOR = "#1F1F1F"
 MISSING_CELL_COLOR = "#E5E7EB"
 
@@ -391,7 +407,7 @@ class ChartSpec:
     y_label: str = ""
     legend: str = "best"
     palette: str = DEFAULT_PALETTE
-    font_family: str = FALLBACK_FONT
+    font_family: str = DEFAULT_FONT
     font_size: float = 10.0
     width_in: float | None = None
     height_in: float | None = None

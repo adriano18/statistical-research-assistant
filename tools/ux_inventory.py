@@ -88,7 +88,8 @@ def build_classic(page: FakePage | None = None, captured: dict | None = None):
     token = _context_page.set(page)
     research_app.build_interface = spy
     try:
-        asyncio.run(research_app.main(page))
+        # The workspace is the normal start (Stage 37); this builds the classic one.
+        asyncio.run(research_app.main(page, interface="classic"))
     finally:
         research_app.build_interface = original
         _context_page.reset(token)

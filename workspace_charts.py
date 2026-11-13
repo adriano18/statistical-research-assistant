@@ -24,7 +24,8 @@ LEGENDS = ("best", "outside", "upper right", "upper left", "lower right", "lower
 LEGEND_KEYS = {"best": "auto", "outside": "outside", "upper right": "upper_right",
                "upper left": "upper_left", "lower right": "lower_right",
                "lower left": "lower_left", "none": "hidden"}
-FONTS = ("DejaVu Sans", "Arial", "Calibri", "Times New Roman", "Liberation Sans")
+# Segoe UI first (Stage 37): the default where installed (cs.DEFAULT_FONT).
+FONTS = ("Segoe UI", "DejaVu Sans", "Arial", "Calibri", "Times New Roman", "Liberation Sans")
 NUMBER_FORMATS = ((".0f", "0"), (".1f", "0.0"), (".2f", "0.00"), (".3f", "0.000"))
 DPIS = ("100", "150", "300", "600")
 PREVIEW_DPI = 110
@@ -347,7 +348,7 @@ class ChartStudioPage:
                         spec.palette, on_select=lambda e: self.change(palette=e.control.value),
                         width=240, data="chart-palette"),
             wc.dropdown(ui, ui.t("chart.font"), [(font, font) for font in FONTS],
-                        spec.font_family if spec.font_family in FONTS else FONTS[0],
+                        spec.font_family if spec.font_family in FONTS else cs.DEFAULT_FONT,
                         on_select=lambda e: self.change(font_family=e.control.value), width=210,
                         data="chart-font"),
             wc.dropdown(ui, ui.t("chart.number_format"), list(NUMBER_FORMATS),

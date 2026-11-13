@@ -282,17 +282,23 @@ class ProjectHub:
         # A new project starts a new analysis: nothing chosen for another
         # project's data (or its research task) carries over.
         self._reset_pages()
-        # The new project opens on its own page, with the first step offered.
+        # The new project opens on its own page, with the first step offered
+        # and the keyboard focus on it (U11).
+        self.app.request_focus("next-open-data")
         self._done(self.app.t("project.created", title=info.title), route="project")
 
-    async def open(self, project_id: str):
+    async def open(self, project_id: str, route: str = "project"):
+        """Open the project on its own page (or on ``route``: Home's
+        "Continue where you left off", Stage 37)."""
         try:
             info = self.binding.open(project_id)
         except (ProjectError, OSError) as error:
             self._failed(error)
             return
         self._reset_pages()
-        self._done(self.app.t("project.opened", title=info.title), route="project")
+        if route == "project":
+            self.app.request_focus("project-next-action", first_inside=True)
+        self._done(self.app.t("project.opened", title=info.title), route=route)
         await self.verify()
 
     async def verify(self):
@@ -336,8 +342,9 @@ class ProjectHub:
             title=wc.heading(ui, ui.t("project.delete_title", title=title), tk.TYPE_TITLE_S),
             content=ft.Container(wc.text(ui, ui.t("project.delete_body"), tk.TYPE_BODY), width=460),
             actions=[
+                # The safe answer has the keyboard focus when the dialog opens (U11).
                 wc.button(ui, ui.t("common.cancel"), lambda e: self.app.page.pop_dialog(),
-                          kind="quiet", data="project-delete-cancel"),
+                          kind="quiet", data="project-delete-cancel", autofocus=True),
                 wc.button(ui, ui.t("project.delete_confirm"), delete, kind="primary",
                           icon=ft.Icons.DELETE_OUTLINE, data="project-delete-confirm"),
             ],
@@ -487,9 +494,12 @@ class ProjectPage:
                               multiline=True, hint=ui.t("project.question_hint"),
                               on_change=lambda e: setattr(self, "_question_text",
                                                           e.control.value or ""),
-                              data="project-question")
+                              data="project-question", expand=True)
         field.on_blur = self.save_question
-        return wc.card(ui, [field, wc.caption(ui, ui.t("project.question_body"))],
+        # Stage 37 (U10): the question takes the card's width; alone in the
+        # card's column the field kept its own default width (about 300 px).
+        return wc.card(ui, [ft.Row([field], data="project-question-row"),
+                            wc.caption(ui, ui.t("project.question_body"))],
                        title=ui.t("journey.question"), data="project-question-card")
 
     def save_question(self, e=None):
