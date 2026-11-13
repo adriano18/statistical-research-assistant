@@ -210,7 +210,7 @@ The runner refuses to run without every confirmation the method asks for.
 | S3: no 0/1 or categorical covariate in one model with X | done: the linear model with dummy codes and a stated reference | `test_linear_model`, acceptance H1 |
 | S4: mediators chosen by p-values | done: never suggested; a design confirmation | `GuidedAdviceTests`, `CatalogTests` |
 | S5: the fixture's suppression | done: the "inconsistent mediation (suppression)" guard; no "partial mediation"; no causal verb in EN/LV/RU | `TextTests` |
-| S6: fixture limits | the tests assert numbers against oracles, never significance | acceptance; fixture v2 **not done** |
+| S6: fixture limits | done: the tests assert numbers against oracles, never significance; a separate fixture v2 (`generate_master_fixture_v2.py`; v1 unchanged) adds consistent mediation, a dimension tied negatively to Y, covariate effects, reverse-keyed items with a stated key and value-dependent missingness | acceptance; `test_stage37_fixture_v2` |
 | S10: Spearman permutation floor | done: the default is unchanged, the floor is stated (p = .001; Holm/Bonferroni k × .001) and the t-approximation option is named | `test_spearman_floor` |
 | S12: no missingness summary or sensitivity re-run | done for the new models (summary, left-out comparison, `compare_estimates`) | `MissingDataTests`, acceptance |
 | S13: ω for more than 12 items | **not done**: ω stays validated for 3–12 items; a 13- or 20-item scale gets α and "not calculated" for ω | acceptance |
@@ -255,5 +255,5 @@ The runner refuses to run without every confirmation the method asks for.
 | Suppression wording guard (review S5) | done | `TextTests` |
 | Spearman floor visible (review S10) | done | `test_spearman_floor` |
 | ω for more than 12 items (review S13) | not done | limitation |
-| Fixture v2 (consistent mediation, negative dimension, covariate effects, reverse items, patterned missingness) | not done | — |
+| Fixture v2 (consistent mediation, negative dimension, covariate effects, reverse items, patterned missingness), separate from the owner's v1 | done | `test_stage37_fixture_v2` (7 tests) |
 | Windows GUI journey for the new methods; native LV/RU review | not done | owner / 37.x |

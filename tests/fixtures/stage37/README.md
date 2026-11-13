@@ -33,3 +33,4 @@ See [Stage 37 next specification](../../../docs/STAGE37_NEXT_SPEC.md) and GitHub
 - The H1–H6 scenario on this fixture is `tests/test_stage37_master_acceptance.py`. It is documented in [`docs/STAGE37_MASTER_ACCEPTANCE.md`](../../../docs/STAGE37_MASTER_ACCEPTANCE.md).
 - The public synthetic mapping of constructs, coping dimensions and hypotheses is [`synthetic_construct_mapping.json`](synthetic_construct_mapping.json). In the generator, coping group 0 is M; groups 2 and 5 play "avoidance-like" (+X) and groups 3 and 6 "assertive-like" (−X).
 - The generator above is unchanged (v1).
+- `generate_master_fixture_v2.py` is a separate, stdlib-only generator (240 cases, `SYN2_` columns). It adds what v1 cannot show (independent review S6): consistent mediation, a coping dimension tied negatively to Y, covariate effects, reverse-keyed items with a scoring key in its spec JSON, and missingness that depends on age and employment. Its test is `tests/test_stage37_fixture_v2.py`.

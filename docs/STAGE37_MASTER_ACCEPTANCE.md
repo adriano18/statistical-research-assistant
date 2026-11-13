@@ -128,4 +128,4 @@ Two things the synthetic output shows about the program, not about any populatio
 - There are no reverse-keyed items, and the covariates have no effect.
 - 5 cells are missing.
 
-The acceptance therefore checks computation, provenance and wording, not the power of the design. A separate fixture v2 (consistent mediation, a negative dimension, covariate effects, reverse items, patterned missingness) is listed as not done in [`STAGE37_METHODS.md`](STAGE37_METHODS.md). The owner's v1 generator is unchanged.
+The acceptance therefore checks computation, provenance and wording, not the power of the design. A separate fixture v2 (`tests/fixtures/stage37/generate_master_fixture_v2.py`, 240 cases) adds consistent mediation, a dimension tied negatively to Y, covariate effects, reverse-keyed items with a stated scoring key and missingness that depends on age and employment. `tests/test_stage37_fixture_v2.py` shows what the program does with it: no suppression note when a·b and c′ share their sign, exactly the reverse-keyed items flagged, and the left-out cases younger. The owner's v1 generator is unchanged.
