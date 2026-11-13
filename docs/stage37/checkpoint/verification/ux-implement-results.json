@@ -1,0 +1,167 @@
+{
+ "baseline:metrics": {
+  "branch": "claude/stage37-ux",
+  "commit": "b83567cffd13e7d686540375b93d61dad9f58fb9",
+  "command": "cd /home/user/statistical-research-assistant/.claude/worktrees/wf_b03aeea1-279-1 && MPLBACKEND=Agg PYTHONUTF8=1 /tmp/claude-0/-home-user-statistical-research-assistant/8d8df448-6aa8-50d6-b440-62d0c67e9744/scratchpad/venv-lock/bin/python tools/ux_metrics.py --json ux-metrics.json --markdown ux-metrics.md   (optional: --width 1200 --height 720 for the window every start opens with; --keep DIR keeps fixtures and projects)",
+  "tasks": [
+   {
+    "task": "T1 First start to an open project with data (master 180x98)",
+    "persona": "novice",
+    "interactions": 3,
+    "typed": 1,
+    "page_changes": 3,
+    "dialogs": 1,
+    "repeated_selections": 0,
+    "focus_losses": 0,
+    "scroll_note": "estimate ~162 px. Steps: classic 'Open the preview' (U1), then project title typed, project-create, next-open-data plus the Open dialog."
+   },
+   {
+    "task": "T2 Confirm measurement levels of the 98-variable file",
+    "persona": "novice",
+    "interactions": 4,
+    "typed": 0,
+    "page_changes": 0,
+    "dialogs": 0,
+    "repeated_selections": 0,
+    "focus_losses": 0,
+    "scroll_note": "estimate ~5,440 px (~8.3 screens) to read the 98-row dictionary down to the accept bar. One correction: sex_code is suggested as ordinal (S7)."
+   },
+   {
+    "task": "T3 Define/score one 20-item scale (SYN_LON_01-20) and check reliability",
+    "persona": "novice",
+    "interactions": 51,
+    "typed": 1,
+    "page_changes": 2,
+    "dialogs": 0,
+    "repeated_selections": 20,
+    "focus_losses": 0,
+    "scroll_note": "estimate ~5,312 px, of which ~970 px is inside the 170-px item list of the hosted Prepare data panel. Breakdown: 6 clicks, 41 boxes, 2 dropdowns. 40 item ticks; the item picker offers 98 variables. alpha = 0.91."
+   },
+   {
+    "task": "T4 Eight correlations in one batch, add to report (Stage 36 CSV)",
+    "persona": "novice",
+    "interactions": 10,
+    "typed": 0,
+    "page_changes": 1,
+    "dialogs": 0,
+    "repeated_selections": 0,
+    "focus_losses": 0,
+    "scroll_note": "estimate ~1,146 px. Same as the Stage 36 count of 8, plus task-new (the T3 analysis is still on screen) and task-add-report."
+   },
+   {
+    "task": "T5 Repeat a previous analysis with one variable changed (batch: UCLA -> UCLA_Level)",
+    "persona": "supervisor",
+    "interactions": 5,
+    "typed": 0,
+    "page_changes": 1,
+    "dialogs": 0,
+    "repeated_selections": 0,
+    "focus_losses": 0,
+    "scroll_note": "estimate ~780 px. The run is stored in the same task (D5)."
+   },
+   {
+    "task": "T6 Export the Word report",
+    "persona": "supervisor",
+    "interactions": 2,
+    "typed": 0,
+    "page_changes": 1,
+    "dialogs": 1,
+    "repeated_selections": 0,
+    "focus_losses": 0,
+    "scroll_note": "estimate 0 px. The docx was read back: 4 tables, all 8 scales present."
+   },
+   {
+    "task": "T7 Reopen the project after a restart, review every result",
+    "persona": "supervisor",
+    "interactions": 4,
+    "typed": 0,
+    "page_changes": 3,
+    "dialogs": 0,
+    "repeated_selections": 0,
+    "focus_losses": 0,
+    "scroll_note": "estimate ~19,550 px (~29.7 screens). The 20-item reliability result alone is ~13,100 px: its verified-estimates table has 282 rows. At 1200x720 this task takes 5 interactions, because the results list becomes a dropdown."
+   },
+   {
+    "task": "T8 Change language/text size and continue (incl. next start)",
+    "persona": "supervisor",
+    "interactions": 5,
+    "typed": 0,
+    "page_changes": 3,
+    "dialogs": 0,
+    "repeated_selections": 0,
+    "focus_losses": 0,
+    "scroll_note": "estimate ~210 px. Text size: no control (U12), so nothing is counted. Of the 5 interactions, 1 is the LV switch in session; 4 are the next start: Open the preview, LV again (the workspace restarts in English, D1), open project, back to Reports."
+   }
+  ],
+  "notes": "Baseline only: no UI code changed. Commit b83567c is on 2f9af71 and adds three files:\n- /home/user/statistical-research-assistant/.claude/worktrees/wf_b03aeea1-279-1/tools/ux_metrics.py\n- /home/user/statistical-research-assistant/.claude/worktrees/wf_b03aeea1-279-1/tests/test_stage37_ux_metrics.py (16 tests, about 30 s)\n- /home/user/statistical-research-assistant/.claude/worktrees/wf_b03aeea1-279-1/docs/STAGE37_UX_METRICS.md\nNot pushed, no PR.\n\nResults at 1440x800 (the harness default):\n- Novice: 68 interactions, 2 typed fields, 6 page changes, 1 dialog, 20 repeated selections, 0 focus losses, scroll about 12,060 px (estimate).\n- Supervisor: 16 interactions, 0 typed, 8 page changes, 1 dialog, 0 repeated selections, 0 focus losses, scroll about 20,540 px (estimate).\n- At 1200x720, the window every start opens with: the supervisor takes 17, because T7's results list becomes a dropdown.\n\nTest status: the full suite passed (1342 tests, OK, 10 skipped) with SRA_REQUIRE_REAL_OCR=1. That run used the new test module as it was before three final refactors: the check helper, a method rename and extra recorded facts. After them, the 16 new tests passed on their own and the tool's output was byte-identical to before. Two separate runs also give byte-identical JSON and Markdown.\n\nHow it measures:\n- It starts the program for real (research_app.main). If the classic interface opens, its 'Open the preview' click is counted.\n- It then drives the real handlers through a subclass of the Stage 36 CountingWorkspace: click or checkbox 1, dropdown 2. Its count of the Stage 36 eight-correlation flow is 8 interactions and 1 page change, as in the Stage 36 test.\n- The Open dialog goes through the file picker's real on_result handler; the Save dialog is the harness stub.\n- Each task checks its own outcome: project, levels, score equal to the item mean, alpha, the batch, the new run, the Word file read back, the language.\n- Run order: T1-T4 (first start), then a restart with T7, T5, T6, T8, then a next start for the rest of T8.\n- T4 and T5 use the Stage 36 CSV. It is opened in the same project with its levels confirmed, as uncounted set-up, like the Stage 36 baseline.\n\nMetric definitions:\n- A repeated selection is an explicit tick or dropdown pick of a variable already put into a role earlier in the chain. Bulk buttons are remembered but not counted.\n- A focus loss is a typed field or dropdown whose place in Flet 1.x's tree changes, or which disappears, after a re-render on the same page. Flet keeps the widget, and with it focus, only when the place is unchanged. The detector is tested, including an end-to-end loss on the real Home page.\n- Scroll is an estimate from a layout model of control counts and nominal heights (inner lists apart, reading to the end of what a task reads). It is labelled as an estimate everywhere. For T2 it gives about 5,440 px, against the independent review's analytic 'about 5,500 px'.\n\nIsolation: SRA_DATA_DIR and preferences/workspace.json are in a temp folder. SRA_UI is empty, so the default start is measured. The credential store is never read and nothing goes to the network.\n\nFindings the numbers show:\n- U1: +1 click and +1 page change per start.\n- D1: language reset at the next start.\n- D2: the 1200x720 compact layout.\n- U12: no text-size control.\n- U2: 40 one-by-one item ticks for one 20-item scale.\n- D6: English-only hosted Prepare data panel with no data keys.\n- D7: 98 variables offered in the item picker.\n- D5: the re-run overwrites its task.\n- H1: 27 full-page re-renders in T3.\n\nThe document maps these findings to the UX-1/UX-2/UX-3 split as expected movements, labelled 'expected, not measured'. When re-run after the UX changes, the tool adapts to a workspace-first start, a project and page restored at start, and a text-size control whose data key contains 'text-size'."
+ },
+ "implement:shell": {
+  "branch": "claude/stage37-ux-shell",
+  "commits": [
+   "d9b41ffc8761c9b25a39f9ff9f8ac71ce0406969 ux: research workspace as the normal start, one settings file, EN/LV top bar, typography and Settings hub (#68)",
+   "6a64cea180c48b0b7a4b736d7cc0998f6da961fe e2e: startup-workspace and settings-language Windows journeys; startup checks expect the workspace (#68)",
+   "e15ad7873c563e5ae0a367f7e44f0dc541466f36 ux: text size also for the answer preview and the AI draft; run the settings tests on Windows (#68)",
+   "4da2a983dfd3ff3cfb47874ec3625acee914c454 docs: the Stage 37 shell document names the packaged-module and Windows test checks (#68)"
+  ],
+  "summary": "I made branch claude/stage37-ux-shell from claude/stage37-ux (b83567c) in worktree /home/user/statistical-research-assistant/.claude/worktrees/wf_b03aeea1-279-2. It has 4 commits, all ending with the two required lines. Nothing was pushed and no PR was opened.\n\n1) One settings file per user. The new module user_settings.py keeps <data folder>/settings.json, beside projects/ and profile/.\n- On the first start it is filled once from preferences.json, workspace.json and the researcher profile's language. Those old files are only read, never changed.\n- If any old file holds a language other than English, that language is kept, so an existing \"ru\" starts the program in Russian.\n- Values this version does not know (including a newer version's format number) stay in the file unchanged. A save writes only the changed keys, after reading the file again.\n- Writes are atomic and never stop the program. An unreadable file is set aside as settings.damaged.json.\n- Reset settings never touches projects, questionnaires, responses, backups, the profile or AI keys.\n- app_preferences.py now reads and writes this file; with an explicit path it still uses the old format, and LANGUAGES still contains ru.\n- D1 fixed: the workspace language is kept without a profile.\n- D2 fixed: theme (light/dark/system), accent, corners, typeface, text size, density, sidebar, and window size/position/maximized are kept. Window handling is in window_state.py: the launcher restores the window before the splash, saves it debounced, and centres it if the saved position is no longer on a screen. research_app.main no longer forces 1200×720.\n- The open project and its page are saved. The program still opens on Home and never reopens a project by itself; Home shows \"Continue where you left off\", one click back to that project and page.\n\n2) Start interface. research_app.start_interface() picks the interface in this order: a caller's request, then SRA_UI, then the setting. The default is the research workspace for new and existing users. The workspace mounts directly; the classic interface is built but not painted first.\n- The classic interface is one click away: sidebar, a Help card, Settings, and the classic Home's \"Open the research workspace\" (data key open-workspace-preview kept).\n- Settings → Start → Interface at start is a dropdown.\n- The Preview/Prototype labels are removed.\n- After a language change in the workspace, the classic screens follow when you switch back, via a new register_language_setter hook.\n- Which features exist only in classic is documented in docs/STAGE37_UX_SHELL.md §3, taken from workspace_routes.py: parts of the survey editor (partial) and the hosted Prepare data panel.\n\n3) Top bar. EN and LV quick buttons (data key context-language). A globe menu lists English, Latviešu and Русский with a tick on the current one, plus \"Language settings…\". Settings → Language also has all three.\n\n4) Typography.\n- Theme font is Segoe UI or Segoe UI Variable Text, with a fallback list ending in Noto/DejaVu Sans so Latvian and Cyrillic always render. No font files are shipped.\n- Text size 90/100/110/125 % is applied through Ui.size in wc.text, all components, the sidebar, the status line and the Material text theme. Text never goes below 12 px.\n- Density is comfortable or compact, via tk.apply_density (spacing tokens, 36-px controls, 48-px top bar, compact visual density).\n- Charts default to Segoe UI when matplotlib finds it, otherwise DejaVu Sans; chart tests are unchanged on Linux.\n- D6: the Prepare data caption is now 5.8:1 in classic and uses the theme colour in the workspace.\n- D11: Reports shows \"1 part / 2 parts\" with LV/RU plural forms, plus a note when section titles are in the report's language.\n- U10: the research question field uses the full card width.\n- U11: focus moves to the next step after Create project, Open project and Create the analysis; dialogs open with the safe answer focused.\n\n5) Settings hub. workspace_settings.py has a SECTIONS registry; other PRs add a section with one register(SettingsSection(...)) entry. Orders 65 and 85 are left free for export defaults and research-library privacy. Built-in sections:\n- appearance, text and density, language, start\n- projects and data folder (path, open folder, settings file, recent projects and files, clear)\n- backups (folder, unencrypted-data warning, back up / restore)\n- updates (channel shown; the updater supports one channel per build)\n- AI privacy (the existing AI cards), profile, OCR\n- Reset settings (confirmed in a dialog) and a separate, explained \"Delete research data\" section\n\nNew texts are listed in workspace_text.DRAFT_KEYS (59 keys) plus 3 classic strings in localization.py. The LV and RU versions are drafts for native review, listed in the doc.\n\n6) Windows journeys appended after the 18 existing ones in tools/windows_gui_e2e.py:\n- startup-workspace: a start without SRA_UI opens the workspace; classic and back; classic chosen as the start interface opens at the next start; then the workspace again.\n- settings-language: a simulated upgrade with {\"language\":\"ru\"} and no settings file starts in Russian with the old file unchanged; the top bar has EN/LV only; Settings show Russian; LV, restart, Latvian; at 125 % the measured text height grows by at least 15 %; back to EN and 100 %.\n- Both journeys restore English, 100 % and the workspace start even after a failure.\n- tests/test_stage37_shell_journeys.py walks both flows through the real research_app.main start.\n\nWorkflows: check_gui_startup.py now expects the workspace by default and has --classic. windows-package.yml checks the normal start and a classic start; windows-installer.yml does the same for the installed program. Path filters, check_packaged_ocr's required modules and the python-tests Windows job were updated.\n\nux_metrics.py, before → after: T1 3→2 interactions and 3→2 pages; T7 4→3 and 3→2 pages; T8 5→5, but text size is now actually done and the next start takes 1 click instead of 4. Totals: novice 68→67, supervisor 16→15.",
+  "tests": "The full suite (SRA_REQUIRE_REAL_OCR=1 MPLBACKEND=Agg PYTHONUTF8=1 venv-lock python -m unittest discover -s tests) passes: 1389 tests, 10 skipped, 970 s, on e15ad78. The baseline on b83567c was 1342 tests, 10 skipped. The last commit, 4da2a98, only changes the doc; the doc test (DraftTextTests) was re-run after it and passes.\n\nNew tests:\n- tests/test_stage37_settings.py (40): migration rules, unknown and RU values never rewritten, app_preferences compatibility, D1, D2, window placement and saving, Continue, U10, U11, RU upgrade, top bar EN/LV only, globe menu, text-size scaling with the 12 px floor, Latvian/Cyrillic glyph coverage checked with fontTools (DejaVu Sans; segoeui.ttf on Windows), chart default font, density tokens, the hub registry, reset, start interface, D6, D11, check_gui_startup expectations, every draft key present in the doc.\n- tests/test_stage37_shell_journeys.py (6).\n\nUpdated tests: test_app_startup (workspace by default; classic by setting or SRA_UI; temporary data folder), test_workspace_shell (Russian via the globe menu; no preview labels), test_stage368_review_journeys (journeys appended after the 18).\n\ntools/ux_metrics.py was re-run on 6a64cea. At 1440×800: novice 67 interactions, 2 typed, 5 pages; supervisor 15 interactions, 0 typed, 7 pages. At 1200×720: novice 67, supervisor 16. JSON and Markdown are in /tmp/claude-0/-home-user-statistical-research-assistant/8d8df448-6aa8-50d6-b440-62d0c67e9744/scratchpad/ux-metrics-final.json and ux-metrics-final.md.",
+  "not_done": [
+   "No Windows runner was available. The two new journeys and the changed workflow steps (check_gui_startup --classic, the installer's classic start) have not run on Windows. Also untested on Windows: window placement on real monitors and DPI scales (EnumDisplayMonitors work areas ÷ system DPI), Segoe UI Variable rendering, UI Automation names of the segmented and globe buttons, and the .focus() moves.",
+   "The 59 new LV/RU texts (workspace_text.DRAFT_KEYS) and the 3 new classic strings in localization.py are drafts; no native-speaker review has been done.",
+   "Left to other branches (UX-3 and others): D7 (role pickers offer unusable variables), D10 (number formats), U2 (item search, prefix and range). The hosted Prepare data panel is still English only; only its contrast was fixed.",
+   "The program does not reopen the last project by itself at start. Home offers a one-click Continue instead; this keeps locks, journey readiness and explicit consent.",
+   "Delete research data is an explained section with buttons to open the data folder and to go to projects on Home. There is no in-app bulk deletion.",
+   "The update channel is shown, not switchable: the updater supports one channel per build. The automatic update check stays in updates/state.json, and AI keys and the profile stay in their own stores, by design.",
+   "Still not checked: the 100–175 % Windows DPI journey, a Narrator session and a keyboard-only walk (spec §3).",
+   "Unchanged: Word report styling, and the fonts of engine figures (apa_figures and item_diagnostics keep DejaVu Sans because the packaged analysis self-test compares their output byte for byte)."
+  ],
+  "behaviour_changes": [
+   "The program starts in the research workspace by default, also for existing users. SRA_UI=workspace|classic forces one interface for a single run without changing the setting. The classic interface is reachable from the sidebar, Help and Settings, or can be made the start interface in Settings.",
+   "Settings are stored in <data folder>/settings.json (%LOCALAPPDATA%\\StatisticalResearchAssistant\\settings.json when installed). preferences.json, workspace.json and the profile language are read once, the first time the new version starts, and never written again. save_workspace_settings was removed.",
+   "The top bar shows only EN and LV buttons. RU and all languages are in the globe menu (context-language-menu) and Settings → Language.",
+   "WorkspaceApp(language=, corners=) now apply only when the settings file holds no value. A new settings= parameter takes a UserSettings. The profile language no longer overrides the start language.",
+   "app_preferences.load_preferences() and save_preferences() without a path use the settings file. The new update_preferences(**changes) writes single keys. The classic screens no longer rewrite a language they read as unknown.",
+   "research_app.main(page, interface=...) is the way to request an interface. tools/ux_inventory.build_classic and the classic scenarios in workspace_scenarios now request classic.",
+   "check_gui_startup.py without options now expects the workspace; --classic checks the classic interface; --workspace is kept. The smoke summary gained an 'interface' field.",
+   "windows_gui_e2e no longer sets SRA_UI (Gui.start_ui forces one). With --real-data it resets language, text size and start interface in the installed program's settings file.",
+   "The window size, position and maximized state, the sidebar state, theme, accent, corners, typeface, text size, density, and the last project and page are kept between starts.",
+   "The theme now sets font_family Segoe UI with fallbacks. Text sizes scale with the text-size setting. The tk.SPACE_*, CONTROL_HEIGHT and CONTEXT_BAR_HEIGHT tokens follow the active density, set by tk.apply_density; the harness restores the default density on close.",
+   "Charts default to Segoe UI where installed (chart_studio.DEFAULT_FONT); Chart Studio's font list starts with Segoe UI.",
+   "The Settings page is now workspace_settings.SettingsPage with sections. The start-interface choice is a dropdown. Existing data keys are kept.",
+   "The classic Home entry now reads 'Research workspace · Open the research workspace' (data key unchanged). Reports section states use plural forms ('1 part').",
+   "workspace_routes has a new action, register_language_setter; interface_layout calls it to keep the classic language in step with the workspace."
+  ]
+ },
+ "implement:variables": {
+  "branch": "claude/stage37-ux-vars",
+  "commits": [
+   "c535b15be955750521f8b8825a63081c39956d14 workspace: variable panel, eligible role variables and reuse of analyses (#68, UX-3)",
+   "0cdd4a017630cfb6d7a07298b9ce0cd9754a7edf docs: the variable panel and reuse, UX metrics before and after (#68, UX-3)"
+  ],
+  "summary": "Branch claude/stage37-ux-vars, created from claude/stage37-ux (b83567c), implements review UX-3 (U2, D7) and the repetition reductions of Issue #68. Not pushed, no PR. Worktree: /home/user/statistical-research-assistant/.claude/worktrees/wf_b03aeea1-279-3\n\n1) Variable panel: new module workspace_variables.py.\n- Used for every role that takes several variables: guided step 2 and the All-methods form (both in workspace_analyze.py), and the scale-score item list in Data -> Prepare.\n- The Prepare list goes through a new optional item_picker argument of preparation_ui.build_preparation_workspace, passed by workspace_shell.DataPage. The classic interface still uses the plain list.\n- Search: part of a name, a pattern (SYN_COPE_0*), a range in column order (SYN_LON_01..SYN_LON_20, also with an en dash or \"to\"), or comma-separated terms. Enter selects what is shown.\n- Name-group buttons: \"All SYN_LON_* (20)\" selects a 20-item set in one click, and then reads \"Unselect …\".\n- Also: select or unselect what is shown, Clear, and a visible count (\"Selected: 20 of 96 · shown: 9\").\n- D7: only eligible variables are listed. Identifiers, variables already in another role (so the group and the outcome are never offered as covariates) and unsuitable confirmed levels are left out. Each is named with its reason in a \"Not offered here\" text (key `{key}:not-offered`). Nothing is dropped silently, and a stray earlier choice stays listed and ticked so it can be unticked.\n- Lists of more than 40 variables show only the chosen ones until a search, a group or \"Show all\". This cuts about 100 Tab stops and the long scroll down to the confirmations.\n- Existing quick-select buttons, data keys and English texts are unchanged.\n\n2) Reuse:\n- Duplicate a task: an icon next to each task in the task bar.\n- \"Repeat with changes\": in the result header, as an icon in each results-list row, and in a new \"Other results\" card at the end of each result. That card opens a result from its top (new section key (\"results\",\"detail\")) or repeats it.\n- Recently used methods in All methods: the form opens with the last run's variables and options.\n- \"Items of SYN_LON_MEAN (20)\": the items a score was built from, offered again for its reliability. They come from the transformation history, so they are still offered after a restart.\n- A copy never carries a confirmation (K1) or a hypothesis link. It becomes a new task only at its first run, with state.copied_from, and the original keeps its runs and title.\n\n3) Keyboard and UI Automation: the panel controls are ordinary focusable controls in reading order, each named by its text. Rows, the search field, buttons and boxes carry keys, so focus survives re-renders. The Prepare list keeps its controls and updates them in place.\n\n4) Windows journey \"variable-picker\", appended after the 18 existing ones in tools/windows_gui_e2e.py, on the 98-column master fixture:\n- selects 20 items by their name group in one click;\n- runs reliability and compares α with numpy;\n- uses \"Repeat with changes\" and checks the confirmation box is empty;\n- finds SYN_LON_20 by typing, reaches it with Tab and unticks it with Space;\n- re-confirms, runs, and compares α of 19 items with numpy;\n- reads the project database: two tasks, the original unchanged.\n- Counts are recorded in PANEL_ACTIONS: 1 click for the 20 items; 2 clicks, 2 boxes and 1 typed field for the repeat.\n- tests/test_stage37_variable_panel.py walks the same flow in the harness.\n\n5) tools/ux_metrics.py follows the new controls. Before and after numbers are recorded in docs/STAGE37_UX_METRICS.md §9; the design and the draft text keys are in docs/STAGE37_UX_VARIABLES.md.\n- At 1440x800: T3 goes from 51 to 13 interactions (repeated selections 20 → 0, scroll estimate 5,312 → 4,000 px). T5 goes from 5 to 4 (780 → 520 px), now as a new task with the original kept.\n- At 1200x720: T3 51 → 13, T5 5 → 4, T7 5 → 4.",
+  "tests": "Full suite on the committed code: `SRA_REQUIRE_REAL_OCR=1 MPLBACKEND=Agg PYTHONUTF8=1 <venv-lock python> -m unittest discover -s tests` ran 1,368 tests in 1,002 s: OK, 10 skipped, exit 0. An earlier full run found one failure, test_workspace_shell.test_no_expanding_child_in_a_wrapping_row: my search-hint rows and the Results header had an expanding child inside a wrapping row. That was fixed before the commit and the full suite was run again.\n\nNew file tests/test_stage37_variable_panel.py, 26 tests, about 40 s:\n- the filter, ranges, name groups and the reasons, in EN/LV/RU, plus a check that all 51 new keys exist in three languages with matching placeholders;\n- D7: guided covariates, the ANCOVA form, kept quick-select keys and counts, and stray choices;\n- master fixture: 96 variables offered and the reasons, the collapsed long list, 20 items in one click, search/pattern/range/select or unselect shown/Enter, the panel ticks no confirmation, keyboard order and names, and focus kept via ux_metrics.reconciliation_path;\n- reuse: a duplicate copies variables and method but no confirmations and becomes a new task with copied_from; Repeat with changes uses the variables of that run; \"Other results\"; selection_from_run for every goal; recent methods; score items, also after a restart; the Prepare list keeps the same field object;\n- the walk of the Windows journey \"variable-picker\": numbers against the driver's numpy α, PANEL_ACTIONS counts, and the project database.\n\ntests/test_stage368_review_journeys.py now checks that the first 18 journeys are unchanged and allows journeys after them.\n\ntools/ux_metrics.py, \"before\" run from a git-archive export of b83567c (it reproduces the documented baseline exactly) and \"after\" run on this branch, both window sizes:\n\n| Task | 1440x800 interactions | 1440x800 scroll estimate (px) | 1200x720 |\n|---|---|---|---|\n| T3 | 51 → 13, repeated selections 20 → 0 | 5,312 → 4,000 | 51 → 13 |\n| T5 | 5 → 4 | 780 → 520 | 5 → 4 |\n| T7 | 4 → 4 | 19,550 → 16,962 | 5 → 4 |\n| T4 | 10 → 10 | 1,146 → 1,284 | 10 → 10 |\n| Novice total | 68 → 30 | | 68 → 30 |\n| Supervisor total | 16 → 15 | | 17 → 15 |\n\nT1, T2, T6 and T8 are unchanged. JSON outputs are in /tmp/claude-0/-home-user-statistical-research-assistant/8d8df448-6aa8-50d6-b440-62d0c67e9744/scratchpad/uxvars/ (before-1440.json, before-1200.json, v5-1440.json, v5-1200.json).",
+  "not_done": [
+   "The Windows journey variable-picker has not been run on Windows; only its harness walk ran here, on Linux. Its Tab/Space step relies on UI Automation reporting the focused Flutter checkbox, which is checked only structurally in the harness.",
+   "Restoring the last Analyze task after a restart (a 'remembered last choice' across sessions) is not implemented. It would change what Analyze shows after a reopen in about 7 test modules and several journeys, and it overlaps UX-1's last-page restore. The remembered choices that are implemented: recent methods with their last variables and options, the items of a score, the copy keeping the original's method, and the per-panel search while on a task.",
+   "Single-choice dropdowns are not filtered and still list every variable except identifiers. Journey blocked-design depends on the refusal in words for a quantitative group variable, and the driver's keyboard fallback in Gui.choose depends on the full list. D7 is fixed in all multiple-choice panels, including ANCOVA's covariates.",
+   "The sticky bulk-accept bar of the data dictionary (also listed under the review's UX-3) is not done; T2 is unchanged.",
+   "Running a task again after 'Change variables' still stores a second version in the same task (D5's stale title on that path, including the Word report heading). Journey confirmations relies on those versions, so it is unchanged; the copy now offers a way to keep the original.",
+   "The 51 new text keys have LV/RU drafts that need native review. They are marked in workspace_text.py and listed in docs/STAGE37_UX_VARIABLES.md §7.",
+   "UX-1/UX-2 items are out of this task's scope and left to other branches: the workspace as the first start, the EN/LV top bar, the Settings hub, typography, text size and density, saving the window, sidebar and last page, and findings D1, D2, D6, D10, D11, U1, U10, U11 and U12.",
+   "Not pushed and no PR, as instructed."
+  ],
+  "behaviour_changes": [
+   "Multiple-choice role pickers (guided step 2 and the All-methods form) are now a variable panel: search by part of a name, pattern or range (Enter selects what is shown), name-group buttons ('All SYN_LON_* (20)'), Select all shown, Unselect shown, Clear, a visible count, and a 'Not offered here' text with reasons.",
+   "These pickers list only eligible variables. Left out, each with its reason: identifiers; variables already chosen in another role of the same analysis (for example, the group and the outcome are no longer offered as covariates, and x is not offered among the related variables); variables whose confirmed level the role does not take. Variables with an unconfirmed level are still offered, and an earlier choice that is no longer eligible stays listed and ticked.",
+   "Lists of more than 40 offered variables show only the chosen ones until a search, a name group or 'Show all'. Lists of 40 or fewer are unchanged, which covers every existing fixture and journey.",
+   "In the workspace, the scale-score item list in Data -> Prepare is the same panel. Identifier, nominal and non-numeric columns are not offered there and are named with their reason; the boxes are still labelled by the column name. The classic interface keeps its plain list.",
+   "Item roles offer 'Items of <score> (N)' for scores made in Prepare, read from the session and the project's transformation history.",
+   "Analyze task bar: each task has a Duplicate icon. Results: 'Repeat with changes' in each result's header, a repeat icon on each results-list row, and an 'Other results' card at the end of each result to open one from its top (new section key ('results','detail')) or repeat it.",
+   "Copies carry no confirmation and no hypothesis link. They become a new task only at their first run, with state['copied_from']; the original keeps its runs, selection and title. The copy keeps the original method only if it differs from the recommendation, and shows a 'task-copy-notice'.",
+   "All methods: a 'Recently used' section opens a method's form with the variables and options of its last run, with nothing confirmed.",
+   "Generic task titles with more than 3 variables now read 'Method: first … last (N variables)' instead of the first three names. Batch titles are unchanged.",
+   "The Windows GUI suite gains journey 'variable-picker', appended after the 18 existing ones, which run in the same order. JourneyOrderTests now accepts journeys after the first 18.",
+   "tools/ux_metrics.py: T3 uses the name group and the score's items when present. T5 and T7 take the nearer of two equivalent controls; if a repeat action is more than one screen away, T5 goes through the sidebar and Duplicate instead. The panel's own controls are never counted as a variable selection, and Prepare selections are remembered as bulk selections."
+  ]
+ }
+}
