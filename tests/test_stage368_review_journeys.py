@@ -71,8 +71,9 @@ def notes_value(ws) -> str:
 
 class JourneyOrderTests(unittest.TestCase):
     def test_the_review_journeys_follow_the_others(self):
-        self.assertEqual(list(e2e.JOURNEYS)[16:], ["confirmations", "report-composition"])
-        self.assertEqual(len(e2e.JOURNEYS), 18)
+        self.assertEqual(list(e2e.JOURNEYS)[16:18], ["confirmations", "report-composition"])
+        # Stage 37 (#68) appends its journeys after these (test_stage37_shell_journeys).
+        self.assertGreaterEqual(len(e2e.JOURNEYS), 18)
 
 
 class ConfirmationsJourneyTests(unittest.TestCase):

@@ -18,6 +18,8 @@ on:
       - "window_guard.py"
       - "app_identity.py"
       - "app_paths.py"
+      - "user_settings.py"
+      - "window_state.py"
       - "update_*.py"
       - "project_store.py"
       - "workspace_shell.py"

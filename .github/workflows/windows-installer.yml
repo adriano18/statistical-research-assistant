@@ -22,6 +22,10 @@ on:
       - "startup_diagnostics.py"
       - "interface_layout.py"
       - "research_app.py"
+      - "app_preferences.py"
+      - "user_settings.py"
+      - "window_state.py"
+      - "tools/check_gui_startup.py"
       - "workspace_*.py"
       - "requirements.txt"
       - "requirements-dev.txt"
@@ -153,8 +157,12 @@ jobs:
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
+          # The research workspace is the normal start (Stage 37, #68) ...
           python tools/check_gui_startup.py "$env:LOCALAPPDATA\Programs\Statistical Research Assistant\StatisticalResearchAssistant.exe" installed\startup
           if ($LASTEXITCODE -ne 0) { throw "startup check of the installed program failed" }
+          # ... and the classic interface still starts (SRA_UI=classic).
+          python tools/check_gui_startup.py "$env:LOCALAPPDATA\Programs\Statistical Research Assistant\StatisticalResearchAssistant.exe" installed\startup-classic --classic
+          if ($LASTEXITCODE -ne 0) { throw "classic interface start of the installed program failed" }
       - name: Running the program changed nothing in the program folder
         run: python tools/check_installed_app.py unchanged installed\program-a.json
 

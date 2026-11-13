@@ -72,7 +72,10 @@ def main() -> int:
                        "workspace_analyze", "workspace_questionnaires", "workspace_methods",
                        "workspace_components", "workspace_tokens", "workspace_text",
                        "workspace_state", "workspace_routes", "app_identity", "app_paths",
-                       "legacy_data", "data_ui", "window_guard"):
+                       "legacy_data", "data_ui", "window_guard",
+                       # Stage 37 (#68): the settings file, the window, the Settings hub.
+                       "app_preferences", "user_settings", "window_state",
+                       "workspace_settings"):
             if module not in modules:
                 raise SystemExit(f"Packaged application lacks module {module}")
         # The interface opens these; [tool.flet.app].exclude must never drop them.

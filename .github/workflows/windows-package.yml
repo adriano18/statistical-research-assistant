@@ -11,6 +11,9 @@ on:
       - "data_ui.py"
       - "legacy_data.py"
       - "research_app.py"
+      - "app_preferences.py"
+      - "user_settings.py"
+      - "window_state.py"
       - "startup_diagnostics.py"
       - "binary_responses.py"
       - "response_scales.py"
@@ -197,18 +200,19 @@ jobs:
         shell: pwsh
         timeout-minutes: 10
         run: |
-          # Ordinary launch path, not the OCR self-test: fails on a failed or
-          # missing Home screen, a black window > 3 s or a dark final frame.
+          # Ordinary launch path, not the OCR self-test: fails unless the
+          # research workspace (the normal start since Stage 37, #68) is on
+          # screen, on a black window > 3 s or a dark final frame.
           python tools/check_gui_startup.py "$env:EXE_PATH" gui-startup
           if ($LASTEXITCODE -ne 0) { throw "Packaged GUI startup check failed" }
 
-      - name: Stage 33 workspace preview GUI startup (SRA_UI=workspace)
+      - name: Classic interface GUI startup (SRA_UI=classic)
         shell: pwsh
         timeout-minutes: 10
         run: |
-          # Same packaged exe, opened straight into the new workspace preview.
-          python tools/check_gui_startup.py "$env:EXE_PATH" gui-workspace --workspace
-          if ($LASTEXITCODE -ne 0) { throw "Packaged workspace preview startup check failed" }
+          # Same packaged exe: the classic interface stays available (Stage 37).
+          python tools/check_gui_startup.py "$env:EXE_PATH" gui-classic --classic
+          if ($LASTEXITCODE -ne 0) { throw "Packaged classic interface startup check failed" }
 
       - name: Run analysis self-test inside the packaged application
         shell: pwsh
