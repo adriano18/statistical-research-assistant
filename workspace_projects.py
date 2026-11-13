@@ -266,6 +266,7 @@ class ProjectHub:
         in the session (Stage 36.8, K2), which the project switch replaced."""
         for name in ("analyze", "results", "reports"):
             self.app.pages[name].reset()
+        self.app.pages["project"].hypotheses.reset()
 
     async def create(self, e=None):
         title = self.new_title.strip()
@@ -424,13 +425,17 @@ def source_kind(ui: wc.Ui, record, names: dict[str, str]) -> tuple[str, str, str
 class ProjectPage:
     """The open project: what it contains, kept apart by kind (data sources,
     questionnaires and their responses, results, report), which dataset is
-    in use, and the next step (Stage 34.5, issue #30)."""
+    in use, and the next step (Stage 34.5, issue #30). Stage 37.0a: the next
+    step comes from ``research_workflow.next_action``, and the hypotheses of
+    the saved plan are listed with their analyses and checks."""
 
     def __init__(self, app):
+        from workspace_hypotheses import HypothesisPanel
         from workspace_plan import ResearchPlanCard
 
         self.app = app
         self.plan = ResearchPlanCard(app)
+        self.hypotheses = HypothesisPanel(app)
 
     def build(self) -> ft.Control:
         app, ui, binding = self.app, self.app.ui, self.app.projects
@@ -467,8 +472,10 @@ class ProjectPage:
             body.append(wc.notice(ui, ui.t(key), tone, data="project-message"))
         if hub.feedback:
             body.append(wc.notice(ui, hub.feedback[0], hub.feedback[1], data="project-feedback"))
-        body += [self._question(), self.plan.build(), self._next(datasets),
-                 self._sources(datasets), self._questionnaires(), self._results(), self._report()]
+        views = self.hypotheses.views()
+        body += [self._next(datasets), self._question(), self.plan.build(),
+                 self.hypotheses.list_card(views), self._sources(datasets), self._questionnaires(),
+                 self._results(), self._report()]
         return app.constrained(ft.Column(body, spacing=tk.SPACE_4, data="project-dashboard",
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 
@@ -498,52 +505,11 @@ class ProjectPage:
         self.app.render()
 
     # ------------------------------------------------------------ next step
-    def next_step(self, datasets) -> tuple[str, str, list[tuple[str, object, str]]]:
-        """(title key, body text, [(label, on_click or action, data)]) for the
-        one thing that moves this project forward now."""
-        app, ui, s = self.app, self.app.ui, self.app.session
-        questionnaires = app.pages["questionnaires"]
-        if not datasets and not s.has_data:
-            return ("next.add_data", ui.t("next.add_data_body"), [
-                (ui.t("data.open"), app.open_data_action, "next-open-data"),
-                (ui.t("next.use_sample"), lambda e: app.navigate("data"), "next-sample"),
-                (ui.t("next.questionnaire"), lambda e: app.navigate("questionnaires"),
-                 "next-questionnaire"),
-            ] + ([(ui.t("next.continue_draft"), lambda e: app.navigate("questionnaires"),
-                   "next-draft")] if questionnaires.draft else []))
-        if s.has_data and s.pending_levels():
-            return ("next.levels", ui.t("next.levels_body", count=s.pending_levels()),
-                    [(ui.t("next.review_levels"), lambda e: app.navigate("data"), "next-levels")])
-        if not s.results:
-            return ("next.analyze", ui.t("next.analyze_body"),
-                    [(ui.t("next.choose_analysis"), lambda e: app.navigate("analyze"),
-                      "next-analyze")])
-        stale = [e for e in s.results if e.stale_reasons]
-        if stale:
-            return ("next.stale", ui.t("next.stale_body", count=len(stale)),
-                    [(ui.t("next.review_results"), lambda e: app.navigate("results"),
-                      "next-results")])
-        if not s.report_order:
-            return ("next.report", ui.t("next.report_body"),
-                    [(ui.t("next.review_results"), lambda e: app.navigate("results"),
-                      "next-results")])
-        return ("next.export", ui.t("next.export_body", count=len(s.report_order)),
-                [(ui.t("next.open_report"), lambda e: app.navigate("reports"), "next-report")])
-
     def _next(self, datasets) -> ft.Control:
-        ui = self.app.ui
-        title, body, actions = self.next_step(datasets)
-        buttons = []
-        for index, (label, handler, data) in enumerate(actions):
-            kind = "primary" if index == 0 else "secondary"
-            if isinstance(handler, ft.PickFiles):
-                buttons.append(wc.button(ui, label, action=handler, kind=kind, data=data))
-            else:
-                buttons.append(wc.button(ui, label, handler, kind=kind, data=data))
-        return wc.card(ui, [
-            wc.text(ui, body, tk.TYPE_BODY),
-            ft.Row(buttons, wrap=True, spacing=tk.SPACE_2),
-        ], title=ui.t(title), data="project-next-action", border=ui.p.accent)
+        """The one thing that moves this project forward now (Stage 37.0a:
+        ``research_workflow.next_action``; without a plan the Stage 34.5
+        order and texts are kept)."""
+        return self.hypotheses.next_card(datasets)
 
     # -------------------------------------------------------------- sources
     def _sources(self, datasets) -> ft.Control:

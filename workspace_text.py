@@ -3116,6 +3116,190 @@ T.update({
 })
 
 
+# Stage 37.0a: the hypothesis workspace on the Project, Analyze and Results
+# pages. LV/RU drafts — needs native review (docs/STAGE37_0A_STATUS.md).
+T.update({
+    # The research plan: typed questions, the question of a hypothesis, the
+    # planned method, the reason for a changed priority.
+    "plan.questions": ("Research questions", "Pētījuma jautājumi", "Вопросы исследования"),
+    "plan.questions_body": (
+        "The kind of question decides which hypotheses and analyses fit. A hypothesis names the "
+        "question it answers.",
+        "No jautājuma veida atkarīgs, kuras hipotēzes un analīzes der. Hipotēze norāda, uz kuru "
+        "jautājumu tā atbild.",
+        "От типа вопроса зависит, какие гипотезы и анализы подходят. Гипотеза указывает, на "
+        "какой вопрос она отвечает."),
+    "plan.q.none": ("No research question in the plan yet.", "Plānā vēl nav pētījuma jautājumu.",
+                    "В плане пока нет вопросов исследования."),
+    "plan.q.add": ("Add research question", "Pievienot pētījuma jautājumu",
+                   "Добавить вопрос исследования"),
+    "plan.q.type": ("Kind of question", "Jautājuma veids", "Тип вопроса"),
+    "plan.q.text": ("Research question Q{n}", "Pētījuma jautājums Q{n}",
+                    "Вопрос исследования Q{n}"),
+    "plan.q.remove": ("Remove question", "Noņemt jautājumu", "Удалить вопрос"),
+    "plan.h.question": ("Answers research question", "Atbild uz pētījuma jautājumu",
+                        "Отвечает на вопрос исследования"),
+    "plan.h.no_question": ("— (no question)", "— (bez jautājuma)", "— (без вопроса)"),
+    "plan.h.method_key": ("Planned analysis (compared with what is run)",
+                          "Plānotā analīze (salīdzina ar veikto)",
+                          "Планируемый анализ (сравнивается с выполненным)"),
+    "plan.h.method_none": ("— (not set)", "— (nav norādīta)", "— (не указан)"),
+    "plan.h.variant": ("Planned variant", "Plānotais variants", "Планируемый вариант"),
+    "plan.h.reason": ("Why the priority changes (needed: results exist)",
+                      "Kāpēc mainās prioritāte (obligāti: rezultāti jau ir)",
+                      "Почему меняется приоритет (обязательно: результаты уже есть)"),
+    "plan.reason_needed": (
+        "Write why the priority of H{h} changes: results were calculated before this change. "
+        "Nothing was saved.",
+        "Uzrakstiet, kāpēc mainās hipotēzes H{h} prioritāte: rezultāti tika aprēķināti pirms šīs "
+        "izmaiņas. Nekas netika saglabāts.",
+        "Напишите, почему меняется приоритет H{h}: результаты были рассчитаны до этого "
+        "изменения. Ничего не сохранено."),
+
+    # The hypotheses of the saved plan on the Project page.
+    "hyp.title": ("Hypotheses and their analyses", "Hipotēzes un to analīzes",
+                  "Гипотезы и их анализы"),
+    "hyp.body": (
+        "Each hypothesis of the saved plan, with its analysis, its steps and the checks that "
+        "compare the plan with what was done. Checks never block a run or an export, and they "
+        "do not say whether a hypothesis holds.",
+        "Katra saglabātā plāna hipotēze ar tās analīzi, soļiem un pārbaudēm, kas salīdzina plānu "
+        "ar paveikto. Pārbaudes nekad neaizliedz aprēķinu vai eksportu un nesaka, vai hipotēze ir "
+        "spēkā.",
+        "Каждая гипотеза сохранённого плана с её анализом, шагами и проверками, которые "
+        "сравнивают план с выполненным. Проверки никогда не блокируют расчёт или экспорт и не "
+        "говорят, верна ли гипотеза."),
+    "hyp.no_task":("No analysis yet", "Vēl nav analīzes", "Анализа пока нет"),
+    "hyp.open_checks": ("Checks to decide: {count}", "Jāizlemj pārbaudes: {count}",
+                        "Проверок ждут решения: {count}"),
+    "hyp.no_open_checks": ("No check waits for a decision", "Neviena pārbaude negaida lēmumu",
+                           "Ни одна проверка не ждёт решения"),
+    "hyp.show": ("Show details", "Rādīt sīkāk", "Показать подробно"),
+    "hyp.hide": ("Hide details", "Paslēpt sīkāk", "Скрыть подробности"),
+    "hyp.analysis": ("Analysis: {title}", "Analīze: {title}", "Анализ: {title}"),
+    "hyp.checks": ("Checks of the plan against the analysis",
+                   "Plāna un analīzes salīdzinājuma pārbaudes",
+                   "Проверки плана по сравнению с анализом"),
+    "hyp.check.open": ("Needs your decision", "Vajadzīgs jūsu lēmums", "Нужно ваше решение"),
+    "hyp.check.acknowledged": ("Acknowledged: {reason}", "Apstiprināts: {reason}",
+                               "Учтено: {reason}"),
+    "hyp.check.recorded": ("Recorded: {reason}", "Ierakstīts: {reason}", "Записано: {reason}"),
+    "hyp.check.passed": ("Passed", "Izpildīts", "Выполнено"),
+    "hyp.check.info": ("For information", "Informācijai", "Для сведения"),
+    "hyp.acknowledge": ("Acknowledge…", "Apstiprināt…", "Учесть…"),
+    "hyp.deviation": ("Record a deviation…", "Ierakstīt novirzi…", "Записать отклонение…"),
+    "hyp.justify": ("Justify…", "Pamatot…", "Обосновать…"),
+    "hyp.withdraw": ("Withdraw…", "Atsaukt…", "Отозвать…"),
+    "hyp.form.acknowledgement": (
+        "Acknowledge this check. Say how you report it; the acknowledgement holds while the "
+        "facts stay the same.",
+        "Apstipriniet šo pārbaudi. Norādiet, kā par to ziņosiet; apstiprinājums ir spēkā, kamēr "
+        "fakti nemainās.",
+        "Подтвердите, что учли эту проверку. Укажите, как вы о ней сообщите; подтверждение "
+        "действует, пока факты не меняются."),
+    "hyp.form.deviation": (
+        "Record a deviation from the plan, with its reason. It stays in the project's history.",
+        "Ierakstiet novirzi no plāna ar tās iemeslu. Tā paliek projekta vēsturē.",
+        "Запишите отклонение от плана с его причиной. Оно остаётся в истории проекта."),
+    "hyp.form.justification": (
+        "Justify this for the record: why the hypothesis is not exploratory.",
+        "Pamatojiet to ierakstā: kāpēc hipotēze nav izpētes hipotēze.",
+        "Обоснуйте это для записи: почему гипотеза не поисковая."),
+    "hyp.form.withdrawal": (
+        "Withdraw this record. Both the record and its withdrawal stay in the history.",
+        "Atsauciet šo ierakstu. Gan ieraksts, gan tā atsaukums paliek vēsturē.",
+        "Отзовите эту запись. И запись, и её отзыв остаются в истории."),
+    "hyp.reason": ("Reason (kept with the record)", "Iemesls (tiek saglabāts ar ierakstu)",
+                   "Причина (сохраняется с записью)"),
+    "hyp.what": ("What deviates from the plan", "Kas atšķiras no plāna",
+                 "Что отличается от плана"),
+    "hyp.what.method": ("The method", "Metode", "Метод"),
+    "hyp.what.variables": ("The variables", "Mainīgie", "Переменные"),
+    "hyp.what.direction": ("The direction", "Virziens", "Направленность"),
+    "hyp.what.alpha": ("The significance level", "Nozīmības līmenis", "Уровень значимости"),
+    "hyp.what.designation": ("The priority", "Prioritāte", "Приоритет"),
+    "hyp.what.sample": ("The sample", "Izlase", "Выборка"),
+    "hyp.what.exclusions": ("The exclusions", "Izslēgšanas noteikumi", "Исключения"),
+    "hyp.what.data": ("The data", "Dati", "Данные"),
+    "hyp.what.other": ("Something else", "Kas cits", "Другое"),
+    "hyp.save_record": ("Save the record", "Saglabāt ierakstu", "Сохранить запись"),
+    "hyp.reason_first": ("Write the reason first: it is kept with the record.",
+                         "Vispirms uzrakstiet iemeslu: tas tiek saglabāts ar ierakstu.",
+                         "Сначала напишите причину: она сохраняется с записью."),
+    "hyp.not_recorded": ("Not recorded: {reason}", "Nav ierakstīts: {reason}",
+                         "Не записано: {reason}"),
+    "hyp.recorded": ("Recorded. A record is never changed; a withdrawal is recorded too.",
+                     "Ierakstīts. Ieraksts nekad netiek mainīts; arī atsaukums tiek ierakstīts.",
+                     "Записано. Запись никогда не меняется; отзыв тоже записывается."),
+    "hyp.records": ("Recorded decisions", "Ierakstītie lēmumi", "Записанные решения"),
+    "hyp.records_none": ("No decision is recorded for this hypothesis yet.",
+                         "Šai hipotēzei vēl nav ierakstītu lēmumu.",
+                         "Для этой гипотезы ещё нет записанных решений."),
+    "hyp.record.designation": ("{when} · Priority changed from “{from}” to “{to}”: {reason}",
+                               "{when} · Prioritāte mainīta no “{from}” uz “{to}”: {reason}",
+                               "{when} · Приоритет изменён с «{from}» на «{to}»: {reason}"),
+    "hyp.record.link": ("{when} · Analysis linked: {task}", "{when} · Analīze sasaistīta: {task}",
+                        "{when} · Анализ связан: {task}"),
+    "hyp.record.unlink": ("{when} · Analysis no longer linked: {task}",
+                          "{when} · Analīze vairs nav sasaistīta: {task}",
+                          "{when} · Анализ больше не связан: {task}"),
+    "hyp.record.acknowledgement": ("{when} · Acknowledged: {reason}",
+                                   "{when} · Apstiprināts: {reason}",
+                                   "{when} · Учтено: {reason}"),
+    "hyp.record.deviation": ("{when} · Deviation ({what}): {reason}",
+                             "{when} · Novirze ({what}): {reason}",
+                             "{when} · Отклонение ({what}): {reason}"),
+    "hyp.record.justification": ("{when} · Justified: {reason}", "{when} · Pamatots: {reason}",
+                                 "{when} · Обосновано: {reason}"),
+    "hyp.record.withdrawal": ("{when} · Withdrawn: {reason}", "{when} · Atsaukts: {reason}",
+                              "{when} · Отозвано: {reason}"),
+    "hyp.record.withdrawn": ("withdrawn", "atsaukts", "отозвано"),
+    "hyp.history": ("Priority through the plan versions", "Prioritāte plāna versijās",
+                    "Приоритет по версиям плана"),
+    "hyp.history_line": ("Version {version} · {when} · {priority}",
+                         "{version}. versija · {when} · {priority}",
+                         "Версия {version} · {when} · {priority}"),
+    "hyp.history_changed": ("Version {version} · {when} · {priority} (was “{previous}”; results "
+                            "existed: {runs})",
+                            "{version}. versija · {when} · {priority} (bija “{previous}”; "
+                            "rezultāti jau bija: {runs})",
+                            "Версия {version} · {when} · {priority} (было «{previous}»; "
+                            "результатов уже было: {runs})"),
+
+    # Analyze: the hypothesis a task tests, and its steps.
+    "task.tests_hypothesis": ("Tests hypothesis", "Pārbauda hipotēzi", "Проверяет гипотезу"),
+    "task.no_hypothesis": ("— (no hypothesis)", "— (bez hipotēzes)", "— (без гипотезы)"),
+    "task.hypothesis_gone": ("A hypothesis no longer in the plan",
+                             "Hipotēze, kuras plānā vairs nav",
+                             "Гипотеза, которой больше нет в плане"),
+    "task.title_for": ("Analysis for H{h}", "Analīze hipotēzei H{h}", "Анализ для H{h}"),
+    "task.steps": ("Steps of this analysis", "Šīs analīzes soļi", "Шаги этого анализа"),
+    "task.linked": ("Linked to H{h}. A result records the plan version it is calculated for.",
+                    "Sasaistīta ar H{h}. Rezultāts saglabā plāna versiju, kurai tas aprēķināts.",
+                    "Связан с H{h}. Результат сохраняет версию плана, для которой он рассчитан."),
+
+    # Results: what a result was calculated as a test of.
+    "results.tests": ("Tests H{h}: {text}", "Pārbauda H{h}: {text}", "Проверяет H{h}: {text}"),
+    "results.tests_detail": (
+        "Calculated for plan version {version} · {priority} · {direction} · α = {alpha}",
+        "Aprēķināts plāna {version}. versijai · {priority} · {direction} · α = {alpha}",
+        "Рассчитано для версии плана {version} · {priority} · {direction} · α = {alpha}"),
+    "results.tests_gone": (
+        "Calculated as a test of a hypothesis that is no longer in the plan (plan version "
+        "{version}).",
+        "Aprēķināts kā tādas hipotēzes tests, kuras plānā vairs nav (plāna {version}. versija).",
+        "Рассчитано как проверка гипотезы, которой больше нет в плане (версия плана "
+        "{version})."),
+    "results.linked_late": (
+        "Linked to H{h} after it was calculated: the result does not record a plan version.",
+        "Sasaistīts ar H{h} pēc aprēķina: rezultāts nesaglabā plāna versiju.",
+        "Связан с H{h} после расчёта: результат не сохраняет версию плана."),
+
+    # The next-action bar.
+    "next.why.hide": ("Hide the reasons", "Paslēpt iemeslus", "Скрыть причины"),
+})
+
+
 # Engine-facing confirmation and option labels: canonical English (kept in
 # provenance) → displayed LV/RU. Method names stay international.
 LABELS: dict[str, tuple[str, str]] = {

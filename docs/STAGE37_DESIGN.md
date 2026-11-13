@@ -496,7 +496,7 @@ One sentence, one button that does exactly what it names, an optional secondary 
 
 ### 7.10 Changes, page by page
 
-New data keys for the harness and the journeys are in `code` font.
+New data keys for the harness and the journeys are in `code` font. The keys below are proposals: 37.0a keeps `project-next-action` and every existing key, and uses the names listed in `docs/STAGE37_0A_STATUS.md` §4.
 
 **Project page.**
 - The next-action bar (`next-action`, `next-why`, `next-alt`) replaces the Next step card.

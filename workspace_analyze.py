@@ -102,6 +102,8 @@ class AnalyzePage:
         self.message: tuple[str, str] | None = None
         self.choosing_goal = False          # step 1 re-opened with "Change"
         self.task_id: str | None = None     # Stage 36: the research task on screen
+        # Stage 37.0a: the hypothesis a new analysis (not yet a task) will test.
+        self.pending_hypothesis: str | None = None
 
     def rerun(self, entry) -> None:
         """Open a saved result's analysis for the current data. The researcher
@@ -120,6 +122,7 @@ class AnalyzePage:
         self.confirms, self.confirm_scopes, self.reconfirm = {}, {}, set()
         self.choosing_goal = False
         self.task_id = None              # a task belongs to the project it was made in
+        self.pending_hypothesis = None
         self.method, self.form_roles, self.form_options = None, {}, {}
         self.form_confirms, self.form_scopes, self.form_reconfirm = {}, {}, set()
         self.message = None
@@ -224,7 +227,8 @@ class AnalyzePage:
         else:
             goal_content = [ft.ResponsiveRow(goal_tiles, spacing=tk.SPACE_3,
                                              run_spacing=tk.SPACE_3)]
-        steps = self._task_bar() + [wc.step_card(
+        goal_content += self._hypothesis_picker()
+        steps = self._task_bar() + self._steps_row() + [wc.step_card(
             ui, 1, ui.t("step.goal"), goal_content,
             state="done" if self.goal else "active", data="step-goal", scroll_key="step-goal")]
         if not self.goal:
@@ -254,10 +258,22 @@ class AnalyzePage:
 
     def _set_goal(self, goal: str):
         if goal != self.goal:
+            session = self.app.session
+            task = session.task(self.task_id)
             self.goal, self.selection, self.override = goal, {}, None
             self.confirms, self.confirm_scopes, self.reconfirm = {}, {}, set()
             self.message = None
-            self.task_id = None          # another question: another research task
+            if (task is not None and (task.state or {}).get("auto_title")
+                    and not session.task_results(task.id)):
+                # Stage 37.0a: a task made for a hypothesis and never run keeps
+                # its link; only its question changes.
+                task.goal, task.selection = goal, {}
+                session.save_task(task)
+            else:
+                self.task_id = None      # another question: another research task
+                # The new analysis is offered the hypothesis of the one it replaces.
+                self.pending_hypothesis = task.hypothesis_id if task is not None \
+                    else self.pending_hypothesis
         self.choosing_goal = False
         self.app.render()
 
@@ -364,13 +380,159 @@ class AnalyzePage:
         self.override = None
         self.app.render()
 
+    # ------------------------------------------- hypotheses (Stage 37.0a)
+    def _project(self):
+        return self.app.projects.project if self.app.projects.active else None
+
+    def _plan_hypotheses(self) -> list[dict]:
+        """The hypotheses of the project's saved plan (none without a project)."""
+        project = self._project()
+        current = project.plan() if project is not None else None
+        return list(((current or {}).get("plan") or {}).get("hypotheses", []))
+
+    def _hypothesis_picker(self) -> list[ft.Control]:
+        """Step 1: which hypothesis of the plan this analysis tests. Changing
+        it is recorded in the project's protocol."""
+        ui = self.app.ui
+        hypotheses = self._plan_hypotheses()
+        if not hypotheses:
+            return []
+        task = self.app.session.task(self.task_id)
+        value = (task.hypothesis_id if task is not None else self.pending_hypothesis) or ""
+        numbers = {h["id"]: number for number, h in enumerate(hypotheses, start=1)}
+        options = [("", ui.t("task.no_hypothesis"))] + [
+            (h["id"], f"H{number}. {h.get('text', '')[:80]}")
+            for number, h in enumerate(hypotheses, start=1)]
+        if value and value not in numbers:
+            options.append((value, ui.t("task.hypothesis_gone")))
+        controls: list[ft.Control] = [wc.dropdown(
+            ui, ui.t("task.tests_hypothesis"), options, value,
+            on_select=lambda e: self._link(e.control.value), width=480, data="task-hypothesis")]
+        if value in numbers:
+            controls.append(wc.caption(ui, ui.t("task.linked", h=numbers[value]),
+                                       data="task-hypothesis-note"))
+        return controls
+
+    def _record_link(self, task: ResearchTask, old: str | None, new: str | None) -> None:
+        """The link of a task to a hypothesis, as an append-only record."""
+        from project_store import ProjectError
+
+        project = self._project()
+        if project is None or old == new:
+            return
+        try:
+            project.add_protocol_record("link", hypothesis_id=new or old, task_id=task.id,
+                                        detail={"from": old, "to": new})
+        except (ProjectError, OSError) as error:
+            self.app.status(self.app.t("hyp.not_recorded", reason=str(error)), "danger")
+
+    def _link(self, value) -> None:
+        new = value or None
+        task = self.app.session.task(self.task_id)
+        if task is None:
+            self.pending_hypothesis = new        # linked when the task is created
+        elif task.hypothesis_id != new:
+            old, task.hypothesis_id = task.hypothesis_id, new
+            self.app.session.save_task(task)
+            self._record_link(task, old, new)
+        self.app.render()
+
+    def _snapshot(self, task: ResearchTask | None) -> dict | None:
+        """What the result records about the hypothesis it is a test of."""
+        from research_workflow import hypothesis_snapshot
+
+        project = self._project()
+        if task is None or not task.hypothesis_id or project is None:
+            return None
+        return hypothesis_snapshot(project.plan(), project.hypothesis_status(),
+                                   task.hypothesis_id)
+
+    def create_for_hypothesis(self, hypothesis_id: str) -> None:
+        """A research task for a hypothesis of the plan: linked, with the goal
+        of its question (the planned variables that exist in the data are
+        chosen); Analyze opens at the variables (step 2)."""
+        app = self.app
+        project = self._project()
+        current = project.plan() if project is not None else None
+        plan = (current or {}).get("plan") or {}
+        hypotheses = plan.get("hypotheses", [])
+        found = next(((number, h) for number, h in enumerate(hypotheses, start=1)
+                      if h["id"] == hypothesis_id), None)
+        if found is None:
+            app.render()
+            return
+        number, hypothesis = found
+        questions = {q["id"]: q for q in plan.get("questions", [])}
+        goal = (questions.get(hypothesis.get("question_id") or "") or {}).get("type", "")
+        goal = goal if goal in GOALS else ""
+        selection = {}
+        if goal:
+            names = set(app.session.variables)
+            for role in GOAL_ROLES[goal]:
+                planned = (hypothesis.get("roles") or {}).get(role.key)
+                if isinstance(planned, list):
+                    chosen = [n for n in planned if n in names]
+                    if chosen:
+                        selection[role.key] = chosen
+                elif planned in names:
+                    selection[role.key] = planned
+        task = ResearchTask(str(uuid.uuid4()), app.t("task.title_for", h=number), goal, selection,
+                            hypothesis_id=hypothesis_id,
+                            state={"created": datetime.now().isoformat(timespec="seconds"),
+                                   "auto_title": True})
+        app.session.save_task(task)
+        self._record_link(task, None, hypothesis_id)
+        self._open_task(task.id, render=False)
+        app.navigate("analyze", section="variables" if goal else None)
+
+    def open_task_for(self, task_id: str) -> None:
+        """Open a task from the Project page: at its result if it has one,
+        otherwise at its variables."""
+        if self.app.session.task(task_id) is None:
+            self.app.render()
+            return
+        self._open_task(task_id, render=False)
+        has_result = bool(self.app.session.task_results(task_id))
+        self.app.navigate("analyze", section="task-result" if has_result else "variables")
+
+    def _steps_row(self) -> list[ft.Control]:
+        """The eight steps of the analysis on screen (§7.6)."""
+        from dataclasses import replace
+
+        import research_workflow as rw
+        from workspace_hypotheses import step_row
+
+        if not self.goal:
+            return []
+        ui, session = self.app.ui, self.app.session
+        task = session.task(self.task_id) or ResearchTask(
+            "", "", self.goal, {}, hypothesis_id=self.pending_hypothesis)
+        # The choices on screen: the confirmations given here, before a run.
+        shown = replace(task, goal=self.goal, selection=dict(self.selection),
+                        confirms=dict(self.confirms),
+                        state={**(task.state or {}), "confirm_scopes": dict(self.confirm_scopes)})
+        plan_ids = frozenset(h["id"] for h in self._plan_hypotheses())
+        method, options = (self.override if self.override else (None, None))
+        steps = rw.task_steps(rw.task_facts(shown, session, plan_ids=plan_ids, method=method,
+                                            options=options))
+        return [ft.Column([wc.section_label(ui, ui.t("task.steps")),
+                           step_row(ui, steps, data="task-steps")], spacing=tk.SPACE_2)]
+
     # ------------------------------------------------------ research tasks
     def _task_bar(self) -> list[ft.Control]:
         """The project's research tasks: one action returns to a task's choices."""
         ui, tasks = self.app.ui, self.app.session.tasks
         if not tasks:
             return []
-        chips = [wc.chip(ui, task.title, "info" if task.id == self.task_id else "neutral",
+        numbers = {h["id"]: n for n, h in enumerate(self._plan_hypotheses(), start=1)}
+
+        def title(task) -> str:
+            # Stage 37.0a: a task that tests a hypothesis of the plan says which.
+            if task.hypothesis_id in numbers:
+                return f"H{numbers[task.hypothesis_id]} · {task.title}"
+            return task.title
+
+        chips = [wc.chip(ui, title(task), "info" if task.id == self.task_id else "neutral",
                          icon=ft.Icons.ASSIGNMENT_OUTLINED,
                          tooltip=ui.t("task.open_tip"),
                          on_click=lambda e, t=task.id: self._open_task(t), data=f"task-{task.id}")
@@ -381,11 +543,12 @@ class AnalyzePage:
                            ft.Row(chips, wrap=True, spacing=tk.SPACE_2, run_spacing=tk.SPACE_2)],
                           spacing=tk.SPACE_2, data="task-bar")]
 
-    def _open_task(self, task_id: str):
+    def _open_task(self, task_id: str, *, render: bool = True):
         task = self.app.session.task(task_id)
         if task is None:
             return
-        self.mode, self.task_id, self.goal = "guided", task.id, task.goal
+        self.pending_hypothesis = None
+        self.mode, self.task_id, self.goal = "guided", task.id, task.goal or None
         self.selection = {k: (list(v) if isinstance(v, list) else v)
                           for k, v in task.selection.items()}
         # Each confirmation comes back with what it was given for; on screen
@@ -396,12 +559,14 @@ class AnalyzePage:
         self.reconfirm = set()
         self.override = (task.method, dict(task.options)) if task.method else None
         self.choosing_goal, self.message = False, None
-        self.app.render()
+        if render:
+            self.app.render()
 
     def _new_task(self, e=None):
         self.task_id, self.goal, self.selection, self.override = None, None, {}, None
         self.confirms, self.confirm_scopes, self.reconfirm = {}, {}, set()
         self.choosing_goal, self.message = False, None
+        self.pending_hypothesis = None
         self.app.render()
 
     def _task_title(self, key: str, roles: dict) -> str:
@@ -422,8 +587,12 @@ class AnalyzePage:
         if self.mode != "guided" or not self.goal:
             return None
         task = self.app.session.task(self.task_id)
+        linked = None
         if task is None:
+            # Stage 37.0a: a new analysis tests the hypothesis chosen in step 1.
+            linked, self.pending_hypothesis = self.pending_hypothesis, None
             task = ResearchTask(str(uuid.uuid4()), self._task_title(key, roles), self.goal, {},
+                                hypothesis_id=linked,
                                 state={"created": datetime.now().isoformat(timespec="seconds")})
         task.selection = {k: (list(v) if isinstance(v, list) else v)
                           for k, v in self.selection.items()}
@@ -431,8 +600,14 @@ class AnalyzePage:
         task.confirms = {k: True for k in confirms if confirms[k] and k in scopes}
         task.state = {**(task.state or {}),
                       "confirm_scopes": {k: scopes[k] for k in task.confirms}}
+        if task.state.pop("auto_title", None):
+            # Made for a hypothesis: named after the analysis at its first run.
+            task.title = self._task_title(key, roles)
         self.task_id = task.id
-        return self.app.session.save_task(task)
+        saved = self.app.session.save_task(task)
+        if linked:
+            self._record_link(saved, None, linked)
+        return saved
 
     def _task_result(self, chosen=None, holding=None) -> list[ft.Control]:
         """The latest batch result of the task, with what can be done next.
@@ -694,7 +869,8 @@ class AnalyzePage:
         task = self._remember_task(key, roles, effective, confirms, scopes or {})
         entry = app.session.add_result(
             run, confirmed, method=key, roles=dict(roles), options=effective,
-            confirms=dict(confirms), task_id=task.id if task else None)
+            confirms=dict(confirms), task_id=task.id if task else None,
+            hypothesis=self._snapshot(task))
         app.status(app.t("run.done"), "success")
         if task is not None and key in ("batch_correlation", "batch_groups"):
             # Stage 36 (spec §4): after a batch run the researcher stays in the task.
@@ -1047,6 +1223,9 @@ class ResultsPage:
                 self._report_toggle(entry),
             ], vertical_alignment=ft.CrossAxisAlignment.START),
         ]
+        tested = self._hypothesis_line(entry)
+        if tested is not None:
+            sections.append(tested)
         if entry.stale_reasons:
             from workspace_projects import stale_text
 
@@ -1184,6 +1363,37 @@ class ResultsPage:
         sections.append(self._exports(entry, evidence, reviewed))
         return ft.Column(sections, spacing=tk.SPACE_4, data=f"result-detail-{entry.id}",
                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+
+    def _hypothesis_line(self, entry) -> ft.Control | None:
+        """Stage 37.0a: the hypothesis this result was calculated as a test of,
+        as the plan stated it then (the snapshot kept with the result)."""
+        from workspace_hypotheses import alpha_text
+
+        app, ui = self.app, self.app.ui
+        project = app.projects.project if app.projects.active else None
+        current = project.plan() if project is not None else None
+        hypotheses = ((current or {}).get("plan") or {}).get("hypotheses", [])
+        numbers = {h["id"]: (number, h) for number, h in enumerate(hypotheses, start=1)}
+        snapshot = (entry.provenance or {}).get("hypothesis")
+        if snapshot:
+            found = numbers.get(snapshot.get("id"))
+            if found is None:
+                return wc.notice(ui, ui.t("results.tests_gone",
+                                          version=snapshot.get("plan_version") or "—"),
+                                 "neutral", data="result-hypothesis")
+            number, hypothesis = found
+            detail = ui.t("results.tests_detail", version=snapshot.get("plan_version") or "—",
+                          priority=ui.t(f"plan.priority.{snapshot.get('priority', 'primary')}"),
+                          direction=ui.t(f"plan.direction.{snapshot.get('direction', 'two-sided')}"),
+                          alpha=alpha_text(snapshot.get("alpha", 0.05)))
+            return wc.notice(ui, detail, "info", title=ui.t(
+                "results.tests", h=number, text=hypothesis.get("text", "")),
+                data="result-hypothesis")
+        task = app.session.task(entry.task_id)
+        if task is not None and task.hypothesis_id in numbers:
+            return wc.notice(ui, ui.t("results.linked_late", h=numbers[task.hypothesis_id][0]),
+                             "neutral", data="result-hypothesis")
+        return None
 
     def _provenance(self, entry, evidence) -> list[ft.Control]:
         """What the numbers rest on (Issue #32): the dataset version, complete
@@ -1667,8 +1877,24 @@ class ReportsPage:
         outcome = await app.save_file(app.t("reports.export_docx"),
                                       report_docx.default_file_name(inputs.title or inputs.project),
                                       "docx", write)
+        if outcome.saved:
+            self._exported("docx")
         self.feedback = (outcome.message, outcome.tone)
         app.render()
+
+    def _exported(self, kind: str) -> None:
+        """Stage 37.0a: the project remembers that the report, with the
+        results it holds now, was exported (the next action uses it)."""
+        from project_store import ProjectError
+
+        app = self.app
+        if not app.projects.active:
+            return
+        runs = [e.record_id for e in app.session.report_entries() if e.record_id]
+        try:
+            app.projects.project.record_report_export(runs, kind)
+        except (ProjectError, OSError):
+            pass        # the file is written; only the next-action hint is not updated
 
     async def _export(self, e=None):
         app = self.app
@@ -1683,5 +1909,7 @@ class ReportsPage:
 
         outcome = await app.save_file(app.t("reports.export_txt"), "research_report.txt",
                                       "txt", write)
+        if outcome.saved:
+            self._exported("txt")
         self.feedback = (outcome.message, outcome.tone)
         app.render()
