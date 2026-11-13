@@ -12,6 +12,12 @@ export, the XLSX reader and the local survey database. The JSON verdict lists
 each step with its duration and a SHA-256 of the report text, so a packaged
 build can be compared with a source checkout: identical hashes mean the build
 computes exactly the same reported numbers. No network access, no user data.
+
+Stage 37.3: the step ``research_library`` and the section ``library`` report
+whether the runtime's SQLite has FTS5 (and its trigram tokenizer) and run an
+offline search of four synthetic documents; its hash covers the search
+backend and the ranking, so ``--compare`` flags a packaged program whose
+SQLite lacks FTS5.
 """
 
 from __future__ import annotations
@@ -131,6 +137,8 @@ def run_selftest(output: Path) -> int:
                                          "error": f"{type(error).__name__}: {error}"}
                 result["errors"].append(f"{step}: {type(error).__name__}: {error}")
         result["exports"] = _exports(runs_done.get("groups_mannwhitney"), result["errors"])
+        # Stage 37.3: FTS5 in this runtime's SQLite and an offline library search.
+        result["library"], result["steps"]["research_library"] = _library(result["errors"])
         result["ok"] = not result["errors"]
     except Exception as error:  # report everything; this is a diagnostic
         result["errors"].append(f"{type(error).__name__}: {error}")
@@ -182,6 +190,103 @@ def _exports(run, errors: list[str]) -> dict:
         except Exception as error:
             errors.append(f"survey storage: {type(error).__name__}: {error}")
     return done
+
+
+LIBRARY_QUERIES = {"en": "how can consent be withdrawn",
+                   "lv": "vientulības skalas vērtēšana",
+                   "ru": "подсчет баллов одиночества"}
+
+
+def _library_documents(folder: Path) -> list[Path]:
+    """Four small synthetic documents (EN Markdown, LV text, RU Word, EN PDF)."""
+    from docx import Document
+
+    folder.mkdir(parents=True, exist_ok=True)
+    markdown = folder / "selftest_manual.md"
+    markdown.write_text(
+        "# Self-test manual\n\n## Informed consent\n\nConsent can be withdrawn at any time "
+        "without giving a reason.\n\n## Scoring\n\nThe synthetic scale has 20 statements.\n",
+        encoding="utf-8")
+    text = folder / "selftest_piezimes.txt"
+    text.write_text("Pašpārbaudes piezīmes\n\n1. Vērtēšana\n\nSintētiskās vientulības skalu "
+                    "vērtē no 1 līdz 4.\n\n2. Telpas\n\nIntervijas notiek klusajā telpā.\n",
+                    encoding="utf-8")
+    word = Document()
+    word.add_heading("Самопроверка", 0)
+    word.add_heading("Подсчёт баллов", 1)
+    word.add_paragraph("Синтетическая шкала одиночества содержит 20 утверждений.")
+    word.add_heading("Хранение данных", 1)
+    word.add_paragraph("Исходные ответы хранятся на зашифрованном ноутбуке.")
+    docx = folder / "selftest_rukovodstvo.docx"
+    word.save(docx)
+    import matplotlib
+    matplotlib.use("Agg")
+    from matplotlib.backends.backend_pdf import PdfPages
+    import matplotlib.pyplot as plt
+
+    pdf = folder / "selftest_review.pdf"
+    with PdfPages(pdf) as out:
+        for page, (heading, body) in enumerate((
+                ("Introduction", "Loneliness is a gap between wanted and actual relationships."),
+                ("Consent", "Participants may withdraw their consent before the interview.")),
+                start=1):
+            figure = plt.figure(figsize=(8.27, 11.69))
+            figure.text(0.08, 0.9, heading, fontsize=13)
+            figure.text(0.08, 0.86, body, fontsize=10)
+            figure.text(0.5, 0.04, str(page), fontsize=9)
+            out.savefig(figure)
+            plt.close(figure)
+    return [markdown, text, docx, pdf]
+
+
+def _library(errors: list[str]) -> tuple[dict, dict]:
+    """The research library in this runtime (docs/STAGE37_RAG.md §3): whether
+    its SQLite has FTS5 and the trigram tokenizer, then four synthetic
+    documents read (PDF, DOCX, TXT, Markdown) and searched offline in EN, LV
+    and RU. The step's hash covers the search backend and the ranked
+    passages (title and locator), so a packaged program without FTS5, or one
+    that ranks differently, does not compare equal to the source checkout."""
+    started = time.monotonic()
+    details: dict = {}
+    try:
+        import research_library as rl
+
+        caps = rl.capabilities()
+        details.update(sqlite=caps.sqlite, fts5=caps.fts5, trigram=caps.trigram,
+                       trigram_diacritics=caps.trigram_diacritics,
+                       tokenizer=rl.DEFAULT_TOKENIZER)
+        with TemporaryDirectory(prefix="sra-selftest-library-") as folder:
+            library = rl.Library(Path(folder) / "library")
+            details["backend"] = library.backend
+            for path in _library_documents(Path(folder) / "documents"):
+                library.add_document(path)
+            details["documents"], details["passages"] = library.counts()
+            ranked = {}
+            for language, query in LIBRARY_QUERIES.items():
+                hits = library.search(query, limit=3).hits
+                ranked[language] = [f"{hit.document.title} {hit.cite_id.split('-', 1)[1]}"
+                                    for hit in hits]
+                if not hits:
+                    errors.append(f"research library: no passage found for the {language} query")
+            pdf = next(d for d in library.documents() if d.type == "pdf")
+            details["page_png_bytes"] = len(library.render_page(pdf, 1))
+            details["integrity"] = library.integrity()
+            if details["integrity"]:
+                errors.append(f"research library: {details['integrity']}")
+        details["ranked"] = ranked
+        if not caps.fts5:
+            details["note"] = "FTS5 is missing: the pure-Python BM25 fallback was used"
+        step = {"ok": not any(e.startswith("research library") for e in errors),
+                "seconds": round(time.monotonic() - started, 3),
+                "report_sha256": _digest(json.dumps({"backend": details["backend"],
+                                                     "ranked": ranked}, sort_keys=True,
+                                                    ensure_ascii=False)),
+                "backend": details["backend"]}
+    except Exception as error:
+        errors.append(f"research library: {type(error).__name__}: {error}")
+        step = {"ok": False, "seconds": round(time.monotonic() - started, 3),
+                "error": f"{type(error).__name__}: {error}"}
+    return details, step
 
 
 def maybe_run_from_environment() -> None:

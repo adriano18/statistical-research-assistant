@@ -3300,6 +3300,478 @@ T.update({
 })
 
 
+# Stage 37 (independent review §7, gap 1): what the data rows leave out.
+# LV/RU drafts — needs native review.
+T.update({
+    "ai.excluded.identifier": ("identifier", "identifikators", "идентификатор"),
+    "ai.excluded.free_text": ("free text", "brīvs teksts", "свободный текст"),
+    "assistant.preview.excluded": (
+        "Left out of the data rows: {columns}.",
+        "Datu rindās netiek iekļauts: {columns}.",
+        "Не включается в строки данных: {columns}."),
+    "ai.excluded": (
+        "Never sent with the data rows: {columns}. Identifier and free-text columns are always "
+        "left out.",
+        "Ar datu rindām nekad netiek sūtīts: {columns}. Identifikatoru un brīva teksta kolonnas "
+        "vienmēr tiek izlaistas.",
+        "Никогда не отправляется вместе со строками данных: {columns}. Столбцы-идентификаторы и "
+        "столбцы со свободным текстом всегда исключаются."),
+    # Quoted spans of a reply, checked against what was sent (review §7).
+    "assistant.unverified_quotes_title": ("Unverified quotes", "Nepārbaudīti citāti",
+                                          "Непроверенные цитаты"),
+    "assistant.unverified_quotes": (
+        "Not found word for word in what was sent: {quotes}. A quote may be invented or "
+        "changed; compare it with the source before any use.",
+        "Nav atrasts vārds vārdā nosūtītajā tekstā: {quotes}. Citāts var būt izdomāts vai "
+        "mainīts; salīdziniet to ar avotu pirms jebkādas lietošanas.",
+        "Не найдено дословно в отправленном тексте: {quotes}. Цитата может быть выдумана или "
+        "изменена; сверьте её с источником перед любым использованием."),
+    "assistant.note_unverified_quotes": (
+        "[Quotes not found in what was sent: {quotes}]",
+        "[Citāti, kas nav atrasti nosūtītajā tekstā: {quotes}]",
+        "[Цитаты, не найденные в отправленном тексте: {quotes}]"),
+})
+
+
+# Stage 37.3 (Issue #69): the research library of a project
+# (workspace_library.py). LV/RU drafts — needs native review.
+T.update({
+    "library.title": ("Research library", "Pētījuma bibliotēka", "Исследовательская библиотека"),
+    "library.subtitle": (
+        "Papers, plans, manuals and notes of “{project}”, searched on this computer with page "
+        "and section citations.",
+        "Projekta “{project}” raksti, plāni, rokasgrāmatas un piezīmes, meklējami šajā datorā ar "
+        "lappušu un sadaļu atsaucēm.",
+        "Статьи, планы, руководства и заметки проекта «{project}»: поиск на этом компьютере со "
+        "ссылками на страницы и разделы."),
+    "library.no_project": (
+        "Open or create a project first: every project has its own library.",
+        "Vispirms atveriet vai izveidojiet projektu: katram projektam ir sava bibliotēka.",
+        "Сначала откройте или создайте проект: у каждого проекта своя библиотека."),
+    "library.local": ("Local only · search never goes online",
+                      "Tikai lokāli · meklēšana nekad nenotiek tiešsaistē",
+                      "Только локально · поиск никогда не идёт в сеть"),
+    "library.local_tip": (
+        "Documents, passages and the search index stay in this project's folder on this "
+        "computer. Searching sends nothing anywhere; only “Ask with sources”, if you use it, "
+        "sends the passages you approve.",
+        "Dokumenti, fragmenti un meklēšanas indekss paliek šī projekta mapē šajā datorā. "
+        "Meklēšana neko nekur nesūta; tikai “Jautāt ar avotiem”, ja to izmantojat, nosūta jūsu "
+        "apstiprinātos fragmentus.",
+        "Документы, фрагменты и поисковый индекс остаются в папке этого проекта на этом "
+        "компьютере. Поиск ничего никуда не отправляет; только «Спросить по источникам», если "
+        "вы им пользуетесь, отправляет одобренные вами фрагменты."),
+    "library.back": ("Back to the project", "Atpakaļ uz projektu", "Назад к проекту"),
+    "library.documents": ("Documents", "Dokumenti", "Документы"),
+    "library.documents_body": (
+        "Each document is copied into the project, read on this computer and cut into passages "
+        "that keep their page or section.",
+        "Katrs dokuments tiek iekopēts projektā, nolasīts šajā datorā un sadalīts fragmentos, "
+        "kas saglabā savu lappusi vai sadaļu.",
+        "Каждый документ копируется в проект, читается на этом компьютере и делится на "
+        "фрагменты, которые сохраняют свою страницу или раздел."),
+    "library.add": ("Add document…", "Pievienot dokumentu…", "Добавить документ…"),
+    "library.version": ("Version label (optional)", "Versijas apzīmējums (nav obligāts)",
+                        "Метка версии (необязательно)"),
+    "library.version_hint": ("e.g. v2 or 2026 draft", "piem., v2 vai 2026. gada melnraksts",
+                             "напр. v2 или черновик 2026"),
+    "library.ocr": ("Read image-only PDF pages with local OCR",
+                    "Nolasīt PDF lappuses, kurās ir tikai attēls, ar lokālo OCR",
+                    "Распознавать страницы PDF, на которых только изображение, локальным OCR"),
+    "library.ocr_language": ("OCR language", "OCR valoda", "Язык OCR"),
+    "library.ocr_lang.eng": ("English", "Angļu", "Английский"),
+    "library.ocr_lang.lav": ("Latvian", "Latviešu", "Латышский"),
+    "library.ocr_lang.rus": ("Russian", "Krievu", "Русский"),
+    "library.ocr_unavailable": (
+        "Local OCR is not available on this computer: a page that is only an image is named "
+        "after adding and cannot be searched.",
+        "Lokālais OCR šajā datorā nav pieejams: lappuse, kurā ir tikai attēls, pēc pievienošanas "
+        "tiek nosaukta, un tajā nevar meklēt.",
+        "Локальный OCR на этом компьютере недоступен: страница, на которой только изображение, "
+        "будет названа после добавления, и искать по ней нельзя."),
+    "library.permitted": (
+        "PDF, Word (DOCX), text (TXT) or Markdown (MD). Add only papers, plans, manuals and "
+        "notes you are permitted to use, never participant data.",
+        "PDF, Word (DOCX), teksts (TXT) vai Markdown (MD). Pievienojiet tikai rakstus, plānus, "
+        "rokasgrāmatas un piezīmes, kurus drīkstat izmantot, nekad dalībnieku datus.",
+        "PDF, Word (DOCX), текст (TXT) или Markdown (MD). Добавляйте только статьи, планы, "
+        "руководства и заметки, которые вам разрешено использовать, и никогда данные участников."),
+    "library.empty": ("No documents yet.", "Vēl nav neviena dokumenta.", "Документов пока нет."),
+    "library.counts": ("{documents} · {passages}", "{documents} · {passages}",
+                       "{documents} · {passages}"),
+    "library.reindex": ("Read every document again", "Nolasīt visus dokumentus vēlreiz",
+                        "Перечитать все документы"),
+    "library.outdated": (
+        "{documents} were read by an earlier version of the program. “Read every document "
+        "again” renews their passages; their citations stay the same.",
+        "{documents} nolasīti ar agrāku programmas versiju. “Nolasīt visus dokumentus vēlreiz” "
+        "atjauno to fragmentus; atsauces paliek tās pašas.",
+        "{documents} прочитаны более ранней версией программы. «Перечитать все документы» "
+        "обновит их фрагменты; ссылки останутся прежними."),
+    "library.backup": ("Include the library in backups and project copies",
+                       "Iekļaut bibliotēku rezerves kopijās un projekta kopijās",
+                       "Включать библиотеку в резервные копии и копии проекта"),
+    "library.backup_off": (
+        "Not included: backups (.sra) and copies of this project leave the library out. Notes "
+        "and transcripts may hold personal data, and papers may not be yours to pass on.",
+        "Nav iekļauta: šī projekta rezerves kopijās (.sra) un kopijās bibliotēkas nav. Piezīmēs "
+        "un transkriptos var būt personas dati, un rakstus jūs, iespējams, nedrīkstat nodot "
+        "tālāk.",
+        "Не включается: резервные копии (.sra) и копии этого проекта не содержат библиотеку. В "
+        "заметках и расшифровках могут быть персональные данные, а статьи вам, возможно, нельзя "
+        "передавать дальше."),
+    "library.backup_on": (
+        "Included: backups (.sra) and copies of this project carry the library and its "
+        "documents. Pass them on only where you may, and keep backups safe.",
+        "Iekļauta: šī projekta rezerves kopijās (.sra) un kopijās ir bibliotēka un tās dokumenti. "
+        "Nododiet tās tālāk tikai tur, kur drīkstat, un glabājiet rezerves kopijas droši.",
+        "Включается: резервные копии (.sra) и копии этого проекта содержат библиотеку и её "
+        "документы. Передавайте их только туда, куда можно, и храните копии надёжно."),
+    "library.card_backup_off": (
+        "Not included in backups and project copies (change on the library page).",
+        "Nav iekļauta rezerves kopijās un projekta kopijās (maināms bibliotēkas lapā).",
+        "Не включается в резервные копии и копии проекта (меняется на странице библиотеки)."),
+    "library.card_backup_on": (
+        "Included in backups and project copies (change on the library page).",
+        "Iekļauta rezerves kopijās un projekta kopijās (maināms bibliotēkas lapā).",
+        "Включается в резервные копии и копии проекта (меняется на странице библиотеки)."),
+    "library.progress.read": ("Reading {name}: page {done} of {total}…",
+                              "Nolasa {name}: {done}. lappuse no {total}…",
+                              "Чтение {name}: страница {done} из {total}…"),
+    "library.progress.ocr": ("Reading {name} with local OCR: page {done} of {total}…",
+                             "Nolasa {name} ar lokālo OCR: {done}. lappuse no {total}…",
+                             "Распознавание {name} локальным OCR: страница {done} из {total}…"),
+    "library.progress.index": ("Indexing {name}: {total} passages…",
+                               "Indeksē {name}: fragmenti — {total}…",
+                               "Индексирование {name}: фрагментов — {total}…"),
+    "library.progress.document": ("Reading the documents again: {done} of {total}…",
+                                  "Dokumenti tiek nolasīti vēlreiz: {done} no {total}…",
+                                  "Документы перечитываются: {done} из {total}…"),
+    "library.cancel": ("Cancel", "Atcelt", "Отменить"),
+    "library.lang.en": ("English", "Angļu", "Английский"),
+    "library.lang.lv": ("Latvian", "Latviešu", "Латышский"),
+    "library.lang.ru": ("Russian", "Krievu", "Русский"),
+    "library.lang.other": ("Other language", "Cita valoda", "Другой язык"),
+    "library.version_chip": ("version {version}", "versija {version}", "версия {version}"),
+    "library.added": ("added {date}", "pievienots {date}", "добавлен {date}"),
+    "library.ocr_pages": ("Read with local OCR: page {pages}",
+                          "Nolasīts ar lokālo OCR: lappuse {pages}",
+                          "Распознано локальным OCR: страница {pages}"),
+    "library.open": ("Open", "Atvērt", "Открыть"),
+    "library.remove": ("Remove", "Noņemt", "Удалить"),
+    "library.remove_tip": (
+        "Removes the document, its passages and its search index at once. The file you added "
+        "it from stays where it is.",
+        "Uzreiz noņem dokumentu, tā fragmentus un tā meklēšanas indeksu. Fails, no kura to "
+        "pievienojāt, paliek savā vietā.",
+        "Сразу удаляет документ, его фрагменты и его поисковый индекс. Файл, из которого вы его "
+        "добавили, остаётся на месте."),
+    "library.search_title": ("Search", "Meklēšana", "Поиск"),
+    "library.search_body": (
+        "Searches this project's passages only, on this computer. Other forms of a word are "
+        "found too: students and student, vientulības and vientulība, одиночества and "
+        "одиночество.",
+        "Meklē tikai šī projekta fragmentos, šajā datorā. Tiek atrastas arī citas vārda formas: "
+        "students un student, vientulības un vientulība, одиночества un одиночество.",
+        "Ищет только во фрагментах этого проекта, на этом компьютере. Находятся и другие формы "
+        "слова: students и student, vientulības и vientulība, одиночества и одиночество."),
+    "library.query": ("Search the library", "Meklēt bibliotēkā", "Поиск по библиотеке"),
+    "library.query_hint": ("Words to find, e.g. withdrawing consent",
+                           "Meklējamie vārdi, piem., piekrišanas atsaukšana",
+                           "Слова для поиска, напр. отзыв согласия"),
+    "library.search": ("Search", "Meklēt", "Найти"),
+    "library.filter.type": ("Type", "Veids", "Тип"),
+    "library.filter.any_type": ("Any type", "Jebkurš veids", "Любой тип"),
+    "library.filter.language": ("Language", "Valoda", "Язык"),
+    "library.filter.any_language": ("Any language", "Jebkura valoda", "Любой язык"),
+    "library.filter.date": ("Added", "Pievienots", "Добавлено"),
+    "library.filter.date.any": ("Any time", "Jebkurā laikā", "За всё время"),
+    "library.filter.date.week": ("In the last 7 days", "Pēdējās 7 dienās",
+                                 "За последние 7 дней"),
+    "library.filter.date.month": ("In the last 30 days", "Pēdējās 30 dienās",
+                                  "За последние 30 дней"),
+    "library.filter.date.year": ("In the last year", "Pēdējā gadā", "За последний год"),
+    "library.no_terms": (
+        "Type a word to search for: words such as “the” or “and” alone find nothing.",
+        "Ierakstiet meklējamo vārdu: tādi vārdi kā “un” vai “ir” vieni paši neko neatrod.",
+        "Введите слово для поиска: такие слова, как «и» или «в», сами по себе ничего не находят."),
+    "library.no_results": ("No passage of this library matches “{query}”.",
+                           "Neviens šīs bibliotēkas fragments neatbilst vaicājumam “{query}”.",
+                           "Ни один фрагмент этой библиотеки не соответствует запросу «{query}»."),
+    "library.count": (
+        "{shown} of {total} matching passages · searched on this computer, nothing was sent",
+        "{shown} no {total} atbilstošajiem fragmentiem · meklēts šajā datorā, nekas netika "
+        "nosūtīts",
+        "{shown} из {total} подходящих фрагментов · поиск на этом компьютере, ничего не "
+        "отправлено"),
+    "library.page": ("page {page}", "{page}. lappuse", "стр. {page}"),
+    "library.open_page": ("Open page {page}", "Atvērt {page}. lappusi", "Открыть страницу {page}"),
+    "library.open_document": ("Open the document", "Atvērt dokumentu", "Открыть документ"),
+    "library.why": ("Why this source?", "Kāpēc šis avots?", "Почему этот источник?"),
+    "library.why_hide": ("Hide the reasons", "Paslēpt iemeslus", "Скрыть причины"),
+    "library.why.rank": (
+        "Rank {rank} of {total} matching passages (BM25 score {score}).",
+        "{rank}. vieta no {total} atbilstošajiem fragmentiem (BM25 vērtējums {score}).",
+        "Место {rank} из {total} подходящих фрагментов (оценка BM25 {score})."),
+    "library.why.matched": ("Words of your search in this passage: {words}.",
+                            "Jūsu meklējuma vārdi šajā fragmentā: {words}.",
+                            "Слова вашего запроса в этом фрагменте: {words}."),
+    "library.why.missing": ("Not in this passage: {words}.", "Šajā fragmentā nav: {words}.",
+                            "В этом фрагменте нет: {words}."),
+    "library.why.method": (
+        "Ranked by BM25 on this computer: rarer words and shorter passages count more; a word "
+        "ending in “…” also matches its other forms.",
+        "Sakārtots pēc BM25 šajā datorā: retāki vārdi un īsāki fragmenti nozīmē vairāk; vārds, "
+        "kas beidzas ar “…”, atbilst arī citām tā formām.",
+        "Ранжировано по BM25 на этом компьютере: более редкие слова и более короткие фрагменты "
+        "весят больше; слово, оканчивающееся на «…», совпадает и с другими его формами."),
+    "library.why.filters": ("Filters: {filters}.", "Filtri: {filters}.", "Фильтры: {filters}."),
+    "library.searched": ("Searched on this computer: {passages}.",
+                         "Meklēts šajā datorā: {passages}.",
+                         "Поиск на этом компьютере: {passages}."),
+    "library.open_failed": ("{name} could not be opened: {error}",
+                            "{name} neizdevās atvērt: {error}",
+                            "Не удалось открыть {name}: {error}"),
+    "library.opened_system": ("{name} opened in the system's viewer.",
+                              "{name} atvērts sistēmas skatītājā.",
+                              "{name} открыт в системной программе просмотра."),
+    "library.viewer_status": ("Showing page {page} of “{title}”.",
+                              "Rādīta “{title}” {page}. lappuse.",
+                              "Показана страница {page} документа «{title}»."),
+    "library.viewer_title": ("{title} — page {page} of {pages}",
+                             "{title} — {page}. lappuse no {pages}",
+                             "{title} — страница {page} из {pages}"),
+    "library.viewer_passage": ("Cited passage {cite}: {text}", "Citētais fragments {cite}: {text}",
+                               "Цитируемый фрагмент {cite}: {text}"),
+    "library.viewer_previous": ("Previous page", "Iepriekšējā lappuse", "Предыдущая страница"),
+    "library.viewer_next": ("Next page", "Nākamā lappuse", "Следующая страница"),
+    "library.viewer_system": ("Open in the system viewer", "Atvērt sistēmas skatītājā",
+                              "Открыть в системной программе"),
+    "library.cancelled": ("Adding {name} was cancelled; nothing of it was stored.",
+                          "{name} pievienošana atcelta; nekas no tā netika saglabāts.",
+                          "Добавление {name} отменено; ничего из него не сохранено."),
+    "library.add_failed": ("{name} was not added: {reason}", "{name} netika pievienots: {reason}",
+                           "{name} не добавлен: {reason}"),
+    "library.duplicate": (
+        "“{title}” is already in the library (the same file), so nothing was added twice.",
+        "“{title}” jau ir bibliotēkā (tas pats fails), tāpēc nekas netika pievienots divreiz.",
+        "«{title}» уже есть в библиотеке (тот же файл), поэтому ничего не добавлено дважды."),
+    "library.added_message": ("Added “{title}”: {passages}.", "Pievienots “{title}”: {passages}.",
+                              "Добавлен «{title}»: {passages}."),
+    "library.note.versioned": (
+        "A file with this name is already in the library, so this one is labelled {label}.",
+        "Fails ar šādu nosaukumu jau ir bibliotēkā, tāpēc šim ir apzīmējums {label}.",
+        "Файл с таким именем уже есть в библиотеке, поэтому этот помечен как {label}."),
+    "library.note.ocr_off": (
+        "Page {pages} is only an image and was not read: remove the document and add it again "
+        "with “Read image-only PDF pages with local OCR” ticked.",
+        "Lappusē {pages} ir tikai attēls, un tā netika nolasīta: noņemiet dokumentu un "
+        "pievienojiet to vēlreiz ar atzīmētu “Nolasīt PDF lappuses, kurās ir tikai attēls, ar "
+        "lokālo OCR”.",
+        "На странице {pages} только изображение, и она не прочитана: удалите документ и "
+        "добавьте его снова, отметив «Распознавать страницы PDF, на которых только изображение, "
+        "локальным OCR»."),
+    "library.note.ocr_unavailable": (
+        "Page {pages} is only an image and local OCR is not available here, so it cannot be "
+        "searched.",
+        "Lappusē {pages} ir tikai attēls, un lokālais OCR šeit nav pieejams, tāpēc tajā nevar "
+        "meklēt.",
+        "На странице {pages} только изображение, а локальный OCR здесь недоступен, поэтому "
+        "искать по ней нельзя."),
+    "library.note.ocr_failed": ("Local OCR could not read page {pages}.",
+                                "Lokālais OCR nespēja nolasīt lappusi {pages}.",
+                                "Локальный OCR не смог прочитать страницу {pages}."),
+    "library.note.ocr_limit": (
+        "Pages {pages} are beyond the OCR limit of {limit} pages and were not read.",
+        "Lappuses {pages} pārsniedz OCR ierobežojumu ({limit} lappuses) un netika nolasītas.",
+        "Страницы {pages} превышают предел OCR ({limit} страниц) и не прочитаны."),
+    "library.note.ocr_read": (
+        "Page {pages} was read with local OCR: compare its passages with the page.",
+        "Lappuse {pages} nolasīta ar lokālo OCR: salīdziniet tās fragmentus ar lappusi.",
+        "Страница {pages} распознана локальным OCR: сверьте её фрагменты со страницей."),
+    "library.remove_failed": ("The document could not be removed: {reason}",
+                              "Dokumentu neizdevās noņemt: {reason}",
+                              "Не удалось удалить документ: {reason}"),
+    "library.removed": (
+        "Removed “{title}” with {passages}; search no longer finds them.",
+        "Noņemts “{title}” kopā ar fragmentiem ({passages}); meklēšana tos vairs neatrod.",
+        "Удалён «{title}» вместе с фрагментами ({passages}); поиск их больше не находит."),
+    "library.reindex_failed": ("The documents could not be read again: {reason}",
+                               "Dokumentus neizdevās nolasīt vēlreiz: {reason}",
+                               "Не удалось перечитать документы: {reason}"),
+    "library.reindexed": ("Read again: {documents}. The citations are unchanged.",
+                          "Nolasīti vēlreiz: {documents}. Atsauces nav mainījušās.",
+                          "Перечитано: {documents}. Ссылки не изменились."),
+    "library.cite_gone": ("Passage {cite} is no longer in the library.",
+                          "Fragmenta {cite} bibliotēkā vairs nav.",
+                          "Фрагмента {cite} больше нет в библиотеке."),
+    "library.open_library": ("Open the research library", "Atvērt pētījuma bibliotēku",
+                             "Открыть исследовательскую библиотеку"),
+    "library.card_empty": (
+        "No documents yet: add papers, plans, manuals or notes to search them offline.",
+        "Vēl nav dokumentu: pievienojiet rakstus, plānus, rokasgrāmatas vai piezīmes, lai tajos "
+        "meklētu bezsaistē.",
+        "Документов пока нет: добавьте статьи, планы, руководства или заметки, чтобы искать по "
+        "ним без сети."),
+    "library.card_body": (
+        "Search this project's documents on this computer, with page and section citations.",
+        "Meklējiet šī projekta dokumentos šajā datorā, ar lappušu un sadaļu atsaucēm.",
+        "Ищите по документам этого проекта на этом компьютере, со ссылками на страницы и "
+        "разделы."),
+    # Why a document cannot be added or shown (research_library.LibraryError).
+    "library.error.unsupported": ("{name} is not a PDF, DOCX, TXT or MD file.",
+                                  "{name} nav PDF, DOCX, TXT vai MD fails.",
+                                  "{name} — не файл PDF, DOCX, TXT или MD."),
+    "library.error.empty": ("{name} is empty.", "{name} ir tukšs.", "{name} пуст."),
+    "library.error.too_large": ("the file is {size}; the library takes files up to {limit}.",
+                                "faila izmērs ir {size}; bibliotēka pieņem failus līdz {limit}.",
+                                "размер файла {size}; библиотека принимает файлы до {limit}."),
+    "library.error.encrypted": ("the PDF is password-protected.", "PDF ir aizsargāts ar paroli.",
+                                "PDF защищён паролем."),
+    "library.error.unreadable": ("the file could not be read; it may be damaged.",
+                                 "failu neizdevās nolasīt; tas var būt bojāts.",
+                                 "файл не удалось прочитать; возможно, он повреждён."),
+    "library.error.no_text": (
+        "no text could be read from {name}. For a scanned PDF, tick “Read image-only PDF pages "
+        "with local OCR” and add it again.",
+        "no {name} neizdevās nolasīt tekstu. Skenētam PDF atzīmējiet “Nolasīt PDF lappuses, "
+        "kurās ir tikai attēls, ar lokālo OCR” un pievienojiet to vēlreiz.",
+        "из {name} не удалось прочитать текст. Для отсканированного PDF отметьте «Распознавать "
+        "страницы PDF, на которых только изображение, локальным OCR» и добавьте его снова."),
+    "library.error.too_many_pages": ("it has {pages} pages; the library takes up to {limit}.",
+                                     "tajā ir {pages} lappuses; bibliotēka pieņem līdz {limit}.",
+                                     "в нём {pages} страниц; библиотека принимает до {limit}."),
+    "library.error.too_much_text": (
+        "it holds more text than the library takes from one document.",
+        "tajā ir vairāk teksta, nekā bibliotēka pieņem no viena dokumenta.",
+        "в нём больше текста, чем библиотека принимает из одного документа."),
+    "library.error.missing": ("the stored copy of {name} is missing.",
+                              "{name} saglabātās kopijas nav.",
+                              "сохранённой копии {name} нет."),
+    "library.error.changed": ("the stored copy of {name} has changed since it was added.",
+                              "{name} saglabātā kopija ir mainījusies kopš pievienošanas.",
+                              "сохранённая копия {name} изменилась после добавления."),
+    "library.error.newer_format": (
+        "This library was written by a newer version of the program (format {found}); this "
+        "version reads up to format {supported}. Nothing was changed.",
+        "Šo bibliotēku ierakstīja jaunāka programmas versija (formāts {found}); šī versija lasa "
+        "līdz formātam {supported}. Nekas netika mainīts.",
+        "Эта библиотека записана более новой версией программы (формат {found}); эта версия "
+        "читает формат до {supported}. Ничего не изменено."),
+    "library.error.cancelled": ("cancelled.", "atcelts.", "отменено."),
+    "library.error.no_page": ("the document has no page {page}.", "dokumentā nav {page}. lappuses.",
+                              "в документе нет страницы {page}."),
+    "library.error.ocr_language": ("this OCR language is not installed.",
+                                   "šī OCR valoda nav instalēta.",
+                                   "этот язык OCR не установлен."),
+    "library.error.language": ("the language is not one the library knows.",
+                               "bibliotēka šo valodu nepazīst.",
+                               "библиотека не знает этот язык."),
+    "library.error.no_document": ("the document is no longer in the library.",
+                                  "dokumenta bibliotēkā vairs nav.",
+                                  "документа больше нет в библиотеке."),
+    "library.error.fts5_unavailable": (
+        "full-text search is not available in this program's database engine.",
+        "pilnteksta meklēšana šīs programmas datubāzes dzinējā nav pieejama.",
+        "полнотекстовый поиск недоступен в движке базы данных этой программы."),
+    "library.error.tokenizer_unavailable": ("this search setting is not available here.",
+                                            "šis meklēšanas iestatījums šeit nav pieejams.",
+                                            "эта настройка поиска здесь недоступна."),
+    # Ask with sources (library_ask.py).
+    "library.ask.title": ("Ask with sources", "Jautāt ar avotiem", "Спросить по источникам"),
+    "library.ask.intro": (
+        "Optional. Your question goes to the AI provider chosen in Settings together with only "
+        "the passages you tick here, after you have seen exactly what is sent. Search works "
+        "without it.",
+        "Nav obligāti. Jūsu jautājums tiek nosūtīts iestatījumos izvēlētajam MI pakalpojumu "
+        "sniedzējam kopā tikai ar šeit atzīmētajiem fragmentiem, pēc tam kad esat redzējis "
+        "tieši to, kas tiks nosūtīts. Meklēšana darbojas arī bez tā.",
+        "Необязательно. Ваш вопрос отправляется провайдеру ИИ, выбранному в настройках, вместе "
+        "только с отмеченными здесь фрагментами, после того как вы увидите, что именно будет "
+        "отправлено. Поиск работает и без этого."),
+    "library.ask.question": ("Your question", "Jūsu jautājums", "Ваш вопрос"),
+    "library.ask.question_hint": ("e.g. Which statements are reverse-scored?",
+                                  "piem., Kuri apgalvojumi tiek vērtēti apgriezti?",
+                                  "напр. Какие утверждения оцениваются в обратном порядке?"),
+    "library.ask.find": ("Find passages", "Atrast fragmentus", "Найти фрагменты"),
+    "library.ask.none": (
+        "No passage of this library matches the question, so there is nothing to send. Nothing "
+        "was sent.",
+        "Neviens šīs bibliotēkas fragments neatbilst jautājumam, tāpēc nav ko sūtīt. Nekas "
+        "netika nosūtīts.",
+        "Ни один фрагмент этой библиотеки не соответствует вопросу, поэтому отправлять нечего. "
+        "Ничего не отправлено."),
+    "library.ask.passages": ("Passages that may be sent: tick the ones to send",
+                             "Fragmenti, kurus var nosūtīt: atzīmējiet sūtāmos",
+                             "Фрагменты, которые можно отправить: отметьте нужные"),
+    "library.ask.choose": ("Tick at least one passage to prepare the request.",
+                           "Atzīmējiet vismaz vienu fragmentu, lai sagatavotu pieprasījumu.",
+                           "Отметьте хотя бы один фрагмент, чтобы подготовить запрос."),
+    "library.ask.sent_passages": ("Passages: {passages} ({cites})", "Fragmenti: {passages} ({cites})",
+                                  "Фрагменты: {passages} ({cites})"),
+    "library.ask.nothing_else": (
+        "Nothing else is sent: no data rows, no other passage and no document file.",
+        "Nekas cits netiek nosūtīts: ne datu rindas, ne citi fragmenti, ne dokumentu faili.",
+        "Больше ничего не отправляется: ни строки данных, ни другие фрагменты, ни файлы "
+        "документов."),
+    "library.ask.consent": (
+        "Send sends exactly this request, once. The project's activity log and the library's "
+        "log record the provider, the model, the tokens and the cite IDs, never the text.",
+        "“Sūtīt” nosūta tieši šo pieprasījumu vienu reizi. Projekta darbību žurnālā un "
+        "bibliotēkas žurnālā tiek ierakstīts pakalpojumu sniedzējs, modelis, marķieri un "
+        "atsauču ID, nekad teksts.",
+        "«Отправить» отправляет ровно этот запрос, один раз. Журнал проекта и журнал библиотеки "
+        "записывают провайдера, модель, токены и идентификаторы ссылок, но никогда не текст."),
+    "library.ask.error.no_sources": ("Not sent: no passage is ticked.",
+                                     "Nav nosūtīts: neviens fragments nav atzīmēts.",
+                                     "Не отправлено: не отмечен ни один фрагмент."),
+    "library.ask.error.too_long": (
+        "Not sent: the request is too long. Untick a passage and try again.",
+        "Nav nosūtīts: pieprasījums ir pārāk garš. Noņemiet atzīmi kādam fragmentam un "
+        "mēģiniet vēlreiz.",
+        "Не отправлено: запрос слишком длинный. Снимите отметку с одного из фрагментов и "
+        "повторите."),
+    "library.ask.meta": ("Answer · {provider}, model {model} · {time} · tokens: {tokens}",
+                         "Atbilde · {provider}, modelis {model} · {time} · marķieri: {tokens}",
+                         "Ответ · {provider}, модель {model} · {time} · токены: {tokens}"),
+    "library.ask.not_in_sources": (
+        "The answer: the passages sent do not answer this question. Nothing from outside them "
+        "was added.",
+        "Atbilde: nosūtītie fragmenti uz šo jautājumu neatbild. Nekas ārpus tiem netika "
+        "pievienots.",
+        "Ответ: отправленные фрагменты не отвечают на этот вопрос. Ничего извне не добавлено."),
+    "library.ask.cited": ("Citations checked: {labels}. Each names a passage that was sent.",
+                          "Atsauces pārbaudītas: {labels}. Katra norāda uz nosūtītu fragmentu.",
+                          "Ссылки проверены: {labels}. Каждая указывает на отправленный "
+                          "фрагмент."),
+    "library.ask.unknown_title": ("Citations of passages that were not sent",
+                                  "Atsauces uz fragmentiem, kas netika nosūtīti",
+                                  "Ссылки на фрагменты, которые не отправлялись"),
+    "library.ask.unknown": (
+        "{labels}: no passage with this label was sent. Treat what cites it as unsupported.",
+        "{labels}: fragments ar šādu apzīmējumu netika nosūtīts. Uzskatiet to, kas uz to "
+        "atsaucas, par nepamatotu.",
+        "{labels}: фрагмент с такой меткой не отправлялся. Считайте то, что на него ссылается, "
+        "неподтверждённым."),
+    "library.ask.foreign": (
+        "References to sources that were not sent: {references}. Check them before any use.",
+        "Atsauces uz avotiem, kas netika nosūtīti: {references}. Pārbaudiet tās pirms "
+        "lietošanas.",
+        "Ссылки на источники, которые не отправлялись: {references}. Проверьте их перед "
+        "использованием."),
+    "library.ask.uncited": ("{statements} cite no passage: check them against the sources.",
+                            "Bez atsauces uz fragmentu: {statements}. Pārbaudiet tos avotos.",
+                            "Без ссылки на фрагмент: {statements}. Проверьте их по источникам."),
+    "library.ask.numbers": (
+        "Not found in the passages sent: {numbers}. These numbers may be invented or changed; "
+        "only the sources and the engine's own results count.",
+        "Nav atrasti nosūtītajos fragmentos: {numbers}. Šie skaitļi var būt izdomāti vai "
+        "mainīti; nozīme ir tikai avotiem un dzinēja rezultātiem.",
+        "Не найдены в отправленных фрагментах: {numbers}. Эти числа могут быть выдуманы или "
+        "изменены; значение имеют только источники и результаты движка."),
+})
+
+
 # Engine-facing confirmation and option labels: canonical English (kept in
 # provenance) → displayed LV/RU. Method names stay international.
 LABELS: dict[str, tuple[str, str]] = {
@@ -3450,6 +3922,16 @@ PLURALS: dict[str, dict[str, tuple[str, ...]]] = {
               "ru": ("пункт", "пункта", "пунктов")},
     "forms": {"en": ("form", "forms"), "lv": ("forma", "formas", "formu"),
               "ru": ("форма", "формы", "форм")},
+    # Stage 37.3: the research library.
+    "documents": {"en": ("document", "documents"), "lv": ("dokuments", "dokumenti", "dokumentu"),
+                  "ru": ("документ", "документа", "документов")},
+    "passages": {"en": ("passage", "passages"), "lv": ("fragments", "fragmenti", "fragmentu"),
+                 "ru": ("фрагмент", "фрагмента", "фрагментов")},
+    "pages": {"en": ("page", "pages"), "lv": ("lappuse", "lappuses", "lappušu"),
+              "ru": ("страница", "страницы", "страниц")},
+    "statements": {"en": ("statement", "statements"),
+                   "lv": ("apgalvojums", "apgalvojumi", "apgalvojumu"),
+                   "ru": ("утверждение", "утверждения", "утверждений")},
 }
 
 

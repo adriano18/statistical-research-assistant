@@ -160,6 +160,8 @@ class Draft:
     tokens: int = 0
     task: str = "explain"
     logged: bool = True          # recorded in the activity log (or the local log)
+    # Stage 37: quoted spans that appear in nothing that was sent.
+    unverified_quotes: tuple[str, ...] = ()
 
     @property
     def verified(self) -> bool:
@@ -357,6 +359,8 @@ class Request:
     language: str
     reply_tokens: int
     includes_result: bool
+    # Stage 37: (column, reason) left out of the data rows, for the preview.
+    excluded: tuple[tuple[str, str], ...] = ()
 
     @property
     def characters(self) -> int:
@@ -394,8 +398,9 @@ def build_request(task: str, *, result: str = "", question: str = "", sources=()
                             question=question)
     rows = ai_context.data_rows(sources, session) if context.get("raw_data", "").strip() else 0
     material = tuple(text for text in (result, question, *context.values()) if text.strip())
+    excluded = tuple(ai_context.excluded_columns(session)) if "raw_data" in sources else ()
     return Request(task, prompt, sources, material, rows, depth, language,
-                   TASK_SPECS[task].reply_tokens, bool(result.strip()))
+                   TASK_SPECS[task].reply_tokens, bool(result.strip()), excluded)
 
 
 def local_log_path(data_root: Path) -> Path:
@@ -480,7 +485,8 @@ def send(request: Request, *, setup: ai_context.Readiness, key: str, project=Non
     return Draft(reply.text.strip(), provider, reply.model, request.depth, sources,
                  tuple(unverified_numbers(reply.text, *request.material)),
                  datetime.now(timezone.utc).isoformat(timespec="seconds"), tokens,
-                 task=request.task, logged=logged)
+                 task=request.task, logged=logged,
+                 unverified_quotes=tuple(unverified_quotes(reply.text, *request.material)))
 
 
 # ---------------------------------------------------------------- numbers
@@ -532,6 +538,51 @@ def unverified_numbers(draft: str, *sources: str) -> list[str]:
     return flagged
 
 
+# ----------------------------------------------------------------- quotes
+# Stage 37 (independent review §7): every quoted span of a reply is looked up
+# in what was sent, as numbers are. Double quotes of every style the three
+# languages use, and ‘single’ curly quotes (a plain apostrophe never opens one).
+_QUOTES = re.compile(r'"([^"\n]{2,400})"|“([^”\n]{2,400})”|„([^“”\n]{2,400})[“”]'
+                     r"|«([^»\n]{2,400})»|‘([^’\n]{2,400})’")
+_ELLIPSIS = re.compile(r"\s*(?:…|\.\.\.|\[\s*(?:…|\.\.\.)\s*\])\s*")
+_LABELS = re.compile(r"\[\s*S\s?\d{1,3}(?:\s*[,;]\s*S\s?\d{1,3})*\s*\]", re.I)
+
+
+def quotes_in(text: str) -> list[str]:
+    """The quoted spans of ``text`` (without their quotation marks)."""
+    found = []
+    for match in _QUOTES.finditer(text):
+        span = next(group for group in match.groups() if group is not None)
+        if any(c.isalpha() for c in span):
+            found.append(span)
+    return found
+
+
+def _quote_key(text: str) -> str:
+    import unicodedata
+
+    text = unicodedata.normalize("NFC", text).casefold()
+    text = text.replace("ё", "е").replace("’", "'").replace("‘", "'").replace("ʼ", "'")
+    text = re.sub(r"[‐-―−]", "-", text)
+    return " ".join(text.split())
+
+
+def unverified_quotes(draft: str, *sources: str) -> list[str]:
+    """Quoted spans of ``draft`` that do not appear, word for word, in any of
+    ``sources`` (case, spacing, dash and apostrophe styles aside; an ellipsis
+    inside a quote separates parts that must each appear)."""
+    haystack = [_quote_key(source) for source in sources if source]
+    flagged: list[str] = []
+    for quote in quotes_in(draft):
+        parts = [_quote_key(_LABELS.sub(" ", part)).strip(" .,;:!?") for part in
+                 _ELLIPSIS.split(quote)]
+        parts = [part for part in parts if any(c.isalpha() for c in part)]
+        if parts and not all(any(part in source for source in haystack) for part in parts):
+            if quote not in flagged:
+                flagged.append(quote)
+    return flagged
+
+
 def highlight(text: str, unverified) -> list[tuple[str, bool]]:
     """``text`` cut into pieces, each with whether it is an unverified number
     (every occurrence of each one), for showing the draft."""
@@ -568,4 +619,6 @@ def explain(project, title: str, report: str, *, depth: str, language: str, prov
     project.log_ai_request(provider, reply.model, sources, tokens, task="explain")
     return Draft(reply.text.strip(), provider, reply.model, depth, sources,
                  tuple(unverified_numbers(reply.text, report, design, *context.values())),
-                 datetime.now(timezone.utc).isoformat(timespec="seconds"), tokens)
+                 datetime.now(timezone.utc).isoformat(timespec="seconds"), tokens,
+                 unverified_quotes=tuple(unverified_quotes(reply.text, report, design,
+                                                           *context.values())))

@@ -173,6 +173,7 @@ class WorkspaceApp:
         self._install_services()
         from workspace_analyze import AnalyzePage, ReportsPage, ResultsPage
         from workspace_charts import ChartStudioPage
+        from workspace_library import LibraryPage
         from workspace_projects import ProjectHub, ProjectPage
         from workspace_questionnaires import ImportPage, QuestionnairesPage
 
@@ -184,6 +185,8 @@ class WorkspaceApp:
             "analyze": AnalyzePage(self), "results": ResultsPage(self),
             "reports": ReportsPage(self), "settings": SettingsPage(self),
             "help": HelpPage(self), "charts": ChartStudioPage(self),
+            # Stage 37.3: the project's research library (from the Project page).
+            "library": LibraryPage(self),
         }
         self.session.subscribe(self._on_session_change)
         from survey_storage import get_survey
@@ -381,8 +384,8 @@ class WorkspaceApp:
         """Open ``route``; ``section`` names a part of it (a research step such
         as "variables" or "method"), which the page scrolls to and the journey
         marks as current (Stage 36, D1)."""
-        if route == "project" and not self.projects.active:
-            route = "home"            # the project page needs an open project
+        if route in ("project", "library") and not self.projects.active:
+            route = "home"            # the project page and its library need a project
         self.route = route
         self.section = section
         self.area = self.SUB_ROUTES.get(route, route)
@@ -428,8 +431,9 @@ class WorkspaceApp:
                ("report", "reports"))
     JOURNEY_ROUTES = {"project": "question", "data": "data", "analyze": "design",
                       "results": "result", "reports": "report", "charts": "result"}
-    # Pages that belong to an area of the sidebar (Chart Studio is part of Results).
-    SUB_ROUTES = {"import": "questionnaires", "charts": "results"}
+    # Pages that belong to an area of the sidebar (Chart Studio is part of Results,
+    # the research library of the open project is part of its Project page).
+    SUB_ROUTES = {"import": "questionnaires", "charts": "results", "library": "project"}
     SECTION_KEYS = {("data", "data"): "data-top", ("data", "variables"): "data-variables",
                     ("analyze", "design"): "step-design", ("analyze", "method"): "step-method",
                     ("analyze", "variables"): "step-variables",

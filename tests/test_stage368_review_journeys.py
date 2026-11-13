@@ -71,8 +71,8 @@ def notes_value(ws) -> str:
 
 class JourneyOrderTests(unittest.TestCase):
     def test_the_review_journeys_follow_the_others(self):
-        self.assertEqual(list(e2e.JOURNEYS)[16:], ["confirmations", "report-composition"])
-        self.assertEqual(len(e2e.JOURNEYS), 18)
+        self.assertEqual(list(e2e.JOURNEYS)[16:18], ["confirmations", "report-composition"])
+        self.assertEqual(len(e2e.JOURNEYS), 19)       # Stage 37.3 appends research-library
 
 
 class ConfirmationsJourneyTests(unittest.TestCase):

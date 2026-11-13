@@ -289,6 +289,10 @@ class AssistantPanel:
         rows = (ui.t("assistant.preview.rows_some", rows=request.data_rows) if request.data_rows
                 else ui.t("assistant.preview.rows_none"))
         text = wc.text(ui, request.prompt, tk.TYPE_BODY, selectable=True, data="ai-preview-text")
+        # Stage 37: identifier and free-text columns never go with the rows.
+        left_out = ([wc.text(ui, ui.t("assistant.preview.excluded",
+                                      columns=excluded_text(ui, request.excluded)),
+                             data="ai-preview-excluded")] if request.excluded else [])
         return wc.card(ui, [
             wc.text(ui, ui.t("assistant.preview.to", provider=setup.provider_name,
                              host=setup.host, model=setup.model), data="ai-preview-to"),
@@ -296,6 +300,7 @@ class AssistantPanel:
                              tokens=request.tokens, reply=request.reply_tokens),
                     data="ai-preview-size"),
             wc.text(ui, rows, data="ai-preview-rows"),
+            *left_out,
             wc.text(ui, ui.t("assistant.preview.sources", sources=", ".join(included)),
                     data="ai-preview-sources"),
             wc.expansion(ui, wc.text(ui, ui.t("assistant.preview.text"), tk.TYPE_LABEL,
@@ -342,6 +347,12 @@ class AssistantPanel:
                               data="ai-unverified")
         else:
             check = wc.notice(ui, ui.t("assistant.verified"), "info", data="ai-unverified")
+        # Stage 37: a quote that appears in nothing that was sent is flagged.
+        quotes = ([wc.notice(ui, ui.t("assistant.unverified_quotes",
+                                      quotes="; ".join(f"“{q}”" for q in draft.unverified_quotes)),
+                             "warning", title=ui.t("assistant.unverified_quotes_title"),
+                             data="ai-unverified-quotes")]
+                  if draft.unverified_quotes else [])
         copy = wc.button(ui, ui.t("assistant.copy"), icon=ft.Icons.CONTENT_COPY,
                          action=ft.CopyToClipboard(draft.text), data="ai-copy")
         copy.on_click = lambda e, i=entry.id: self._copied(i)
@@ -351,6 +362,7 @@ class AssistantPanel:
             wc.caption(ui, meta, data="ai-draft-meta"),
             body,
             check,
+            *quotes,
         ], actions=[
             copy,
             wc.button(ui, ui.t("assistant.use_note"), lambda e, i=entry.id: self._use_note(i),
@@ -495,6 +507,9 @@ class AssistantPanel:
         lines = [label]
         if draft.unverified:
             lines.append(app.t("assistant.note_unverified", numbers=", ".join(draft.unverified)))
+        if draft.unverified_quotes:
+            lines.append(app.t("assistant.note_unverified_quotes",
+                               quotes="; ".join(f"“{q}”" for q in draft.unverified_quotes)))
         lines.append(draft.text)
         entry = app.session.result(entry_id)
         if entry is None:
@@ -515,6 +530,11 @@ class AssistantPanel:
         state = self.state(entry_id)
         state.draft, state.used, state.notice = None, False, None
         self.app.render()
+
+
+def excluded_text(ui, excluded) -> str:
+    """"code (identifier), comment (free text)": the columns the data rows leave out."""
+    return ", ".join(f"{name} ({ui.t('ai.excluded.' + reason)})" for name, reason in excluded)
 
 
 def _provider_name(provider: str) -> str:
