@@ -42,6 +42,8 @@ Use a Windows 10 or 11 PC. You need about 45 minutes. You need two downloads fro
 
 Do **not** use real study data for this check.
 
+The program always starts in the classic interface. Everything in this checklist after step 2 is in the research workspace: after every start, press **Open the preview** on the classic Home screen first. The program does not yet remember which interface was used last (§4).
+
 For each step, tick **Works** or **Problem**. If there is a problem, write down three things, then go on with the next step:
 - what you did;
 - what you expected;
@@ -52,17 +54,17 @@ Add a screenshot (Win + Shift + S, then paste into a document) or the message te
 | # | Do this | You should see | Works / Problem |
 |---|---|---|---|
 | 1 | Run the setup program. Windows SmartScreen may say "Windows protected your PC": this preview is not signed yet. Choose **More info → Run anyway** only for this preview. | The setup finishes without asking for administrator rights; "Statistical Research Assistant" is in the Start menu | |
-| 2 | Start the program from the Start menu | The Home screen appears within about 10 seconds, not a black or empty window | |
-| 3 | Create a project "Test A". Close the program and start it again | "Test A" is offered again, with what you put in it | |
+| 2 | Start the program from the Start menu. It opens in the **classic interface**. On its Home screen, under "Try the new research workspace", press **Open the preview** | The classic Home screen appears within about 10 seconds, not a black or empty window. After **Open the preview** you see the research workspace with Home, Data, Questionnaires, Analyze, Results and Reports on the left | |
+| 3 | Create a project "Test A". Close the program, start it again and press **Open the preview** | "Test A" is offered again, with what you put in it | |
 | 4 | Open `synthetic_ucla_sacs_55.csv` (Data → Open), then confirm the measurement levels it asks about | The variables are listed with their levels; nothing is silently changed | |
 | 5 | Analyze: choose one scale and "all other scales", Spearman, then Run | One table: every pair with N, coefficient, interval, raw p and corrected p; a text that never claims causation | |
 | 6 | Open the result's chart in Chart Studio. Change the chart type and the title, then press **Copy** and paste into Word | The chart in Word looks like the one in the program, with your title | |
 | 7 | Questionnaires → Import: choose `synthetic_cope_two_forms_60_unnumbered.docx` | Both forms are shown; you choose one; its items, and no instructions or references, are listed | |
 | 8 | Import `synthetic_lv_table_scan_52.pdf` and choose **Read with local OCR** (Latvian) | Progress shows which page is being read; then 52 candidate items, several marked "needs attention"; nothing is confirmed for you | |
-| 9 | Close the program during step 8's review, start it again and open the same PDF | The review comes back where you left it | |
+| 9 | Close the program during step 8's review. Start it again, press **Open the preview** and open the same PDF | The review comes back where you left it | |
 | 10 | Reports: add two results to the report, then **Save as Word** | The Word file opens in Word; its tables are real tables you can edit | |
 | 11 | Settings → About and updates | The version number and "Check for updates"; with no newer version, it says so | |
-| 12 | Uninstall the program (Windows Settings → Apps), then install it again | Your project "Test A" is still there after reinstalling | |
+| 12 | Uninstall the program (Windows Settings → Apps), then install it again and press **Open the preview** | Your project "Test A" is still there after reinstalling | |
 | 13 | Throughout | You never had to install Python, Tesseract or anything else | |
 
 When a newer preview is published: the program shows it with "What's new". Press **Update now**. The program closes, updates and starts again, and your projects are unchanged.
@@ -75,3 +77,6 @@ When a newer preview is published: the program shows it with "What's new". Press
   - K3: data preparation keeps the confirmed levels and is recorded in the project history.
   The Windows GUI journeys for K1 (another variable, then run again) and K2 (report order, title and sections after a restart) are listed in §2 when they have run.
 - The installer is **unsigned**. SmartScreen warnings are expected and must not be bypassed for anyone but the owner testing this preview.
+- **The program starts in the classic interface every time.** The research workspace opens from its Home screen ("Open the preview").
+  - The automated journeys start the workspace directly (`SRA_UI=workspace`), so they do not cover this first click.
+  - Whether the workspace should open by default, or the program should remember the last interface, is an owner decision for the next stage (`docs/STAGE368_RELEASE_CHECKLIST.md` §4).

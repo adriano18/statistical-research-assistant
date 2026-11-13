@@ -28,7 +28,7 @@ Every gate below names its evidence. "done" means verified by the named test or 
 | All 13 Windows GUI journeys pass on the final commit | | §5 |
 | Installer and A → B update pass | | §5 |
 | Project data survive update and reinstall | | installer workflow (upgrade, uninstall, reinstall); update workflow |
-| AI privacy gates enforced | see `docs/STAGE368_AI_GATE.md` | |
+| AI privacy gates enforced | done with mocked providers | `docs/STAGE368_AI_GATE.md`: the 10 gates of issue #62 in `tests/test_stage368_ai_gate.py` (30 tests, a network guard fails any real connection). Four defects found and fixed: a model refusing the request, a timed-out generation sent four times, cut-off replies crashing Test connection, Send after a provider change elsewhere. The assistant is off until a key and a model are set. **No real provider was called**: the live smoke test needs an authorised key and runs only when the owner enables it |
 | Unsigned-release limitations explicit | done | this file §4; installer and release texts say "unsigned preview" |
 | Checklist and evidence complete | this file | |
 
@@ -51,6 +51,7 @@ Every gate below names its evidence. "done" means verified by the named test or 
 3. **Code signing (stable channel only).** A certificate as `WINDOWS_SIGNING_PFX_BASE64` and `WINDOWS_SIGNING_PFX_PASSWORD`. Without it only the preview channel can be released, and it stays "unsigned preview".
 4. **Corresponding source for the OCR runtime's GPL/LGPL DLLs** (jbigkit, libiconv, libintl, libunistring, libidn2). Attach the pinned MSYS2 source packages to the release, or keep the written offer of `THIRD_PARTY_NOTICES.txt`.
 5. **Merge** (`docs/STAGE368_BRANCH_INTEGRATION.md`): retarget PR #64 to `main` and use "Create a merge commit". `release.yml` can be dispatched only once it is on `main`.
+6. **Which interface opens first.** The program starts in the classic interface. The research workspace, which the changelog describes, opens from its Home screen ("Open the preview"), and the choice is not remembered between starts. Options for the next stage: open the workspace by default, or remember the interface used last.
 
 ## 5. All major checks on one final commit
 
