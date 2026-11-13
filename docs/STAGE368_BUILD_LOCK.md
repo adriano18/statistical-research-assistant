@@ -197,7 +197,7 @@ The SBOM (`diagnostics/sbom.cdx.json` of every build) has 228 components: 49 Pyt
 
 | Component | Licence | Where it runs | What it requires before a public release |
 |---|---|---|---|
-| **pingouin 0.7.0** | **GPL-3.0** | imported **in the program's own process** (`reliability.py`, Cronbach's α and its Feldt interval) | **Owner decision (P0 blocker for a public release).** The repository has **no LICENSE file**, so no licence to the program itself is granted. Distributing it with a GPL-3.0 library imported into the same process makes the combined work subject to GPL-3.0. Two ways out: (a) the owner licenses Statistical Research Assistant under GPL-3.0-or-later (all other components are compatible) and ships the source; or (b) α and the Feldt interval are computed in-house, verified against pingouin in the tests (pingouin moves to the build/test lock), and pingouin leaves the bundle. Option (b) is a change to a validated numerical path; it needs an oracle comparison to 1e-12 and the owner's go-ahead. Not done in this RC. |
+| **pingouin 0.7.0** | **GPL-3.0** | imported **in the program's own process** (`reliability.py`, Cronbach's α and its Feldt interval) | **Owner decision (P0 blocker for a public release).** The repository has **no LICENSE file**, so no licence to the program itself is granted. Distributing it with a GPL-3.0 library imported into the same process makes the combined work subject to GPL-3.0. Two ways out: (a) the owner licenses Statistical Research Assistant under GPL-3.0-or-later (all other components are compatible) and ships the source; or (b) α and the Feldt interval are computed in-house, verified against pingouin in the tests (pingouin moves to the build/test lock), and pingouin leaves the bundle. Option (b) is a change to a validated numerical path; it needs an oracle comparison to 1e-12 and the owner's go-ahead. Not done in this RC. **Stage 37 (`claude/stage37-methods`, one separate commit the owner can drop):** option (b) is implemented. See §5.3. |
 | jbigkit 2.1 | GPL-2.0-or-later | `libjbig` DLL loaded by libtiff inside `tesseract.exe`, a separate process the program starts | Ship the licence text (done: `bundled_ocr/…/licenses/`, `THIRD_PARTY_NOTICES.txt`). Offer the corresponding source: attach the pinned MSYS2 source packages (or a written offer) to each public release. Not yet attached; release checklist item |
 | libiconv, gettext-runtime (libintl), libunistring, libidn2 | LGPL-2.1+/LGPL-3.0+ (or dual with GPL) | DLLs of the OCR engine | Licence texts shipped (done). Source available (same as above). DLLs are replaceable separate files (done) |
 | libgcc, libstdc++, libgomp | GPL-3.0+ WITH GCC Runtime Library Exception 3.1 | DLLs of the OCR engine | The exception permits distribution with the compiled program; licence texts shipped |
@@ -209,6 +209,35 @@ Everything else is permissive (MIT, BSD, Apache-2.0, PSF, MIT-CMU, Zlib, CC0). P
 ### 5.2 The project's own licence
 
 There is no `LICENSE` file. Before any public distribution the owner must choose one. That choice also settles the pingouin question above. This RC does not add a licence: it is the owner's decision.
+
+### 5.3 Stage 37: the in-house α (option b, one separate commit)
+
+**What changed.**
+
+- `cronbach.py` computes Cronbach's α, Feldt's interval and α if an item is deleted from the published formulas (Cronbach 1951; Feldt 1965; Feldt, Woodruff & Salih 1987). No pingouin code was used.
+- `reliability.py` calls it. The Feldt bounds are rounded to three decimals, as every earlier version reported them.
+- `item_diagnostics.py` names the method "computed by this program from the published formula", and its provenance no longer lists pingouin. `project_store.LIBRARIES` drops pingouin and scikit-learn.
+
+**Validation** (`tests/test_cronbach.py`).
+
+- Hand calculation with exact fractions.
+- The written-out Feldt formula with `f.isf`.
+- pingouin as a **test-only oracle**:
+  - α and α if deleted agree to 1e-12. Observed: at most 2.7e-15 over 310 data sets. They are not always bit-identical, because the program sums item variances and the total-score variance directly while pingouin sums the covariance matrix.
+  - The 3-decimal Feldt bounds are identical in all 310 data sets. They are also identical to what the program reported before, on every data set and on the bundled example.
+- **Difference of the oracle, not of the program.** Given rows with missing answers, pingouin's own `nan_policy="listwise"` keeps the rows before deletion in Feldt's n. The program always passed the complete cases and still uses their n.
+- A subprocess test: an α and the item diagnostics never import pingouin or scikit-learn.
+
+**Locks.**
+
+- pingouin moves from `requirements.in` to `requirements-dev.in`.
+- Both hashed locks were regenerated with the header's flags and `--exclude-newer 2026-11-09T19:00:00Z`.
+- The runtime lock loses exactly cloudpickle, joblib, pandas-flavor, pingouin, scikit-learn, seaborn, tabulate and xarray (49 → 41 packages). Every other pin (version, marker and hashes) is unchanged.
+- The development lock gains pingouin and those packages at the same versions and hashes.
+- seaborn and scikit-learn are not imported by the program, so they are not kept as explicit requirements.
+- The main unit-test job installs both locks, so the oracle runs. The pruned-runtime job keeps the runtime lock alone, and the pingouin tests skip there.
+
+**The owner's decision remains.** Choosing the program's licence is still the owner's decision; this commit does not choose one, and it adds no LICENSE file. With the commit, the bundle no longer contains a GPL-3.0 Python library in the program's process. The OCR runtime's GPL/LGPL DLLs (§5.1) still need their notices and the corresponding source. Consult licensing expertise before any public or commercial distribution. Dropping the commit restores option (a)'s situation unchanged.
 
 ## 6. Supported operating systems and architectures
 

@@ -13,3 +13,8 @@ flet-web==1.1.2
 zstandard>=0.23,<1
 # UI Automation driver of the Windows GUI journeys.
 pywinauto==0.6.9 ; sys_platform == "win32"
+# Test-only numerical oracle (GPL-3.0): Cronbach's α, its Feldt interval and
+# repeated-measures ANOVA are checked against it (tests/test_cronbach.py,
+# tests/test_repeated.py). The program computes α itself (cronbach.py) and
+# never imports pingouin, so it is not bundled (Stage 37 licence path).
+pingouin>=0.6,<1

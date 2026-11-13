@@ -30,11 +30,11 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 
-QUESTION_TYPES = ("compare", "change", "relate", "associate", "predict", "scale", "structure",
-                  "describe")
+QUESTION_TYPES = ("compare", "change", "relate", "associate", "predict", "process", "scale",
+                  "structure", "describe")
 # Question types whose hypotheses have an H0 and a direction (scale, structure
 # and describe questions state expectations, the measurement layer of 37.1).
-TESTABLE = ("compare", "change", "relate", "associate", "predict")
+TESTABLE = ("compare", "change", "relate", "associate", "predict", "process")
 DIRECTIONS = ("two-sided", "greater", "less")
 DESIGNATIONS = ("primary", "secondary", "exploratory")
 STEP_KEYS = ("hypothesis", "variables", "design", "method", "result", "checks",

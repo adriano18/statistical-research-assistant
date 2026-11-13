@@ -51,25 +51,24 @@ def analyze_cronbach(df: pd.DataFrame, item_names: list[str]) -> ReliabilityResu
     if complete.sum(axis=1).var(ddof=1) <= 0:
         raise ValueError("The total score has no variation.")
 
-    # Imported on first use: pingouin pulls in scikit-learn, seaborn and
-    # xarray, the largest single cost of starting the application.
-    import pingouin as pg
+    # Stage 37: α, Feldt's interval and α if deleted are computed in-house
+    # from the published formulas (cronbach.py; pingouin is a test-only
+    # oracle). The interval bounds are rounded to three decimals, as every
+    # earlier version reported them.
+    from cronbach import alpha_if_deleted as _alpha_if_deleted
+    from cronbach import cronbach_alpha, feldt_interval
 
-    alpha, ci = pg.cronbach_alpha(data=complete, nan_policy="listwise")
+    values = complete.to_numpy(dtype=float)
+    alpha = cronbach_alpha(values)
+    ci = np.round(feldt_interval(alpha, len(complete), len(items)), 3)
     if not np.isfinite(alpha) or not np.all(np.isfinite(ci)):
         raise ValueError("Could not calculate a finite alpha and confidence interval.")
 
     alpha_if_deleted = {}
     if len(items) >= 4:
-        for name in items:
-            reduced = complete.drop(columns=name)
-            if (reduced.sum(axis=1).var(ddof=1) > 0
-                    and (reduced.var(ddof=1) > 0).all()):
-                reduced_alpha, _ = pg.cronbach_alpha(
-                    data=reduced, nan_policy="listwise"
-                )
-                if np.isfinite(reduced_alpha):
-                    alpha_if_deleted[name] = float(reduced_alpha)
+        for name, reduced_alpha in zip(items, _alpha_if_deleted(values)):
+            if reduced_alpha is not None and np.isfinite(reduced_alpha):
+                alpha_if_deleted[name] = float(reduced_alpha)
 
     warnings = [
         "Alpha describes internal consistency, not validity or unidimensionality.",

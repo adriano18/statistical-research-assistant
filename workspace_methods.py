@@ -34,6 +34,9 @@ class Role:
     optional: bool = False
     binary: bool = False           # numeric 0/1 required
     maximum: int | None = None     # engine limit for multiple roles
+    # Stage 37: the role names a variable already in another role (the two
+    # parts of a product term); it is not a second use of that variable.
+    refers: bool = False
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,10 @@ class Option:
     label: str                     # classic English label
     choices: tuple[tuple[str, str], ...]
     default: str
+    # Stage 37: no default. The researcher chooses (e.g. which path W
+    # moderates); Run waits, and ``prompt`` (a text key) says what to choose.
+    required: bool = False
+    prompt: str = ""
 
 
 @dataclass(frozen=True)
@@ -218,6 +225,129 @@ def _run_ancova(df, roles, options, confirms, session):
     return runs.run_ancova(df, roles["outcome"], roles["group"],
                            list(roles.get("covariates") or []), options["mode"],
                            confirms.get("model", False))
+
+
+# ------------------------------------------------- Stage 37 (Issue #66): models
+PROCESS_METHODS = ("mediation", "moderation", "conditional_process")
+QUANTITATIVE_OR_CODED = ("scale", "nominal")      # nominal only when coded 0/1 (checked)
+
+
+def _require(spec_key: str, options: dict, confirms: dict) -> None:
+    """Every confirmation the method asks for must be given before the
+    engine runs (the researcher's statements are part of the result)."""
+    spec = METHODS[spec_key]
+    missing = [c.label for c in required_confirmations(spec, options)
+               if not confirms.get(c.key)]
+    if missing:
+        raise ValueError("Confirm first: " + "; ".join(missing))
+
+
+def _run_linear_model(df, roles, options, confirms, session):
+    _require("linear_model", options, confirms)
+    product = tuple(name for name in (roles.get("product_a"), roles.get("product_b")) if name)
+    return runs.run_linear_model(
+        df, roles["outcome"], list(roles.get("predictors") or []),
+        list(roles.get("factors") or []), product=product or None,
+        reference=options["reference"], center=options["center"] == "yes",
+        hc3=options["hc3"] == "yes", confirmed=True)
+
+
+def _process_runner(model: str | None):
+    """The runner of a path-model method; ``None``: the model is the option
+    the researcher chose (conditional process: 7 or 14)."""
+    def runner(df, roles, options, confirms, session):
+        key = {"4": "mediation", "1": "moderation"}.get(model or "", "conditional_process")
+        _require(key, options, confirms)
+        chosen = model or options.get("method", "")
+        if chosen not in ("1", "4", "7", "14"):
+            raise ValueError("Choose which path W moderates (Model 7 or Model 14); the "
+                             "program does not choose it.")
+        return runs.run_process(
+            df, model=chosen, x=roles["x"], y=roles["y"],
+            mediators=list(roles.get("mediators") or []), w=roles.get("w") or None,
+            covariates=list(roles.get("covariates") or []),
+            center=options.get("center") == "mean", hc3=options.get("hc3") == "yes",
+            resamples=int(options.get("resamples") or 5000),
+            sensitivity=int(options.get("sensitivity") or 0), language=_language(session))
+    return runner
+
+
+MEDIATORS_A_PRIORI = Confirmation(
+    "mediators_a_priori",
+    "I named the mediators from theory or the research plan before seeing results, not by "
+    "their p-values", kind="design", about=("mediators",))
+CROSS_SECTIONAL = Confirmation(
+    "cross_sectional",
+    "I understand that cross-sectional data cannot establish causal mediation: an indirect "
+    "path is a pattern of conditional associations", kind="design", about=("x", "mediators", "y"))
+MODERATOR_A_PRIORI = Confirmation(
+    "moderator_a_priori",
+    "I named the moderator W from theory or the research plan before seeing results",
+    kind="design", about=("w",))
+MODEL7_PATH = Confirmation(
+    "model7_path", "I chose Model 7 (W moderates X → M) from theory, before seeing results",
+    applies_to=("7",), kind="design", about=("x", "mediators", "w"))
+MODEL14_PATH = Confirmation(
+    "model14_path", "I chose Model 14 (W moderates M → Y) from theory, before seeing results",
+    applies_to=("14",), kind="design", about=("mediators", "w", "y"))
+PROCESS_ASSUMPTIONS = Confirmation(
+    "assumptions",
+    "I reviewed linearity, residuals, influential cases, measurement scales and missing data")
+HC3_OPTION = Option("hc3", "Use HC3 heteroskedasticity-robust coefficient standard errors",
+                    (("no", "No"), ("yes", "Yes")), "no")
+RESAMPLES_OPTION = Option("resamples", "Bootstrap resamples (percentile interval)",
+                          (("5000", "5000 (default)"), ("10000", "10000"),
+                           ("1000", "1000 (quick check only)")), "5000")
+CENTER_OPTION = Option("center", "Mean-centre the variables that form products",
+                       (("no", "No"), ("mean", "Yes, mean-centre")), "no")
+SENSITIVITY_OPTION = Option("sensitivity", "Monte Carlo sensitivity simulation at this N",
+                            (("0", "Off"), ("500", "500 replications (assumed effect sizes)")),
+                            "0")
+MODEL_OPTION = Option("method", "PROCESS-equivalent model: which path W moderates",
+                      (("7", "Model 7 · W moderates X → M (a path)"),
+                       ("14", "Model 14 · W moderates M → Y (b path)")), "", required=True,
+                      prompt="option.moderated_path")
+PROCESS_X = Role("x", "role.process_x", QUANTITATIVE_OR_CODED)
+PROCESS_Y = Role("y", "role.process_y", ("scale",))
+PROCESS_M = Role("mediators", "role.mediators", ("scale",), multiple=True, minimum=1, maximum=4)
+PROCESS_W = Role("w", "role.moderator", QUANTITATIVE_OR_CODED)
+PROCESS_COVARIATES = Role("covariates", "role.process_covariates", QUANTITATIVE_OR_CODED,
+                          multiple=True, optional=True, maximum=8)
+
+
+def process_problems(roles: dict, session) -> list[tuple[str, dict]]:
+    """X, W and covariates of a path model are quantitative or coded 0/1: a
+    nominal variable with more categories needs dummy codes first."""
+    problems = []
+    for role in ("x", "w", "covariates"):
+        for name in _names(roles.get(role)):
+            info = session.variables.get(name)
+            if info is not None and info.confirmed == "nominal" and not info.binary:
+                problems.append(("block.process_nominal", {"name": name}))
+    return problems
+
+
+def linear_problems(roles: dict, session) -> list[tuple[str, dict]]:
+    """At least one predictor; a product term names two terms of the model."""
+    problems = []
+    terms = _names(roles.get("predictors")) + _names(roles.get("factors"))
+    if not terms:
+        problems.append(("block.linear_no_predictor", {}))
+    parts = [roles.get("product_a") or None, roles.get("product_b") or None]
+    if any(parts):
+        if not all(parts) or parts[0] == parts[1]:
+            problems.append(("block.product_pair", {}))
+        for name in filter(None, parts):
+            if name not in terms:
+                problems.append(("block.product_not_in_model", {"name": name}))
+    return problems
+
+
+def unchosen_options(spec: "MethodSpec", options: dict) -> tuple[Option, ...]:
+    """Options without a default that the researcher has not chosen yet."""
+    return tuple(o for o in spec.options if o.required
+                 and str((options or {}).get(o.key, o.default) or "") not in
+                 {k for k, _ in o.choices})
 
 
 METHODS: dict[str, MethodSpec] = {spec.key: spec for spec in (
@@ -450,6 +580,61 @@ METHODS: dict[str, MethodSpec] = {spec.key: spec for spec in (
             Confirmation("assumptions",
                          "I reviewed the outcome distributions, outliers and group sizes")),
         runner=_run_batch_groups),
+    # Stage 37 (Issue #66): a linear model with categorical covariates (review
+    # S3) and the path models. The model, the mediators and the moderated
+    # path are stated by the researcher; nothing here chooses them.
+    MethodSpec(
+        "linear_model", "linear_model", "models", "Linear model with categorical covariates",
+        "Quantitative outcome with quantitative predictors, category variables as dummy codes "
+        "against a stated reference category, and an optional product term.",
+        (Role("outcome", "role.outcome", ("scale",)),
+         Role("predictors", "role.quantitative_predictors", ("scale",), multiple=True,
+              optional=True, maximum=10),
+         Role("factors", "role.factors", ("nominal", "ordinal"), multiple=True, optional=True,
+              maximum=4),
+         Role("product_a", "role.product_a", ("scale", "nominal", "ordinal"), optional=True,
+              refers=True),
+         Role("product_b", "role.product_b", ("scale", "nominal", "ordinal"), optional=True,
+              refers=True)),
+        options=(Option("reference", "Reference category of categorical covariates",
+                        (("first", "First category (lowest code)"),
+                         ("last", "Last category (highest code)"),
+                         ("most_frequent", "Most frequent category")), "first"),
+                 Option("center", "Mean-centre the quantitative predictors of the product term",
+                        (("no", "No"), ("yes", "Yes")), "no"),
+                 HC3_OPTION),
+        confirmations=(Confirmation(
+            "model", "I reviewed linearity, independence, outliers, every predictor’s "
+                     "measurement level and the reference categories"),),
+        runner=_run_linear_model),
+    MethodSpec(
+        "mediation", "mediation", "models", "Mediation (PROCESS-equivalent Model 4)",
+        "X → M → Y with one or several parallel mediators you name, covariates in every "
+        "equation and a percentile bootstrap interval of each indirect effect.",
+        (PROCESS_X, PROCESS_M, PROCESS_Y, PROCESS_COVARIATES),
+        options=(RESAMPLES_OPTION, HC3_OPTION, SENSITIVITY_OPTION),
+        confirmations=(MEDIATORS_A_PRIORI, CROSS_SECTIONAL, PROCESS_ASSUMPTIONS),
+        runner=_process_runner("4")),
+    MethodSpec(
+        "moderation", "moderation", "models", "Moderation (PROCESS-equivalent Model 1)",
+        "X × W → Y: the interaction, simple slopes at W = mean ± 1 SD and the 16th/50th/84th "
+        "percentiles, and Johnson–Neyman values of W.",
+        (PROCESS_X, PROCESS_W, PROCESS_Y, PROCESS_COVARIATES),
+        options=(CENTER_OPTION, HC3_OPTION, SENSITIVITY_OPTION),
+        confirmations=(MODERATOR_A_PRIORI, PROCESS_ASSUMPTIONS),
+        runner=_process_runner("1")),
+    MethodSpec(
+        "conditional_process", "conditional_process", "models",
+        "Conditional process (PROCESS-equivalent Model 7 or 14)",
+        "Moderated mediation: you choose whether W moderates X → M (Model 7) or M → Y "
+        "(Model 14); conditional indirect effects and the index of moderated mediation with "
+        "bootstrap intervals.",
+        (PROCESS_X, PROCESS_M, PROCESS_W, PROCESS_Y, PROCESS_COVARIATES),
+        options=(MODEL_OPTION, RESAMPLES_OPTION, CENTER_OPTION, HC3_OPTION,
+                 SENSITIVITY_OPTION),
+        confirmations=(MEDIATORS_A_PRIORI, MODEL7_PATH, MODEL14_PATH, CROSS_SECTIONAL,
+                       PROCESS_ASSUMPTIONS),
+        runner=_process_runner(None)),
 )}
 
 FAMILIES = ("describe", "measurement", "relationships", "differences", "models")
@@ -539,7 +724,8 @@ def role_problems(spec: MethodSpec, roles: dict, session) -> list[tuple[str, dic
             problems.append(("block.max_items", {"count": role.maximum}))
         for name in names:
             info = session.variables.get(name)
-            chosen.append(name)
+            if not role.refers:
+                chosen.append(name)
             if info is None:
                 problems.append(("block.unknown_variable", {"name": name}))
             elif info.confirmed == "id" or info.suggested == "id":
@@ -556,6 +742,10 @@ def role_problems(spec: MethodSpec, roles: dict, session) -> list[tuple[str, dic
         problems.append(("block.same_variable", {}))
     if spec.key == "omnibus" and roles.get("group") and session.has_data:
         problems += group_count_problems(roles["group"], session)
+    if spec.key in PROCESS_METHODS:
+        problems += process_problems(roles, session)
+    if spec.key == "linear_model":
+        problems += linear_problems(roles, session)
     return problems
 
 
@@ -618,13 +808,17 @@ def run_method(key: str, session, roles: dict, options: dict, confirms: dict):
     if not session.has_data:
         raise ValueError("Open a dataset first.")
     problems = role_problems(spec, roles, session)
+    effective = {**default_options(spec), **options}
+    problems += [("block.choose_option", {"option": option.prompt or option.label})
+                 for option in unchosen_options(spec, effective)]
     if problems:
         raise RoleProblems(problems)
-    return spec.runner(session.df, roles, {**default_options(spec), **options}, confirms, session)
+    return spec.runner(session.df, roles, effective, confirms, session)
 
 
 # ------------------------------------------------------------ guided advice
-GOALS = ("compare", "change", "relate", "associate", "predict", "scale", "structure", "describe")
+GOALS = ("compare", "change", "relate", "associate", "predict", "process", "scale", "structure",
+         "describe")
 
 GOAL_ROLES: dict[str, tuple[Role, ...]] = {
     # Optional covariates turn the comparison into ANCOVA (adjusted means).
@@ -636,7 +830,16 @@ GOAL_ROLES: dict[str, tuple[Role, ...]] = {
     "relate": (Role("x", "role.x", ANY), Role("y", "role.y_many", ANY, multiple=True)),
     "associate": (Role("a", "role.a", CATEGORICAL), Role("b", "role.b", CATEGORICAL)),
     "predict": (Role("outcome", "role.outcome", ANY),
-                Role("predictors", "role.predictors", ANY, multiple=True, maximum=5)),
+                Role("predictors", "role.predictors", ANY, multiple=True, maximum=8)),
+    # Stage 37 (Issue #66): the researcher names the roles of a path model;
+    # mediators and the moderator decide its structure, never the data.
+    "process": (Role("x", "role.process_x", QUANTITATIVE_OR_CODED),
+                Role("y", "role.process_y", ("scale",)),
+                Role("mediators", "role.mediators", ("scale",), multiple=True, optional=True,
+                     maximum=4),
+                Role("w", "role.moderator", QUANTITATIVE_OR_CODED, optional=True),
+                Role("covariates", "role.process_covariates", QUANTITATIVE_OR_CODED,
+                     multiple=True, optional=True, maximum=8)),
     "scale": (Role("items", "role.items", ORDERED, multiple=True, minimum=3),),
     "structure": (Role("items", "role.items", ORDERED, multiple=True, minimum=3, maximum=12),),
     "describe": (Role("variable", "role.variable", ANY),
@@ -716,7 +919,7 @@ def advise(goal: str, selection: dict, session) -> Advice:
     level = session.level
     advice = {
         "compare": _compare, "change": _change, "relate": _relate,
-        "associate": _associate, "predict": _predict, "scale": _scale,
+        "associate": _associate, "predict": _predict, "process": _process, "scale": _scale,
         "structure": _structure, "describe": _describe,
     }[goal](selection, session, level)
     if advice.blockers:
@@ -940,7 +1143,7 @@ def _predict(sel, session, level):
                       design_checks=("model",))
     if level(outcome) != "scale":
         return Advice(blockers=(("block.outcome_scale", {"name": outcome}),))
-    if len(categorical) == 1 and quantitative:
+    if len(categorical) == 1 and quantitative and len(quantitative) <= 3:
         group = categorical[0]
         count = len(session.group_labels(group))
         if 2 <= count <= 6:
@@ -950,12 +1153,52 @@ def _predict(sel, session, level):
                           alternatives=(Alternative("ancova", {"mode": "interaction"},
                                                     "alt.interaction"),),
                           design_checks=("model",))
-    if categorical:
-        return Advice(blockers=(("block.categorical_predictors", {}),))
+    if categorical or len(quantitative) > 5:
+        # Stage 37 (review S3): category variables enter a linear model only
+        # as dummy codes against a stated reference category.
+        reasons = ((("why.linear_model", {"factors": ", ".join(categorical)}),)
+                   if categorical else (("why.linear_model_many", {"count": len(quantitative)}),))
+        return Advice("linear_model", {"reference": "first"},
+                      {"outcome": outcome, "predictors": quantitative, "factors": categorical},
+                      reasons=reasons, design_checks=("model",))
     return Advice("regression", {"hc3": "no"}, {"outcome": outcome, "predictors": quantitative},
                   reasons=(("why.regression", {"outcome": outcome}),),
                   alternatives=(Alternative("regression", {"hc3": "yes"}, "alt.hc3"),),
                   design_checks=("model",))
+
+
+def _process(sel, session, level):
+    """A path model whose structure the researcher stated through the roles.
+
+    Mediators without a moderator: Model 4. A moderator without mediators:
+    Model 1. Both: a conditional process model, where the moderated path
+    (Model 7 or 14) is the researcher's theoretical choice: the advice never
+    picks one (both are offered as alternatives and Run waits for the
+    choice). Mediators are never suggested or screened by p-values."""
+    x, y = sel["x"], sel["y"]
+    mediators = _names(sel.get("mediators"))
+    w = sel.get("w") or None
+    covariates = _names(sel.get("covariates"))
+    if not mediators and not w:
+        return Advice(blockers=(("block.process_structure", {}),))
+    base = {"x": x, "y": y, "covariates": covariates}
+    stated = ("why.process_stated", {})
+    if mediators and not w:
+        return Advice("mediation", {}, {**base, "mediators": mediators},
+                      reasons=(("why.mediation", {"x": x, "y": y, "m": ", ".join(mediators)}),
+                               stated),
+                      design_checks=("mediators_a_priori", "cross_sectional", "assumptions"))
+    if w and not mediators:
+        return Advice("moderation", {}, {**base, "w": w},
+                      reasons=(("why.moderation", {"x": x, "y": y, "w": w}), stated),
+                      design_checks=("moderator_a_priori", "assumptions"))
+    return Advice("conditional_process", {"method": ""}, {**base, "mediators": mediators, "w": w},
+                  reasons=(("why.conditional_process", {"m": ", ".join(mediators), "w": w}),
+                           stated),
+                  alternatives=(Alternative("conditional_process", {"method": "7"}, "alt.model7"),
+                                Alternative("conditional_process", {"method": "14"},
+                                            "alt.model14")),
+                  design_checks=("mediators_a_priori", "cross_sectional", "assumptions"))
 
 
 def _scale(sel, session, level):

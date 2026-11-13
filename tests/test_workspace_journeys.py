@@ -232,8 +232,9 @@ class PreparationToFactorJourney(unittest.TestCase):
             ws.app.session.confirm_level(item, "ordinal")
         ws.app.navigate("analyze")
         ws.segment("analyze-mode", "all")
-        # 15 classic + 2 batch (36.1) + item diagnostics (36.3)
-        self.assertEqual(len(ws.find_all("method-")), 18)
+        # 15 classic + 2 batch (36.1) + item diagnostics (36.3) + the linear model and the
+        # three path models (37)
+        self.assertEqual(len(ws.find_all("method-")), 22)
         ws.click("method-factor")
         for item in items:
             ws.check(f"form-items-{item}")

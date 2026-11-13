@@ -240,6 +240,30 @@ def _kendall(x: np.ndarray, y: np.ndarray) -> tuple[float, float, str]:
             "two-sided p, normal approximation with tie correction")
 
 
+# Stage 37 (review S10): the smallest two-sided p of the 1,999-resample
+# permutation estimate (the observed pairing counted once in each tail):
+# 2 · 1/2000. The default stays the permutation estimate; this makes the
+# floor visible and names the option without it.
+PERMUTATION_FLOOR = 2 / 2000
+
+
+def permutation_floor_warning(rows, adjust: str, family_size: int) -> list[str]:
+    """A note for pairs whose permutation p is at its Monte Carlo floor."""
+    floor = [row.y for row in rows if row.status == "ok" and "permutation" in row.p_method
+             and row.p_raw <= PERMUTATION_FLOOR + 1e-12]
+    if not floor:
+        return []
+    text = (f"{len(floor)} pair(s) ({', '.join(floor)}) have p = .001, the smallest p a "
+            "two-sided permutation estimate with 1,999 resamples can give: the true p may be "
+            "much smaller.")
+    if adjust in ("holm", "bonferroni") and family_size > 1:
+        text += (f" With {family_size} tests their adjusted p cannot fall below "
+                 f"{min(1.0, family_size * PERMUTATION_FLOOR):.3f}.")
+    text += (" The option “Spearman p-value: t approximation (as SPSS reports)” has no such "
+             "floor.")
+    return [text]
+
+
 def correlate_many(df: pd.DataFrame, focal: str, others: list[str], *, method: str = "spearman",
                    adjust: str = "holm", alpha: float = 0.05, ci_level: float = 0.95,
                    resamples: int = DEFAULT_RESAMPLES, seed: int = DEFAULT_SEED,
@@ -296,6 +320,7 @@ def correlate_many(df: pd.DataFrame, focal: str, others: list[str], *, method: s
     if any(row.status != "ok" for row in rows):
         warnings.append("Pairs whose calculation failed are not part of the adjusted family.")
     warnings += unadjusted_warning(adjust, adjustment.family_size)
+    warnings += permutation_floor_warning(rows, adjust, adjustment.family_size)
     return CorrelationFamily(
         method=method, focal=focal, rows=tuple(rows), adjustment=adjust,
         adjustment_text=adjustment.description, family_size=adjustment.family_size,

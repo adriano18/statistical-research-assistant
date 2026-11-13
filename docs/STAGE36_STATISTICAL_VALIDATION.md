@@ -116,8 +116,8 @@ recoded, one item with a floor effect, nine missing answers).
 
 | Quantity | Engine | Independent reference | Tolerance |
 |---|---|---|---|
-| Cronbach's α | `analyze_cronbach` (pingouin) | k/(k − 1)·(1 − Σs²ᵢ/s²ₜₒₜₐₗ) written out from sums; `pingouin.cronbach_alpha` called directly | 1e-12 |
-| 95% interval of α | pingouin (Feldt 1965, F distribution) | 1 − (1 − α)·F⁻¹(.975 / .025; n − 1, (n − 1)(k − 1)) by hand | equal after rounding to 3 decimals (pingouin rounds; ≤ 5e-4) |
+| Cronbach's α | `analyze_cronbach` (Stage 37: in-house, `cronbach.py`; before: pingouin) | k/(k − 1)·(1 − Σs²ᵢ/s²ₜₒₜₐₗ) written out from sums; `pingouin.cronbach_alpha` called directly (test-only oracle) | 1e-12 |
+| 95% interval of α | Feldt 1965, F distribution (Stage 37: in-house; bounds rounded to 3 decimals as before) | 1 − (1 − α)·F⁻¹(.975 / .025; n − 1, (n − 1)(k − 1)) by hand | equal after rounding to 3 decimals (≤ 5e-4) |
 | Corrected item–total r | Pearson r of the item with the sum of the other items | r written out from sums; `analyze_omega`'s `corrected_item_rest_r` | 1e-12 |
 | α if item deleted, Δα | `analyze_cronbach` on the same complete cases | the α formula recomputed on the k − 1 remaining columns | 1e-12 |
 | ω total | `analyze_omega` | the engine called directly; (Σλ)² / ((Σλ)² + Σψ) from its loadings and uniquenesses | 1e-12 |
@@ -132,7 +132,7 @@ recoded, one item with a floor effect, nine missing answers).
 Decisions:
 
 1. **One sample.** Every item statistic, α and ω use the listwise-complete respondents (as SPSS RELIABILITY); only the missing counts and percentages use all rows. ω if an item were deleted is refitted on the same complete cases, not on a new listwise selection of the remaining items, so Δω compares like with like.
-2. **α interval.** Feldt's F-based interval as pingouin computes it; pingouin rounds the bounds to three decimals and the result says so. α if item deleted needs at least four items (the engine's rule); a three-item scale reports "Not applicable".
+2. **α interval.** Feldt's F-based interval as pingouin computes it; pingouin rounds the bounds to three decimals and the result says so. (Stage 37: the program computes it itself from the same formula and keeps the 3-decimal rounding; `tests/test_cronbach.py`.) α if item deleted needs at least four items (the engine's rule); a three-item scale reports "Not applicable".
 3. **ω model.** Every result lists the assumptions: one common factor (unidimensional), congeneric loadings, uncorrelated errors, maximum-likelihood one-factor analysis of the Pearson correlations of the complete cases, codes treated as interval numbers (no polychoric ω), and that obtaining ω does not test them. The largest residual correlation and the first two eigenvalues are reported. ω needs 3–12 items and at least max(30, 5k) complete respondents; otherwise it is "Not calculated" or "Unavailable" with the reason. ω if deleted is "Unavailable" with the reason when fewer than three items would remain or the refit fails (for example a Heywood solution).
 4. **Non-convergence.** `analyze_omega` accepts an admissible solution even when statsmodels warns that the ML optimiser did not converge. The diagnostics keep the value, so they agree with the ω analysis, and say in the quantity's note and in the warnings that the fit did not report convergence.
 5. **Reverse keying is flagged, never recoded.** A negative corrected item–total r or loading flags the item "possibly reverse-keyed and not recoded — check the scoring key". Items listed as reverse-keyed (from a confirmed definition) are reported as "appears recoded" (positive r), "appears not recoded" (negative r) or "unclear" (|r| < 0.10, or r and loading disagree). Directions are relative to the other items: when most items are unrecoded reverse-keyed items the signs flip.

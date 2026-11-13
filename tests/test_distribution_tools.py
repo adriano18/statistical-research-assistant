@@ -247,9 +247,10 @@ if __name__ == "__main__":
 
 
 class StartupImportTests(unittest.TestCase):
-    def test_pingouin_is_imported_only_when_an_alpha_is_calculated(self):
-        """pingouin (with scikit-learn, seaborn and xarray) is the largest single
-        import of the classic interface; it now loads on first use."""
+    def test_pingouin_is_never_imported_when_an_alpha_is_calculated(self):
+        """pingouin (with scikit-learn, seaborn and xarray) was the largest single
+        import of the classic interface. Stage 37: α is computed in-house
+        (cronbach.py), so it is not imported at all, before or after an α."""
         import subprocess
 
         script = (
@@ -266,7 +267,7 @@ class StartupImportTests(unittest.TestCase):
             cwd=ROOT, capture_output=True, text=True, check=True,
             env={**__import__("os").environ, "MPLBACKEND": "Agg"}).stdout.split("\n")
         self.assertEqual(output[0], "before False")
-        self.assertTrue(output[1].startswith("after True "))
+        self.assertTrue(output[1].startswith("after False "))
         # Same value as calculating in this process (where pingouin may be loaded).
         import pandas as pd
         import reliability

@@ -42,11 +42,11 @@ Every gate below names its evidence. "done" means verified by the named test or 
 | K4: "p(adjusted)" written also without correction | scientific correctness | **fixed** f193df2, `tests/test_stage368_review_fixes.py` |
 | K5: Kruskal–Wallis batch without group medians, mean ranks and Dunn pairs | scientific reporting | **fixed** f193df2 |
 | K6: UI Automation disabled state, keyboard, Narrator | accessibility | step fixed (dff65c8); platform limitation and the open items documented |
-| R7 / licence: pingouin (GPL-3.0) in the program's process, no project LICENSE | legal | **owner decision** (`docs/STAGE368_BUILD_LOCK.md` §5) |
+| R7 / licence: pingouin (GPL-3.0) in the program's process, no project LICENSE | legal | **owner decision** (`docs/STAGE368_BUILD_LOCK.md` §5). Stage 37 offers option (b) as one separate commit on `claude/stage37-methods`: α in-house, pingouin only in the test lock (§5.3). The project licence is still the owner's choice. |
 
 ## 4. Before any public release (owner actions)
 
-1. **Licence.** Choose the program's licence (add a LICENSE file). Then either keep pingouin (GPL-3.0-or-later fits) or approve replacing its one use (Cronbach's α + Feldt interval) with an in-house implementation, verified against pingouin in the tests.
+1. **Licence.** Choose the program's licence (add a LICENSE file). Then either keep pingouin (GPL-3.0-or-later fits) or approve replacing its one use (Cronbach's α + Feldt interval) with an in-house implementation, verified against pingouin in the tests. The replacement is ready as one separate, droppable commit on the Stage 37 branch (`docs/STAGE368_BUILD_LOCK.md` §5.3). Approving it does not choose the licence.
 2. **Update-signing key.** Create the Ed25519 key offline (`tools/update_signing.py new-key`, public part with `public-key`). Store the private key only as the repository secret `SRA_UPDATE_SIGNING_KEY`, never in chat, logs or files. Put the public key into the build (`write_build_info --update-key`).
 3. **Code signing (stable channel only).** A certificate as `WINDOWS_SIGNING_PFX_BASE64` and `WINDOWS_SIGNING_PFX_PASSWORD`. Without it only the preview channel can be released, and it stays "unsigned preview".
 4. **Corresponding source for the OCR runtime's GPL/LGPL DLLs** (jbigkit, libiconv, libintl, libunistring, libidn2). Attach the pinned MSYS2 source packages to the release, or keep the written offer of `THIRD_PARTY_NOTICES.txt`.

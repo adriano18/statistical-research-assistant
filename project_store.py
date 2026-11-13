@@ -72,8 +72,11 @@ MAX_PACKAGE_BYTES = 4 * 1024 ** 3          # uncompressed
 MAX_COMPRESSION_RATIO = 250                # per entry, above 10 MiB
 DATASET_SUFFIXES = {".csv", ".xlsx", ".xls", ".tsv", ".txt"}
 TABLE_SCHEMA_SUFFIX = ".schema.json"         # column types of a stored CSV copy
-LIBRARIES = ("numpy", "scipy", "pandas", "statsmodels", "pingouin", "matplotlib",
-             "scikit-learn", "openpyxl", "python-docx")
+# The libraries the analyses run on (recorded with every run). Stage 37:
+# pingouin (and with it scikit-learn) is no longer used by the program; α is
+# computed in-house (cronbach.py) and pingouin is a test-only oracle.
+LIBRARIES = ("numpy", "scipy", "pandas", "statsmodels", "matplotlib", "openpyxl",
+             "python-docx")
 PROJECT_FIELDS = ("title", "description", "research_area", "population_notes",
                   "language", "design")
 
@@ -536,8 +539,8 @@ DIRECTIONS = ("two-sided", "greater", "less")
 PRIORITIES = ("primary", "secondary", "exploratory")
 # Stage 37.0a: the kinds of research question are the guided goals
 # (workspace_methods.GOALS; tests/test_stage37_workflow.py keeps them equal).
-QUESTION_TYPES = ("compare", "change", "relate", "associate", "predict", "scale", "structure",
-                  "describe")
+QUESTION_TYPES = ("compare", "change", "relate", "associate", "predict", "process", "scale",
+                  "structure", "describe")
 PROTOCOL_KINDS = ("designation", "link", "acknowledgement", "deviation", "justification",
                   "withdrawal")
 REASON_KINDS = ("designation", "acknowledgement", "deviation", "justification", "withdrawal")

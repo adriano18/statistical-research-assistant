@@ -154,6 +154,46 @@ METHOD_TEXT = {
       "rationale": "Сравните три и более измерения одних и тех же участников.",
       "limitation": "Повторные наблюдения и временные тенденции сами по себе не доказывают причинность."
     }
+  },
+  "linear_model": {
+    "lv": {
+      "rationale": "Novērtējiet kvantitatīva iznākuma nosacītās saistības ar kvantitatīviem prediktoriem un kategoriāliem kovariātiem, kas kodēti kā fiktīvie kodi pret norādītām atsauces kategorijām.",
+      "limitation": "Koeficienti ir saistības pie pārējiem modeļa locekļiem; tie nepierāda cēloņsakarību."
+    },
+    "ru": {
+      "rationale": "Оцените условные связи количественного исхода с количественными предикторами и категориальными ковариатами, закодированными фиктивными кодами относительно указанных опорных категорий.",
+      "limitation": "Коэффициенты — связи при остальных членах модели; они не доказывают причинность."
+    }
+  },
+  "mediation": {
+    "lv": {
+      "rationale": "Novērtējiet pētnieka noteikto netiešo ceļu X → M → Y (PROCESS 4. modeļa struktūra) ar procentiļu bootstrap intervālu katram netiešajam efektam.",
+      "limitation": "Netiešais efekts ir nosacītu saistību reizinājums; tas nerāda, ka viens mainīgais maina citu."
+    },
+    "ru": {
+      "rationale": "Оцените заданный исследователем косвенный путь X → M → Y (структура модели 4 PROCESS) с процентильным бутстреп-интервалом для каждого косвенного эффекта.",
+      "limitation": "Косвенный эффект — произведение условных связей; он не показывает, что одна переменная изменяет другую."
+    }
+  },
+  "moderation": {
+    "lv": {
+      "rationale": "Novērtējiet, vai X saistība ar Y atšķiras pie dažādām W vērtībām (PROCESS 1. modeļa struktūra), ar vienkāršajiem slīpumiem un Džonsona–Neimana vērtībām.",
+      "limitation": "Mijiedarbība apraksta, kā saistība atšķiras pie dažādām W vērtībām; tā nepierāda cēlonisku moderāciju."
+    },
+    "ru": {
+      "rationale": "Оцените, различается ли связь X с Y при разных значениях W (структура модели 1 PROCESS), с простыми наклонами и значениями Джонсона–Неймана.",
+      "limitation": "Взаимодействие описывает, как связь различается при разных W; оно не доказывает причинную модерацию."
+    }
+  },
+  "conditional_process": {
+    "lv": {
+      "rationale": "Novērtējiet nosacītos netiešos efektus, kad pētnieks norāda, kuru ceļu moderē W (PROCESS 7. vai 14. modeļa struktūra), ar moderētās mediācijas indeksu.",
+      "limitation": "Nosacītie netiešie efekti ir nosacītu saistību reizinājumi; tie nepierāda cēlonisku mediāciju."
+    },
+    "ru": {
+      "rationale": "Оцените условные косвенные эффекты, когда исследователь указывает, какой путь модерирует W (структура модели 7 или 14 PROCESS), с индексом модерируемой медиации.",
+      "limitation": "Условные косвенные эффекты — произведения условных связей; они не доказывают причинную медиацию."
+    }
   }
 }
 
@@ -337,6 +377,34 @@ ASSUMPTION_TEXT = {
   "Check sphericity or justified correction for RM ANOVA": {
     "lv": "Pārbaudīt sfēriskumu vai korekciju atkārtotu mērījumu ANOVA",
     "ru": "Проверить сферичность или коррекцию ANOVA повторных измерений"
+  },
+  "Check every reference category and the number of cases in each category": {
+    "lv": "Pārbaudīt katru atsauces kategoriju un gadījumu skaitu katrā kategorijā",
+    "ru": "Проверить каждую опорную категорию и число случаев в каждой категории"
+  },
+  "Name the mediators from theory before seeing results, never by p-values": {
+    "lv": "Noteikt mediatorus pēc teorijas pirms rezultātu apskates, nekad pēc p vērtībām",
+    "ru": "Задать медиаторы по теории до просмотра результатов, никогда по p-значениям"
+  },
+  "Inspect linearity, residuals and influential cases in every equation": {
+    "lv": "Pārbaudīt linearitāti, atlikumus un ietekmīgos gadījumus katrā vienādojumā",
+    "ru": "Проверить линейность, остатки и влиятельные случаи в каждом уравнении"
+  },
+  "Remember that cross-sectional data cannot establish temporal order or causal mediation": {
+    "lv": "Atcerēties, ka šķērsgriezuma dati nevar noteikt laika secību vai cēlonisku mediāciju",
+    "ru": "Помнить, что одномоментные данные не устанавливают временной порядок или причинную медиацию"
+  },
+  "Name the moderator from theory before seeing results": {
+    "lv": "Noteikt moderatoru pēc teorijas pirms rezultātu apskates",
+    "ru": "Задать модератор по теории до просмотра результатов"
+  },
+  "Check that simple slopes are read where W has data": {
+    "lv": "Pārbaudīt, ka vienkāršie slīpumi tiek lasīti tur, kur W ir dati",
+    "ru": "Проверить, что простые наклоны читаются там, где у W есть данные"
+  },
+  "Choose the moderated path (Model 7 or 14) from theory, before seeing results": {
+    "lv": "Izvēlēties moderēto ceļu (7. vai 14. modelis) pēc teorijas pirms rezultātu apskates",
+    "ru": "Выбрать модерируемый путь (модель 7 или 14) по теории до просмотра результатов"
   }
 }
 
