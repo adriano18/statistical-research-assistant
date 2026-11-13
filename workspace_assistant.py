@@ -133,8 +133,7 @@ class AssistantPanel:
         sources = [key for key in ai_context.SOURCE_KEYS
                    if key in state.sources and offered.get(key) == "on"]
         result = ai_assist.describe_result(
-            entry, parts=ai_assist.TASK_SPECS[task].parts,
-            reviewed=self.results.reviewed.get(entry.id, set()),
+            entry, parts=ai_assist.TASK_SPECS[task].parts, reviewed=set(entry.reviewed),
             results_in_session=len(app.session.results))
         return ai_assist.build_request(
             task, result=result, question=state.question, sources=sources, project=project,
@@ -490,13 +489,16 @@ class AssistantPanel:
         if draft.unverified:
             lines.append(app.t("assistant.note_unverified", numbers=", ".join(draft.unverified)))
         lines.append(draft.text)
-        current = self.results.notes.get(entry_id, "").rstrip()
+        entry = app.session.result(entry_id)
+        if entry is None:
+            return
+        current = entry.note.rstrip()
         note = (current + "\n\n" if current else "") + "\n".join(lines)
         if len(note) > NOTE_LIMIT:
             state.notice = (app.t("assistant.note_too_long", limit=NOTE_LIMIT), "warning")
             app.render()
             return
-        self.results.notes[entry_id] = note
+        app.session.set_note(entry_id, note)       # kept with the result (Stage 36.8)
         self.results.opened.add(f"interpretation-{entry_id}")
         state.used = True
         state.notice = (app.t("assistant.note_added"), "success")

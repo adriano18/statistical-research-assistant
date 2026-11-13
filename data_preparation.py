@@ -195,6 +195,22 @@ def score_scale(
     )
 
 
+# The function that made each kind of step, as the project history names it.
+HISTORY_KINDS = {"missing": "mark_missing", "recode": "recode_column",
+                 "reverse": "reverse_item", "scale": "score_scale"}
+
+
+def history_record(step: dict[str, Any]) -> dict[str, Any]:
+    """A preparation step as a project history record (Stage 36.8, K3):
+    ``kind`` (the function that made it), ``params`` (the step's own fields)
+    and ``output_columns`` — the shape ``Project.add_transformation`` and
+    the report's data-preparation section use."""
+    kind = str(step.get("type", ""))
+    params = {key: value for key, value in step.items() if key != "type"}
+    return {"kind": HISTORY_KINDS.get(kind, kind or "preparation"), "params": params,
+            "output_columns": [str(step["target"])] if step.get("target") else []}
+
+
 def save_prepared_dataset(
     df: pd.DataFrame,
     steps: list[dict[str, Any]],

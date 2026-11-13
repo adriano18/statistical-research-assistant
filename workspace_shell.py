@@ -408,9 +408,12 @@ class WorkspaceApp:
         """The page currently on screen (its scroll container)."""
         return self._page_stack.controls[0] if self._page_stack.controls else None
 
+    # Saved as they are typed; nothing in the chrome shows them (Stage 36.8).
+    QUIET_EVENTS = ("notes", "report_settings")
+
     def _on_session_change(self, what: str):
         # Context bar and sidebar badges follow the session.
-        if self.root is not None:
+        if self.root is not None and what not in self.QUIET_EVENTS:
             self._render_chrome()
         message = self.projects.message
         if message is not None and message is not self._shown_project_message:
@@ -1254,18 +1257,20 @@ class DataPage:
     def _preparation_panel(self):
         """The validated classic preparation tools, hosted unchanged."""
         if self._preparation is None:
+            from data_preparation import history_record
             from preparation_ui import build_preparation_workspace
 
-            async def adopt(prepared: pd.DataFrame):
-                name = self.app.session.source_name
-                self.app.session.set_dataset(
-                    prepared, name if name.endswith("(prepared)") else f"{name} (prepared)",
-                    origin="prepared")
+            async def adopt(prepared: pd.DataFrame, steps: list[dict]):
+                # Stage 36.8 (K3): the columns that are still there keep their
+                # confirmed levels, and every step goes into the project history.
+                self.app.session.add_prepared_columns(
+                    prepared, [history_record(step) for step in steps])
                 self.app.status(self.app.t("data.loaded", name=self.app.session.source_name),
                                 "success")
                 self.app.render()
 
-            self._preparation = build_preparation_workspace(self.app.page, load_dataframe=adopt)
+            self._preparation = build_preparation_workspace(self.app.page, load_dataframe=adopt,
+                                                            with_steps=True)
             self._preparation_df = None
         panel, reset = self._preparation
         if self._preparation_df is not self.app.session.df:

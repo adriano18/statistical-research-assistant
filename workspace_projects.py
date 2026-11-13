@@ -260,6 +260,13 @@ class ProjectHub:
     def _failed(self, error: Exception):
         self._done(self.app.t("project.failed", error=error), "danger")
 
+    def _reset_pages(self) -> None:
+        """Another project is on screen: nothing chosen or overridden for the
+        previous one carries over. Its notes, reviews and report settings live
+        in the session (Stage 36.8, K2), which the project switch replaced."""
+        for name in ("analyze", "results", "reports"):
+            self.app.pages[name].reset()
+
     async def create(self, e=None):
         title = self.new_title.strip()
         if not title:
@@ -273,7 +280,7 @@ class ProjectHub:
         self.new_title = ""
         # A new project starts a new analysis: nothing chosen for another
         # project's data (or its research task) carries over.
-        self.app.pages["analyze"].reset()
+        self._reset_pages()
         # The new project opens on its own page, with the first step offered.
         self._done(self.app.t("project.created", title=info.title), route="project")
 
@@ -283,7 +290,7 @@ class ProjectHub:
         except (ProjectError, OSError) as error:
             self._failed(error)
             return
-        self.app.pages["analyze"].reset()
+        self._reset_pages()
         self._done(self.app.t("project.opened", title=info.title), route="project")
         await self.verify()
 
@@ -296,7 +303,7 @@ class ProjectHub:
 
     async def close(self, e=None):
         self.binding.close()
-        self.app.pages["analyze"].reset()
+        self._reset_pages()
         self._done(self.app.t("project.closed"))
 
     async def duplicate(self, project_id: str):

@@ -92,6 +92,22 @@ filters titles, descriptions and research areas.
 (format 2, §12). Foreign keys are enforced; deleting a dataset keeps its runs (their
 `dataset_id` becomes NULL, which makes them stale, never silently gone).
 
+**The researcher's entries (Stage 36.8, no new format).** They use storage
+that format 5 already has, so `user_version` stays 5 and no migration runs:
+
+| Entry | Stored in | A format-5 program (e.g. 36.7) |
+|---|---|---|
+| Interpretation note of a result | `runs.note` (a format-1 column, unused until now) | opens the project, does not show the note |
+| Assumption checks marked as reviewed | `runs.provenance` JSON, key `reviewed` | ignores the key |
+| Report title, sections left out, report language | the latest `events` entry of kind `report_settings` | ignores the entry; shows its defaults and cannot save them |
+| What each design-step confirmation was given for | `research_tasks.state` JSON, key `confirm_scopes` | ignores the key and ticks the task's confirmations as before |
+
+When such a program recalculates an omnibus result with post-hoc tests it
+stores a new run without the note and the reviewed checks, so those two are
+lost for that result. A confirmation without a recorded scope (any task saved
+before Stage 36.8) is asked again: nothing says which data, variables and
+method it was given for.
+
 ## 5. Integrity
 
 - **Transactions.** Every change is one SQLite transaction (WAL journal,
@@ -280,7 +296,13 @@ Implemented (`workspace_projects.py`, `project_session.py`):
   their origin: file, sample, upload, questionnaire responses, prepared data,
   classic interface), confirmed levels, results with roles, effective options
   and confirmations, and the report selection. Loading the same file or the
-  same questionnaire again records a new version of the same dataset.
+  same questionnaire again records a new version of the same dataset. The
+  researcher's note and reviewed checks of each result are saved as they
+  change; the report's sections and language at once and its study title
+  when the field is left, before an export and when the project closes or
+  the program ends (Stage 36.8). Data → Prepare stores the prepared table as
+  a derived dataset with its steps in `transformations`; the columns that are
+  still there keep their confirmed levels.
 - **Results**: stale results carry a "Review needed" badge and a notice with
   the translated reasons and *Recalculate with current data*, which opens the
   analysis form with the same method, variables and options but **without**
