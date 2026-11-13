@@ -125,6 +125,13 @@ The engine's time now equals its processor time: it no longer waits. Inside the 
 
 The Stage 36 question (about 40 s in the program against about 12 s for the engine) is answered. Over 30 s of it was the engine waiting for the processor while the program redrew an animation. The rest was PNG encoding and a render on the event loop (§2).
 
+**Not changed, not measured.** Three other indeterminate rings remain:
+- while an analysis runs (`workspace_analyze.py`);
+- while an AI request is out (`workspace_assistant.py`);
+- on the start screen (`app.py`).
+
+Analyses take seconds, and the analysis runs in the same process, which still has a core of its own on a 4-core runner. Whether they slow down the same way has not been measured, so they were left as they are. They are candidates for the same change once a profile shows a cost.
+
 **Where this applies.** On computers that draw without a graphics card (virtual machines, remote desktop sessions, some older laptops) the gain is about as large as here. A computer with a working graphics driver draws the ring cheaply, so the gain there is the smaller one of §3: about 2 s from PNG encoding and the event loop.
 
 
