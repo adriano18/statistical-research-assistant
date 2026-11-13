@@ -102,7 +102,7 @@ Data keys kept: `settings-language`, `settings-theme` (now light/dark/system), `
 
 `tests/test_stage37_shell_journeys.py` walks both flows through the real start (`research_app.main`, no `SRA_UI`) with the journeys' own texts and helpers.
 
-Workflows: `windows-package.yml` — the normal start check now expects the workspace; the former workspace-preview step checks the classic interface (`--classic`). `windows-installer.yml` — the installed program's normal start (workspace) and a classic start. `release.yml` and `startup_ab.py` use the normal start (workspace) unchanged. The new modules are in the path filters of the package, GUI, installer and update workflows.
+Workflows: `windows-package.yml` — the normal start check now expects the workspace; the former workspace-preview step checks the classic interface (`--classic`). `windows-installer.yml` — the installed program's normal start (workspace) and a classic start. `release.yml` and `startup_ab.py` use the normal start (workspace) unchanged. The new modules are in the path filters of the package, GUI, installer and update workflows, and `tools/check_packaged_ocr.py` requires them in the bundle. `python-tests.yml` runs `test_stage37_settings.py` and `test_stage37_shell_journeys.py` in its Windows job too (where Segoe UI is installed: its glyph coverage and the chart default font are checked there).
 
 **Not run here:** no Windows runner was available to this branch. The journeys, the window placement on real monitors (DPI scale of `work_areas`), Segoe UI Variable rendering and the focus moves need the Windows workflows (`windows-gui-e2e`, `windows-installer`, `windows-package`) before merging.
 
