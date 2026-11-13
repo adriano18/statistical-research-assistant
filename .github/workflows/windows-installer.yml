@@ -190,6 +190,23 @@ jobs:
           python tools/check_installed_app.py uninstall --log installed\uninstall-2.log
           python tools/check_installed_app.py removed
 
+      - name: Synthetic files for the owner's manual acceptance (no study data)
+        if: always()
+        shell: pwsh
+        run: |
+          # The examples the checklist of docs/STAGE368_REAL_USER_ACCEPTANCE.md
+          # uses: generated here from tests/fixtures/stage36, synthetic only.
+          New-Item -ItemType Directory -Force acceptance-files | Out-Null
+          python -c "import sys, shutil; sys.path.insert(0, 'tests'); import stage36_fixtures as fx; [shutil.copy(fx.fixture(n), 'acceptance-files') for n in (fx.CSV, fx.DOCX_UNNUMBERED, fx.SCAN_TABLE_LV, fx.ITEMS_CSV)]"
+          Get-ChildItem acceptance-files | ForEach-Object { "$($_.Name) $($_.Length)" }
+      - name: Upload the synthetic acceptance files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-acceptance-files
+          path: acceptance-files/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload the installer (unsigned preview)
         if: always()
         uses: actions/upload-artifact@v4
