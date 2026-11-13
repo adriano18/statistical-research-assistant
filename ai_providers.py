@@ -9,13 +9,17 @@ answered is returned with every reply, for the project's audit record.
 
 Requests are made only when the researcher asks; nothing is sent because a
 project was opened. Every call has a timeout. 429 and 5xx are retried with
-back-off (honouring Retry-After) and can be cancelled between attempts. A
-daily token budget is enforced locally. Errors never contain the key.
-Streaming is not used yet: replies arrive whole.
+back-off (honouring Retry-After) and can be cancelled between attempts; a
+generation that gets no reply in time is not sent again, because the
+provider may still process (and bill) it. A 400 or 422 means the model
+cannot take the request, so it is not retried either. A daily token budget
+is enforced locally. Errors never contain the key. Streaming is not used
+yet: replies arrive whole.
 """
 
 from __future__ import annotations
 
+import http.client
 import json
 import ssl
 import threading
@@ -116,6 +120,11 @@ def _request(provider: str, method: str, path: str, key: str, *, body: dict | No
                 raise ProviderError("bad_key", f"HTTP {status}") from None
             if status == 404:
                 raise ProviderError("not_found", "HTTP 404 (model or endpoint)") from None
+            if status in (400, 422):
+                # The provider refused the request itself, most often because
+                # the model cannot answer it (a model for images, audio or
+                # tools, or for another API); sent again, it fails the same way.
+                raise ProviderError("unsupported", f"HTTP {status}") from None
             if (status == 429 or status >= 500) and attempt < RETRIES:
                 wait = _retry_after(error.headers.get("Retry-After"), attempt)
                 if cancel is not None and cancel.wait(wait):
@@ -126,14 +135,23 @@ def _request(provider: str, method: str, path: str, key: str, *, body: dict | No
             raise ProviderError("rate_limited" if status == 429 else "unavailable",
                                 f"HTTP {status}") from None
         except (urllib.error.URLError, TimeoutError, OSError) as error:
-            if attempt < RETRIES and not isinstance(error, ssl.SSLError):
+            # A bare TimeoutError: the request was sent and no reply came in
+            # time (a refused or timed-out connection arrives as URLError). A
+            # generation may still be running, and billed: it is not re-sent.
+            timed_out = isinstance(error, TimeoutError)
+            if (attempt < RETRIES and not isinstance(error, ssl.SSLError)
+                    and not (timed_out and method == "POST")):
                 wait = _retry_after(None, attempt)
                 if cancel is not None and cancel.wait(wait):
                     raise ProviderError("cancelled") from None
                 if cancel is None:
                     time.sleep(wait)
                 continue
-            raise ProviderError("offline", type(error).__name__) from None
+            raise ProviderError("timeout" if timed_out else "offline",
+                                type(error).__name__) from None
+        except http.client.HTTPException as error:
+            # A reply cut off mid-body, or not HTTP at all (a broken proxy).
+            raise ProviderError("malformed", type(error).__name__) from None
         except ValueError as error:
             raise ProviderError("malformed", "the reply is not JSON") from error
     raise ProviderError("unavailable")
