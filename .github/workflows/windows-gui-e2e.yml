@@ -35,6 +35,12 @@ on:
       - "tests/synthetic_documents.py"
       - "tests/stage36_fixtures.py"
       - "tests/fixtures/stage36/generate_fixtures.py"
+      # Stage 37 (#67): the export journey's modules and its fixture.
+      - "data_export.py"
+      - "export_bundle.py"
+      - "csv_safety.py"
+      - "data_loader.py"
+      - "tests/fixtures/stage37/generate_master_fixture.py"
       - ".github/workflows/windows-gui-e2e.yml"
 
 permissions:
