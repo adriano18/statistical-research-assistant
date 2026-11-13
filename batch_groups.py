@@ -34,7 +34,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from batch_correlation import _text_only
+from batch_correlation import _text_only, p_label, unadjusted_warning
 from multiple_comparisons import adjust as adjust_family
 from posthoc_analysis import dunn_pairs
 from stat_results import ENGINE_VERSION, Quantity, StructuredResult, Table, _provenance
@@ -125,6 +125,39 @@ class GroupFamily:
                      ("Outcome", "n per group", "H", "df", "p", adjusted_label, "η²_H", "ε²_R"),
                      tuple(rows))
 
+    def group_table(self) -> Table:
+        """n, median and mean rank of every group, per outcome (Stage 36.8,
+        review finding K5: they were computed but not shown)."""
+        rows = []
+        for row in self.rows:
+            if row.status != "ok":
+                continue
+            for label, n, median, rank in zip(row.labels, row.ns, row.medians, row.mean_ranks):
+                rows.append((row.outcome, label, str(n), _number(median), f"{rank:.1f}"))
+        return Table(f"Groups of {self.group}: n, median and mean rank",
+                     ("Outcome", self.group, "n", "Median", "Mean rank"), tuple(rows))
+
+    def pairs_table(self) -> Table:
+        """Dunn's pairwise tests for the outcomes whose Kruskal–Wallis test is
+        significant after the adjustment across outcomes (K5). Other outcomes
+        get none: pairs after a non-significant omnibus test invite reading
+        noise as differences."""
+        rows = []
+        for row in self.rows:
+            if row.status != "ok" or row.p_adjusted is None or row.p_adjusted >= self.alpha:
+                continue
+            for pair in row.pairs:
+                rows.append((row.outcome, f"{pair.first} – {pair.second}",
+                             f"{pair.mean_rank_difference:.1f}", f"{pair.z:.2f}", _p(pair.p_raw),
+                             _p(pair.p_adjusted), pair.warning))
+        return Table("Dunn's pairwise tests (outcomes with a significant Kruskal–Wallis test)",
+                     ("Outcome", "Pair", "Mean-rank difference", "z", "p (raw)",
+                      "p (Holm, within the outcome)", "Note"), tuple(rows))
+
+    def tables(self) -> tuple[Table, ...]:
+        """The Kruskal–Wallis table, then the groups and the pairs (if any)."""
+        return (self.table(), *(t for t in (self.group_table(), self.pairs_table()) if t.rows))
+
     def structured(self) -> StructuredResult:
         quantities = []
         for row in self.rows:
@@ -146,7 +179,7 @@ class GroupFamily:
              "options": {"method": self.method, "adjustment": self.adjustment,
                          "permutations": self.permutations, "seed": self.seed,
                          "alpha": self.alpha}},
-            tuple(quantities), warnings=self.warnings, tables=(self.table(),),
+            tuple(quantities), warnings=self.warnings, tables=self.tables(),
             provenance=self.provenance)
 
     def to_dict(self) -> dict:
@@ -164,6 +197,13 @@ class GroupFamily:
                                     "pairs": pairs, "warnings": tuple(row.get("warnings", ()))}))
         return cls(**{**data, "rows": tuple(rows), "warnings": tuple(data.get("warnings", ())),
                       "provenance": dict(data.get("provenance", {}))})
+
+
+def _number(value: float) -> str:
+    """A median as written in a table: at most three decimals (a median of
+    two-decimal data can have three), no trailing zeros."""
+    text = f"{value:.3f}".rstrip("0").rstrip(".")
+    return "0" if text in ("-0", "") else text
 
 
 def _p(value: float | None) -> str:
@@ -303,6 +343,7 @@ def compare_many(df: pd.DataFrame, group: str, outcomes: list[str], *, method: s
     if any(n < SMALL_GROUP for n in sizes.values()):
         warnings.append("Small groups: the permutation p-value is primary and pairwise results "
                         "involving them are exploratory.")
+    warnings += unadjusted_warning(adjust, adjustment.family_size)
     return GroupFamily(group, method, tuple(rows), adjust, adjustment.description,
                        adjustment.family_size, alpha, permutations, seed, tuple(warnings),
                        _provenance(seed=seed, permutations=permutations, engine=ENGINE_VERSION))
@@ -512,6 +553,7 @@ def compare_two_many(df: pd.DataFrame, group: str, outcomes: list[str], *,
         "raw p-values are kept.",
         "Group differences do not establish causation; a non-significant result does not show "
         "that the groups are equal.",
+        *unadjusted_warning(adjust, adjustment.family_size),
     )
     return TwoGroupFamily(group, method, tuple(rows), adjust, adjustment.description,
                           adjustment.family_size, alpha, warnings,
@@ -520,24 +562,24 @@ def compare_two_many(df: pd.DataFrame, group: str, outcomes: list[str], *,
 
 GROUP_TEMPLATES = {
     "en": {
-        "difference": "{outcome}: {test}, p(adjusted) = {padj}. The groups of {group} differ "
+        "difference": "{outcome}: {test}, {plabel} = {padj}. The groups of {group} differ "
                       "in this sample; this does not show causation.",
-        "no_evidence": "{outcome}: {test}, p(adjusted) = {padj}. No evidence of a difference "
+        "no_evidence": "{outcome}: {test}, {plabel} = {padj}. No evidence of a difference "
                        "between the groups of {group} at α = {alpha}; this does not show that "
                        "the groups are equal.",
         "failed": "{outcome}: not calculated — {note}",
     },
     "lv": {
-        "difference": "{outcome}: {test}, p(koriģēts) = {padj}. {group} grupas šajā izlasē "
+        "difference": "{outcome}: {test}, {plabel} = {padj}. {group} grupas šajā izlasē "
                       "atšķiras; tas nepierāda cēloņsakarību.",
-        "no_evidence": "{outcome}: {test}, p(koriģēts) = {padj}. Nav pierādījumu atšķirībai "
+        "no_evidence": "{outcome}: {test}, {plabel} = {padj}. Nav pierādījumu atšķirībai "
                        "starp {group} grupām pie α = {alpha}; tas nepierāda, ka grupas ir vienādas.",
         "failed": "{outcome}: nav aprēķināts — {note}",
     },
     "ru": {
-        "difference": "{outcome}: {test}, p(скорр.) = {padj}. Группы {group} в этой выборке "
+        "difference": "{outcome}: {test}, {plabel} = {padj}. Группы {group} в этой выборке "
                       "различаются; это не доказывает причинность.",
-        "no_evidence": "{outcome}: {test}, p(скорр.) = {padj}. Нет оснований говорить о "
+        "no_evidence": "{outcome}: {test}, {plabel} = {padj}. Нет оснований говорить о "
                        "различии групп {group} при α = {alpha}; это не доказывает, что группы "
                        "одинаковы.",
         "failed": "{outcome}: не вычислено — {note}",
@@ -560,6 +602,7 @@ def interpret_groups(family, language: str = "en") -> list[str]:
             test = f"{symbol} = {row.statistic:.2f}, {row.effect_name} = {row.effect_size:.3f}"
         significant = row.p_adjusted is not None and row.p_adjusted < family.alpha
         sentences.append(words["difference" if significant else "no_evidence"].format(
-            outcome=row.outcome, test=test, padj=_p(row.p_adjusted), group=family.group,
+            outcome=row.outcome, test=test, padj=_p(row.p_adjusted),
+            plabel=p_label(family.adjustment, language), group=family.group,
             alpha=str(family.alpha).replace("0.", ".", 1)))
     return sentences

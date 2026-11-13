@@ -295,6 +295,7 @@ def correlate_many(df: pd.DataFrame, focal: str, others: list[str], *, method: s
     ]
     if any(row.status != "ok" for row in rows):
         warnings.append("Pairs whose calculation failed are not part of the adjusted family.")
+    warnings += unadjusted_warning(adjust, adjustment.family_size)
     return CorrelationFamily(
         method=method, focal=focal, rows=tuple(rows), adjustment=adjust,
         adjustment_text=adjustment.description, family_size=adjustment.family_size,
@@ -356,9 +357,9 @@ def _pair(df, focal, other, method, ci_level, resamples, seed, rule,
 
 TEMPLATES = {
     "en": {
-        "assoc": "{x} and {y}: {sym} = {est}, {ci}, p(adjusted) = {padj}. A {direction} "
+        "assoc": "{x} and {y}: {sym} = {est}, {ci}, {plabel} = {padj}. A {direction} "
                  "{magnitude}association in this sample; it does not show causation.",
-        "no_evidence": "{x} and {y}: {sym} = {est}, {ci}, p(adjusted) = {padj}. These data do "
+        "no_evidence": "{x} and {y}: {sym} = {est}, {ci}, {plabel} = {padj}. These data do "
                        "not provide evidence of an association at α = {alpha}; this does not "
                        "show that there is no association.",
         "failed": "{x} and {y}: not calculated — {note}",
@@ -366,18 +367,18 @@ TEMPLATES = {
         "ci": "{level} CI [{low}, {high}]", "no_ci": "no interval",
     },
     "lv": {
-        "assoc": "{x} un {y}: {sym} = {est}, {ci}, p(koriģēts) = {padj}. Šajā izlasē {direction} "
+        "assoc": "{x} un {y}: {sym} = {est}, {ci}, {plabel} = {padj}. Šajā izlasē {direction} "
                  "{magnitude}sakarība; tā nepierāda cēloņsakarību.",
-        "no_evidence": "{x} un {y}: {sym} = {est}, {ci}, p(koriģēts) = {padj}. Dati nesniedz "
+        "no_evidence": "{x} un {y}: {sym} = {est}, {ci}, {plabel} = {padj}. Dati nesniedz "
                        "pierādījumus sakarībai pie α = {alpha}; tas nepierāda, ka sakarības nav.",
         "failed": "{x} un {y}: nav aprēķināts — {note}",
         "positive": "pozitīva", "negative": "negatīva", "none": "",
         "ci": "{level} TI [{low}, {high}]", "no_ci": "bez intervāla",
     },
     "ru": {
-        "assoc": "{x} и {y}: {sym} = {est}, {ci}, p(скорр.) = {padj}. В этой выборке "
+        "assoc": "{x} и {y}: {sym} = {est}, {ci}, {plabel} = {padj}. В этой выборке "
                  "{direction} {magnitude}связь; она не доказывает причинность.",
-        "no_evidence": "{x} и {y}: {sym} = {est}, {ci}, p(скорр.) = {padj}. Данные не дают "
+        "no_evidence": "{x} и {y}: {sym} = {est}, {ci}, {plabel} = {padj}. Данные не дают "
                        "оснований говорить о связи при α = {alpha}; это не доказывает, что "
                        "связи нет.",
         "failed": "{x} и {y}: не вычислено — {note}",
@@ -385,6 +386,32 @@ TEMPLATES = {
         "ci": "{level} ДИ [{low}, {high}]", "no_ci": "без интервала",
     },
 }
+# The p-value a sentence reports, named by the procedure actually applied
+# (Stage 36.8, review finding K4: "p(adjusted)" was written even when the
+# researcher chose no adjustment). Shared with batch_groups.
+P_LABELS = {
+    "en": {"holm": "p (Holm)", "bh": "p (Benjamini–Hochberg)", "bonferroni": "p (Bonferroni)",
+           "none": "p (unadjusted)"},
+    "lv": {"holm": "p (Holma korekcija)", "bh": "p (Benjamini–Hohberga korekcija)",
+           "bonferroni": "p (Bonferroni korekcija)", "none": "p (bez korekcijas)"},
+    "ru": {"holm": "p (поправка Холма)", "bh": "p (поправка Бенджамини–Хохберга)",
+           "bonferroni": "p (поправка Бонферрони)", "none": "p (без поправки)"},
+}
+
+
+def p_label(adjustment: str, language: str = "en") -> str:
+    labels = P_LABELS.get(language, P_LABELS["en"])
+    return labels.get(adjustment, P_LABELS["en"].get(adjustment, "p"))
+
+
+def unadjusted_warning(adjustment: str, family_size: int) -> list[str]:
+    """The risk of an unadjusted family, said once (review finding K4)."""
+    if adjustment != "none" or family_size < 2:
+        return []
+    return [f"No multiple-comparison adjustment: {family_size} tests were run, so the chance "
+            "of at least one false positive is higher than α. Report the p-values as unadjusted."]
+
+
 MAGNITUDE_WORDS = {
     "en": {"negligible": "negligible ", "small": "small ", "moderate": "moderate ", "large": "large "},
     "lv": {"negligible": "niecīga ", "small": "vāja ", "moderate": "mērena ", "large": "cieša "},
@@ -401,7 +428,8 @@ def interpret_row(family: CorrelationFamily, row: CorrelationRow, language: str 
                              high=_r(row.ci_high))
           if row.ci_low is not None else words["no_ci"])
     fields = dict(x=row.x, y=row.y, sym=SYMBOLS[family.method], est=_r(row.estimate), ci=ci,
-                  padj=_p(row.p_adjusted), alpha=str(family.alpha).replace("0.", ".", 1),
+                  padj=_p(row.p_adjusted), plabel=p_label(family.adjustment, language),
+                  alpha=str(family.alpha).replace("0.", ".", 1),
                   direction=words[row.direction],
                   magnitude=MAGNITUDE_WORDS.get(language, MAGNITUDE_WORDS["en"]).get(
                       row.magnitude, ""))
