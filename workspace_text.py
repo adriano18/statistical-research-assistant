@@ -3300,6 +3300,252 @@ T.update({
 })
 
 
+# Stage 37 (#67): the Export card of the Data, Results and Reports pages and
+# the SPSS import option. LV and RU are drafts for native review.
+T.update({
+    "export.title.data": ("Export data", "Eksportēt datus", "Экспорт данных"),
+    "export.title.results": ("Export results", "Eksportēt rezultātus", "Экспорт результатов"),
+    "export.title.reports": ("Export for reproduction", "Eksportēt atkārtošanai",
+                             "Экспорт для воспроизведения"),
+    "export.body.data": (
+        "A copy of the data with its codebook: values, labels, measurement levels and missing "
+        "codes. No report is needed.",
+        "Datu kopija ar kodu grāmatu: vērtības, etiķetes, mērījumu līmeņi un trūkstošo vērtību "
+        "kodi. Atskaite nav vajadzīga.",
+        "Копия данных с кодовой книгой: значения, метки, уровни измерения и коды пропусков. "
+        "Отчёт не нужен."),
+    "export.body.results": (
+        "An editable workbook: the estimates and tables as shown, the engine's unrounded values "
+        "and how each result was calculated.",
+        "Rediģējama darbgrāmata: novērtējumi un tabulas kā ekrānā, dzinēja nenoapaļotās "
+        "vērtības un tas, kā katrs rezultāts aprēķināts.",
+        "Редактируемая книга: оценки и таблицы как на экране, неокруглённые значения движка и "
+        "способ расчёта каждого результата."),
+    "export.body.reports": (
+        "One .zip with the data, the codebook, the results, the Word report, the figures and a "
+        "manifest of versions, methods, options and seeds.",
+        "Viens .zip ar datiem, kodu grāmatu, rezultātiem, Word atskaiti, attēliem un manifestu "
+        "ar versijām, metodēm, iestatījumiem un sēklām.",
+        "Один .zip с данными, кодовой книгой, результатами, отчётом Word, рисунками и манифестом "
+        "версий, методов, параметров и начальных значений генератора."),
+    "export.format": ("Format", "Formāts", "Формат"),
+    "export.format.xlsx": ("Excel workbook with codebook (.xlsx)",
+                           "Excel darbgrāmata ar kodu grāmatu (.xlsx)",
+                           "Книга Excel с кодовой книгой (.xlsx)"),
+    "export.format.sav": ("SPSS data (.sav)", "SPSS dati (.sav)", "Данные SPSS (.sav)"),
+    "export.format.csv": ("CSV text, UTF-8 (.csv)", "CSV teksts, UTF-8 (.csv)",
+                          "Текст CSV, UTF-8 (.csv)"),
+    "export.format.bundle": ("Reproducibility bundle (.zip)", "Atkārtojamības pakete (.zip)",
+                             "Пакет воспроизводимости (.zip)"),
+    "export.format.results": ("Results workbook (.xlsx)", "Rezultātu darbgrāmata (.xlsx)",
+                              "Книга результатов (.xlsx)"),
+    "export.save.xlsx": ("Export .xlsx…", "Eksportēt .xlsx…", "Экспортировать .xlsx…"),
+    "export.save.sav": ("Export .sav…", "Eksportēt .sav…", "Экспортировать .sav…"),
+    "export.save.csv": ("Export .csv…", "Eksportēt .csv…", "Экспортировать .csv…"),
+    "export.save.bundle": ("Export bundle (.zip)…", "Eksportēt paketi (.zip)…",
+                           "Экспортировать пакет (.zip)…"),
+    "export.save.results": ("Export results (.xlsx)…", "Eksportēt rezultātus (.xlsx)…",
+                            "Экспортировать результаты (.xlsx)…"),
+    "export.advanced": ("Advanced options", "Papildu iespējas", "Дополнительные параметры"),
+    "export.advanced_hint": ("Sheets, CSV separator, which results",
+                             "Lapas, CSV atdalītājs, kuri rezultāti",
+                             "Листы, разделитель CSV, какие результаты"),
+    "export.advanced_none": ("This format has no further options.",
+                             "Šim formātam citu iespēju nav.",
+                             "У этого формата нет других параметров."),
+    "export.sections": ("Sheets of the workbook", "Darbgrāmatas lapas", "Листы книги"),
+    "export.section.data": ("Data: every row and variable, values as stored",
+                            "Dati: visas rindas un mainīgie, vērtības kā saglabātas",
+                            "Данные: все строки и переменные, значения как сохранены"),
+    "export.section.codebook": (
+        "Codebook: labels, levels, codes, missing values, derived-variable history",
+        "Kodu grāmata: etiķetes, līmeņi, kodi, trūkstošās vērtības, atvasināto mainīgo vēsture",
+        "Кодовая книга: метки, уровни, коды, пропуски, история производных переменных"),
+    "export.section.scales": ("Scales: items, reverse-keyed items, scoring rules",
+                              "Skalas: jautājumi, apvērstie jautājumi, vērtēšanas noteikumi",
+                              "Шкалы: пункты, обратные пункты, правила подсчёта"),
+    "export.section.results": ("Results: one sheet per analysis",
+                               "Rezultāti: viena lapa katrai analīzei",
+                               "Результаты: по листу на каждый анализ"),
+    "export.section.provenance": ("Provenance: data version, methods, options, seeds",
+                                  "Izcelsme: datu versija, metodes, iestatījumi, sēklas",
+                                  "Происхождение: версия данных, методы, параметры, сиды"),
+    "export.csv.layout": ("Separator", "Atdalītājs", "Разделитель"),
+    "export.csv.layout.comma": (
+        "Comma (,) with a decimal point: R, Python, SPSS, Excel in English",
+        "Komats (,) ar decimālpunktu: R, Python, SPSS, Excel angļu valodā",
+        "Запятая (,) с десятичной точкой: R, Python, SPSS, Excel на английском"),
+    "export.csv.layout.semicolon": (
+        "Semicolon (;) with a decimal comma: Excel set to Latvian or Russian",
+        "Semikols (;) ar decimālkomatu: Excel latviešu vai krievu iestatījumos",
+        "Точка с запятой (;) с десятичной запятой: Excel с латышскими или русскими настройками"),
+    "export.csv.bom": ("Start with a UTF-8 byte-order mark (Excel then shows ā, č and ж)",
+                       "Sākt ar UTF-8 baitu secības zīmi (Excel tad pareizi rāda garumzīmes "
+                       "un kirilicu)",
+                       "Начать с метки порядка байтов UTF-8 (тогда Excel показывает ā, č и ж)"),
+    "export.csv.note": (
+        "A text cell that begins with = + - or @ gets a leading apostrophe, so no spreadsheet "
+        "runs it as a formula; numbers are never changed. This program removes the apostrophe "
+        "again when it opens the file with its codebook.",
+        "Teksta šūnai, kas sākas ar = + - vai @, priekšā tiek likts apostrofs, lai neviena "
+        "izklājlapa to neizpildītu kā formulu; skaitļi netiek mainīti. Šī programma apostrofu "
+        "noņem, kad atver failu kopā ar tā kodu grāmatu.",
+        "Перед текстовой ячейкой, которая начинается с = + - или @, ставится апостроф, чтобы "
+        "ни одна таблица не выполнила её как формулу; числа не изменяются. Эта программа "
+        "убирает апостроф, когда открывает файл вместе с его кодовой книгой."),
+    "export.scope": ("Which results", "Kuri rezultāti", "Какие результаты"),
+    "export.scope.all": ("All results", "Visi rezultāti", "Все результаты"),
+    "export.scope.selected": ("The result on screen", "Ekrānā redzamais rezultāts",
+                              "Результат на экране"),
+    "export.scope.report": ("The results in the report", "Atskaitē iekļautie rezultāti",
+                            "Результаты в отчёте"),
+    "export.bundle.report": ("Include the Word report as composed on the Reports page",
+                             "Iekļaut Word atskaiti, kā tā sastādīta lapā Atskaites",
+                             "Включить отчёт Word, как он составлен на странице «Отчёты»"),
+    "export.sav.limits": (
+        ".sav keeps the values, variable and value labels, measurement levels and user-missing "
+        "codes. It cannot hold the project's audit trail, the derived-variable history or how "
+        "the results were calculated: export the codebook (.xlsx) or the bundle for those.",
+        ".sav saglabā vērtības, mainīgo un vērtību etiķetes, mērījumu līmeņus un lietotāja "
+        "trūkstošo vērtību kodus. Tajā nevar ietvert projekta auditu, atvasināto mainīgo vēsturi "
+        "un to, kā aprēķināti rezultāti: tiem eksportējiet kodu grāmatu (.xlsx) vai paketi.",
+        ".sav хранит значения, метки переменных и значений, уровни измерения и коды "
+        "пользовательских пропусков. В нём нельзя сохранить журнал аудита проекта, историю "
+        "производных переменных и способ расчёта результатов: для этого экспортируйте кодовую "
+        "книгу (.xlsx) или пакет."),
+    "export.sav.changes_title": ("{count} changes for SPSS (the codebook keeps the originals)",
+                                 "{count} izmaiņas SPSS vajadzībām (kodu grāmatā paliek oriģināli)",
+                                 "Изменений для SPSS: {count} (кодовая книга хранит оригиналы)"),
+    "export.sav.renamed": ("{name} → {spss} (SPSS name)", "{name} → {spss} (SPSS nosaukums)",
+                           "{name} → {spss} (имя в SPSS)"),
+    "export.sav.names_hint": (
+        "SPSS names have at most 64 bytes, start with a letter, are no reserved words and differ "
+        "in more than letter case. The original names stay in the file's notes and in the "
+        "codebook; this program restores them when it opens the file.",
+        "SPSS nosaukumos ir ne vairāk kā 64 baiti, tie sākas ar burtu, nav rezervēti vārdi un "
+        "atšķiras ne tikai ar burtu reģistru. Sākotnējie nosaukumi paliek faila piezīmēs un kodu "
+        "grāmatā; šī programma tos atjauno, kad atver failu.",
+        "Имена SPSS не длиннее 64 байт, начинаются с буквы, не являются зарезервированными "
+        "словами и различаются не только регистром. Исходные имена остаются в примечаниях файла "
+        "и в кодовой книге; эта программа восстанавливает их при открытии файла."),
+    "export.change.label_cut": ("{name}: the label is cut to {limit} bytes",
+                                "{name}: etiķete saīsināta līdz {limit} baitiem",
+                                "{name}: метка сокращена до {limit} байт"),
+    "export.change.value_label_cut": ("{name}: the label of code {code} is cut to {limit} bytes",
+                                      "{name}: koda {code} etiķete saīsināta līdz {limit} baitiem",
+                                      "{name}: метка кода {code} сокращена до {limit} байт"),
+    "export.change.file_label_cut": ("{name}: the file label is cut to {limit} bytes",
+                                     "{name}: faila etiķete saīsināta līdz {limit} baitiem",
+                                     "{name}: метка файла сокращена до {limit} байт"),
+    "export.change.category_codes": (
+        "{name}: {count} categories are written as codes 1–{count} with value labels",
+        "{name}: {count} kategorijas ierakstītas kā kodi 1–{count} ar vērtību etiķetēm",
+        "{name}: категории ({count}) записаны как коды 1–{count} с метками значений"),
+    "export.change.id_text": ("{name}: an identifier, written as a text (string) variable",
+                              "{name}: identifikators, ierakstīts kā teksta mainīgais",
+                              "{name}: идентификатор, записан как текстовая переменная"),
+    "export.change.missing_limit": (
+        "{name}: SPSS keeps three missing codes, or one range and one code; not declared: {codes}",
+        "{name}: SPSS glabā trīs trūkstošo vērtību kodus vai vienu diapazonu un vienu kodu; "
+        "nav deklarēti: {codes}",
+        "{name}: SPSS хранит три кода пропусков или один диапазон и один код; не объявлены: "
+        "{codes}"),
+    "export.change.missing_not_numeric": (
+        "{name}: codes that are not numbers cannot be missing codes of a numeric variable: {codes}",
+        "{name}: kodi, kas nav skaitļi, nevar būt skaitliska mainīgā trūkstošo vērtību kodi: "
+        "{codes}",
+        "{name}: нечисловые коды не могут быть кодами пропусков числовой переменной: {codes}"),
+    "export.change.missing_kind": (
+        "{name}: missing codes cannot be declared for this kind of variable: {codes}",
+        "{name}: šāda veida mainīgajam trūkstošo vērtību kodus nevar deklarēt: {codes}",
+        "{name}: для переменной такого типа нельзя объявить коды пропусков: {codes}"),
+    "export.change.mixed_text": ("{name}: numbers and texts in one column, written as text",
+                                 "{name}: skaitļi un teksti vienā kolonnā, ierakstīti kā teksts",
+                                 "{name}: числа и тексты в одном столбце, записаны как текст"),
+    "export.change.text_missing": (
+        "{name}: {missing} missing and {empty} empty texts both become an empty text declared "
+        "missing",
+        "{name}: {missing} trūkstošās un {empty} tukšās teksta vērtības kļūst par tukšu tekstu, "
+        "kas deklarēts kā trūkstošs",
+        "{name}: пропуски ({missing}) и пустые тексты ({empty}) становятся пустым текстом, "
+        "объявленным пропуском"),
+    "export.change.text_scale": ("{name}: a text variable cannot be scale; written as nominal",
+                                 "{name}: teksta mainīgais nevar būt skalas; ierakstīts kā "
+                                 "nominālais",
+                                 "{name}: текстовая переменная не может быть количественной; "
+                                 "записана как номинальная"),
+    "export.change.timezone": ("{name}: times are converted to UTC (SPSS has no time zones)",
+                               "{name}: laiki pārvērsti UTC (SPSS nav laika joslu)",
+                               "{name}: время переведено в UTC (в SPSS нет часовых поясов)"),
+    "export.change.big_integer": ("{name}: integers above 2^53 lose their last digits in SPSS",
+                                  "{name}: veseli skaitļi virs 2^53 SPSS zaudē pēdējos ciparus",
+                                  "{name}: целые числа больше 2^53 теряют последние цифры в SPSS"),
+    "export.change.value_label_code": (
+        "{name}: the label of code {code} is left out (not a number)",
+        "{name}: koda {code} etiķete izlaista (nav skaitlis)",
+        "{name}: метка кода {code} пропущена (не число)"),
+    "export.sensitive_title": ("{count} column(s) may identify participants",
+                               "Kolonnas, kas var identificēt dalībniekus: {count}",
+                               "Столбцы, по которым можно узнать участников: {count}"),
+    "export.sensitive_body": ("Check before you share the file: {columns}.",
+                              "Pārbaudiet pirms faila kopīgošanas: {columns}.",
+                              "Проверьте перед тем, как делиться файлом: {columns}."),
+    "export.sensitive.direct": ("name, contact, address, birth date or personal code",
+                                "vārds, kontakti, adrese, dzimšanas datums vai personas kods",
+                                "имя, контакты, адрес, дата рождения или личный код"),
+    "export.sensitive.identifier": ("participant code", "dalībnieka kods", "код участника"),
+    "export.sensitive.free_text": ("free-text answers", "brīva teksta atbildes",
+                                   "ответы свободным текстом"),
+    "export.not_uploaded": ("Nothing is uploaded: the file is written only where you choose.",
+                            "Nekas netiek augšupielādēts: fails tiek ierakstīts tikai jūsu "
+                            "izvēlētajā vietā.",
+                            "Ничего не загружается в сеть: файл записывается только туда, куда "
+                            "вы укажете."),
+    "export.saved": (
+        "Saved and checked: {path}. Re-opened with an independent reader: {rows} rows, "
+        "{columns} variables ({signature}).",
+        "Saglabāts un pārbaudīts: {path}. Atvērts no jauna ar neatkarīgu lasītāju: {rows} "
+        "rindas, {columns} mainīgie ({signature}).",
+        "Сохранено и проверено: {path}. Открыто заново независимым средством чтения: строк — "
+        "{rows}, переменных — {columns} ({signature})."),
+    "export.saved_csv": (
+        "Saved and checked: {path}, with the codebook {codebook}. Re-opened: {rows} rows, "
+        "{columns} variables ({signature}).",
+        "Saglabāts un pārbaudīts: {path} kopā ar kodu grāmatu {codebook}. Atvērts no jauna: "
+        "{rows} rindas, {columns} mainīgie ({signature}).",
+        "Сохранено и проверено: {path} вместе с кодовой книгой {codebook}. Открыто заново: "
+        "строк — {rows}, переменных — {columns} ({signature})."),
+    "export.saved_results": ("Saved and checked: {path}. Re-opened: {sheets} sheets.",
+                             "Saglabāts un pārbaudīts: {path}. Atvērts no jauna: {sheets} lapas.",
+                             "Сохранено и проверено: {path}. Открыто заново: листов — {sheets}."),
+    "export.saved_bundle": (
+        "Saved and checked: {path}. {files} files with matching checksums; the data re-read: "
+        "{rows} rows; R syntax for {syntax} result(s).",
+        "Saglabāts un pārbaudīts: {path}. {files} faili ar sakrītošām kontrolsummām; dati "
+        "nolasīti no jauna: {rows} rindas; R sintakse {syntax} rezultātiem.",
+        "Сохранено и проверено: {path}. Файлов с совпадающими контрольными суммами — {files}; "
+        "данные прочитаны заново: строк — {rows}; синтаксис R для результатов: {syntax}."),
+    "export.progress": ("Writing row {done} of {total}…", "Raksta {done}. rindu no {total}…",
+                        "Запись строки {done} из {total}…"),
+    "export.no_data": ("Open a dataset to export it.", "Atveriet datu kopu, lai to eksportētu.",
+                       "Откройте набор данных, чтобы экспортировать его."),
+    "export.no_results": ("There are no results to export yet: run an analysis first.",
+                          "Vēl nav rezultātu, ko eksportēt: vispirms veiciet analīzi.",
+                          "Пока нет результатов для экспорта: сначала выполните анализ."),
+    "export.nothing_selected": ("Choose at least one sheet of the workbook.",
+                                "Izvēlieties vismaz vienu darbgrāmatas lapu.",
+                                "Выберите хотя бы один лист книги."),
+    "data.opt.user_missing": ("SPSS user-missing values", "SPSS lietotāja trūkstošās vērtības",
+                              "Пользовательские пропуски SPSS"),
+    "data.opt.user_missing.missing": ("Missing, as SPSS treats them",
+                                      "Trūkstošas, kā tās uztver SPSS",
+                                      "Пропуски, как их понимает SPSS"),
+    "data.opt.user_missing.codes": ("Keep the codes as values",
+                                    "Saglabāt kodus kā vērtības",
+                                    "Оставить коды как значения"),
+})
+
+
 # Engine-facing confirmation and option labels: canonical English (kept in
 # provenance) → displayed LV/RU. Method names stay international.
 LABELS: dict[str, tuple[str, str]] = {

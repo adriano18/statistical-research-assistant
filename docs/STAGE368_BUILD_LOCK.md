@@ -24,6 +24,7 @@ Issue #62, P0 "reproducible runtime and secure release". This document lists exa
   - It is a universal `uv pip compile` resolution with `--generate-hashes`, made as of `--exclude-newer 2026-11-09T19:00:00Z`.
   - It pins 49 packages, each with the SHA-256 of every published file.
   - These are **the same 49 versions** that the green CI runs of 2026-11-09 installed (compared line by line), so no version was changed to make the lock.
+  - **Stage 37 (#67):** `pyreadstat>=1.3,<2` was added to `requirements.in` and the lock regenerated with the same command and `--exclude-newer` time. It now pins **50** packages: pyreadstat 1.3.7 (its dependencies narwhals 2.28.0 and numpy 2.5.4 were already pinned). No other pin or hash changed; `requirements-dev.txt` regenerates byte-identical. The lock holds the hash of `pyreadstat-1.3.7-cp312-cp312-win_amd64.whl` (`7b65bd28…4609`). Details: `docs/STAGE37_EXPORT.md`.
 - `flet build windows` installs this file in pip's hash-checking mode. flet-cli 1.1.2 supports it: "A file with hashes is only checked".
 
 | Package | Version | | Package | Version |
@@ -205,6 +206,8 @@ The SBOM (`diagnostics/sbom.cdx.json` of every build) has 228 components: 49 Pyt
 | certifi | MPL-2.0 (file-level) | bundled CA list, unmodified | notice shipped in its dist-info |
 
 Everything else is permissive (MIT, BSD, Apache-2.0, PSF, MIT-CMU, Zlib, CC0). Packages the OCR lock lists but does not ship (ICU, GnuTLS, nettle, …) are not in the program. The full table is in each build's `diagnostics/licenses.md`.
+
+**Stage 37 (#67), `.sav` export and import.** pyreadstat 1.3.7 is Apache-2.0 (its `License` metadata). The ReadStat C library compiled into its extension modules is MIT (copyright Evan Miller); both texts are in the wheel's `pyreadstat-1.3.7.dist-info/licenses/LICENSE`, which the bundle keeps (the build's cleanup removes only the `.c`, `.pyx` and `.pxd` sources). `tools/build_sbom.py` lists pyreadstat with `Apache-2.0` and ReadStat as a component inside it with `MIT` (`BUNDLED_IN_WHEEL`), and both appear in `licenses.md`. Neither is copyleft; the copyleft list above is unchanged.
 
 ### 5.2 The project's own licence
 

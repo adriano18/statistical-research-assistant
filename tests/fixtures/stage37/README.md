@@ -25,4 +25,4 @@ The fixture was built from generic statistical model requirements, **not derived
 
 See [Stage 37 next specification](../../../docs/STAGE37_NEXT_SPEC.md) and GitHub Issues #66–#70.
 
-**Status:** generator and requirements only. This branch does not implement .sav/.xlsx exports, RAG, mediation/moderation or new UI functionality.
+**Status:** verification task 3 (export to .xlsx, .csv and .sav, reopened with independent readers) is implemented on `claude/stage37-export` and tested on this fixture (`docs/STAGE37_EXPORT.md`; `tests/test_stage37_export*.py`; Windows journey `export-data`, not yet run on Windows). RAG and mediation/moderation are not implemented.

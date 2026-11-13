@@ -62,6 +62,11 @@ Journeys (synthetic data only; see JOURNEYS):
                  (review K2, spec G) report order, a note, a reviewed check,
                  title, a section left out and Latvian, kept over a restart
                  and in the Word report; none of it in a second project
+* export-data    (Stage 37, #67) the synthetic 180-case master fixture
+                 exported from the Data page's Export card as .xlsx, .sav
+                 and .csv through the Save dialog; each file read here with
+                 openpyxl, pyreadstat or pandas and compared cell by cell;
+                 the last format remembered
 
 Every step is recorded in OUT_DIR: a screenshot, the UI Automation tree
 when something is missing, an animated recording per journey
@@ -3854,6 +3859,174 @@ def journey_report_composition(gui: Gui, work: Path, journey: Journey) -> None:
         shot_at(gui, box, "second project report settings")
 
 
+# ======================================================== Stage 37 (#67): export
+EXPORT_PROJECT = "Fictional export study"
+EXPORT_FILES = (("xlsx", "export_master.xlsx"), ("sav", "export_master.sav"),
+                ("csv", "export_master.csv"))
+MASTER_GENERATOR = ROOT / "tests" / "fixtures" / "stage37" / "generate_master_fixture.py"
+
+
+def master_fixture(folder: Path) -> Path:
+    """The synthetic 180-case master fixture (stdlib generator) in ``folder``."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("stage37_master_fixture", MASTER_GENERATOR)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    csv_path, _ = module.generate(Path(folder))
+    return csv_path
+
+
+def master_source(csv_path: Path) -> dict:
+    """The fixture as the driver reads it itself (the csv module, no pandas
+    and nothing of the program): its header and the text of every cell."""
+    import csv
+
+    with open(csv_path, encoding="utf-8", newline="") as stream:
+        rows = list(csv.reader(stream))
+    return {"header": rows[0], "rows": rows[1:]}
+
+
+def export_options() -> list[str]:
+    """The entries of the Data page's format dropdown, in order."""
+    from workspace_export import FORMATS
+
+    return [T(f"export.format.{key}") for key in FORMATS["data"]]
+
+
+def _same_cell(text: str, value) -> bool:
+    """A cell of the source CSV against the value an independent reader gave."""
+    import math
+
+    if text == "":
+        return value is None or value == "" or (isinstance(value, float) and math.isnan(value))
+    try:
+        number = float(text)
+    except ValueError:
+        return str(value) == text
+    if isinstance(value, str) or value is None:
+        return False
+    return float(value) == number
+
+
+def check_export(path: Path, kind: str, source: dict) -> dict:
+    """The exported file opened with a reader the program does not use for
+    writing it, every cell compared with the source CSV: openpyxl (.xlsx),
+    pyreadstat (.sav), pandas.read_csv (.csv, with the codebook beside it)."""
+    expect(path.is_file() and path.stat().st_size > 0, f"{path.name} was not written")
+    header, rows = source["header"], source["rows"]
+    facts = {"file": path.name, "bytes": path.stat().st_size, "rows": len(rows)}
+    if kind == "xlsx":
+        from openpyxl import load_workbook
+
+        expect(path.read_bytes()[:4] == b"PK\x03\x04", f"{path.name} is not a workbook")
+        with zipfile.ZipFile(path) as archive:
+            xml = "".join(archive.read(n).decode("utf-8") for n in archive.namelist()
+                          if n.startswith("xl/worksheets/"))
+        expect("<f>" not in xml and "<f " not in xml, f"{path.name} holds a formula")
+        book = load_workbook(path, read_only=True)
+        try:
+            facts["sheets"] = book.sheetnames
+            expect(book.sheetnames[:2] == ["Data", "Codebook"], f"sheets: {book.sheetnames}")
+            data = list(book["Data"].iter_rows(values_only=True))
+            codebook = list(book["Codebook"].iter_rows(values_only=True))
+        finally:
+            book.close()
+        expect(list(data[0]) == header, "the Data header is not the fixture's")
+        expect(len(data) - 1 == len(rows), f"{len(data) - 1} data rows instead of {len(rows)}")
+        for number, (row, back) in enumerate(zip(rows, data[1:]), start=2):
+            back = list(back) + [None] * (len(header) - len(back))
+            for name, text, value in zip(header, row, back):
+                expect(_same_cell(text, value), f"row {number}, {name}: {text!r} -> {value!r}")
+        names = [r[0] for r in codebook[1:len(header) + 1]]
+        expect(names == header, "the Codebook does not list every variable")
+        facts["cells"] = len(rows) * len(header)
+    elif kind == "sav":
+        import pyreadstat
+
+        expect(path.read_bytes()[:4] == b"$FL2", f"{path.name} is not an SPSS file")
+        frame, meta = pyreadstat.read_sav(str(path), user_missing=True)
+        expect(list(frame.columns) == header, "the .sav variables are not the fixture's")
+        expect(len(frame) == len(rows), f"{len(frame)} rows instead of {len(rows)}")
+        for number, row in enumerate(rows):
+            for name, text in zip(header, row):
+                expect(_same_cell(text, frame[name].iloc[number]),
+                       f"row {number + 2}, {name}: {text!r} -> {frame[name].iloc[number]!r}")
+        facts.update(encoding=meta.file_encoding, cells=len(rows) * len(header),
+                     measures=sorted(set(meta.variable_measure.values())))
+    elif kind == "csv":
+        import json
+
+        import pandas as pd
+
+        import csv_safety
+
+        expect(path.read_bytes()[:3] == b"\xef\xbb\xbf", f"{path.name} has no UTF-8 mark")
+        frame = pd.read_csv(path, encoding="utf-8-sig", dtype={"participant_code": str},
+                            keep_default_na=False, na_values=[""])
+        expect(list(frame.columns) == header, "the CSV header is not the fixture's")
+        expect(len(frame) == len(rows), f"{len(frame)} rows instead of {len(rows)}")
+        for number, row in enumerate(rows):
+            for name, text in zip(header, row):
+                expect(_same_cell(text, frame[name].iloc[number]),
+                       f"row {number + 2}, {name}: {text!r} -> {frame[name].iloc[number]!r}")
+        book = json.loads(csv_safety.codebook_path(path).read_text(encoding="utf-8"))
+        expect(book["data_file"]["sha256"] == csv_safety.sha256_file(path),
+               "the codebook does not vouch for the CSV")
+        facts.update(codebook=csv_safety.codebook_path(path).name,
+                     cells=len(rows) * len(header))
+    return facts
+
+
+def remembered_export(preferences: Path) -> str | None:
+    """The Data page's export format the program remembered (preferences.json)."""
+    import json
+
+    try:
+        data = json.loads(preferences.read_text(encoding="utf-8"))
+        return data["export"]["formats"]["data"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def journey_export_data(gui: Gui, work: Path, journey: Journey) -> None:
+    """Stage 37 (#67): the synthetic 180-case master fixture opened in a
+    project, then exported from the Data page's one Export card as .xlsx,
+    .sav and .csv, each through the native Save dialog. Every file is opened
+    here with an independent reader and compared cell by cell with the
+    fixture as the driver reads it itself. The last format chosen is
+    remembered in preferences.json. tests/test_stage37_export_journey.py
+    walks the same flow in the harness."""
+    csv_path = master_fixture(work / "stage37-master")
+    source = master_source(csv_path)
+    create_project(gui, journey, EXPORT_PROJECT)
+    open_data(gui, journey, csv_path)
+    with journey.step("the Export card offers a copy of the data first"):
+        nav(gui, "nav.data")
+        gui.wait_text(T("export.title.data"))
+        gui.find(T("export.save.xlsx"), control_type=("Button", "Text"))
+    options = export_options()
+    for kind, name in EXPORT_FILES:
+        target = work / name
+        with journey.step(f"export .{kind} in the Windows Save dialog"):
+            if kind != "xlsx":
+                gui.choose(T("export.format"), T(f"export.format.{kind}"), options=options)
+            if kind == "sav":
+                gui.wait_text(T("export.sav.limits")[:60])
+            gui.click(T(f"export.save.{kind}"), control_type=("Button", "Text"))
+            gui.file_dialog(target, save=True)
+            gui.wait_text(target.name, timeout=90)
+            gui.wait_text(T("export.saved", path="", rows="", columns="",
+                            signature="").split(":")[0], timeout=30)
+        with journey.step(f"the .{kind} file read with an independent reader"):
+            journey.facts[name] = check_export(target, kind, source)
+    with journey.step("the last format is remembered"):
+        preferences = Path.home() / ".statistical_research_assistant" / "preferences.json"
+        remembered = remembered_export(preferences)
+        journey.facts["remembered_format"] = remembered
+        expect(remembered == "csv", f"the remembered format is {remembered!r}, not csv")
+
+
 # Journeys that prepare the machine and start the program themselves.
 STARTS_ITSELF = {"legacy-migration", "installed-reopen", "update-a-to-b"}
 
@@ -3893,6 +4066,8 @@ JOURNEYS = {
     # Stage 36.8 review findings K1 and K2 (#62), after the journeys above.
     "confirmations": journey_confirmations,
     "report-composition": journey_report_composition,
+    # Stage 37 (#67), after the 18 journeys above, which run unchanged.
+    "export-data": journey_export_data,
 }
 
 

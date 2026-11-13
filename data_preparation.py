@@ -234,9 +234,15 @@ def save_prepared_dataset(
         "final_columns": [str(x) for x in df.columns],
         "rows": int(len(df)),
     }
-    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    import csv_safety
+
     # The user explicitly selected the CSV path through a desktop save dialog.
-    # Original dataframe and original file are never modified.
-    df.to_csv(path, index=False, encoding="utf-8-sig")
+    # Original dataframe and original file are never modified. A text cell
+    # that begins with = + - @ gets a leading apostrophe (csv_safety); the
+    # log records it, so the program's importer gives the text back.
+    protected, cells = csv_safety.protect_frame(df)
+    protected.to_csv(path, index=False, encoding="utf-8-sig")
+    payload["data_file"] = csv_safety.data_file(path, cells)
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
     recipe.write_text(text, encoding="utf-8")
     return path, recipe

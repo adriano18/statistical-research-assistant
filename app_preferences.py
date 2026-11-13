@@ -59,13 +59,30 @@ def save_preferences(
     if preferences.appearance not in APPEARANCES:
         raise ValueError("Appearance must be windows or macos.")
     destination = path or preferences_path()
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic update protects preferences from abrupt process termination.
+    # Stage 37: keys this function does not manage (the export choices) stay.
     serialized = json.dumps({
+        **_other_keys(destination),
         "language": preferences.language,
         "recent_files": list(preferences.recent_files[:MAX_RECENTS]),
         "appearance": preferences.appearance,
     }, ensure_ascii=False, indent=2)
+    return _write_atomic(destination, serialized)
+
+
+MANAGED = ("language", "recent_files", "appearance")
+
+
+def _other_keys(location: Path) -> dict:
+    try:
+        raw = json.loads(location.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in raw.items() if k not in MANAGED} if isinstance(raw, dict) else {}
+
+
+def _write_atomic(destination: Path, serialized: str) -> Path:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    # Atomic update protects preferences from abrupt process termination.
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -99,3 +116,53 @@ def remember_file(
         preferences.language, tuple(unique[:MAX_RECENTS]),
         preferences.appearance,
     )
+
+
+# ------------------------------------------------- export choices (Stage 37)
+EXPORT_CONTEXTS = ("data", "results", "reports")
+EXPORT_FORMATS = ("xlsx", "sav", "csv", "bundle", "results")
+CSV_LAYOUTS = ("comma", "semicolon")
+
+
+def export_preferences(path: Path | None = None) -> dict:
+    """The last export choices: {"formats": {context: format}, "csv_layout",
+    "csv_bom"}; anything unknown or malformed is left out."""
+    location = path or preferences_path()
+    try:
+        raw = json.loads(location.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    export = raw.get("export") if isinstance(raw, dict) else None
+    if not isinstance(export, dict):
+        return {}
+    found: dict = {}
+    formats = export.get("formats")
+    if isinstance(formats, dict):
+        found["formats"] = {k: v for k, v in formats.items()
+                            if k in EXPORT_CONTEXTS and v in EXPORT_FORMATS}
+    if export.get("csv_layout") in CSV_LAYOUTS:
+        found["csv_layout"] = export["csv_layout"]
+    if isinstance(export.get("csv_bom"), bool):
+        found["csv_bom"] = export["csv_bom"]
+    return found
+
+
+def remember_export(values: dict, path: Path | None = None) -> Path:
+    """Merge ``values`` into the remembered export choices (only valid ones)."""
+    location = path or preferences_path()
+    current = {**export_preferences(location)}
+    if isinstance(values.get("formats"), dict):
+        current["formats"] = {**current.get("formats", {}), **{
+            k: v for k, v in values["formats"].items()
+            if k in EXPORT_CONTEXTS and v in EXPORT_FORMATS}}
+    if values.get("csv_layout") in CSV_LAYOUTS:
+        current["csv_layout"] = values["csv_layout"]
+    if isinstance(values.get("csv_bom"), bool):
+        current["csv_bom"] = values["csv_bom"]
+    try:
+        raw = json.loads(location.read_text(encoding="utf-8"))
+        raw = raw if isinstance(raw, dict) else {}
+    except (OSError, ValueError):
+        raw = {}
+    raw["export"] = current
+    return _write_atomic(location, json.dumps(raw, ensure_ascii=False, indent=2))

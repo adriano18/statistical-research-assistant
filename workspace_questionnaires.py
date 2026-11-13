@@ -737,7 +737,8 @@ class QuestionnairesPage:
 
         def write(csv_path: Path) -> Path:
             written = save_survey_csv(app.survey_root, survey.survey_id, csv_path)
-            save_survey_codebook(app.survey_root, survey.survey_id, codebook(written))
+            save_survey_codebook(app.survey_root, survey.survey_id, codebook(written),
+                                 data_file=written)
             return written
 
         outcome = await app.save_file(

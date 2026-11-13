@@ -24,3 +24,7 @@ pypdfium2>=4.30,<6
 # Verifies the Ed25519 signature of update manifests (Stage 35, #45).
 cryptography>=42,<60
 threadpoolctl>=3,<5
+# Writes SPSS .sav files for the data export and reads them back to verify
+# the saved file (Stage 37, #67). pyreadstat is Apache-2.0; the ReadStat C
+# library compiled into its wheels is MIT.
+pyreadstat>=1.3,<2
