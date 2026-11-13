@@ -62,6 +62,11 @@ Journeys (synthetic data only; see JOURNEYS):
                  (review K2, spec G) report order, a note, a reviewed check,
                  title, a section left out and Latvian, kept over a restart
                  and in the Word report; none of it in a second project
+* research-library
+                 (Stage 37.3, #69) a project's research library: a synthetic
+                 PDF added in the Open dialog, searched offline, the cited
+                 page opened in the page viewer, the document removed with
+                 one action, the search then finds nothing; checked on disk
 
 Every step is recorded in OUT_DIR: a screenshot, the UI Automation tree
 when something is missing, an animated recording per journey
@@ -3854,6 +3859,131 @@ def journey_report_composition(gui: Gui, work: Path, journey: Journey) -> None:
         shot_at(gui, box, "second project report settings")
 
 
+# ====================================== Stage 37.3: the research library (#69)
+# tests/test_stage37_library_journey.py walks the same flow in the harness.
+LIBRARY_PROJECT = "Fictional library study"
+LIBRARY_QUERY = "avoidant coping mediator"
+LIBRARY_PAGE = 2                     # the page of the synthetic review that holds it
+# "page 2 · Coping as a mediator · D3F9A1B2C-p2.1": where the passage is, its cite ID.
+LIBRARY_WHERE = re.compile(r"^page 2 · Coping as a mediator · (D[0-9A-F]{8,}-p2\.1)$")
+
+
+def library_document(work: Path) -> Path:
+    """The synthetic three-page PDF review the journey adds (text layer;
+    the passage it searches for is on page 2)."""
+    import library_fixtures as fx
+
+    return fx.write(fx.EN_REVIEW, work / "library", "pdf")
+
+
+def library_texts() -> dict[str, str]:
+    """The English texts the journey waits for, in the order it meets them."""
+    import library_fixtures as fx
+    from workspace_text import count_text
+
+    title, passages = fx.EN_REVIEW.title, count_text("en", 5, "passages")
+    return {
+        "open": T("library.open_library"), "title": T("library.title"),
+        "local": T("library.local"), "add": T("library.add"),
+        "added": T("library.added_message", title=title, passages=passages),
+        "query": T("library.query"), "search": T("library.search"),
+        "count": T("library.count", shown=1, total=1),
+        "open_page": T("library.open_page", page=LIBRARY_PAGE),
+        "viewer": T("library.viewer_title", title=title, page=LIBRARY_PAGE, pages=3),
+        "close": T("common.close"), "remove": T("library.remove"),
+        "removed": T("library.removed", title=title, passages=passages),
+        "nothing": T("library.no_results", query=LIBRARY_QUERY),
+    }
+
+
+def library_counts(gui: Gui, title: str) -> dict:
+    """The project's library on disk, read here: documents, passages, rows of
+    the search index (FTS5's docsize table) and stored files."""
+    import sqlite3
+
+    folder = project_database(gui, title).parent / "library"
+    database = folder / "library.sqlite3"
+    if not database.is_file():
+        return {"exists": False}
+    with contextlib.closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro",
+                                            uri=True)) as con:
+        counts = {"exists": True,
+                  "documents": con.execute("SELECT COUNT(*) FROM documents").fetchone()[0],
+                  "passages": con.execute("SELECT COUNT(*) FROM chunks").fetchone()[0],
+                  "backend": dict(con.execute("SELECT key, value FROM meta")).get("backend")}
+        try:
+            counts["index_rows"] = con.execute(
+                "SELECT COUNT(*) FROM chunk_index_docsize").fetchone()[0]
+        except sqlite3.Error:
+            counts["index_rows"] = con.execute(
+                "SELECT COUNT(DISTINCT chunk_id) FROM postings").fetchone()[0]
+    sources = folder / "sources"
+    counts["stored_files"] = len([p for p in sources.iterdir() if p.is_file()]
+                                 if sources.is_dir() else [])
+    return counts
+
+
+def journey_research_library(gui: Gui, work: Path, journey: Journey) -> None:
+    """Stage 37.3 (#69): the project's research library, offline. Create a
+    project; open its library from the Project page; add a synthetic PDF in
+    the Windows Open dialog (indexed on this computer); search it; open the
+    cited passage in the program's page viewer at its page; remove the
+    document with one action; the same search finds nothing, and the index
+    holds no row of it. Nothing goes to an AI provider (no key is used).
+    Disabled states are never asserted (UI Automation reports every button
+    as enabled)."""
+    texts = library_texts()
+    pdf = library_document(work)
+    create_project(gui, journey, LIBRARY_PROJECT)
+    before = ai_traffic(gui, LIBRARY_PROJECT)
+    with journey.step("open the research library from the project page"):
+        gui.click(texts["open"], control_type=("Button", "Text"), timeout=30)
+        gui.wait_text(texts["local"], timeout=20)
+        element, _ = find_text(gui, texts["title"], exact=True, first="up")
+        shot_at(gui, element, "the research library, local only")
+    with journey.step(f"add {pdf.name} in the Windows Open dialog"):
+        gui.click(texts["add"], control_type=("Button", "Text"))
+        gui.file_dialog(pdf, save=False)
+        element, _ = find_text(gui, texts["added"], timeout=120, first="up")
+        shot_at(gui, element, "the document is indexed")
+        added = library_counts(gui, LIBRARY_PROJECT)
+        journey.facts["after_adding"] = added
+        expect(added.get("documents") == 1 and added.get("passages") == 5
+               and added.get("index_rows") == 5 and added.get("stored_files") == 1,
+               f"the library on disk after adding: {added}")
+    with journey.step(f"search “{LIBRARY_QUERY}” offline"):
+        gui.type_into(texts["query"], LIBRARY_QUERY)
+        gui.click(texts["search"], control_type="Button")
+        find_text(gui, texts["count"], timeout=30)
+        element, where = find_text(gui, regex=LIBRARY_WHERE.pattern, timeout=30)
+        journey.facts["citation"] = LIBRARY_WHERE.match(where).group(1)
+        shot_at(gui, element, "the passage with its page, section and cite ID")
+    with journey.step("open the citation at its page in the program's page viewer"):
+        gui.click(texts["open_page"], control_type=("Button", "Text"))
+        element, _ = find_text(gui, texts["viewer"], exact=True, timeout=30)
+        shot_at(gui, element, "the cited page")
+        gui.click(texts["close"], control_type="Button")
+        time.sleep(1.0)
+        expect(not gui.has_text(texts["viewer"]), "the page viewer did not close")
+    with journey.step("remove the document with one action"):
+        gui.click(texts["remove"], control_type=("Button", "Text"))
+        element, _ = find_text(gui, texts["removed"], timeout=30, first="up")
+        shot_at(gui, element, "the document is removed")
+        removed = library_counts(gui, LIBRARY_PROJECT)
+        journey.facts["after_removing"] = removed
+        expect(removed.get("documents") == 0 and removed.get("passages") == 0
+               and removed.get("index_rows") == 0 and removed.get("stored_files") == 0,
+               f"the library on disk after removing: {removed}")
+    with journey.step("the same search no longer finds it"):
+        gui.click(texts["search"], control_type="Button")
+        element, _ = find_text(gui, texts["nothing"], timeout=30)
+        shot_at(gui, element, "nothing found after removing")
+    with journey.step("nothing was sent to an AI provider"):
+        after = ai_traffic(gui, LIBRARY_PROJECT)
+        journey.facts["ai_traffic"] = {"before": before, "after": after}
+        expect(after == before, f"AI traffic recorded: before {before}, after {after}")
+
+
 # Journeys that prepare the machine and start the program themselves.
 STARTS_ITSELF = {"legacy-migration", "installed-reopen", "update-a-to-b"}
 
@@ -3893,6 +4023,8 @@ JOURNEYS = {
     # Stage 36.8 review findings K1 and K2 (#62), after the journeys above.
     "confirmations": journey_confirmations,
     "report-composition": journey_report_composition,
+    # Stage 37.3 (#69): the research library, after the 18 journeys above.
+    "research-library": journey_research_library,
 }
 
 
