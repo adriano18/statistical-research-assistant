@@ -154,6 +154,15 @@ def analyze_correlation(
                 "The permutation p-value is a Monte Carlo estimate with "
                 "1,999 resamples; it can vary slightly with the chosen seed."
             )
+            # Stage 37 (review S10): the Monte Carlo floor is made visible.
+            if p_value <= 2 / 2000 + 1e-12:
+                warnings.append(
+                    "This p (.001) is the smallest a two-sided permutation estimate "
+                    "with 1,999 resamples can give: the true p may be much smaller. "
+                    "The t approximation that SPSS reports has no such floor (the "
+                    "Spearman p-value option of “Correlations: one variable with "
+                    "several”)."
+                )
 
     return CorrelationResult(
         x_name=x_name,
