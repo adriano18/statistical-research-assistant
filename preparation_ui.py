@@ -11,8 +11,11 @@ from data_preparation import (
 )
 
 
-def build_preparation_workspace(page, load_dataframe):
-    """Return (view, reset_for_new_dataset). Loading into analysis is explicit."""
+def build_preparation_workspace(page, load_dataframe, *, with_steps=False):
+    """Return (view, reset_for_new_dataset). Loading into analysis is explicit.
+
+    ``with_steps``: ``load_dataframe(frame, steps)`` also receives the steps
+    applied since the last reset, so the caller can keep them as history."""
     state = {"working": None, "steps": [], "source_path": None}
 
     method = ft.Dropdown(
@@ -171,7 +174,11 @@ def build_preparation_workspace(page, load_dataframe):
         if state["working"] is None:
             status.value = "Load a dataset first."
         else:
-            await load_dataframe(state["working"].copy(deep=True))
+            frame = state["working"].copy(deep=True)
+            if with_steps:
+                await load_dataframe(frame, [dict(step) for step in state["steps"]])
+            else:
+                await load_dataframe(frame)
             status.value = (
                 f"Prepared table sent to Dataset: "
                 f"{len(state['working'])} rows."

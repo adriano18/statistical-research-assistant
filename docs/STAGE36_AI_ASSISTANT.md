@@ -154,6 +154,9 @@ so `build_request` and `refusals` refuse any source without one
   (not set up, a source not allowed, data rows without the statement, the
   daily limit, a request over 60,000 characters).
 - If a record cannot be written, the draft is still shown, with a warning.
+  A request that is still out when another project is opened (so its
+  project is closed) is recorded in `<data root>/ai/requests.jsonl` with the
+  project's id (Stage 36.8, `docs/STAGE368_AI_GATE.md`).
 - Permission switches and the anonymity statement are logged as before
   (`ai_permission`, `data_anonymous`); switching projects starts with that
   project's own permissions, and a reply that arrives after another project
@@ -169,7 +172,10 @@ daily limit (what is used, the limit and what the request needs; Open
 Settings); a source not allowed or data rows without the statement
 (AI permissions for this project); request too long; cancelled; model not
 found; empty reply (some models spend the limit on reasoning); unreadable
-reply.
+reply, also one cut off mid-body. Since Stage 36.8: no reply in time (a
+generation is not sent again, because the provider may still process and
+bill it; Open Settings to choose a faster model) and a model that refuses
+the request, HTTP 400/422 (Open Settings to choose another model).
 
 ## 7. Interface ids (for tests and the Windows journeys)
 
@@ -216,6 +222,10 @@ credential store and synthetic data (`examples/sample_scale.csv`).
   and the Settings switches and anonymity statement.
 - `tests/test_workspace_foundations.py` checks every new text in three
   languages with the same placeholders.
+- `tests/test_stage368_ai_gate.py` — the Stage 36.8 release gate (#62,
+  Part 9): the ten AI safety gates on the production HTTPS path, against an
+  in-process fake of the three APIs with every real connection refused;
+  results in `docs/STAGE368_AI_GATE.md`.
 
 ## 9. Known limitations
 

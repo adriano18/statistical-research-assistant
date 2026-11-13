@@ -458,14 +458,17 @@ def plan_report(inputs: ReportInputs) -> ReportPlan:
     # 8. Descriptive statistics
     add("descriptives", _result_blocks(descriptive, counts, writer, language, figures=False))
 
-    # 9. Assumption checks
+    # 9. Assumption checks (reviews are recorded against the English text)
+    from interpretation_i18n import translate_assumption
+
     assumption_items: list[Item] = []
     for result in tests:
         assumption_items.append(Item("subheading", result.title))
         if result.assumptions:
             assumption_items.append(Item("list", "\n".join(
-                f"{a} — " + text(language, "assumption_reviewed" if a in result.reviewed
-                                 else "assumption_open") for a in result.assumptions)))
+                f"{translate_assumption(a, language)} — "
+                + text(language, "assumption_reviewed" if a in result.reviewed
+                       else "assumption_open") for a in result.assumptions)))
         else:
             assumption_items.append(Item("note", text(language, "no_assumptions")))
     add("assumptions", assumption_items)

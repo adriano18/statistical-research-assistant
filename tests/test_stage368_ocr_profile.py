@@ -195,5 +195,34 @@ class ProfiledScanImportTests(unittest.TestCase):
                         "the window could not react for seconds while reading")
 
 
+
+class ReadingIndicatorTests(unittest.TestCase):
+    """While reading, the status line shows how many OCR pages are read and
+    never runs an endless animation, which is redrawn on every frame."""
+
+    def test_the_ring_counts_pages_and_never_spins(self):
+        import flet as ft
+        from test_stage36_import_ui import Base
+
+        case = Base("run")
+        case.setUp()
+        try:
+            page = case.page
+            page.busy, page.progress_done = True, None
+            before = page._reading_indicator()
+            with mock.patch.object(page.app, "render"):
+                page._show_progress("Reading page 1 with local OCR (1 of 2)…")
+                first = page._reading_indicator()
+                page._show_progress("Reading page 2 with local OCR (2 of 2)…")
+                second = page._reading_indicator()
+        finally:
+            case.tearDown()
+            case.doCleanups()
+        self.assertIsInstance(before, ft.Icon)       # a text reading: no ring at all
+        self.assertIsInstance(first, ft.ProgressRing)
+        self.assertEqual(first.value, 0.0)
+        self.assertEqual(second.value, 0.5)
+
+
 if __name__ == "__main__":
     unittest.main()

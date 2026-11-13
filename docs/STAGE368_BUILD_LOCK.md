@@ -128,7 +128,47 @@ The growth since Stage 34 is the Stage 35–36 features, not the lock: the lock 
 
 `windows-reproducibility.yml` builds the same commit on two fresh runners with the pinned toolchain. It compares every file of the bundle and of the installed program by SHA-256, classifies each deviation, and compares the installers.
 
-Results: *pending — filled in from run 43418623260 and the run on the final commit.*
+### 4.1 First comparison: run 43424265424 (9e5f65a)
+
+**Toolchain.** The same on both runners: host Python, flet and flet-cli, the Flutter SDK, both package locks, Inno Setup and the Dart packages. Both runners had image 20261103.298.1. Neither build deviated from the locks.
+
+| | Bundle (`build/windows`) | Installed program folder |
+|---|---:|---:|
+| Files, runner A / B | 6,848 / 6,848 | 6,850 / 6,850 |
+| Total bytes, A / B | 408,843,119 / 408,843,119 | 415,408,310 / 415,408,310 |
+| Files on one runner only | 0 | 0 |
+| Byte-identical | 2,528 | 2,529 |
+| `.pyc` header only (source timestamp) | 4,150 | 4,150 |
+| PE link timestamp, checksum or PDB id only | 10 | 10 |
+| Build metadata (`app/build_info.json`) | 1 | 1 |
+| Other bytes differ (always at the same size) | 159 | 160 |
+
+The 159 (160) files of the last row were examined one by one. Each has a known cause:
+- **139 `app/*.pyc`**, every module of the program. serious_python 6.1.3 is the packaging step of `flet build`. It copies the app into `Directory.systemTemp.createTemp('serious_python_temp')` and runs `python -m compileall -b` there (its `bin/package_command.dart`). Dart gives that folder a random name, and compileall writes the folder into every code object (`co_filename`, shown in tracebacks). The name has the same length on every run, so the sizes match.
+- **12 `site-packages/bin/*.exe`**: the console launchers pip writes for package scripts (`flet.exe`, `f2py.exe`, …). The program never runs them. Each holds a small zip with the script, and the zip carries the time it was written.
+- **8 `*.dist-info/RECORD`** files, of the packages with such launchers. They list the launchers' hashes.
+- **`unins000.dat`** (installed folder only): Inno Setup's uninstall log, written by the installer at installation.
+
+The installers were 103,235,360 and 103,234,508 bytes and not identical, because Inno Setup compresses the files above and stores its own build time. That is why the installed folders are compared.
+
+### 4.2 Changes made after this comparison
+
+1. **`SOURCE_DATE_EPOCH`** is set to the commit time in `.github/actions/pinned-windows-toolchain`, before `flet build`.
+   - With it, compileall writes hash-based `.pyc` headers (PEP 552) instead of the source timestamps.
+   - pip's launcher writer (distlib 0.3.8 and later) also uses it for the launcher zips. That leaves the RECORD files unchanged as well.
+   - The program behaves the same. It ships no `.py` sources, and Python never checks a `.pyc` that has no source next to it.
+2. **The comparison classifies the remaining causes mechanically**, instead of by file name:
+   - the compile folder's random name, masked at the same length;
+   - launchers: the same launcher program and the same script, with only the zip timestamp or the `#!` path differing;
+   - RECORD files differing only in the launcher lines;
+   - the uninstall log.
+   It reports the number of deviations that no known cause explains. Anything else that differs stays "content differs" and counts as unexplained (`tests/test_build_lock.py`).
+
+The random compile-folder name cannot be removed without changing serious_python. It changes no instruction, only the file name in tracebacks.
+
+### 4.3 Final release-candidate commit
+
+*Filled in from the run on the final commit.*
 
 ## 5. Licences
 

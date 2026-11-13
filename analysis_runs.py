@@ -233,20 +233,23 @@ def _item_report(result) -> str:
     lines = ["Scale quality: internal consistency and item diagnostics (Stage 36.3)",
              f"Items: k = {len(result.items)} ({', '.join(result.items)}); complete cases "
              f"n = {result.n_complete} of {result.n_total} (listwise).",
+             # ci_text() names its level itself ("95% CI [.., ..]").
              f"Cronbach’s α = {result.alpha.text()}"
-             + (f", 95% CI {result.alpha.ci_text()}" if result.alpha.ci_text() else "")
+             + (f", {result.alpha.ci_text()}" if result.alpha.ci_text() else "")
              + (f" — {result.alpha.note}" if result.alpha.note and not result.alpha.ok else ""),
              f"McDonald’s ω (one factor) = {result.omega.text()}"
-             + (f", 95% CI {result.omega.ci_text()}" if result.omega.ci_text() else "")
+             + (f", {result.omega.ci_text()}" if result.omega.ci_text() else "")
              + (f" — {result.omega.note}" if result.omega.note and not result.omega.ok else ""),
-             "Model assumptions for ω: " + "; ".join(result.omega_assumptions) + "."]
+             "Model assumptions for ω: "
+             + "; ".join(a.rstrip(".") for a in result.omega_assumptions) + "."]
     if result.flagged_reverse:
         lines.append("Possibly reverse-keyed and not recoded (check the scoring key; nothing "
                      "was recoded): " + ", ".join(result.flagged_reverse) + ".")
     if result.reverse_keyed:
         lines.append(f"Reverse-keyed items from {result.reverse_source or 'a confirmed definition'}: "
                      + ", ".join(result.reverse_keyed) + ".")
-    lines.append(f"Floor and ceiling use the codes {result.bounds_text}.")
+    # The result's notes say which codes floor and ceiling use, and how they
+    # were found; the line is not written a second time here.
     lines += [f"Warning: {warning}" for warning in result.warnings]
     lines += list(result.notes)
     return "\n".join(lines)

@@ -36,7 +36,7 @@ from project_store import (
     DB_NAME, Project, ProjectError, ProjectInfo, ProjectStore, RunRecord, load_verified,
     sha256_bytes,
 )
-from workspace_state import LEVELS, ResearchSession
+from workspace_state import LEVELS, ReportSettings, ResearchSession
 
 # Dataset origins in the session (see ResearchSession.dataset_origin) that
 # came from a file the researcher chose and can load again.
@@ -115,6 +115,10 @@ def _release_at_exit(reference: "weakref.ReferenceType[ProjectBinding]") -> None
     binding = reference()
     if binding is not None and binding.project is not None:
         try:
+            binding.flush()          # a title still being typed (Stage 36.8)
+        except Exception:
+            pass
+        try:
             binding.project.close()
         except Exception:
             pass
@@ -144,6 +148,9 @@ class ProjectBinding:
         self._saved_levels: dict[str, tuple[str, str]] = {}
         self._saved_runs: dict[int, int] = {}       # entry id -> id(run) saved
         self._saved_charts: dict[int, str | None] = {}  # entry id -> chart state digest
+        # Stage 36.8 (K2): the researcher's entries as saved in the project.
+        self._saved_notes: dict[int, tuple[str, frozenset]] = {}  # entry id -> (note, reviewed)
+        self._saved_report = ReportSettings()
         self.message: tuple[str, str] | None = None  # (text key, tone) for the UI
         session.subscribe(self._on_session)
         atexit.register(_release_at_exit, weakref.ref(self))
@@ -213,6 +220,7 @@ class ProjectBinding:
     def close(self, *, clear: bool = True) -> None:
         if self.project is None:
             return
+        self.flush()
         self.project.close()
         self.project = None
         self.generation += 1
@@ -220,6 +228,8 @@ class ProjectBinding:
         self._saved_levels = {}
         self._saved_runs = {}
         self._saved_charts = {}
+        self._saved_notes = {}
+        self._saved_report = ReportSettings()
         for entry in self.session.results:
             entry.record_id = None
             entry.stale_reasons = ()
@@ -284,6 +294,9 @@ class ProjectBinding:
                                 "variables": list(run.levels), "rows": run.provenance.get("rows")})
                 entry.stale_reasons = project.run_status(run).reasons
                 self._saved_runs[entry.id] = id(entry.run)
+                # Stage 36.8 (K2): the researcher's note and reviewed checks.
+                entry.note, entry.reviewed = run.note or "", frozenset(run.reviewed)
+                self._saved_notes[entry.id] = (entry.note, entry.reviewed)
                 if run.charts:
                     try:
                         from chart_views import ChartState
@@ -303,6 +316,8 @@ class ProjectBinding:
             session.tasks = [ResearchTask(t.id, t.title, t.goal, dict(t.selection), t.method,
                                           dict(t.options), dict(t.confirms), t.hypothesis_id,
                                           dict(t.state)) for t in project.tasks()]
+            session.report = ReportSettings.from_dict(project.report_settings())
+            self._saved_report = session.report
             session.notify("results")
         finally:
             self._restoring = False
@@ -381,6 +396,7 @@ class ProjectBinding:
             self._save_levels()
         self._save_results()
         self._save_report()
+        self._save_report_settings()
 
     # ------------------------------------------------------- recalculation
     def recalculation(self, entry) -> Recalculation | None:
@@ -454,8 +470,44 @@ class ProjectBinding:
                 self._save_tasks()
             elif what == "charts":
                 self._save_charts()
+            elif what == "notes":
+                self._save_notes()
+            elif what == "report_settings":
+                self._save_report_settings()
         except Exception:
             self.message = ("project.save_failed", "danger")
+
+    def flush(self) -> None:
+        """Save what the session holds and the project does not yet: a report
+        title typed but not yet saved (it is saved when the field is left).
+        Called before the project closes and when the program ends."""
+        if self.project is None or self._restoring:
+            return
+        try:
+            self._save_notes()
+            self._save_report_settings()
+        except Exception:
+            self.message = ("project.save_failed", "danger")
+
+    def _save_notes(self) -> None:
+        """The researcher's note and reviewed checks of every saved result are
+        written through, like research tasks (Stage 36.8, K2)."""
+        for entry in self.session.results:
+            if not entry.record_id:
+                continue
+            note, reviewed = self._saved_notes.get(entry.id, ("", frozenset()))
+            if note != entry.note:
+                self.project.set_note(entry.record_id, entry.note)
+            if reviewed != entry.reviewed:
+                self.project.set_reviewed(entry.record_id, entry.reviewed)
+            self._saved_notes[entry.id] = (entry.note, entry.reviewed)
+
+    def _save_report_settings(self) -> None:
+        """The report's title, sections and language belong to the project."""
+        report = self.session.report
+        if report != self._saved_report:
+            self.project.save_report_settings(report.to_dict())
+            self._saved_report = report
 
     def _save_tasks(self) -> None:
         """Research tasks are written through: what the researcher chose is in
@@ -587,6 +639,12 @@ class ProjectBinding:
                 roles=entry.roles or {}, options=entry.options or {},
                 confirms=entry.confirms or {}, confirmations=entry.confirmations,
                 levels=levels, dataset_sha256=version or None, task_id=entry.task_id)
+            # The researcher's entries stay with the result (also a replaced one).
+            if entry.note:
+                self.project.set_note(record.id, entry.note)
+            if entry.reviewed:
+                self.project.set_reviewed(record.id, entry.reviewed)
+            self._saved_notes[entry.id] = (entry.note, entry.reviewed)
             if previous is not None:   # only once the replacement is safely stored
                 self.project.delete_run(previous.id)
             entry.record_id = record.id

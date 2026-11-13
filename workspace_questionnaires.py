@@ -54,25 +54,27 @@ KINDS = ("single_choice", "multiple_choice", "likert5", "likert7", "rating_scale
 CHOICE_KINDS = {"single_choice", "multiple_choice"}
 SCALE_KINDS = {"likert5", "likert7", "rating_scale"}
 CONDITION_PARENTS = {"single_choice", "yes_no", "likert5", "likert7", "rating_scale", "number"}
-OPERATORS = (("equals", "Equals"), ("not_equals", "Not equal"),
-             ("greater", "Greater than"), ("less", "Less than"))
+OPERATORS = ("equals", "not_equals", "greater", "less")     # labels: q.operator.*
+TEMPLATES = ("psychology", "demographics", "hr", "marketing")  # labels: q.template.*
 
 
 def scale_library(language: str, draft: list[dict]) -> list[tuple[str, str, dict]]:
     """(id, label, {"kind", "value_labels"}) — presets plus scales in the draft."""
     from survey_ui import preset_value_labels, semantic_differential_labels
+    from workspace_text import t
 
     library = []
-    for name, label in (("agreement", "Agreement"), ("frequency", "Frequency"),
-                        ("quality", "Quality: poor → good")):
+    for name in ("agreement", "frequency", "quality"):
         for kind in ("likert5", "likert7"):
             try:
                 labels = preset_value_labels(name, kind, language)
             except (KeyError, ValueError):
                 continue
-            library.append((f"{name}-{kind}", f"{label} · {kind[-1]} points",
+            library.append((f"{name}-{kind}", t(language, "q.scale.points",
+                                                scale=t(language, f"q.scale.{name}"),
+                                                count=kind[-1]),
                             {"kind": kind, "value_labels": labels}))
-    library.append(("semantic", "Semantic differential −3…3",
+    library.append(("semantic", t(language, "q.scale.semantic"),
                     {"kind": "rating_scale", "value_labels": semantic_differential_labels(language)}))
     seen = set()
     for q in draft:
@@ -81,9 +83,9 @@ def scale_library(language: str, draft: list[dict]) -> list[tuple[str, str, dict
             signature = tuple(labels.items())
             if signature not in seen and len(library) < 40:
                 seen.add(signature)
-                library.append((f"draft-{len(seen)}", "From this draft: "
-                                + " / ".join(list(labels.values())[:3])
-                                + ("…" if len(labels) > 3 else ""),
+                shown = " / ".join(list(labels.values())[:3]) + ("…" if len(labels) > 3 else "")
+                library.append((f"draft-{len(seen)}", t(language, "q.scale.from_draft",
+                                                        labels=shown),
                                 {"kind": q["kind"], "value_labels": dict(labels)}))
     return library
 
@@ -265,11 +267,11 @@ class QuestionnairesPage:
                 show_default_drag_handles=True)
         else:
             listing = wc.caption(ui, ui.t("q.empty"))
-        templates = wc.dropdown(ui, ui.t("q.template"), [
-            ("psychology", "Psychology / Likert"), ("demographics", "Demographics"),
-            ("hr", "HR / Workplace"), ("marketing", "Marketing / Feedback")],
-            self.template, on_select=lambda e: setattr(self, "template", e.control.value),
-            width=None, data="q-template")
+        templates = wc.dropdown(ui, ui.t("q.template"),
+                                [(k, ui.t(f"q.template.{k}")) for k in TEMPLATES],
+                                self.template,
+                                on_select=lambda e: setattr(self, "template", e.control.value),
+                                width=None, data="q-template")
         return wc.card(ui, [
             ft.Row([wc.button(ui, ui.t("q.add"), self._add, kind="primary", icon=ft.Icons.ADD,
                               data="q-add")], wrap=True),
@@ -464,7 +466,8 @@ class QuestionnairesPage:
                                 width=340, data="editor-condition")]
         if condition.get("question"):
             controls += [
-                wc.dropdown(ui, "Condition operator", list(OPERATORS),
+                wc.dropdown(ui, ui.t("q.condition_operator"),
+                            [(k, ui.t(f"q.operator.{k}")) for k in OPERATORS],
                             condition.get("operator", "equals"),
                             on_select=lambda e: self._set_condition("operator", e.control.value),
                             width=200),
@@ -864,6 +867,7 @@ class ImportPage:
         self.step = "source"
         self.filter = "all"         # items step: "all" or "attention"
         self.progress: str | None = None   # what the reading is doing now
+        self.progress_done: tuple[int, int] | None = None  # OCR pages read, of how many
         self._cancel = None         # threading.Event while reading
         self.opened: set[str] = set()
         self._editor_height = 0.0   # the open item editor, as laid out
@@ -949,6 +953,7 @@ class ImportPage:
         loop = asyncio.get_running_loop()
         self._cancel = threading.Event()
         self.busy, self.error, self.progress = True, None, None
+        self.progress_done = None
         self.reading = "ocr" if language else "text"
         self.reading_name, self.reading_language = name, language
         self._profile = profile
@@ -1092,6 +1097,7 @@ class ImportPage:
         match = re.search(r"page (\d+) with local OCR \((\d+) of (\d+)\)", message)
         if match:
             self.reading = "ocr"
+            self.progress_done = (int(match[2]) - 1, int(match[3]))
         self.progress = (self.app.t("imp.ocr_progress", page=match[1], done=match[2],
                                     total=match[3]) if match else message)
         if self.busy:
@@ -1489,7 +1495,7 @@ class ImportPage:
             return None
         state, title, lines, tone, actions = found
         bg, fg, icon = wc.TONES[tone]
-        leading = (ft.ProgressRing(width=20, height=20, stroke_width=3) if self.busy
+        leading = (self._reading_indicator() if self.busy
                    else ft.Icon(icon, color=getattr(ui.p, fg), size=20))
         texts: list[ft.Control] = [wc.text(ui, title, tk.TYPE_LABEL, weight=ft.FontWeight.W_600,
                                            data="imp-status-title")]
@@ -1506,6 +1512,23 @@ class ImportPage:
             ft.Column(column, spacing=tk.SPACE_2), bgcolor=getattr(ui.p, bg),
             border_radius=ui.radius("card"), padding=ft.Padding.symmetric(
                 horizontal=tk.SPACE_4, vertical=tk.SPACE_3), data="imp-status", key="imp-status"))
+
+    def _reading_indicator(self) -> ft.Control:
+        """How far a reading is, without an endless animation.
+
+        An indeterminate ring is redrawn on every frame. In the Windows GUI
+        journey (run 43421786722, no graphics card) the program used about 3.4
+        of the runner's 4 processor cores during a 50 s OCR reading, while
+        Tesseract got about 4.5 s of processor time per page. A determinate
+        ring changes only when a page is done; the text beside it names the
+        page."""
+        ui = self.app.ui
+        if self.progress_done is None:
+            return ft.Icon(ft.Icons.HOURGLASS_TOP, color=ui.p.text_secondary, size=20,
+                           data="imp-reading-icon")
+        done, total = self.progress_done
+        return ft.ProgressRing(value=done / max(total, 1), width=20, height=20, stroke_width=3,
+                               bgcolor=ui.p.border_strong, data="imp-reading-progress")
 
     # ------------------------------------------------------------------ OCR
     def _ocr_code(self) -> str:
@@ -1566,6 +1589,7 @@ class ImportPage:
         self.busy, self.error = True, None
         self.reading, self.reading_language = "ocr", language
         self.progress = self.app.t("imp.ocr_progress", page=page, done=1, total=1)
+        self.progress_done = (0, 1)
         self.app.render()
         try:
             await asyncio.to_thread(s.ocr_pages, [page], language)
@@ -2321,7 +2345,7 @@ class ImportPage:
                         ui.language, scheme.evidence), page=scheme.page))], wrap=True,
                    spacing=tk.SPACE_2),
             *fields, *issues,
-            wc.text_field(ui, "Reverse-keyed items (as documented)", edits["reverse"], width=320,
+            wc.text_field(ui, ui.t("imp.reverse_items"), edits["reverse"], width=320,
                           on_change=lambda e: edits.__setitem__("reverse", e.control.value or "")),
             wc.checkbox(ui, ui.t("imp.confirm_structure"), edits["structure"],
                         on_change=lambda e: edits.__setitem__("structure", bool(e.control.value)),

@@ -77,7 +77,63 @@ After, locally (Linux, in the program through the harness, `tests/test_stage368_
 | **total** | **4.30** (was ≈ 6.6) | |
 | event-loop stall | 0.00 | |
 
-Windows after: *filled from the GUI journeys of the final commit (in-program profile of the first and of a second reading).*
+### 3.1 Windows after the PNG change: what remained
+
+Packaged program, GUI journey `import-scan-lv`, run 43421786722 (216353d). The profile is the program's own; the journey reads the same document twice in one program.
+
+| | First reading | Read again (warm) |
+|---|---:|---:|
+| Total in the program (profile) | 50.4 s | 38.3 s |
+| OCR execution (2 Tesseract processes) | 26.8 + 22.3 s | 18.5 + 18.5 s |
+| Processor time of each Tesseract process | 4.5 + 4.3 s | 4.3 + 4.4 s |
+| All other stages together | 1.3 s | 1.3 s |
+| Longest stall of the interface's event loop | 0.03 s | 0.03 s |
+| Processor time of the **program's own process** | 173 s (3.4 of 4 cores) | 130 s (3.4 of 4 cores) |
+| Engine alone outside the program, same pages (`direct_ocr`) | 7.8 + 6.4 s | |
+
+So the PNG and first-page changes did what they should: everything apart from OCR now takes 1.3 s, and the window never froze.
+
+But each Tesseract process ran 18–27 s while it needed only about 4.5 s of processor time. **The engine was waiting for the processor, not working.** In the same seconds the program's own process used about 3.4 of the runner's 4 cores, while its Python side was only waiting for Tesseract's output.
+
+The UI Automation driver is not the cause: during the second reading it only watched for the profile file, and the ratio was the same.
+
+What the program did meanwhile: the status line showed an indeterminate `ProgressRing`. Flutter redraws such a ring on every frame, and the runner draws without a graphics card. Every other profile of that run, even a 0.2 s text reading, shows the same ~3.4 cores while busy.
+
+### 3.2 The change for it (f528a1c), and how it is verified
+
+- While reading, the ring is **determinate**: it shows the OCR pages already read (0 of 2, then 1 of 2) and changes only when a page is done. The text beside it still names the page being read. A text reading shows an hourglass icon. Nothing animates on its own (`tests/test_stage368_ocr_profile.py::ReadingIndicatorTests`).
+- The scan journey now measures the program's processor use while it only shows the page (`program_cpu_cores_idle`). Each reading's profile gives `program_cpu_cores`.
+
+The cause counts as confirmed only if, on the next Windows run:
+- the reading's `program_cpu_cores` falls to the idle level;
+- the engine's time approaches its processor time.
+
+**Result: confirmed.** Packaged program, GUI journey `import-scan-lv`, run 43429053006 (467945c), the same runner type, document and pages:
+
+| | Before (run 43421786722) | After (run 43429053006) |
+|---|---:|---:|
+| Program's processor use while it only shows the page (`program_cpu_cores_idle`) | not measured | 0.00 cores |
+| Program's processor use while reading, first reading / read again | 3.4 / 3.4 cores | **0.78 / 0.56 cores** |
+| Each Tesseract process, wall / processor seconds, first reading | 26.8 / 4.5 and 22.3 / 4.3 | **2.5 / 2.4 and 2.9 / 2.4** |
+| Total in the program, first reading / read again (profile) | 50.4 / 38.3 s | **6.1 / 5.7 s** |
+| Until UI Automation showed "52 candidate items" (`ocr_in_program_seconds`) | 50.0 s | **5.5 s** |
+| Engine alone outside the program, same pages (`direct_ocr`) | 7.8 + 6.4 s | 6.6 + 5.3 s |
+| Longest stall of the event loop | 0.03 s | 0.01 s |
+| Candidates found | 52 | 52 |
+
+The engine's time now equals its processor time: it no longer waits. Inside the program it is even faster than the engine alone on the raw page, because the program gives it the page with the table rules whitened (§1, stage 4).
+
+The Stage 36 question (about 40 s in the program against about 12 s for the engine) is answered. Over 30 s of it was the engine waiting for the processor while the program redrew an animation. The rest was PNG encoding and a render on the event loop (§2).
+
+**Not changed, not measured.** Three other indeterminate rings remain:
+- while an analysis runs (`workspace_analyze.py`);
+- while an AI request is out (`workspace_assistant.py`);
+- on the start screen (`app.py`).
+
+Analyses take seconds, and the analysis runs in the same process, which still has a core of its own on a 4-core runner. Whether they slow down the same way has not been measured, so they were left as they are. They are candidates for the same change once a profile shows a cost.
+
+**Where this applies.** On computers that draw without a graphics card (virtual machines, remote desktop sessions, some older laptops) the gain is about as large as here. A computer with a working graphics driver draws the ring cheaply, so the gain there is the smaller one of §3: about 2 s from PNG encoding and the event loop.
+
 
 ## 4. Progress and responsiveness
 

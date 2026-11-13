@@ -157,5 +157,28 @@ class KruskalWallisGroupTableTests(unittest.TestCase):
         self.assertEqual(len(family.tables()), 2)
 
 
+class ReliabilityReportTextTests(unittest.TestCase):
+    """The scale check's report (Stage 36.8 journey review): the interval is
+    named once, sentences end with one full stop, and the codes used for
+    floor and ceiling are stated once."""
+
+    def test_the_report_names_each_interval_once(self):
+        sys.path.insert(0, str(ROOT / "tests"))
+        import stage36_fixtures as fx
+        from analysis_runs import run_item_diagnostics
+
+        frame = pd.read_csv(fx.fixture(fx.ITEMS_CSV))
+        run = run_item_diagnostics(frame, list(fx.ITEMS), True, resamples=120,
+                                   items_confirmed=True)
+        report = run.report
+        self.assertNotIn("CI 95% CI", report)
+        self.assertNotIn("..", report)
+        alpha_line = next(line for line in report.splitlines() if line.startswith("Cronbach’s α ="))
+        omega_line = next(line for line in report.splitlines() if line.startswith("McDonald’s ω"))
+        self.assertEqual(alpha_line.count("95% CI ["), 1, alpha_line)
+        self.assertEqual(omega_line.count("95% CI ["), 1, omega_line)
+        self.assertEqual(report.count("Floor and ceiling use the codes"), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
