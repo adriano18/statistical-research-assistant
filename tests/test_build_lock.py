@@ -274,6 +274,21 @@ class PrepareTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             toolchain.download("http://example.invalid/x", Path(tempfile.mkdtemp()) / "x", "0" * 64)
 
+    def test_the_real_iscc_is_found_before_the_chocolatey_shim(self):
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as temp:
+            real = Path(temp) / "Inno Setup 6" / "ISCC.exe"
+            real.parent.mkdir()
+            real.write_bytes(b"MZ")
+            shim = r"C:\ProgramData\chocolatey\bin\ISCC.exe"
+            with mock.patch.dict("os.environ", {"ProgramFiles(x86)": temp, "ProgramFiles": ""}), \
+                    mock.patch("shutil.which", return_value=shim):
+                self.assertEqual(toolchain.find_iscc(), real)
+            with mock.patch.dict("os.environ", {"ProgramFiles(x86)": "", "ProgramFiles": ""}), \
+                    mock.patch("shutil.which", return_value=shim):
+                self.assertIsNone(toolchain.find_iscc(), "the shim reports version 0.0.0")
+
     def test_version_numbers_are_normalised(self):
         self.assertEqual(toolchain.normalize_version("6.7.1.0"), "6.7.1")
         self.assertEqual(toolchain.normalize_version(" 6.7.1 "), "6.7.1")

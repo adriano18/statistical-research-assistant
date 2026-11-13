@@ -293,20 +293,30 @@ def prepare_template(lock: dict, out: Path, *, archive: Path | None = None) -> P
 # --- Inno Setup ----------------------------------------------------------------
 
 def find_iscc() -> Path | None:
-    found = shutil.which("ISCC") or shutil.which("iscc")
-    if found:
-        return Path(found)
+    """The real ISCC.exe. The installation folder comes first: on PATH the
+    runner has Chocolatey's shim (chocolatey\\bin\\ISCC.exe), whose own
+    version resource says 0.0.0 (run 43418623260)."""
     for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")):
         if base and Path(base, "Inno Setup 6", "ISCC.exe").is_file():
             return Path(base, "Inno Setup 6", "ISCC.exe")
+    for name in ("ISCC", "iscc"):
+        found = shutil.which(name)
+        if found and "chocolatey" not in found.lower():
+            return Path(found)
     return None
 
 
 def file_version(path: Path) -> str:
-    command = ["powershell", "-NoProfile", "-Command",
-               f"(Get-Item -LiteralPath '{path}').VersionInfo.ProductVersion"]
-    value = subprocess.run(command, capture_output=True, text=True, check=True).stdout.strip()
-    return normalize_version(value)
+    """ProductVersion of an executable, else its FileVersion (x.y.z)."""
+    script = (f"$v = (Get-Item -LiteralPath '{path}').VersionInfo; "
+              "\"$($v.ProductVersion)|$($v.FileVersion)\"")
+    value = subprocess.run(["powershell", "-NoProfile", "-Command", script],
+                           capture_output=True, text=True, check=True).stdout.strip()
+    for candidate in value.split("|"):
+        version = normalize_version(candidate)
+        if version and version.strip("0.") != "":
+            return version
+    return normalize_version(value.split("|")[0])
 
 
 def normalize_version(value: str) -> str:
@@ -318,6 +328,7 @@ def prepare_iscc(lock: dict) -> dict:
     want = lock["inno_setup"]["version"]
     iscc = find_iscc()
     version = file_version(iscc) if iscc else None
+    print(f"ISCC: {iscc} (version {version})")
     if version != want:
         print(f"Inno Setup {version or 'missing'} on this runner; installing {want}")
         subprocess.run(["choco", "install", lock["inno_setup"]["chocolatey_package"],
