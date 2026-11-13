@@ -319,6 +319,51 @@ def file_version(path: Path) -> str:
     return normalize_version(value.split("|")[0])
 
 
+def iscc_version(iscc: Path | None) -> tuple[str | None, dict]:
+    """Inno Setup's version, and what each source said.
+
+    ISCC.exe itself carries no usable version resource (0.0.0 on the runner,
+    run 43421786665). The installer's own uninstall entry ("Inno Setup 6_is1",
+    DisplayVersion) is the reliable source; the compiler DLL next to ISCC.exe
+    (ISCmplr.dll) is the second.
+    """
+    seen: dict = {}
+    if os.name == "nt":
+        import winreg
+
+        key = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1"
+        for hive, name in ((winreg.HKEY_LOCAL_MACHINE, "HKLM"), (winreg.HKEY_CURRENT_USER, "HKCU")):
+            for view in (winreg.KEY_WOW64_32KEY, winreg.KEY_WOW64_64KEY):
+                try:
+                    with winreg.OpenKey(hive, key, 0, winreg.KEY_READ | view) as handle:
+                        seen[f"{name} uninstall"] = str(winreg.QueryValueEx(handle, "DisplayVersion")[0])
+                except OSError:
+                    continue
+    if os.name == "nt" and shutil.which("choco"):
+        # Chocolatey's record of the package it installed ("innosetup|6.7.1").
+        try:
+            listed = subprocess.run(["choco", "list", "innosetup", "--exact", "--limit-output"],
+                                    capture_output=True, text=True, timeout=120).stdout
+            for line in listed.splitlines():
+                name, _, value = line.partition("|")
+                if name.strip().lower() == "innosetup" and value.strip():
+                    seen["chocolatey"] = value.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if iscc is not None:
+        for candidate in (iscc.with_name("ISCmplr.dll"), iscc):
+            if candidate.is_file():
+                try:
+                    seen[candidate.name] = file_version(candidate)
+                except (OSError, subprocess.CalledProcessError):
+                    pass
+    for value in seen.values():
+        version = normalize_version(value)
+        if version and version.strip("0.") != "":
+            return version, seen
+    return None, seen
+
+
 def normalize_version(value: str) -> str:
     parts = re.findall(r"\d+", value)[:3]
     return ".".join(parts)
@@ -327,18 +372,19 @@ def normalize_version(value: str) -> str:
 def prepare_iscc(lock: dict) -> dict:
     want = lock["inno_setup"]["version"]
     iscc = find_iscc()
-    version = file_version(iscc) if iscc else None
-    print(f"ISCC: {iscc} (version {version})")
+    version, seen = iscc_version(iscc) if iscc else (None, {})
+    print(f"ISCC: {iscc}; version {version} ({seen})")
     if version != want:
         print(f"Inno Setup {version or 'missing'} on this runner; installing {want}")
         subprocess.run(["choco", "install", lock["inno_setup"]["chocolatey_package"],
                         f"--version={want}", "--allow-downgrade", "--force", "-y", "--no-progress"],
                        check=True)
         iscc = find_iscc()
-        version = file_version(iscc) if iscc else None
+        version, seen = iscc_version(iscc) if iscc else (None, {})
+        print(f"ISCC: {iscc}; version {version} ({seen})")
     if version != want:
         raise SystemExit(f"Inno Setup {want} of the lock is not available (found {version})")
-    return {"iscc": str(iscc), "version": version}
+    return {"iscc": str(iscc), "version": version, "sources": seen}
 
 
 # --- Dart packages -----------------------------------------------------------------
@@ -507,8 +553,9 @@ def build_identity(args) -> tuple[dict, list[str]]:
             problems.append(f"bundled packages differ from requirements.txt: {bundled['mismatched']}")
     if args.iscc:
         iscc = find_iscc()
-        identity["inno_setup"] = {"iscc": str(iscc) if iscc else None,
-                                  "version": file_version(iscc) if iscc else None}
+        version, seen = iscc_version(iscc) if iscc else (None, {})
+        identity["inno_setup"] = {"iscc": str(iscc) if iscc else None, "version": version,
+                                  "sources": seen}
         if identity["inno_setup"]["version"] != lock["inno_setup"]["version"]:
             problems.append(f"Inno Setup {identity['inno_setup']['version']}, "
                             f"the lock says {lock['inno_setup']['version']}")
