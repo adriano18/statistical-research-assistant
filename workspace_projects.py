@@ -475,7 +475,7 @@ class ProjectPage:
         views = self.hypotheses.views()
         body += [self._next(datasets), self._question(), self.plan.build(),
                  self.hypotheses.list_card(views), self._sources(datasets), self._questionnaires(),
-                 self._results(), self._report()]
+                 self._results(), self._report(), self._library()]
         return app.constrained(ft.Column(body, spacing=tk.SPACE_4, data="project-dashboard",
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 
@@ -644,6 +644,12 @@ class ProjectPage:
     def _show(self, entry_id: int):
         self.app.session.selected_result = entry_id
         self.app.navigate("results")
+
+    def _library(self) -> ft.Control:
+        """Stage 37.3: the project's research library (its own page)."""
+        from workspace_library import project_card
+
+        return project_card(self.app)
 
     def _report(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session

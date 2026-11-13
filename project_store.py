@@ -931,6 +931,8 @@ class ProjectStore:
             for path in sorted((folder / sub).glob("*")) if (folder / sub).is_dir() else []:
                 if path.is_file():
                     files.append((f"project/{sub}/{path.name}", path.read_bytes()))
+        # Stage 37.3: the research library, only when the researcher chose so.
+        files += [(f"project/{name}", data) for name, data in _library_files(folder)]
         included = []
         if survey_root is not None:
             for survey_id in surveys:
@@ -1077,6 +1079,19 @@ def _copy_project_folder(source: Path, target: Path) -> None:
     for sub in ("datasets", "figures"):
         if (source / sub).is_dir():
             shutil.copytree(source / sub, target / sub)
+    for name, data in _library_files(source):
+        _atomic_write(target / name, data)
+
+
+def _library_files(folder: Path) -> list[tuple[str, bytes]]:
+    """The project's research library for a backup or a copy (Stage 37.3):
+    nothing unless the researcher chose to include it (``research_library.
+    travels``; off by default, since notes may hold personal data). The
+    library is a separate database in the project folder; the project's own
+    format is unchanged."""
+    from research_library import travelling_files
+
+    return travelling_files(folder)
 
 
 def _read_consistent(path: Path) -> bytes:

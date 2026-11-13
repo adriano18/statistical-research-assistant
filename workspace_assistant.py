@@ -347,6 +347,12 @@ class AssistantPanel:
                               data="ai-unverified")
         else:
             check = wc.notice(ui, ui.t("assistant.verified"), "info", data="ai-unverified")
+        # Stage 37: a quote that appears in nothing that was sent is flagged.
+        quotes = ([wc.notice(ui, ui.t("assistant.unverified_quotes",
+                                      quotes="; ".join(f"“{q}”" for q in draft.unverified_quotes)),
+                             "warning", title=ui.t("assistant.unverified_quotes_title"),
+                             data="ai-unverified-quotes")]
+                  if draft.unverified_quotes else [])
         copy = wc.button(ui, ui.t("assistant.copy"), icon=ft.Icons.CONTENT_COPY,
                          action=ft.CopyToClipboard(draft.text), data="ai-copy")
         copy.on_click = lambda e, i=entry.id: self._copied(i)
@@ -356,6 +362,7 @@ class AssistantPanel:
             wc.caption(ui, meta, data="ai-draft-meta"),
             body,
             check,
+            *quotes,
         ], actions=[
             copy,
             wc.button(ui, ui.t("assistant.use_note"), lambda e, i=entry.id: self._use_note(i),
@@ -500,6 +507,9 @@ class AssistantPanel:
         lines = [label]
         if draft.unverified:
             lines.append(app.t("assistant.note_unverified", numbers=", ".join(draft.unverified)))
+        if draft.unverified_quotes:
+            lines.append(app.t("assistant.note_unverified_quotes",
+                               quotes="; ".join(f"“{q}”" for q in draft.unverified_quotes)))
         lines.append(draft.text)
         entry = app.session.result(entry_id)
         if entry is None:

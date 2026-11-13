@@ -1145,6 +1145,57 @@ def library_folder(project_folder: Path) -> Path:
     return Path(project_folder) / FOLDER
 
 
+# ------------------------------------------------- backups and copies
+# Whether a project's library travels in its ``.sra`` backups and in a copy
+# of the project is the researcher's explicit choice, off by default: notes
+# and transcripts in a library may hold personal data, and papers may not be
+# the researcher's to pass on (GDPR data minimisation; independent review §7).
+# The choice is a file of the library, so it travels with it when on.
+CHOICE_FILE = "backup.json"
+
+
+def travels(project_folder: Path) -> bool:
+    """True only when the researcher chose to include the library in backups
+    and project copies (a missing or unreadable choice means no)."""
+    try:
+        value = json.loads((library_folder(project_folder) / CHOICE_FILE).read_text(
+            encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(value, dict) and value.get("include_in_backups") is True
+
+
+def set_travels(project_folder: Path, include: bool) -> None:
+    folder = library_folder(project_folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    _atomic_write(folder / CHOICE_FILE, json.dumps(
+        {"include_in_backups": bool(include), "chosen_at": now()}).encode("utf-8"))
+
+
+def travelling_files(project_folder: Path) -> list[tuple[str, bytes]]:
+    """(path inside the project folder, bytes) of the library for a backup or
+    a copy: a consistent snapshot of its database, the choice and the stored
+    documents. Empty unless the researcher chose to include the library."""
+    if not travels(project_folder):
+        return []
+    folder = library_folder(project_folder)
+    files: list[tuple[str, bytes]] = []
+    database = folder / DB_NAME
+    if database.is_file():
+        with tempfile.TemporaryDirectory(prefix="sra-library-") as temp:
+            copy = Path(temp) / DB_NAME
+            with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as db, \
+                    closing(sqlite3.connect(copy)) as out:
+                db.backup(out)
+            files.append((f"{FOLDER}/{DB_NAME}", copy.read_bytes()))
+    files.append((f"{FOLDER}/{CHOICE_FILE}", (folder / CHOICE_FILE).read_bytes()))
+    sources = folder / SOURCES
+    for path in sorted(sources.iterdir()) if sources.is_dir() else []:
+        if path.is_file() and not path.name.startswith("."):
+            files.append((f"{FOLDER}/{SOURCES}/{path.name}", path.read_bytes()))
+    return files
+
+
 def peek(project_folder: Path) -> tuple[int, int]:
     """(documents, passages) of a project's library, read-only; (0, 0) when
     it has none. Never creates the library."""
