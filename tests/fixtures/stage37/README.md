@@ -26,3 +26,10 @@ The fixture was built from generic statistical model requirements, **not derived
 See [Stage 37 next specification](../../../docs/STAGE37_NEXT_SPEC.md) and GitHub Issues #66–#70.
 
 **Status:** generator and requirements only. This branch does not implement .sav/.xlsx exports, RAG, mediation/moderation or new UI functionality.
+
+**Stage 37 methods increment (Issue #66, branch `claude/stage37-methods`).**
+
+- Mediation, moderation and conditional process models are implemented, with structures equivalent to PROCESS Models 4, 1, 7 and 14, as is a linear model with dummy-coded covariates. See [`docs/STAGE37_METHODS.md`](../../../docs/STAGE37_METHODS.md).
+- The H1–H6 scenario on this fixture is `tests/test_stage37_master_acceptance.py`. It is documented in [`docs/STAGE37_MASTER_ACCEPTANCE.md`](../../../docs/STAGE37_MASTER_ACCEPTANCE.md).
+- The public synthetic mapping of constructs, coping dimensions and hypotheses is [`synthetic_construct_mapping.json`](synthetic_construct_mapping.json). In the generator, coping group 0 is M; groups 2 and 5 play "avoidance-like" (+X) and groups 3 and 6 "assertive-like" (−X).
+- The generator above is unchanged (v1).

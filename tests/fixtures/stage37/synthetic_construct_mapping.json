@@ -1,0 +1,78 @@
+{
+  "notice": "SYNTHETIC mapping for the invented Stage 37 fixture only (generate_master_fixture.py, v1). The constructs, items, coping groups and hypotheses below are fictional labels for testing the program; they are not the UCLA, SACS, WHO-5 or MSPSS instruments, use no validated scoring keys and produce no empirical finding.",
+  "fixture": {
+    "generator": "tests/fixtures/stage37/generate_master_fixture.py",
+    "version": 1,
+    "rows": 180,
+    "columns": 98
+  },
+  "constructs": {
+    "X": {
+      "role": "loneliness-like predictor",
+      "spec_key": "X",
+      "column": "SYN_LON_TOTAL",
+      "items": {"prefix": "SYN_LON_", "first": 1, "last": 20},
+      "score": "sum"
+    },
+    "M": {
+      "role": "coping-like mediator (generator coping group 0)",
+      "spec_key": "M",
+      "column": "SYN_COPE_DIM1_MEAN",
+      "items": {"prefix": "SYN_COPE_", "first": 1, "last": 7},
+      "score": "mean"
+    },
+    "W": {
+      "role": "perceived-support-like moderator",
+      "spec_key": "W",
+      "column": "SYN_SUP_MEAN",
+      "items": {"prefix": "SYN_SUP_", "first": 1, "last": 12},
+      "score": "mean"
+    },
+    "Y": {
+      "role": "well-being-like outcome",
+      "spec_key": "Y",
+      "column": "SYN_WELL_0_100",
+      "items": {"prefix": "SYN_WELL_", "first": 1, "last": 5},
+      "score": "sum x 4"
+    }
+  },
+  "coping_dimensions": {
+    "avoidance_like": {
+      "column": "SYN_COPE_AVOID_LIKE",
+      "generator_groups": [2, 5],
+      "items": [{"prefix": "SYN_COPE_", "first": 15, "last": 21},
+                {"prefix": "SYN_COPE_", "first": 35, "last": 40}],
+      "score": "mean of the 13 items",
+      "generator_relation": "each group's latent factor is N(0, 0.9) + 0.15 * x: a positive relation with the latent X"
+    },
+    "assertive_like": {
+      "column": "SYN_COPE_ASSERT_LIKE",
+      "generator_groups": [3, 6],
+      "items": [{"prefix": "SYN_COPE_", "first": 22, "last": 28},
+                {"prefix": "SYN_COPE_", "first": 41, "last": 46}],
+      "score": "mean of the 13 items",
+      "generator_relation": "each group's latent factor is N(0, 0.9) - 0.15 * x: a negative relation with the latent X"
+    }
+  },
+  "covariates": {
+    "age_years": "quantitative",
+    "sex_code": "nominal 0/1/2: dummy codes against category 0 (the linear model codes it itself; the path models use the derived 0/1 columns SYN_SEX_1 and SYN_SEX_2)",
+    "employed_code": "nominal 0/1"
+  },
+  "missing_data": {
+    "policy": "listwise deletion in every analysis; a prorated re-scoring (mean of the answered items of a scale) is the sensitivity comparison",
+    "prorated_columns": {"SYN_COPE_DIM1_PRORATED": "mean of the answered items SYN_COPE_01..07",
+                         "SYN_SUP_PRORATED": "mean of the answered items SYN_SUP_01..12"}
+  },
+  "hypotheses": {
+    "H1": {"question": "predict", "text": "[SYNTHETIC] The X-like score is associated with the Y-like score, alone and with age, sex and employment in the model.", "analyses": ["correlation (Pearson)", "linear_model: Y ~ X + age + C(sex) + C(employed)"]},
+    "H2": {"question": "relate", "text": "[SYNTHETIC] The X-like score is associated with the avoidance-like and the assertive-like coping dimensions.", "analyses": ["batch_correlation (Pearson, Holm)"]},
+    "H3": {"question": "relate", "text": "[SYNTHETIC] The coping dimensions are associated with the Y-like score.", "analyses": ["batch_correlation (Pearson, Holm): Y with M-like, avoidance-like, assertive-like"]},
+    "H4": {"question": "process", "text": "[SYNTHETIC] X is associated with Y through the M-like and the avoidance-like coping dimensions (parallel indirect paths), with age, sex and employment as covariates.", "analyses": ["mediation: PROCESS-equivalent Model 4, percentile bootstrap, B = 5000, fixed seed"]},
+    "H5": {"question": "process", "text": "[SYNTHETIC] The association of X with Y depends on W.", "analyses": ["moderation: PROCESS-equivalent Model 1, X x W -> Y, simple slopes, Johnson-Neyman"]},
+    "H6": {"question": "process", "text": "[SYNTHETIC] The association of X with the avoidance-like dimension depends on W.", "analyses": ["moderation: PROCESS-equivalent Model 1, X x W -> avoidance-like"]},
+    "H7": {"question": "process", "priority": "exploratory", "text": "[SYNTHETIC] Exploratory: W moderates the X -> M path (first stage).", "analyses": ["conditional_process: PROCESS-equivalent Model 7, explicitly chosen", "Monte Carlo sensitivity simulation, 500 replications"]},
+    "H8": {"question": "process", "priority": "exploratory", "text": "[SYNTHETIC] Exploratory: W moderates the M -> Y path (second stage).", "analyses": ["conditional_process: PROCESS-equivalent Model 14, explicitly chosen"]}
+  },
+  "model_7_vs_14": "Model 7 and Model 14 are separate, explicitly specified analyses: in Model 7 W multiplies X in the M equation (index a3*b), in Model 14 W multiplies M in the Y equation (index a*b3). The X x W -> avoidance-like hypothesis (H6) is a moderation of another outcome and is neither of them."
+}

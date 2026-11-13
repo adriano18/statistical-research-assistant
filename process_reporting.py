@@ -376,8 +376,10 @@ def inconsistent_mediation(result, language: str = "en") -> list[str]:
                    "interp.inconsistent.direct" if against_direct else
                    "interp.inconsistent.total" if against_total else None)
             if key:
-                out.append(_t(language, key, m=e.mediator or _t(language, "q.indirect_total"),
-                              ab=num(e.value), direct=num(direct), total=num(total)))
+                path = (_t(language, "path.total") if e.key == "indirect_total"
+                        else _t(language, "path.via", m=e.mediator))
+                out.append(_t(language, key, path=path, ab=num(e.value), direct=num(direct),
+                              total=num(total)))
     elif model in ("7", "14"):
         direct = result.estimate("direct").value
         by_mediator: dict[str, list[str]] = {}

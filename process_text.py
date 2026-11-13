@@ -20,6 +20,8 @@ from __future__ import annotations
 
 TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
     "en": {
+        "path.via": "Via {m}",
+        "path.total": "Altogether (total indirect effect)",
         "report.header": "APA 7-style reporting (researcher review required)",
         "report.interpretation": "Interpretation:",
         "report.notes": "Notes:",
@@ -146,14 +148,14 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "interp.index.includes": "Via {m}: the 95% bootstrap interval of the index of moderated "
                                  "mediation ({est}) includes zero: these data do not provide "
                                  "evidence that the indirect effect depends on W.",
-        "interp.inconsistent.both": "Via {m}: the indirect effect ({ab}) has the opposite sign "
+        "interp.inconsistent.both": "{path}: the indirect effect ({ab}) has the opposite sign "
                                     "to the direct effect c′ ({direct}) and to the total effect "
                                     "c ({total}): inconsistent mediation (suppression; MacKinnon, "
                                     "Krull & Lockwood, 2000).",
-        "interp.inconsistent.direct": "Via {m}: the indirect effect ({ab}) has the opposite sign "
+        "interp.inconsistent.direct": "{path}: the indirect effect ({ab}) has the opposite sign "
                                       "to the direct effect c′ ({direct}): inconsistent mediation "
                                       "(suppression; MacKinnon, Krull & Lockwood, 2000).",
-        "interp.inconsistent.total": "Via {m}: the indirect effect ({ab}) has the opposite sign "
+        "interp.inconsistent.total": "{path}: the indirect effect ({ab}) has the opposite sign "
                                      "to the total effect c ({total}): inconsistent mediation "
                                      "(suppression; MacKinnon, Krull & Lockwood, 2000).",
         "interp.inconsistent.conditional": "Via {m}, at W = {values}: the conditional indirect "
@@ -229,6 +231,8 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
                                      "assumed value)",
     },
     "lv": {
+        "path.via": "Caur {m}",
+        "path.total": "Kopā (kopējais netiešais efekts)",
         "report.header": "Ziņojums APA 7 stilā (pētniekam jāpārskata)",
         "report.interpretation": "Interpretācija:",
         "report.notes": "Piezīmes:",
@@ -350,14 +354,14 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "interp.index.includes": "Caur {m}: moderētās mediācijas indeksa ({est}) 95% bootstrap "
                                  "intervāls ietver nulli: šie dati nesniedz pierādījumus, ka "
                                  "netiešais efekts ir atkarīgs no W.",
-        "interp.inconsistent.both": "Caur {m}: netiešajam efektam ({ab}) ir pretēja zīme nekā "
+        "interp.inconsistent.both": "{path}: netiešajam efektam ({ab}) ir pretēja zīme nekā "
                                     "tiešajam efektam c′ ({direct}) un kopējam efektam c "
                                     "({total}): nekonsekventa mediācija (supresija; MacKinnon, "
                                     "Krull & Lockwood, 2000).",
-        "interp.inconsistent.direct": "Caur {m}: netiešajam efektam ({ab}) ir pretēja zīme nekā "
+        "interp.inconsistent.direct": "{path}: netiešajam efektam ({ab}) ir pretēja zīme nekā "
                                       "tiešajam efektam c′ ({direct}): nekonsekventa mediācija "
                                       "(supresija; MacKinnon, Krull & Lockwood, 2000).",
-        "interp.inconsistent.total": "Caur {m}: netiešajam efektam ({ab}) ir pretēja zīme nekā "
+        "interp.inconsistent.total": "{path}: netiešajam efektam ({ab}) ir pretēja zīme nekā "
                                      "kopējam efektam c ({total}): nekonsekventa mediācija "
                                      "(supresija; MacKinnon, Krull & Lockwood, 2000).",
         "interp.inconsistent.conditional": "Caur {m} pie W = {values}: nosacītajam netiešajam "
@@ -431,6 +435,8 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
                                      "pieņemtās vērtības)",
     },
     "ru": {
+        "path.via": "Через {m}",
+        "path.total": "В сумме (общий косвенный эффект)",
         "report.header": "Отчёт в стиле APA 7 (требует проверки исследователем)",
         "report.interpretation": "Интерпретация:",
         "report.notes": "Примечания:",
@@ -553,15 +559,15 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "interp.index.includes": "Через {m}: 95% бутстреп-интервал индекса модерируемой "
                                  "медиации ({est}) включает ноль: эти данные не дают "
                                  "свидетельств, что косвенный эффект зависит от W.",
-        "interp.inconsistent.both": "Через {m}: косвенный эффект ({ab}) имеет знак, "
+        "interp.inconsistent.both": "{path}: косвенный эффект ({ab}) имеет знак, "
                                     "противоположный прямому эффекту c′ ({direct}) и общему "
                                     "эффекту c ({total}): несогласованная медиация (супрессия; "
                                     "MacKinnon, Krull & Lockwood, 2000).",
-        "interp.inconsistent.direct": "Через {m}: косвенный эффект ({ab}) имеет знак, "
+        "interp.inconsistent.direct": "{path}: косвенный эффект ({ab}) имеет знак, "
                                       "противоположный прямому эффекту c′ ({direct}): "
                                       "несогласованная медиация (супрессия; MacKinnon, Krull & "
                                       "Lockwood, 2000).",
-        "interp.inconsistent.total": "Через {m}: косвенный эффект ({ab}) имеет знак, "
+        "interp.inconsistent.total": "{path}: косвенный эффект ({ab}) имеет знак, "
                                      "противоположный общему эффекту c ({total}): "
                                      "несогласованная медиация (супрессия; MacKinnon, Krull & "
                                      "Lockwood, 2000).",
